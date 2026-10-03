@@ -1,6 +1,6 @@
 # GAME-CHANGE-0001: Champion reworks
 
-- **Build:** one build per champion, 13 from 10.11 to 16.6 (below)
+- **Build:** one build per champion, 16 from 9.12 to 16.6 (below)
 - **Affects:** a champion's base mesh and skeleton, every skin's mesh, skeleton, clips and
   effects, and the paths under the champion's folders
 - **Related:** none
@@ -18,6 +18,9 @@ build.
 
 | champion | build |
 |---|---|
+| Mordekaiser | 9.12 |
+| Pantheon | 9.16 |
+| Fiddlesticks | 10.7 |
 | Volibear | 10.11 |
 | Dr. Mundo | 11.12 |
 | Caitlyn | 11.23 |
@@ -60,3 +63,9 @@ too.
   upgrades change bytes and keep names.
 - ltk-forge's eighth datasets run (2026-10-01) found 15 of 5,137 mods made before their
   champion's rework.
+- Mordekaiser at 9.12.2776513, Pantheon at 9.16.2848446 and Fiddlesticks at 10.7.3149802: the
+  base skeleton of the build shares no joint name with the one before it, and the base mesh and
+  skeleton take the `_base` suffix at that build (#GAME-CHANGE-0011), counted on the history
+  index (2026-10-03). The submeshes and the share of paths dropped were not measured for these
+  three. The user confirmed the three as reworks (2026-10-04). ltk-forge's table does not hold
+  them, so the count of 15 mods is of the other 13.
