@@ -110,14 +110,14 @@ animation-reuse level.
 ### 5. The port
 
 - `Shipping`, `Reach`, `FileRefs`, `Layout`, `Renames`, `AudioPlan`, `Port`.
-- `PortBuilder`: overrides, the port's bins, voice and HUD layers, the TEX container.
+- `PortBuilder`: patches, the port's bins, voice and HUD layers, the TEX container.
 - The apply check.
 - `reforge port`.
 
 Records: the audio and layout ADRs; the audio mod artifacts; the game behaviors.
 
 Exit: over the datasets, the package contents compared with forge's: chunk paths and bytes, and
-each override applied to the game's bin. The 14 in-game sample mods are checked in game by a
+each patch applied to the game's bin. The 14 in-game sample mods are checked in game by a
 person.
 
 ### 6. Closing
@@ -137,6 +137,9 @@ what forge held (event names without a list, the history's refs and entry texts,
 
 Titles as the records will carry them. Numbers are given when a record is written, in the step
 that cites it. Sources are forge's docs and the module that holds the evidence.
+
+Written: #GAME-CHANGE-0001; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004; #MOD-ARTIFACT-0001 to
+#MOD-ARTIFACT-0005. They are the records the carried-over ADRs rest on.
 
 ### Game changes
 
@@ -161,23 +164,18 @@ that cites it. Sources are forge's docs and the module that holds the evidence.
 | Resolution prefixes dropped from texture names | to establish | `transform/moved.rs` |
 | A `_base` suffix on the base mesh and skeleton | to establish | `transform/moved.rs` |
 | Shared skin bins in the character's folder | to establish | `transform/moved.rs` |
-| Champion reworks | 13 builds, 10.11 to 16.6 | `TARGETS.md`, `tables/reworks.tsv` |
 
 ### Game behaviors
 
 | the behaviour | status in forge's docs | forge's source |
 |---|---|---|
-| A bin value of another type than the build registered is dropped without a word | stated | `TRANSFORMS.md` |
 | A bin's link resolves to the mod's file, else the game's, else is skipped | stated | `INPUTS.md` |
 | A file is there for a champion when a WAD mounted with it holds the path | stated | `INPUTS.md`, `analysis/refs.rs` |
-| A texture is read by its bytes' magic, not its extension | stated | `TRANSFORMS.md` |
 | An old particle's `.troy` is read as the `.troybin` beside it | stated | `WRITER.md` |
 | A block-compressed texture not in whole blocks is drawn | seen in the game's own files | `TRANSFORMS.md` |
-| The client loads a skin bin the game does not ship for a sub-character | confirmed in game, 2026-09-30 | `TARGETS.md` |
 | A graph event finds its resolver by the skin's name, not by the entry's link | confirmed in game, 2026-09-30 | `WRITER.md` |
 | A graph event does not look in the additional resolvers | confirmed in game | `WRITER.md` |
 | A clip's track for a joint the skeleton lacks is skipped | inferred from mods that play in game | `TARGETS.md` |
-| Spell icons are named by the champion's root bin and show under every skin | confirmed in game, 2026-10-01 | `WRITER.md` |
 | A PTCH record's path names are hashed lowercased | to confirm in game | `WRITER.md` |
 | Spell and buff sound hooks are composed from the skin's tags | settled in game, 2026-09-23 to 2026-09-26 | `AUDIO.md` |
 | Of two banks defining one id the client keeps one, for voice the later unit's | settled in game | `AUDIO.md` |
@@ -199,10 +197,7 @@ that cites it. Sources are forge's docs and the module that holds the evidence.
 | A WAD named for no champion | `INPUTS.md` |
 | Two WADs for one champion | `RUNS.md` |
 | Mods with no skin bin | `WRITER.md` |
-| A skin bin copied to every slot | `TARGETS.md` |
-| A premium skin pasted into the base slot | `TARGETS.md` |
 | The game's own skins shipped beside the mod's | `TARGETS.md` |
-| Stale copies of game files | `INPUTS.md` |
 | Bins as text or JSON at a bin's path | `INPUTS.md` |
 | Executables, sources and leftovers in the archive | `INPUTS.md` |
 | Repath tags in file and folder names | `WRITER.md`, `transform/relocate.rs` |
@@ -214,40 +209,12 @@ that cites it. Sources are forge's docs and the module that holds the evidence.
 | Values converted by the manager at install | `transform/retype.rs` |
 | A bank with header id zero | `transform/bank.rs` |
 | A voice stub of an older bank version | `AUDIO.md` |
-| Banks added with events of their own | `AUDIO.md` |
 | A unit of the game's name on banks of its own | `AUDIO.md` |
 
 ### ADRs
 
-The decisions forge's docs and session notes record as the user's, with the date given there.
-
-| the decision | date | forge's source |
-|---|---|---|
-| A mod for a premium slot stays there | 2026-09-29 | `TARGETS.md`, notes |
-| A skin0 unit goes to skin0 first, then to its premium origin | 2026-09-29 | `TARGETS.md`, notes |
-| Borrowed clips are judged by `own-rig` | 2026-09-29 | `TARGETS.md`, notes |
-| The port holds the author's one unit and never writes copies back | 2026-09-29 | `TARGETS.md`, notes |
-| A borrowed effects texture is legitimate and never flagged | 2026-09-29 | `ROADMAP.md`, `TARGETS.md` |
-| A fixup is a general transform of the mod, and the choice of target is a policy apart from the facts | 2026-09-29 | notes |
-| Voice goes to a layer of its own | 2026-09-29 | `AUDIO.md` |
-| The output's layout | 2026-09-29 | `WRITER.md` |
-| Path edits as declarations are deprioritised | 2026-09-29 | `ROADMAP.md` |
-| The corpus covers champion skin mods | 2026-09-29, 2026-09-30 | `TOOLING.md` |
-| Textures keep their pixels | 2026-09-30 | `ARCHITECTURE.md` |
-| A unit that plays mostly one skin's clips is a mod for that skin | 2026-09-30 | `TARGETS.md`, notes |
-| A unit that fits nothing is written at skin0 with an error | 2026-09-30 | `TARGETS.md` |
-| A sub-character with no bin at T gets a new one | 2026-09-30 | `TARGETS.md` |
-| A chroma that is the same work folds into its parent | 2026-09-30 | `TARGETS.md` |
-| A name and an author do not identify a mod | 2026-09-30 | `TOOLING.md` |
-| No archive is extracted to disk | 2026-10-01 | notes |
-| Work made for a model before its rework is not ported | 2026-10-01 | `TARGETS.md` |
-| A stale copy is no override | 2026-10-01 | `INPUTS.md` |
-| Spell icons and HUD textures go to a layer of their own | 2026-10-01 | `WRITER.md` |
-| A bank the author added is cut from the mod's own events bank | 2026-10-01 | `AUDIO.md` |
-| A field no table names gets a forged name | 2026-10-01 | `WRITER.md` |
-| A mod broken by the format is not accommodated | 2026-10-01 | `TOOLING.md` |
-| Picture comparison is held | 2026-10-01 | `ROADMAP.md` |
-| The census format is closed | 2026-10-03 | `CENSUS.md` |
+The decisions forge's docs and session notes record as the user's are written: #ADR-0010 to
+#ADR-0036, each with the date of the decision.
 
 Policies forge's docs state without saying who decided. Each is confirmed with the user before
 it is written as an ADR.
