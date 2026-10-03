@@ -9,6 +9,7 @@ mod namehash;
 mod names;
 mod schema;
 mod speller;
+mod view;
 
 use std::error::Error;
 use std::fmt;
@@ -29,6 +30,7 @@ pub use self::schema::{
     FieldType, Schema, SchemaAbsent, SchemaError, SchemaInstallNewer, SchemaUnreadable,
 };
 pub use self::speller::Speller;
+pub use self::view::{GameBin, GameSkin, GameView};
 use crate::diag::{Code, Diag};
 use crate::model::{WadHash, WadName};
 
