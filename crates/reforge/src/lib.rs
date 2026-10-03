@@ -4,3 +4,5 @@
 //! `docs/design/ARCHITECTURE.md`.
 
 pub mod model;
+
+pub mod diag;

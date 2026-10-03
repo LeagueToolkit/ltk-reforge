@@ -131,7 +131,8 @@ fixup that moves 400 fields in a unit raises one `fixup.changed` whose `data` li
 - **One log.** `Diagnostics` is an ordered, append-only log the run owns. The order is the order
   raised, which is the same for the same inputs.
 - **A sink per stage.** A stage gets `diagnostics.at(Stage::Load)`. A fixup or a check gets a
-  sink that also fills `by` and `record`.
+  sink that also fills `by` and `record`. A finding type whose every finding rests on one
+  record names it itself (`Diag::RECORD`), and the sink's record comes first.
 - **A stage returns its result.** Only a `fatal` diagnostic ends the run, as
   `Err(Halted(id))`.
 - **Results point at their reason.** Where a diagnostic explains a state, the state holds its
