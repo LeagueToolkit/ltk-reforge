@@ -3,6 +3,9 @@
 #[macro_use]
 mod term;
 mod history;
+mod load;
+
+use std::process::ExitCode;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -27,10 +30,13 @@ enum Command {
         #[command(subcommand)]
         command: history::HistoryCommand,
     },
+    /// Read one mod archive, load it and report what it is: WADs, files, characters, units,
+    /// what the client loads, and whose bytes its files are.
+    Load(load::Load),
 }
 
 impl Command {
-    fn run(&self) -> Result<()> {
+    fn run(&self) -> Result<ExitCode> {
         match self {
             Command::Diagnostics => {
                 for code in reforge::codes() {
@@ -40,17 +46,18 @@ impl Command {
                         code.channel.as_str()
                     );
                 }
-                Ok(())
+                Ok(ExitCode::SUCCESS)
             }
-            Command::History { command } => command.run(),
+            Command::History { command } => command.run().map(|()| ExitCode::SUCCESS),
+            Command::Load(command) => command.run(),
         }
     }
 }
 
-fn main() {
+fn main() -> ExitCode {
     // An error may name an entry of a mod: printed cleaned, not by the runtime.
-    if let Err(error) = Cli::parse().command.run() {
+    Cli::parse().command.run().unwrap_or_else(|error| {
         errln!("Error: {error:?}");
-        std::process::exit(1);
-    }
+        ExitCode::FAILURE
+    })
 }

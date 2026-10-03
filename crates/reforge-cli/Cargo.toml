@@ -21,3 +21,4 @@ reforge-wwise.workspace = true
 clap.workspace = true
 anyhow.workspace = true
 camino.workspace = true
+fs-err.workspace = true
