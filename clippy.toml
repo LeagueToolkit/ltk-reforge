@@ -1,0 +1,40 @@
+# `fs_err` mirrors `std::fs` and names the path and the operation in the error,
+# where the standard library reports the OS text alone. A run that stops reports
+# its error in the log, and an IO error without the path in it says nothing about
+# which file of the clone, the chunk cache or a temporary file failed. The edit per
+# module is `use fs_err as fs;`.
+disallowed-methods = [
+    { path = "std::fs::canonicalize", reason = "use fs_err" },
+    { path = "std::fs::copy", reason = "use fs_err" },
+    { path = "std::fs::create_dir", reason = "use fs_err" },
+    { path = "std::fs::create_dir_all", reason = "use fs_err" },
+    { path = "std::fs::exists", reason = "use fs_err" },
+    { path = "std::fs::hard_link", reason = "use fs_err" },
+    { path = "std::fs::metadata", reason = "use fs_err" },
+    { path = "std::fs::read", reason = "use fs_err" },
+    { path = "std::fs::read_dir", reason = "use fs_err" },
+    { path = "std::fs::read_link", reason = "use fs_err" },
+    { path = "std::fs::read_to_string", reason = "use fs_err" },
+    { path = "std::fs::remove_dir", reason = "use fs_err" },
+    { path = "std::fs::remove_dir_all", reason = "use fs_err" },
+    { path = "std::fs::remove_file", reason = "use fs_err" },
+    { path = "std::fs::rename", reason = "use fs_err" },
+    { path = "std::fs::set_permissions", reason = "use fs_err" },
+    { path = "std::fs::soft_link", reason = "use fs_err" },
+    { path = "std::fs::symlink_metadata", reason = "use fs_err" },
+    { path = "std::fs::write", reason = "use fs_err" },
+
+    # `Path` reaches the same syscalls by another name. `Path::exists` is absent
+    # because it answers with a `bool` and has no error to lose.
+    { path = "std::path::Path::canonicalize", reason = "use fs_err" },
+    { path = "std::path::Path::metadata", reason = "use fs_err" },
+    { path = "std::path::Path::read_dir", reason = "use fs_err" },
+    { path = "std::path::Path::read_link", reason = "use fs_err" },
+    { path = "std::path::Path::symlink_metadata", reason = "use fs_err" },
+    { path = "std::path::Path::try_exists", reason = "use fs_err" },
+]
+
+disallowed-types = [
+    { path = "std::fs::File", reason = "use fs_err" },
+    { path = "std::fs::OpenOptions", reason = "use fs_err" },
+]

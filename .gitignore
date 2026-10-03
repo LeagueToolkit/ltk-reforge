@@ -1,0 +1,40 @@
+# Rust build artifacts
+debug/
+target/
+**/*.rs.bk
+*.pdb
+
+# Profiling
+flamegraph.svg
+perf.data
+perf.data.old
+
+# Python bytecode of scripts/
+__pycache__/
+
+# Editor
+.vscode/
+.idea/
+*.sw?
+*.iml
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
+# AI local settings
+.agents/
+.claude/
+.codex/
+.mcp.json
+.scratch/
+
+# Windows
+nul
+*:Zone.Identifier
+
+# Local inputs and outputs: game copy, history index, samples, run output
+data/

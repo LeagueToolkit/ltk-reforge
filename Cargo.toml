@@ -1,0 +1,105 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+forge-ir = { path = "crates/forge-ir" }
+forge-history = { path = "crates/forge-history" }
+forge-wwise = { path = "crates/forge-wwise" }
+forge-magic = { path = "crates/forge-magic" }
+forge-frontend = { path = "crates/forge-frontend" }
+forge-passes = { path = "crates/forge-passes" }
+
+# LeagueToolkit crates: every League format goes through these and nothing else.
+ltk_hash = "0.4"
+ltk_primitives = "0.3"
+ltk_io_ext = "0.4.4"
+ltk_file = "0.2.11"
+ltk_wad = "0.5.4"
+ltk_meta = "0.8.6"
+ltk_mesh = "0.4.6"
+ltk_anim = "0.3.7"
+# Later milestones, declared now so the versions agree from the start.
+ltk_ritobin = "0.9.0"
+ltk_texture = "0.6.1"
+ltk_game_data = "0.7.2"
+ltk_mod_project = "0.15.2"
+ltk_modpkg = "0.12.5"
+ltk_hashtable = "0.1.3"
+ltk_overlay = "0.14.2"
+
+# Mimir: the League Toolkit hash cache (`%LOCALAPPDATA%\LeagueToolkit\hashes`), read only, at the
+# revision LTK Manager checks out.
+ltk_hashdb = { git = "https://github.com/LeagueToolkit/mimir", rev = "670196996ae219cbae5e64d40667363ff19a028f" }
+ltk_mimir_cache = { git = "https://github.com/LeagueToolkit/mimir", rev = "670196996ae219cbae5e64d40667363ff19a028f" }
+
+# Deflate and stored only: fewer decoders for untrusted archives to reach.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+rusqlite = { version = "0.40", features = ["bundled"] }
+gix = { version = "0.88", default-features = false, features = ["max-performance-safe", "sha1"] }
+clap = { version = "4", features = ["derive", "env"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+indexmap = { version = "2", features = ["serde"] }
+# The version every league-toolkit crate builds against.
+glam = "0.27"
+rayon = "1"
+# DDS is Microsoft's container, read for its blocks when a texture ships in TEX's; the version ltk_texture reads with.
+ddsfile = "0.5.2"
+# Scratch directories and repositories in tests.
+tempfile = "3"
+
+# Every filesystem call: its errors name the path (clippy.toml forbids `std::fs`).
+fs-err = "3"
+# Filesystem paths as UTF-8. Paths inside the history are strings, not these.
+camino = "1"
+# A span per build, WAD and entry, so a failure in a scheduled run's log names where it happened.
+# The ltk crates log through `log`, which the subscriber takes in too.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+# The checks before a push: every changed YAML file loaded and validated against the schema the
+# tree's census.yaml names for it, the schemas' patterns as regexes.
+serde_yaml_ng = "0.10"
+regex = "1"
+# A rendered file against the history's blob, as a line diff when they differ.
+pretty_assertions = "1"
+
+# ltk_ritobin as census-sync reads and writes the census history's bin entries,
+# LeagueToolkit/league-toolkit#269 at 521a875, until it is released: the release before it reads
+# 2.3% of the entries at 16.19.8207193 wrong (exponent floats in an `mtx44`, a null pointer before
+# a field). The crates its types are made of come from the same commit, so the build holds one
+# ltk_meta and one ltk_hash.
+[patch.crates-io]
+ltk_ritobin = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
+ltk_meta = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
+ltk_hash = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
+ltk_primitives = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
+ltk_io_ext = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
+
+[profile.release]
+debug = "line-tables-only"
+
+[profile.bench]
+debug = true
+
+[workspace.lints.rust]
+warnings = "warn"
+
+[workspace.lints.clippy]
+correctness = { level = "deny", priority = -1 }
+suspicious  = { level = "deny", priority = -1 }
+perf        = { level = "warn", priority = -1 }
+style       = { level = "warn", priority = -1 }
+complexity  = { level = "warn", priority = -1 }
+pedantic    = { level = "allow", priority = -1 }

@@ -1,0 +1,46 @@
+{
+  "skill_name": "meta-cli",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "what type is VfxEmitterDefinitionData.primitive these days? and did it ever change, I remember it pointing at something else",
+      "expected_output": "States it is Pointer<VfxLegacyPrimitiveBase> since patch 16.6, and was Pointer<VfxPrimitiveBase> from tracking start (13.15) through 16.5; gives the property hash 0x007b14f6 and class hash 0x09cde442; notes the patch/build the answer is dated at.",
+      "files": [],
+      "expectations": [
+        "Current type is given as Pointer<VfxLegacyPrimitiveBase>",
+        "Earlier type Pointer<VfxPrimitiveBase> is named and the change is placed at patch 16.6",
+        "Property hash 0x007b14f6 or class hash 0x09cde442 appears in the answer",
+        "Answer states the patch or build it is dated at (16.17 or 8104348)",
+        "The rito-meta CLI was actually run (transcript shows meta-cli or rito-meta)"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I'm writing a bin parser for VfxSystemDefinitionData in ltk. Give me the complete field list with types (including anything inherited) and the class hash so I can wire it up.",
+      "expected_output": "Uses the class command with --inherited, reports hash 0x45cd899f, base IResource, and lists all 34 fields with rendered types (e.g. Pointer<...>, Option<F32>) and hashes; flags the one unnamed field (0x9836cd87).",
+      "files": [],
+      "expectations": [
+        "Class hash 0x45cd899f is reported",
+        "At least 32 of the 34 fields are listed by name or hash",
+        "IResource is named as the base class",
+        "The unnamed field 0x9836cd87 is included",
+        "Types are rendered in bin notation with generics (Pointer<...>, Embed<...>, Option<...>, List<...> or Map<...>)",
+        "The class command was run with --inherited"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "ltk-manager's bin scripts broke after the 16.17 update. Which properties changed type between 16.16 and 16.17? Also what even is class 0x13f50786, it shows up in the errors.",
+      "expected_output": "Uses diff 16.16 16.17, reports ~395 changes all at build 8104348, summarizes that nearly all are String->File or Hash->File on path-like fields (plus 0x3b09052f.value Embed->Pointer), and resolves 0x13f50786 as an unnamed class with its wiki URL https://meta-wiki.leaguetoolkit.dev/classes/0x13f50786, noting its imagePath field changed String->File.",
+      "files": [],
+      "expectations": [
+        "Reports the number of type changes as 395 (390 to 399 accepted)",
+        "Says the changes landed at build 8104348",
+        "Summarizes the dominant String->File (and Hash->File) pattern instead of only listing rows",
+        "Resolves 0x13f50786 as a class with no known name and gives its wiki URL",
+        "Notes that 0x13f50786.imagePath changed from String to File",
+        "The diff command was run for 16.16 to 16.17 via the CLI"
+      ]
+    }
+  ]
+}
