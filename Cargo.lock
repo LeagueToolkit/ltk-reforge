@@ -1574,6 +1574,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ltk_mesh"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a05eed66667b67fcc0cc7900bf8b85f9ccb8883cb590b4da468cbc42c22f500"
+dependencies = [
+ "bitflags 2.13.2",
+ "byteorder",
+ "glam",
+ "lazy_static",
+ "ltk_io_ext",
+ "ltk_primitives",
+ "num_enum",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "ltk_meta"
 version = "0.8.6"
 source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=521a875e7c281da1ef98fad93dd822ae8b68f430#521a875e7c281da1ef98fad93dd822ae8b68f430"
@@ -2056,6 +2072,7 @@ dependencies = [
  "indexmap",
  "ltk_hash",
  "ltk_hashdb",
+ "ltk_mesh",
  "ltk_meta",
  "ltk_mimir_cache",
  "ltk_wad",
@@ -2101,6 +2118,7 @@ dependencies = [
  "anyhow",
  "camino",
  "clap",
+ "fs-err",
  "reforge",
  "reforge-census",
  "reforge-wwise",
@@ -2118,6 +2136,7 @@ dependencies = [
 name = "reforge-testkit"
 version = "0.1.0"
 dependencies = [
+ "ltk_meta",
  "ltk_wad",
  "reforge",
  "zip",
