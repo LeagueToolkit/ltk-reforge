@@ -30,4 +30,5 @@ camino.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+reforge-testkit.workspace = true
 tempfile.workspace = true

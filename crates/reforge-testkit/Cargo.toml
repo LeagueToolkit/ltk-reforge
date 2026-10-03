@@ -1,0 +1,16 @@
+[package]
+name = "reforge-testkit"
+description = "Fixtures for tests of reforge: a game and a history in memory, and builders of archives"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reforge.workspace = true
+ltk_wad.workspace = true
+zip.workspace = true
