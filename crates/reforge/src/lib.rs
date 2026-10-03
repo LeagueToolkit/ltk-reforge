@@ -17,6 +17,8 @@ pub mod env;
 
 pub mod load;
 
+pub mod report;
+
 /// Every diagnostic code a run can raise, in the order of the modules that declare them.
 /// `docs/design/CODES.md` lists the same codes.
 pub fn codes() -> impl Iterator<Item = diag::Code> {
