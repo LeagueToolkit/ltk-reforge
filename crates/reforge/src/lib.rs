@@ -8,3 +8,5 @@ pub mod model;
 pub mod diag;
 
 pub mod archive;
+
+pub mod game;
