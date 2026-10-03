@@ -13,11 +13,17 @@ pub mod game;
 
 pub mod history;
 
+pub mod env;
+
 /// Every diagnostic code a run can raise, in the order of the modules that declare them.
 /// `docs/design/CODES.md` lists the same codes.
 pub fn codes() -> impl Iterator<Item = diag::Code> {
-    [archive::CODES, game::CODES, history::CODES]
-        .into_iter()
-        .flatten()
-        .copied()
+    [
+        archive::CODES,
+        game::CODES,
+        history::CODES,
+    ]
+    .into_iter()
+    .flatten()
+    .copied()
 }

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 /// The modules of the crate, each using only the ones before it.
 /// `docs/design/ARCHITECTURE.md`, "Crates and modules".
 const ORDER: &[&str] = &[
-    "model", "diag", "archive", "game", "history", "load", "fixups", "facts", "port", "package",
-    "report",
+    "model", "diag", "archive", "game", "history", "env", "load", "fixups", "facts", "port",
+    "package", "report",
 ];
 
 fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
