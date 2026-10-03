@@ -1,12 +1,13 @@
 # Records
 
-The three numbered series under `docs/`: what each holds, how a file is shaped, and how it is
+The four numbered series under `docs/`: what each holds, how a file is shaped, and how it is
 cited. The rules they share with every doc are in the root `AGENTS.md`, under "Docs".
 
 | series | folder | a record is | cited as |
 |---|---|---|---|
 | ADR | `docs/adr/` | a decision | `#ADR-0001` |
 | game change | `docs/game-change/` | a change Riot made to the game | `#GAME-CHANGE-0001` |
+| game behavior | `docs/game-behavior/` | how the game client behaves | `#GAME-BEHAVIOR-0001` |
 | mod artifact | `docs/mod-artifact/` | what tools, mod managers and authors' practices put in mods | `#MOD-ARTIFACT-0001` |
 
 ## Every record
@@ -23,8 +24,8 @@ cited. The rules they share with every doc are in the root `AGENTS.md`, under "D
 - **One thing per record.** Two changes at one build are two records. One change that reached the
   game over several builds is one record.
 - **Look first.** Before writing a record, search the series for the field, class or extension.
-- **Facts and choices apart.** A game change and a mod artifact state facts. Where handling one
-  took a choice, the choice is an ADR that cites the record.
+- **Facts and choices apart.** A game change, a game behavior and a mod artifact state facts.
+  Where handling one took a choice, the choice is an ADR that cites the record.
 - **No pass names.** A record does not say which code handles it. The citation in the code does.
 
 ## ADR
@@ -93,6 +94,43 @@ reads it, skips it, draws it wrong, crashes.
 Where each statement above comes from: the census, the schema, a check in game. Counts and
 checks carry their date.
 ```
+
+## Game behavior
+
+Something the game client does with what it is given, which a port or a repair rests on: how it
+finds a file, what it does with a value of another type, which of two banks it keeps, how it
+resolves a name. The client here is the game's own program, not a mod manager and not an author.
+
+It is a game behavior when no change is the point. When Riot changed the behaviour at a build
+and older mods show the old one, that is a game change, and the two records name each other.
+
+The title is one declarative sentence naming the behaviour: `A texture is read by its magic`,
+`A graph event finds its resolver by the skin's name`.
+
+```markdown
+# GAME-BEHAVIOR-0001: <the behaviour>
+
+- **Status:** Confirmed in game (YYYY-MM-DD) | Inferred | Open
+- **Builds:** the builds it was checked at
+- **Affects:** the formats, classes or fields
+- **Related:** other records
+
+## Behaviour
+
+What the client does, as one rule, then its bounds: what is known not to follow it.
+
+## In a mod
+
+What follows for a mod: what loads, what is skipped without a word, what plays twice.
+
+## Evidence
+
+How it was established: the check in game with its date and what was seen with and without the
+mod, or the data it is inferred from. An inference says what would confirm it.
+```
+
+A behaviour that is only inferred is recorded as `Inferred`. One nobody has established, which
+the code has to assume either way, is recorded as `Open` with what is assumed.
 
 ## Mod artifact
 

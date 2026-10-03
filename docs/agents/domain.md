@@ -7,9 +7,10 @@ How an agent uses this repository's docs when it explores the code or plans a ch
 - **`CONTEXT.md`** at the repo root: the glossary.
 - **`docs/design/`**: the doc for the area.
 - **`docs/adr/`**: the decisions that touch the area.
-- **The records the code cites.** A `#GAME-CHANGE-NNNN` or `#MOD-ARTIFACT-NNNN` beside the code
-  names a file under `docs/game-change/` or `docs/mod-artifact/`. Read it before changing that
-  code: the comment holds the code only, and the record holds the reason.
+- **The records the code cites.** A `#GAME-CHANGE-NNNN`, `#GAME-BEHAVIOR-NNNN` or
+  `#MOD-ARTIFACT-NNNN` beside the code names a file under `docs/game-change/`,
+  `docs/game-behavior/` or `docs/mod-artifact/`. Read it before changing that code: the comment
+  holds the code only, and the record holds the reason.
 
 A file or folder that does not exist is no fault. Work without it, and do not create it ahead of
 need: a glossary entry, an ADR or a record is written when a term, a decision or a fact is
@@ -27,6 +28,7 @@ One context: one glossary and one of each series cover every crate.
 └── docs/
     ├── adr/                0001-<slug>.md   decisions           #ADR-0001
     ├── game-change/        0001-<slug>.md   Riot's changes      #GAME-CHANGE-0001
+    ├── game-behavior/      0001-<slug>.md   the client's ways   #GAME-BEHAVIOR-0001
     ├── mod-artifact/       0001-<slug>.md   the modding side    #MOD-ARTIFACT-0001
     ├── design/             the design overview, for a person
     └── agents/             this folder
@@ -38,7 +40,7 @@ One context: one glossary and one of each series cover every crate.
 |---|---|
 | what rests on a record? | `grep -rn "#GAME-CHANGE-0003" crates docs` |
 | which record is it? | `ls docs/game-change/0003-*` |
-| is this fact recorded? | `grep -rli "<field, class or extension>" docs/game-change docs/mod-artifact` |
+| is this fact recorded? | `grep -rli "<field, class or extension>" docs/game-change docs/game-behavior docs/mod-artifact` |
 | which decisions touch this area? | `grep -li "<term>" docs/adr/*.md` |
 
 A record's own heading holds its code without the `#`, so a search for `#GAME-CHANGE-0003` lists
@@ -56,5 +58,5 @@ A proposal that contradicts an accepted ADR or a record says so, and why it is w
 
 > Contradicts #ADR-0007, worth reopening because the client's behaviour changed at 16.20.
 
-A game change or a mod artifact that the game or a mod proves wrong is corrected in place, with
-the evidence. An ADR is superseded by a new one.
+A game change, a game behavior or a mod artifact that the game or a mod proves wrong is
+corrected in place, with the evidence. An ADR is superseded by a new one.
