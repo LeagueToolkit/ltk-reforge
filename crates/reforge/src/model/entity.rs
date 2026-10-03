@@ -7,7 +7,7 @@ use std::sync::Arc;
 use ltk_meta::BinObject;
 use serde::Serialize;
 
-use super::hash::{BinHash, ContentId, Slot, WadHash};
+use super::hash::{BinHash, ContentId, MAX_SLOT, Slot, WadHash, path_hash, skin_paths};
 use super::id::{Arena, Id, Sigil};
 use super::path::{ChunkPath, WadName};
 use super::text::Spelled;
@@ -141,6 +141,11 @@ pub enum FileKind {
 }
 
 impl FileKind {
+    /// Whether the client reads the file as a bin: a bin, or a PTCH at a bin's path.
+    pub fn is_bin(self) -> bool {
+        matches!(self, FileKind::Bin | FileKind::Ptch)
+    }
+
     /// The kind's name in dumps and as a file extension.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -181,6 +186,16 @@ pub enum MadeBy {
     LegacyFormat,
     /// A file at a path the game shipped once, made where it ships the asset.
     MovedAsset,
+}
+
+impl MadeBy {
+    /// The rule's name in dumps.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MadeBy::LegacyFormat => "legacy-format",
+            MadeBy::MovedAsset => "moved-asset",
+        }
+    }
 }
 
 /// Where a file of the mod comes from.
@@ -372,6 +387,12 @@ pub struct Group {
     pub characters: Vec<CharId>,
 }
 
+/// The file a WAD holds at a path where another was to be added. A WAD holds one chunk per path
+/// hash: that is its format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("the WAD holds the file {0} at the path")]
+pub struct Occupied(pub FileId);
+
 /// One mod archive as a run holds it.
 pub struct Mod {
     /// What the archive says of itself.
@@ -395,6 +416,13 @@ pub struct Mod {
     /// WADs that restore a champion's model from before its rework. Their copies of the game's
     /// older bytes are the mod's own.
     pub restorations: BTreeSet<WadId>,
+    /// Sub-characters whose every skin bin is the game's byte for byte: the mod adds nothing to
+    /// them.
+    pub equal_to_game: BTreeSet<CharId>,
+    /// Files whose path a table or a bin of the mod spells, and the archive does not: a chunk
+    /// of a packed WAD, a chunk named by its hash. What a mod's own spelling says of a file
+    /// is not read off such a path.
+    pub named_by_table: BTreeSet<FileId>,
     file_at: BTreeMap<(WadId, WadHash), FileId>,
     bin_of: BTreeMap<FileId, BinId>,
 }
@@ -413,19 +441,25 @@ impl Mod {
             units: Arena::default(),
             extras: Vec::new(),
             restorations: BTreeSet::new(),
+            equal_to_game: BTreeSet::new(),
+            named_by_table: BTreeSet::new(),
             file_at: BTreeMap::new(),
             bin_of: BTreeMap::new(),
         }
     }
 
-    /// Adds a file to its WAD. Files are added through this, so that a lookup by path finds
-    /// them.
-    pub fn push_file(&mut self, file: FileNode) -> FileId {
+    /// Adds a file to its WAD. Every file is added through this: a WAD holds one file per path
+    /// hash, so where it holds one at the path none is added, and the caller is told which is
+    /// there.
+    pub fn push_file(&mut self, file: FileNode) -> Result<FileId, Occupied> {
         let (wad, hash) = (file.wad, file.hash);
+        if let Some(&there) = self.file_at.get(&(wad, hash)) {
+            return Err(Occupied(there));
+        }
         let id = self.files.push(file);
         self.wads[wad].files.push(id);
         self.file_at.insert((wad, hash), id);
-        id
+        Ok(id)
     }
 
     /// Adds a loaded bin. Bins are added through this, so that a lookup by file finds them.
@@ -439,6 +473,40 @@ impl Mod {
     /// The file at a path of a WAD.
     pub fn file_at(&self, wad: WadId, hash: WadHash) -> Option<FileId> {
         self.file_at.get(&(wad, hash)).copied()
+    }
+
+    /// The file at a path as the client finds it for a bin of `wad`: in that WAD first, else in
+    /// the first WAD that holds one.
+    pub fn find_file(&self, wad: WadId, hash: WadHash) -> Option<FileId> {
+        self.file_at(wad, hash)
+            .or_else(|| self.wads.ids().find_map(|w| self.file_at(w, hash)))
+    }
+
+    /// The skin bins a WAD ships for a character, by slot: the files at
+    /// `data/characters/<c>/skins/skin<N>.bin` for N up to [`MAX_SLOT`].
+    pub fn skin_bins(&self, wad: WadId, character: &str) -> Vec<(Slot, FileId)> {
+        (0..=MAX_SLOT)
+            .map(Slot)
+            .filter_map(|slot| {
+                let path = path_hash(&skin_paths::skin_bin(character, slot));
+                self.file_at(wad, path).map(|file| (slot, file))
+            })
+            .collect()
+    }
+
+    /// A file's path as the archive spells it, or as the step that made the file gave it. None
+    /// for a path only a table or a bin spells.
+    pub fn spelled_path(&self, file: FileId) -> Option<&ChunkPath> {
+        let path = self.files[file].path.as_ref();
+        path.filter(|_| !self.named_by_table.contains(&file))
+    }
+
+    /// The file a file's bytes are judged by: the file it was made from, else itself.
+    pub fn origin_of(&self, file: FileId) -> FileId {
+        match self.files[file].source {
+            FileSource::Made { from, .. } => from,
+            FileSource::Archive | FileSource::Game => file,
+        }
     }
 
     /// The loaded bin read from a file.

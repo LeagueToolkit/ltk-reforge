@@ -4,19 +4,24 @@
 //! `docs/design/ARCHITECTURE.md`, "The model".
 
 pub mod bin;
+pub mod dump;
 pub mod entity;
 pub mod hash;
 pub mod id;
 pub mod keys;
+pub mod known;
 pub mod names;
 pub mod path;
 pub mod text;
 pub mod value;
+pub mod view;
 
+pub use dump::{Dump, DumpCx};
 pub use entity::Mod;
 pub use hash::{BinHash, ContentId, MAX_SLOT, Slot, WadHash, name_hash, path_hash};
 pub use id::{Arena, Id, SideTable, Sigil};
 pub use keys::{ClipKey, FileKey, NormKey, ObjectKey};
 pub use names::{NoNames, Spell};
 pub use path::{ChunkPath, PathError, WadName};
-pub use text::{Spelled, clean, clean_json};
+pub use text::{Spelled, clean, clean_json, panic_text};
+pub use view::SkinEntry;

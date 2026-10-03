@@ -9,6 +9,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use ltk_meta::{Bin, BinObject, BinStream};
 
 use super::hash::{BinHash, ContentId};
+use super::text::panic_text;
 
 /// Why bytes do not read as a property bin.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -63,15 +64,6 @@ pub struct ParsedBin {
     /// Entry hashes the table of contents lists more than once. The tree keeps the last object
     /// under each, at the first one's place, and so does `objects`.
     pub duplicates: Vec<BinHash>,
-}
-
-/// The panic's message, for the error that reports it.
-fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
-    payload
-        .downcast_ref::<&str>()
-        .map(|s| (*s).to_string())
-        .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "no message".to_string())
 }
 
 /// Reads a `PROP` bin. The bytes may be a mod's, so the reader runs where its panic is caught.

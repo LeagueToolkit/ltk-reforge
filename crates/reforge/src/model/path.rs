@@ -39,8 +39,11 @@ pub enum PathError {
     NotAWad(String),
 }
 
-/// The longest path accepted. The game's own paths stay under 300 bytes.
-pub const MAX_PATH_BYTES: usize = 512;
+/// The longest path accepted. A bin the game shares between skins is named for every skin it
+/// serves: of the 2.3 million paths the hash cache spells for 16.19, 1,264 are longer than 512
+/// bytes and the longest is 2,454 (2026-10-04). One part of such a path is longer than a file
+/// name on disk may be, so a writer names such a chunk by its hash (#MOD-ARTIFACT-0007).
+pub const MAX_PATH_BYTES: usize = 4096;
 
 /// Device names Windows reserves, whatever extension follows them.
 const DEVICES: [&str; 22] = [
@@ -283,9 +286,19 @@ mod tests {
         );
         assert_eq!(ChunkPath::parse(""), Err(PathError::Empty));
         assert!(matches!(
-            ChunkPath::parse(&"a/".repeat(400)),
-            Err(PathError::TooLong(800))
+            ChunkPath::parse(&"a/".repeat(2400)),
+            Err(PathError::TooLong(4800))
         ));
+    }
+
+    #[test]
+    fn a_bin_shared_between_many_skins_has_a_path() {
+        // As the game names one: every skin it serves, in one file name.
+        let skins: String = (0..120).map(|n| format!("_skins_skin{n}")).collect();
+        let name = format!("data/characters/ahri/ahri_multi{skins}.bin");
+        assert!(name.len() > 1500);
+        let path = ChunkPath::parse(&name).unwrap();
+        assert_eq!(path.hash(), path_hash(&name));
     }
 
     #[test]

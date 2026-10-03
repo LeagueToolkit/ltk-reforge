@@ -51,6 +51,16 @@ pub fn clean_json(json: &str) -> Cow<'_, str> {
     escape(json, |c| format!("\\u{:04x}", c as u32))
 }
 
+/// The message of a panic caught around a reader of a mod's bytes, for the error that reports
+/// it.
+pub fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "no message".to_string())
+}
+
 /// Text a mod spells: a name, an author, an entry name, a path. It is kept as written and
 /// prints cleaned, so it cannot reach a terminal any other way.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -11,7 +11,7 @@ use serde::Serialize;
 use super::Chunk;
 use super::caps::{Budget, Caps, OverBudget};
 use super::findings::hash_hex;
-use crate::model::WadHash;
+use crate::model::{WadHash, panic_text};
 
 /// Why a packed WAD does not read. One chunk that does not read refuses the whole WAD: a WAD
 /// that is damaged is not carried in part.
@@ -92,15 +92,6 @@ pub(super) enum PackedFailure {
     /// Its chunks inflate past the archive's budget. Reading ends.
     #[error(transparent)]
     OverBudget(#[from] OverBudget),
-}
-
-/// The panic's message, for the error that reports it.
-fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
-    payload
-        .downcast_ref::<&str>()
-        .map(|s| (*s).to_string())
-        .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "no message".to_string())
 }
 
 /// Runs a reader of a mod's bytes where its panic is caught.
