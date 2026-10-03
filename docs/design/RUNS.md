@@ -10,7 +10,8 @@ forge at `d6cd66f` over the corpus, with forge's tracked runner (`scripts/corpus
 there), against the 16.19.8207193 install copy, the history index of 755 builds and the meta
 schema from LTK Manager's cache. Each step of the rewrite is compared with it (#ADR-0004).
 
-- **Scope.** 8,604 mods classed, 5,137 in scope (#ADR-0033). None failed.
+- **Scope.** 8,604 mods classed, 5,164 in scope by the class table (#ADR-0033), 5,137 of them in
+  the datasets. None failed.
 - **Time.** 1,633 s at ten in parallel. 16,306 s summed over the mods, median 2.4 s, at most
   43.5 s.
 - **Outcome.** 5,136 port. One halts: no WAD ships a champion's skin.
