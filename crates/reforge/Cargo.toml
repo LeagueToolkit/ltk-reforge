@@ -1,0 +1,33 @@
+[package]
+name = "reforge"
+description = "A porter for League of Legends skin mods: the stages of a run, from the archive to the package"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reforge-magic.workspace = true
+ltk_hash.workspace = true
+ltk_meta.workspace = true
+ltk_wad.workspace = true
+ltk_hashdb.workspace = true
+ltk_mimir_cache.workspace = true
+indexmap.workspace = true
+sha2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+rusqlite.workspace = true
+rayon.workspace = true
+fs-err.workspace = true
+camino.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
