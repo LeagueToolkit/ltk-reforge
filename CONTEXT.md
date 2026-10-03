@@ -36,6 +36,11 @@ commit takes the term here, not a synonym.
 | rework | a build at which a champion's model was replaced for every skin |
 | history | the census history: one commit per build, with what every file and object was |
 | index | the SQLite file built from the history, which a run asks |
+| position | a build's number in the history, in the order builds arrived |
+| head | the build the history took in last; the newest build is the one of the highest version |
+| life | the first and the last position at which the game held a key |
+| key | what the index finds a file, an object or a clip by: the head of a SHA-256 of its bytes |
+| norm key | an object's key with its entry name left out: the same object under another name |
 | schema | the type the target build reads for each field of each class |
 | names | the tables that spell a hash: Mimir's, text tables, and what a run learns |
 
