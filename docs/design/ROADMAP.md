@@ -45,15 +45,16 @@ Each step lists what is built, the records it writes, and its exit.
 
 ### 0. Ground
 
-- The decisions made during forge, as ADRs ([the list](#adrs)).
-- `CONTEXT.md`, the glossary: unit, slot, S, O, T, copy, spread, representative, own, stale,
-  carried, layer, namespace, fixup, and the stage names.
-- In forge: the corpus scripts tracked, with their inputs as arguments, and the reduced corpus
-  list beside them.
-- A baseline: forge over the reduced corpus and the datasets, the run entered in forge's runs
-  log.
+Done 2026-10-03.
 
-Exit: the diff of forge against itself over the reduced corpus is empty.
+- The decisions made during forge: #ADR-0010 to #ADR-0036, with the records they rest on.
+- `CONTEXT.md`, the glossary.
+- In forge: the runner, the summary, the diff and the reducer tracked under `scripts/corpus/`,
+  each input an argument, with the reduced corpus list beside them.
+- The baseline: forge at `d6cd66f` over the 5,137 mods in scope, in forge's runs log and in
+  [RUNS.md](RUNS.md).
+
+Exit, met: the diff of forge against itself over the reduced corpus (27 mods, 9 s) is empty.
 
 ### 1. Model and inputs
 
