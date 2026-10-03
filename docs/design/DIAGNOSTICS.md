@@ -1,9 +1,8 @@
 # Diagnostics
 
-Status: proposed 2026-10-03. Nothing is built. The decisions this rests on are #ADR-0003, a
-diagnostic does not stop the write, and #ADR-0008, a code names what the finding is about. Every
-code is in [CODES.md](CODES.md). What ltk-forge does, and why it is not enough, is in
-[REVIEW.md](REVIEW.md), "Diagnostics".
+The decisions this rests on are #ADR-0003, a diagnostic does not stop the write, and #ADR-0008,
+a code names what the finding is about. Every code is in [CODES.md](CODES.md). What ltk-forge
+does, and why it is not enough, is in [REVIEW.md](REVIEW.md), "Diagnostics".
 
 A diagnostic is what a run found about a mod or about its own inputs. A run carries every
 diagnostic from the first stage to the report. A caller filters them, and a person reads them
@@ -203,6 +202,7 @@ The module that raises a diagnostic declares its type:
 pub struct StaleFiles {
     pub wad: WadId,
     pub files: Vec<FileId>,
+    pub bytes: u64,
 }
 
 impl Diag for StaleFiles {

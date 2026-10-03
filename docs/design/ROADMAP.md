@@ -23,7 +23,7 @@ carry over. The design is in [ARCHITECTURE.md](ARCHITECTURE.md), the review it a
 
 ## Decisions
 
-All taken on 2026-10-03.
+Taken on 2026-10-03, where no other date is given.
 
 | decision | record |
 |---|---|
@@ -36,6 +36,8 @@ All taken on 2026-10-03.
 | Fixups run by phase, then by build | #ADR-0007 |
 | A diagnostic code names what the finding is about | #ADR-0008 |
 | The crates and the command are named reforge | #ADR-0009 |
+| A history key is the head of a SHA-256 | #ADR-0037 |
+| Of two reduced copies of a texture the larger is taken (2026-10-04) | #ADR-0038 |
 | How the game client behaves is a fourth series of records, `docs/game-behavior/` | `AGENTS.md`, `docs/agents/records.md` |
 | A GUI is a caller of the library: fixups and checks are listed, turned on and off, and added as data where a table says it all | [ARCHITECTURE.md](ARCHITECTURE.md), "Callers" and "Fixups" |
 
@@ -83,11 +85,14 @@ holds the rows forge's holds, in every table ([RUNS.md](RUNS.md), "The history i
 - `model`: the view types of a skin's objects, and `Dump`.
 - `game`: `GameView`.
 - `Dating`, `Inventory`, `FileProvenance`.
+- `report`: the `Report` of a run as far as it went, and `reforge load`, which writes it.
 
-Records: the format and path game changes; the WAD and packaging mod artifacts.
+Records: the format and path game changes (#GAME-CHANGE-0007 to #GAME-CHANGE-0012); the WAD
+and packaging mod artifacts (#MOD-ARTIFACT-0010 to #MOD-ARTIFACT-0016).
 
-Exit: over the datasets, the units, the file uses and the `archive`, `inventory`, `wad`, `file`
-and `bin` diagnostics compared with forge's.
+Exit, met: over the datasets, the WADs, files with their use, characters, units, dating,
+inventory, file provenance and the load-stage diagnostics are forge's in every mod, but for six
+listed deviations ([RUNS.md](RUNS.md), "The load stage").
 
 ### 3. Fixups and the first package
 
@@ -145,8 +150,8 @@ what forge held (event names without a list, the history's refs and entry texts,
 Titles as the records will carry them. Numbers are given when a record is written, in the step
 that cites it. Sources are forge's docs and the module that holds the evidence.
 
-Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0006; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004;
-#MOD-ARTIFACT-0001 to #MOD-ARTIFACT-0009.
+Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0012; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004;
+#MOD-ARTIFACT-0001 to #MOD-ARTIFACT-0016.
 
 ### Game changes
 
@@ -161,11 +166,6 @@ Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0006; #GAME-BEHAVIOR-0001 to #GAME-BE
 | Audio queue links as hashes | 16.18 | `TRANSFORMS.md` |
 | A material's type as one byte | 16.18 | `TRANSFORMS.md` |
 | A game-mode field made optional | 15.20 | `TRANSFORMS.md` |
-| Textures in the TEX container, static meshes as `.scb` | to establish | `transform/legacy.rs`, `texcontainer.rs` |
-| Variant tags dropped from asset names | to establish | `transform/moved.rs` |
-| Resolution prefixes dropped from texture names | to establish | `transform/moved.rs` |
-| A `_base` suffix on the base mesh and skeleton | to establish | `transform/moved.rs` |
-| Shared skin bins in the character's folder | to establish | `transform/moved.rs` |
 
 ### Game behaviors
 
@@ -191,13 +191,6 @@ Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0006; #GAME-BEHAVIOR-0001 to #GAME-BE
 
 | what is found | forge's source |
 |---|---|
-| A mod packed into its champion's locale WAD | `INPUTS.md` |
-| A WAD named for no champion | `INPUTS.md` |
-| Two WADs for one champion | `RUNS.md` |
-| Mods with no skin bin | `WRITER.md` |
-| The game's own skins shipped beside the mod's | `TARGETS.md` |
-| Bins as text or JSON at a bin's path | `INPUTS.md` |
-| Executables, sources and leftovers in the archive | `INPUTS.md` |
 | Repath tags in file and folder names | `WRITER.md`, `transform/relocate.rs` |
 | Emitter fields nested in `textureMult` | `transform/strays.rs` |
 | `textureMult` wrapped twice | `transform/reshape.rs` |
@@ -225,6 +218,22 @@ and each is checked in game (the user, 2026-10-03). None is an ADR before that.
 
 ## Open
 
+- Legacy formats makes the twin of any `.dds` or `.sco` beside a file the game ships, without
+  asking whether the old path was ever the game's. An author's own new `.dds` then overrides a
+  game texture it never replaced. To ask the history first, as moved assets does.
+- A copy of a game file under another path is looked for among the first 64 chunks of its size
+  in the champion's WAD. How often the cap is reached is not measured.
+- A `ChunkPath` may be longer than a file name on disk: 1,264 game paths are over 512 bytes. A
+  writer of a project directory names such a chunk by its hash.
+- 40 game paths the hash cache spells hold an empty part (`//`). `ChunkPath` refuses them, so
+  such a chunk stays unnamed.
+- The `_base` rename is tried for every file directly in a base skin's folder. The game made it
+  for the mesh and the skeleton only (#GAME-CHANGE-0011).
+- The three earliest reworks of #GAME-CHANGE-0001 (Mordekaiser, Pantheon, Fiddlesticks) are
+  known by their joint names alone. Their submeshes and dropped paths are measured when the
+  rework facts are built (step 4).
+- A text bin at a bin's path is left as it is (#MOD-ARTIFACT-0015). Whether to parse it and
+  write the bin is a decision not taken.
 - Whether an old emitter's simple-particle fields are moved into `LegacySimple` or removed:
   Riot removed the struct from most of its own emitters at 12.20 (#GAME-CHANGE-0004).
 - `ltk_wad` reserves a chunk's declared size while it mounts a WAD with sub-chunks. A packed

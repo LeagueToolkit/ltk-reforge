@@ -1,8 +1,8 @@
 # Architecture
 
-Status: proposed 2026-10-03. Nothing is built. This is the design the rewrite builds, and each
-section is edited to what the code is as the code lands. The reasons are in
-[REVIEW.md](REVIEW.md), the order of work in [ROADMAP.md](ROADMAP.md).
+This is the design the rewrite builds. Each section is edited to what the code is as the code
+lands. The reasons are in [REVIEW.md](REVIEW.md). The order of work, and which steps are
+built, are in [ROADMAP.md](ROADMAP.md).
 
 ## Shape
 
@@ -43,7 +43,7 @@ is `facts`, restructuring is `plan`, lowering and writing are `build`, `check` a
 A caller drives the stages through one object:
 
 ```rust
-let env = Env::builder().game(install).history(history).names(names).schema(schema).build()?;
+let env = Env::builder().install(install).history(history).names(names).schema(schema).build()?;
 let porter = Porter::new(&env).policy(policy).fixups(FixupSet::standard());
 
 let archive = porter.read(bytes, file_name)?;
@@ -59,6 +59,11 @@ package.write(&ProjectDir::new(out))?;
 
 `Porter::port(bytes)` runs them all. Stopping early is calling fewer methods. There is no pass
 registry, no `after` edge and no stub.
+
+A stage ends early in two ways. A fatal diagnostic leaves nothing to write, and the stage
+returns `Halted` with its id. An input that does not answer (a game chunk that does not read,
+a history query that fails) is a fault, a typed error of the stage: a run judged against an
+input it could not read does not answer as if the input held nothing.
 
 Each method hands its stage the stage's sink and options. `porter.read` is
 `Archive::read(bytes, file_name, &caps, &mut sink)`: the archive's bytes are borrowed, so the
@@ -104,9 +109,10 @@ The modules of `reforge`, each using only the ones above it:
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access, text cleaning |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)) |
 | `archive` | `Archive`: the only reader of untrusted zips |
-| `game` | the target side: `Game` and `Install`, `GameView`, `Names`, `Schema`, tables of what is known about the game |
+| `game` | the target side: `Game` and `Install`, `GameView`, `Names`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
-| `load` | `Mod` from an `Archive`: file fixups, binless mods, characters, units, loads |
+| `env` | `Env`: what a run is judged against, built once |
+| `load` | `Mod` from an `Archive`: file fixups, binless mods, characters, units, loads; and what is known of the files before any value is read: `Dating`, `Inventory`, `FileProvenance` |
 | `fixups` | the fixup engine and every rule |
 | `facts` | `Facts` |
 | `port` | `Policy`, `Targets`, `Port` |
@@ -127,8 +133,12 @@ tables (`history`) and the bin value helpers (`model`).
 - **A `Mod` is frozen after `fix`.** `FixedMod` is a newtype only `FixupSet::apply` makes.
   `Facts::gather` takes `&FixedMod`, so values are compared only at the target's types.
 - **No field belongs to a later stage.** A node holds what `load` found: a file's use, where it
-  came from (`FileSource::Archive`, `MadeFrom { file, rule }`, `Game`), a unit's loads and entry.
+  came from (`FileSource::Archive`, `Made { from, by }`, `Game`), a unit's loads and entry.
   A target, a destination and a dropped state are in `Targets` and `Port`.
+- **One file per path in a WAD.** The WAD format holds one chunk per path hash, so a `Mod` holds
+  at most one file per WAD and path hash. Adding a file where one exists adds nothing and says
+  which file is there. A step that would add one (a file fixup, the game's bins for a mod with
+  no skin bin) leaves the mod's own file in place.
 - **The port is new data.** `plan` clones the objects a unit carries and renames the clones.
   The mod's objects stay as the fixups left them.
 - **Closed sets are enums.** A layer is `Layer::Base | Voice(Option<Locale>) | Hud`. A unit that
@@ -143,12 +153,14 @@ tables (`history`) and the bin value helpers (`model`).
 
 ## The environment
 
-`Env` is what a run is judged against. It is immutable and built once by `Env::builder()`.
+`Env` is what a run is judged against: the game, its size index, the history, the names and
+the schema. It is immutable and built once by `Env::builder()`.
 
 - **`Game`** is a trait for a chunk store: contains, size, read, the WADs holding a path, the
   build. `Install` implements it. `GameView` wraps a `Game` and caches what callers repeat: a
-  path's content id, a parsed bin, a character's skin at a slot (`GameSkin`), the catalog of a
-  character's skins. The chunks of one WAD by uncompressed size are a `SizeIndex`, a value
+  path's content id, a parsed bin with the files it names, the bins of a character's skin at a
+  slot (`GameSkin`), the catalog of a character's skins. The caches live as long as the `Env`
+  and have no cap, so a caller that runs many mods builds an `Env` for each or a few. The chunks of one WAD by uncompressed size are a `SizeIndex`, a value
   beside the `Game` and no method of it, so a fake game builds one from the same chunks.
 - **`History`** is a trait with one method per question in forge's query table. `SqliteHistory`
   reads the index, `NoHistory` answers nothing, and the testkit has one in memory.
@@ -228,8 +240,12 @@ pub struct FixupInfo {
 - **Every loaded object is fixed** (#ADR-0002). The report lists the changes on objects the port
   ships. `FixupSet::apply` takes the set of objects, so narrowing it is a change at one call.
 - **File fixups** (`FileFixup`: legacy formats, moved assets, a bank's header id) carry the same
-  `FixupInfo` and are chosen the same way. They work on the file set. The first two run inside
-  `load`, before characters and units are found.
+  `FixupInfo` and are chosen the same way. They work on the file set: each adds files and
+  changes none, so the file it starts from stays for what the mod's own bins name. The first two
+  run inside `load`, before characters and units are found, legacy formats first: moved assets
+  skips a file a twin was made of. A file fixup names the records it implements, one for each
+  rename or format, and answers where it would put a file at a path (`destinations`), which is
+  how the step for mods with no skin bin knows a file is covered.
 
 The contract is forge's: idempotent, all or nothing per property, names kept. A test applies the
 standard set twice to every fixture and expects no change the second time. A rule a user adds is
@@ -261,7 +277,8 @@ pub struct Facts {
 - A per-slot question is a method. `UnitJudge::at(slot)` gives the rig checks and clip facts of
   a unit at any slot, so the policy can ask for a slot no one listed.
 - Facts that do not read object values (`Dating`, `Inventory`, `FileProvenance`) are gathered on
-  `&Mod` before `fix`, which needs the dating.
+  `&Mod` before `fix`, which needs the dating. They are in `load`, since `fixups` comes before
+  `facts` in the module order.
 
 ## Decide
 
@@ -318,9 +335,13 @@ prints.
 
 ## Report and dump
 
-- Every stage type implements `Dump`. `reforge ... --print <stage>` prints it.
-- `Report` is a serialisable struct with a schema version. A projection gives
-  the fields the corpus tooling compares with forge.
+- Every stage type implements `Dump`. `reforge load --dump` prints the mod as loaded.
+- `Report` is a serialisable struct with a schema version (`reforge.report/1`). It is built from
+  parts, each optional, so a run that stops early reports what it has: the mod, the inputs, the
+  WADs, files, characters and units, the dating, the inventory, the file provenance, and every
+  diagnostic with its data. A later stage adds its part.
+- The corpus tooling in forge compares a report with forge's report of the same mod, section by
+  section, and keeps the list of accepted deviations with the reason for each.
 
 ## Untrusted input
 

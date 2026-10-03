@@ -99,3 +99,36 @@ The readers of the inputs, against this machine's (2026-10-03):
 - **Schema.** The meta database's 5,547 classes parse in 26 ms.
 - **`reforge-magic`** gives the kind forge's gives on 4,000,000 inputs, and `reforge-wwise`
   reads and writes back 10,326 banks of the game byte for byte.
+
+## The load stage (2026-10-04)
+
+`reforge load` over the 5,137 mods of the datasets, each compared with forge's baseline report
+of the same mod by `scripts/corpus/load_compare.py` in forge: WADs, files with their use and
+source, characters, units, dating, inventory, file provenance, and the diagnostics of the
+archive and of the load stage by code and subject.
+
+| run | mods | equal | accepted deviations only | other differences | time |
+|---|---:|---:|---:|---:|---:|
+| reforge with forge's behaviour | 5,137 | 5,127 | 10 | 0 | 1,022 s |
+| reforge with the three decisions of 2026-10-04 | 5,137 | 5,020 | 117 | 0 | 1,012 s |
+
+Eight mods in parallel, about 1.3 s a mod. No mod failed. The reduced corpus of 27 mods takes
+6 s.
+
+The accepted deviations, each mod under one:
+
+| deviation | mods | reason |
+|---|---:|---|
+| the larger reduced copy | 100 | #ADR-0038: 941 textures made from the `2x_` file, 914 with other bytes |
+| a duplicate chunk in a packed WAD | 6 | reforge notes it (`archive.chunk-duplicate`); forge skips it without a note |
+| a path spelled by a duplicate | 4 | an archive lists a chunk by its hash and again by its path; reforge keeps the first entry's bytes with the path the second spells |
+| one chunk per path | 4 | a mod with no champion skin bin that ships a sub-character's keeps its own bin; forge adds the game's beside it |
+| the earlier reworks | 3 | Mordekaiser, Pantheon and Fiddlesticks are in the rework table (#GAME-CHANGE-0001): 383 files of three restorations are not stale |
+| a date at a marked build | 0 | no mod of the datasets is dated at a build with a `__N` mark |
+
+Two faults of reforge found by the comparison and fixed:
+
+- A file's skin folder and its effects flag were read off a path the name tables spelled. Forge
+  reads them off the archive's own spelling. 17 of the 27 reduced mods differed.
+- A path longer than 512 bytes was refused. The hash cache spells 1,264 game paths longer than
+  that, the longest 2,454 bytes. The cap is 4,096.

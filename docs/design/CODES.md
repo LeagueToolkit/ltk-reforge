@@ -1,7 +1,8 @@
 # Diagnostic codes
 
-Status: proposed 2026-10-03. Nothing is built. A code is permanent from the time the module that
-raises it lands (#ADR-0008). Until then this table may change.
+A code is permanent from the time the module that raises it lands (#ADR-0008). `reforge
+diagnostics` lists the codes that are declared. A code of this table that it does not list may
+still change.
 
 The scheme is in [DIAGNOSTICS.md](DIAGNOSTICS.md), "Names". The last column is ltk-forge's code
 for the same finding, which the comparison with ltk-forge reads (#ADR-0004). "none" marks a
