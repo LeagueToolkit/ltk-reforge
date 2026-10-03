@@ -10,12 +10,11 @@ publish = false
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
-forge-ir = { path = "crates/forge-ir" }
-forge-history = { path = "crates/forge-history" }
-forge-wwise = { path = "crates/forge-wwise" }
-forge-magic = { path = "crates/forge-magic" }
-forge-frontend = { path = "crates/forge-frontend" }
-forge-passes = { path = "crates/forge-passes" }
+reforge = { path = "crates/reforge" }
+reforge-census = { path = "crates/reforge-census" }
+reforge-wwise = { path = "crates/reforge-wwise" }
+reforge-magic = { path = "crates/reforge-magic" }
+reforge-testkit = { path = "crates/reforge-testkit" }
 
 # LeagueToolkit crates: every League format goes through these and nothing else.
 ltk_hash = "0.4"
