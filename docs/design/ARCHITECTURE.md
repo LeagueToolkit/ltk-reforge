@@ -18,7 +18,7 @@ archive bytes
    │ facts     Facts         what is true of the mod: copies, provenance, origin, rig, clips
    │ decide    Targets       the policy's choice of T per unit, with the alternatives
    │ plan      Port          the units that ship, renamed and placed; audio; HUD
-   │ build     Package       layers, chunks, overrides, manifests, hash tables
+   │ build     Package       layers, chunks, patches, manifests, hash tables
    │ check     diagnostics   the package applied as the overlay applies it; types
    ▼ write                   a project directory, a .modpkg
 ```
@@ -172,7 +172,7 @@ pub trait BinFixup {
 pub struct FixupInfo {
     pub id: FixupId,            // "vfx-filtering"
     pub title: String,
-    pub record: Option<Record>, // #GAME-CHANGE-0007, #MOD-ARTIFACT-0003
+    pub record: Option<Record>, // a game change or a mod artifact, by its code
     pub phase: Phase,           // where it runs: Undo, Layout { build }, Conform, Strip
     pub default: bool,          // in the standard set
 }
@@ -193,7 +193,7 @@ pub struct FixupInfo {
       .into_field("Filtering", "VfxEmitterFiltering")
       .keep(["keywordsExcluded", "keywordsRequired", "spectatorPolicy", "censorPolicy"])
       .at_build("12.17")
-      .record(GameChange(7))
+      .record(game_change)
   ```
 
 - **The rest is Rust.** A fixup that combines values, chooses a class from the schema, recurses
@@ -276,12 +276,12 @@ prints.
 
 `package` holds the output and everything after it.
 
-- **`Package`** is layers of chunks and overrides, the hash tables and the project's config. A
-  chunk is keyed by `(WadName, ChunkPath)`. An override is a typed manifest entry and its PTCH.
+- **`Package`** is layers of chunks and patches, the hash tables and the project's config. A
+  chunk is keyed by `(WadName, ChunkPath)`. A patch is a typed manifest entry and its PTCH.
   The manifest is serialised once, by the writer.
 - **Builders.** `PortBuilder` makes a package from a `Port`, `InPlaceBuilder` from a `FixedMod`.
   `PtchBuilder` collects records by field path.
-- **Checks** implement `Check`: the overrides applied as the overlay applies them, the types of
+- **Checks** implement `Check`: the patches applied as the overlay applies them, the types of
   every value written, a rewritten bin read back. Each has a `CheckInfo` and is chosen as a
   fixup is. What a check finds is a diagnostic and does not stop `write` (#ADR-0003).
 - **Writers** implement `PackageWriter`: `ProjectDir`, `Modpkg`. A writer writes into a new

@@ -30,7 +30,7 @@ A parser that panics on a mod's bytes is caught and becomes a diagnostic about t
 | `stage` | the stage that raised it: `read`, `load`, `fix`, `facts`, `decide`, `plan`, `build`, `check`, `write` |
 | `subject` | what it is about, as a typed reference ([Subjects](#subjects)) |
 | `by` | the fixup or check that raised it, when one did |
-| `record` | the record it rests on, when it has one: `#GAME-CHANGE-0007` |
+| `record` | the record it rests on, when it has one: a game change, a game behavior or a mod artifact, by its code |
 | `data` | the finding itself, a typed value |
 | `message` | one line for a person, rendered from `data` |
 

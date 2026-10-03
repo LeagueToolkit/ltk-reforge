@@ -166,7 +166,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `package.in-place` | note | a repair's output: files kept, bins written again, files left behind | `inplace.summary` |
 | `package.empty` | fatal | the package holds nothing | `emit.empty` |
 | `check.manifest-unreadable` | error | the package's manifest does not load | `verify.manifest` |
-| `check.apply-failed` | error | an override does not apply to the game's bin | `verify.apply` |
+| `check.apply-failed` | error | a patch does not apply to the game's bin | `verify.apply` |
 | `check.record-skipped` | error | records the overlay would skip | `verify.record-skipped` |
 | `check.link-unresolved` | error | links the package adds that resolve to nothing | `verify.link` |
 | `check.name-unresolved` | error | names the patched entry reaches that resolve to nothing, and did resolve in the mod | `verify.unresolved` |
