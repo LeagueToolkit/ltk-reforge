@@ -4,7 +4,7 @@
 use std::fmt;
 
 use super::Subject;
-use crate::model::entity::{FileId, Mod, ObjectId, UnitId};
+use crate::model::entity::{CharId, FileId, Mod, ObjectId, UnitId, WadId};
 use crate::model::names::{NoNames, Spell};
 use crate::model::{BinHash, WadHash, clean};
 
@@ -117,6 +117,18 @@ impl<'a> Message<'a> {
     /// A class name, by its hash.
     pub fn class(&mut self, hash: BinHash) -> &mut Self {
         let name = self.cx.names.class_or_hex(hash);
+        self.spelled(&name)
+    }
+
+    /// A WAD of the mod, by its name.
+    pub fn wad(&mut self, wad: WadId) -> &mut Self {
+        let name = self.cx.subject_name(&Subject::Wad(wad));
+        self.spelled(&name)
+    }
+
+    /// A character, by its name.
+    pub fn character(&mut self, character: CharId) -> &mut Self {
+        let name = self.cx.subject_name(&Subject::Character(character));
         self.spelled(&name)
     }
 
