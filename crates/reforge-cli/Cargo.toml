@@ -1,0 +1,23 @@
+[package]
+name = "reforge-cli"
+description = "The `reforge` command"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "reforge"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+reforge.workspace = true
+reforge-census.workspace = true
+reforge-wwise.workspace = true
+clap.workspace = true
+anyhow.workspace = true
+camino.workspace = true
