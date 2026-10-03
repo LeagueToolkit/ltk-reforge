@@ -217,3 +217,77 @@ impl History for MemoryHistory {
         Ok(Vec::new())
     }
 }
+
+/// A history whose index fails at every question: a fault of the machine, for the tests of how
+/// a stage ends on one. It holds the builds of the history it wraps.
+pub struct BrokenHistory(pub MemoryHistory);
+
+impl BrokenHistory {
+    fn fault<T>() -> Result<T, HistoryError> {
+        Err(HistoryError::Io(std::io::Error::other(
+            "the index does not answer",
+        )))
+    }
+}
+
+impl History for BrokenHistory {
+    fn stamp(&self) -> Option<&Stamp> {
+        self.0.stamp()
+    }
+
+    fn builds(&self) -> &[BuildRow] {
+        self.0.builds()
+    }
+
+    fn file(&self, _: FileKey) -> Result<Option<FileHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn path(&self, _: WadHash) -> Result<Option<PathHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn held(&self, _: WadHash, _: FileKey) -> Result<Option<Life>, HistoryError> {
+        Self::fault()
+    }
+
+    fn paths_of(&self, _: FileKey) -> Result<Vec<HeldAt>, HistoryError> {
+        Self::fault()
+    }
+
+    fn object(&self, _: ObjectKey) -> Result<Option<ObjectHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn objects_by_norm(&self, _: NormKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn clip(&self, _: ClipKey) -> Result<Option<Life>, HistoryError> {
+        Self::fault()
+    }
+
+    fn named_by(&self, _: WadHash) -> Result<Vec<NamedBy>, HistoryError> {
+        Self::fault()
+    }
+
+    fn units_loading(&self, _: WadHash) -> Result<Vec<UnitHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn event_wems(&self, _: WadHash, _: u32) -> Result<Vec<WemPlayed>, HistoryError> {
+        Self::fault()
+    }
+
+    fn events_playing(&self, _: u32) -> Result<Vec<PlayedBy>, HistoryError> {
+        Self::fault()
+    }
+
+    fn skeletons(&self, _: WadHash) -> Result<Vec<SkeletonHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn meshes(&self, _: WadHash) -> Result<Vec<MeshHit>, HistoryError> {
+        Self::fault()
+    }
+}

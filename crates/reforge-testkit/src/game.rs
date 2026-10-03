@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reforge::game::{Build, Game, GameError};
+use reforge::game::{Build, Game, GameError, SizeIndex};
 use reforge::model::{WadHash, WadName, path_hash};
 
 /// A chunk store with no file behind it.
@@ -44,6 +44,17 @@ impl MemoryGame {
             path_hash(path),
             wads.iter().map(|name| wad_name(name)).collect(),
         );
+    }
+
+    /// The chunks of the game by their size, in each WAD holding them.
+    pub fn sizes(&self) -> SizeIndex {
+        let mut sizes = SizeIndex::new();
+        for (path, bytes) in &self.chunks {
+            for wad in self.wads(*path) {
+                sizes.add(&wad, *path, bytes.len() as u64);
+            }
+        }
+        sizes
     }
 }
 

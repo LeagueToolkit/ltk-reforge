@@ -12,5 +12,6 @@ workspace = true
 
 [dependencies]
 reforge.workspace = true
+ltk_meta.workspace = true
 ltk_wad.workspace = true
 zip.workspace = true
