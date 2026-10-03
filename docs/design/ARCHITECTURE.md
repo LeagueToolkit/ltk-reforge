@@ -46,7 +46,8 @@ A caller drives the stages through one object:
 let env = Env::builder().game(install).history(history).names(names).schema(schema).build()?;
 let porter = Porter::new(&env).policy(policy).fixups(FixupSet::standard());
 
-let mod_ = porter.load(Archive::read(bytes, &caps)?)?;
+let archive = porter.read(bytes, file_name)?;
+let mod_ = porter.load(archive)?;
 let fixed = porter.fix(mod_);
 let facts = porter.facts(&fixed);
 let targets = porter.decide(&facts);
@@ -58,6 +59,10 @@ package.write(&ProjectDir::new(out))?;
 
 `Porter::port(bytes)` runs them all. Stopping early is calling fewer methods. There is no pass
 registry, no `after` edge and no stub.
+
+Each method hands its stage the stage's sink and options. `porter.read` is
+`Archive::read(bytes, file_name, &caps, &mut sink)`: the archive's bytes are borrowed, so the
+caller holds them once and drops them after the call.
 
 The stages are fixed. What a caller turns on and off is inside two of them: the fixups in `fix`
 and `load`, and the checks in `check`. Both are lists of objects that describe themselves
@@ -86,7 +91,7 @@ a crate.
 | crate | holds |
 |---|---|
 | `reforge-magic` | what a file is by its first bytes and name |
-| `reforge-wwise` | Wwise banks and packages, read under a budget and written |
+| `reforge-wwise` | Wwise banks and packages, read and written; a bank whose clips are larger than its data is refused |
 | `reforge` | the stages, `Porter`, `Repairer`, `Report` |
 | `reforge-census` | the census history (format 2) read with gix; builds and appends the history index (#ADR-0005) |
 | `reforge-cli` | the `reforge` command |
@@ -100,7 +105,7 @@ The modules of `reforge`, each using only the ones above it:
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)) |
 | `archive` | `Archive`: the only reader of untrusted zips |
 | `game` | the target side: `Game` and `Install`, `GameView`, `Names`, `Schema`, tables of what is known about the game |
-| `history` | `History`: the questions the stages ask, over the SQLite index |
+| `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
 | `load` | `Mod` from an `Archive`: file fixups, binless mods, characters, units, loads |
 | `fixups` | the fixup engine and every rule |
 | `facts` | `Facts` |
@@ -143,14 +148,23 @@ tables (`history`) and the bin value helpers (`model`).
 - **`Game`** is a trait for a chunk store: contains, size, read, the WADs holding a path, the
   build. `Install` implements it. `GameView` wraps a `Game` and caches what callers repeat: a
   path's content id, a parsed bin, a character's skin at a slot (`GameSkin`), the catalog of a
-  character's skins.
+  character's skins. The chunks of one WAD by uncompressed size are a `SizeIndex`, a value
+  beside the `Game` and no method of it, so a fake game builds one from the same chunks.
 - **`History`** is a trait with one method per question in forge's query table. `SqliteHistory`
   reads the index, `NoHistory` answers nothing, and the testkit has one in memory.
 - **`Names`** holds the tables (Mimir, text tables) and does not change. Names a run learns
   (paths the archive spells, names the port makes) are in a `NameBook` the run owns. A `Speller`
-  reads both in one order for every kind of hash: the run's names, Mimir, the text tables.
+  reads both in one order for every kind of hash: the run's names, Mimir, the text tables. A
+  name a table gives is checked against its hash on load, so a wrong line names nothing.
 - **`Schema`** answers the target build's type of a class's field: the meta database, else the
-  install's bins.
+  install's bins. A revision the reader does not understand refuses the whole database: a
+  skipped revision would read as a field no build declares.
+
+No input is found by itself. The Mimir cache directory and the Manager's schema file each have
+a function that names the usual place, and the caller passes the result to the builder. An
+input that is absent or does not read is a diagnostic of the `run` channel, raised by the
+input's `report`. Its reason may name a path of the machine, which is the one place a report
+differs between machines.
 
 Options are not in `Env`. Each stage takes its own: `Caps` and `LoadOptions` for read and load,
 `Policy` for decide, `PortOptions` for plan.
@@ -312,8 +326,15 @@ prints.
 
 - `archive` is the only module that reads a zip, under forge's caps. It holds the archive's
   bytes once.
-- Every parser of mod bytes runs through one guard that catches a panic and charges a budget:
-  bins, packed WADs, meshes, skeletons, clips, banks.
+- No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
+  error on any input (banks, file kinds). A reader from another crate runs where its panic is
+  caught (bins, packed WADs, meshes, skeletons, clips).
+- What a parser allocates is bounded by the bytes it is given: the archive's caps bound what is
+  inflated, and a bank whose clips are larger than its data is refused. A failed allocation
+  aborts the process and no panic guard catches it, so a size a reader from another crate
+  reserves before it reads is checked first: a packed WAD whose header declares more chunks
+  than its bytes can list is refused before `ltk_wad` mounts it, and one over the cap after
+  that. The game's own WADs hold up to some 200,000 chunks, so the cap is above that.
 - A mod's text reaches a terminal only through the `Speller` and `clean`.
 - A writer takes `ChunkPath` and `WadName`, never a string.
 

@@ -58,25 +58,30 @@ Exit, met: the diff of forge against itself over the reduced corpus (27 mods, 9 
 
 ### 1. Model and inputs
 
-- `reforge-magic` and `reforge-wwise`, carried over. The bank reader takes a budget.
-- `model`: ids, hashes, keys, checked paths, the `Mod`, the value visitor, the view types, `Dump`.
+- `reforge-magic` and `reforge-wwise`, carried over. The bank reader refuses a bank whose clips
+  together are larger than the data they are read from.
+- `model`: ids, hashes, keys, checked paths, the `Mod`, the bin reader, read access to values.
 - `diag`: the log, sinks, filters, levels, the catalogue, the diagnostics in the report
   ([DIAGNOSTICS.md](DIAGNOSTICS.md)).
-- `archive`, `game`, `history` with `SqliteHistory` on forge's index format.
+- `archive`, `game`, `history` with `SqliteHistory` on the index's format 0 (#ADR-0005,
+  [HISTORY.md](HISTORY.md)).
 - `reforge-census`: the walk, the fold, the index writer and append, carried over (#ADR-0005). The
   index is built from the published census history.
 - `reforge-testkit`.
 - The test that holds the modules to their order.
 
-Records: the archive's mod artifacts; the content keys.
+Records: the archive's mod artifacts (#MOD-ARTIFACT-0006 to #MOD-ARTIFACT-0009); the history's
+keys (#ADR-0037).
 
-Exit: `reforge history probe` passes against the install. The index reforge builds answers the
-questions as forge's does.
+Exit, met: `reforge history probe` passes against the install, and the index reforge builds
+holds the rows forge's holds, in every table ([RUNS.md](RUNS.md), "The history index").
 
 ### 2. Load
 
 - File fixups: legacy formats, moved assets.
 - Binless mods, WAD roles, characters, units, loads, file uses.
+- `model`: the view types of a skin's objects, and `Dump`.
+- `game`: `GameView`.
 - `Dating`, `Inventory`, `FileProvenance`.
 
 Records: the format and path game changes; the WAD and packaging mod artifacts.
@@ -87,6 +92,7 @@ and `bin` diagnostics compared with forge's.
 ### 3. Fixups and the first package
 
 - The engine, `Rule`, `FixupSelection`, the catalog.
+- `model`: the visitor that changes values.
 - Every built-in fixup, each with its record.
 - `package`: `Package`, `InPlaceBuilder`, the round-trip and type checks, `ProjectDir`, `Modpkg`,
   the report beside the output.
@@ -139,8 +145,8 @@ what forge held (event names without a list, the history's refs and entry texts,
 Titles as the records will carry them. Numbers are given when a record is written, in the step
 that cites it. Sources are forge's docs and the module that holds the evidence.
 
-Written: #GAME-CHANGE-0001; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004; #MOD-ARTIFACT-0001 to
-#MOD-ARTIFACT-0005. They are the records the carried-over ADRs rest on.
+Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0006; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004;
+#MOD-ARTIFACT-0001 to #MOD-ARTIFACT-0009.
 
 ### Game changes
 
@@ -149,13 +155,8 @@ Written: #GAME-CHANGE-0001; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004; #MOD-ART
 | File references as chunk hashes | 16.17 | `TRANSFORMS.md`, `transform/retype.rs` |
 | The material sampler's fields renamed | 15.3, 16.13, 16.17 | `transform/migrate.rs` |
 | A material's default technique retired | 13.5 | `transform/technique.rs` |
-| Emitter filters in `Filtering` | 12.17 | `transform/gather.rs` |
-| Emitter linger fields in `Linger` | 12.18, 12.20 | `transform/gather.rs` |
 | Emitter bound-object scales in `FlexShapeDefinition` | 12.6, 12.21 | `transform/gather.rs` |
-| Emitter simple-particle fields in `LegacySimple` | 12.19, 12.20 | `transform/gather.rs` |
-| Emitter texture mult in `textureMult` | 13.1 | `transform/gather.rs`, `transform/reshape.rs` |
 | Primitive mesh camera alignment on both axes | 13.8 | `transform/meshalign.rs` |
-| Emitter shape as `SpawnShape` and `EmitterPosition` | 14.1 | `transform/spawnshape.rs` |
 | Emission surface in `EmissionSurface` | 15.18, 15.22 | `transform/surface.rs` |
 | Audio queue links as hashes | 16.18 | `TRANSFORMS.md` |
 | A material's type as one byte | 16.18 | `TRANSFORMS.md` |
@@ -190,10 +191,6 @@ Written: #GAME-CHANGE-0001; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004; #MOD-ART
 
 | what is found | forge's source |
 |---|---|
-| Zip entries stored with a wrong checksum | `INPUTS.md`, `forge-frontend/src/archive.rs` |
-| Chunks named by their path hash | `INPUTS.md` |
-| Repack duplicates with a numeric suffix | `INPUTS.md` |
-| A WAD packed whole as one entry | `INPUTS.md` |
 | A mod packed into its champion's locale WAD | `INPUTS.md` |
 | A WAD named for no champion | `INPUTS.md` |
 | Two WADs for one champion | `RUNS.md` |
@@ -217,8 +214,8 @@ Written: #GAME-CHANGE-0001; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004; #MOD-ART
 The decisions forge's docs and session notes record as the user's are written: #ADR-0010 to
 #ADR-0036, each with the date of the decision.
 
-Policies forge's docs state without saying who decided. Each is confirmed with the user before
-it is written as an ADR.
+Policies forge's docs state without saying who decided. They stay open until the port is built
+and each is checked in game (the user, 2026-10-03). None is an ADR before that.
 
 | the policy | forge's source |
 |---|---|
@@ -226,8 +223,12 @@ it is written as an ADR.
 | A value no build since the mod's own read is removed, not revived | `TRANSFORMS.md` |
 | The game's sounds stay and the mod's units come after them | `AUDIO.md` |
 
-## Open, carried from forge
+## Open
 
+- Whether an old emitter's simple-particle fields are moved into `LegacySimple` or removed:
+  Riot removed the struct from most of its own emitters at 12.20 (#GAME-CHANGE-0004).
+- `ltk_wad` reserves a chunk's declared size while it mounts a WAD with sub-chunks. A packed
+  WAD that declares a size the machine cannot give aborts the process. The fix is `ltk_wad`'s.
 - Sounds over the game's: a port plays the game's event beside the mod's.
 - Whether a unit that fits no slot is written at all.
 - A shared schema crate with LTK Manager.

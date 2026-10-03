@@ -44,3 +44,58 @@ in parallel. Two runs of it show no change in unit fates, targets, reasons or di
 **forge's reports are not byte for byte the same across two runs.** 9 of the 27 differ, in one
 place: the order of a clip's joint hashes in the rig facts. A comparison reads that list as a
 set.
+
+## The history index (2026-10-03)
+
+`reforge history index` over the census history at commit `39fa90b1c644`: 755 builds, from
+8.20.2483196 to 16.19.8207193.
+
+- **Time.** 1,369 s for a whole build on 32 threads: the walk 1,341 s, the write 28 s.
+- **Size.** 1.61 GB.
+- **Against forge's index** of the same commit (its format 8): every row of every table is
+  equal, lives and head counts included, with names compared as text and joints and submeshes
+  by their skeleton's and mesh's path and record. The lists of builds are equal.
+- **Append.** An index of 29 builds with the 30th appended equals the whole build of 30 in every
+  table.
+- **Unparsed entry texts.** None.
+
+| table | rows |
+|---|---:|
+| `files` | 1,893,046 |
+| `paths` | 2,147,213 |
+| `contents` | 3,374,160 |
+| `objects` | 3,276,316 |
+| `refs` | 8,375,230 |
+| `tags` | 39,475 |
+| `units` | 33,455 |
+| `unit_banks` | 88,088 |
+| `unit_events` | 1,303,662 |
+| `clips` | 4,694,013 |
+| `events` | 878,090 |
+| `event_wems` | 6,477,024 |
+| `skeletons`, `joints` | 30,519 and 1,322,078 |
+| `meshes`, `submeshes` | 30,591 and 83,982 |
+| `textures` | 1,625,296 |
+| `names` | 88,173 |
+
+Two builds of the history carry a version with the mark of a second manifest,
+`14.8.5756478__2` and `14.8.5759209__2`.
+
+`reforge history probe` against the 16.19.8207193 install copy:
+
+| file | in the history | keys found |
+|---|---|---|
+| Ahri's `skin0.bin` | at 16.19.8207193 | 4 of 4 objects, 4 of 4 by norm key |
+| Lux's `skin7.bin` | at 16.19.8207193 | 469 of 469 objects, 469 of 469 by norm key |
+| Ahri's base effects bank | from 16.4.7461248 | 83 of 83 clips |
+| Ahri's base voice package, `en_us` | from 15.11.6834878 | 157 of 157 clips |
+
+The readers of the inputs, against this machine's (2026-10-03):
+
+- **Install.** An install at 16.19.8230722: 393 WADs and 808,646 chunks open in 231 ms. None is
+  unreadable.
+- **Names.** The name-hash index over the hash cache's paths builds in 1.33 s, once per version
+  of the cache. With it there, the names open in 0.9 ms.
+- **Schema.** The meta database's 5,547 classes parse in 26 ms.
+- **`reforge-magic`** gives the kind forge's gives on 4,000,000 inputs, and `reforge-wwise`
+  reads and writes back 10,326 banks of the game byte for byte.
