@@ -1,6 +1,7 @@
 //! The target build's type of each field of each class: the meta schema read at the install's
 //! build, through the class's bases, and for a field it does not describe the shape the
-//! install's own bins hold, which is what the build demonstrably reads.
+//! install's own bins hold. #GAME-BEHAVIOR-0021: the game ships such a field and does not
+//! read it, so a mod's copy keeps it in the game's shape.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -120,8 +121,8 @@ impl<'a> TargetTypes<'a> {
         }
     }
 
-    /// Whether the target build reads a field on a class: the schema declares it there, or a
-    /// bin of the install holds it there.
+    /// Whether the target build has a field on a class: the schema declares it there, or a
+    /// bin of the install holds it there (#GAME-BEHAVIOR-0021).
     pub fn declares(&self, class: BinHash, field: BinHash) -> bool {
         self.type_of(class, field).is_some()
     }
