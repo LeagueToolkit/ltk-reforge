@@ -20,5 +20,8 @@ reforge-census.workspace = true
 reforge-wwise.workspace = true
 clap.workspace = true
 anyhow.workspace = true
+serde_json.workspace = true
 camino.workspace = true
 fs-err.workspace = true
+# The package as an archive in memory, for the second run of `repair --again`.
+zip.workspace = true

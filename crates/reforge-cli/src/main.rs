@@ -2,8 +2,11 @@
 
 #[macro_use]
 mod term;
+mod fixups;
 mod history;
 mod load;
+mod repair;
+mod run;
 
 use std::process::ExitCode;
 
@@ -25,14 +28,21 @@ struct Cli {
 enum Command {
     /// List every diagnostic code a run can raise, with its severity and channel.
     Diagnostics,
+    /// List every fixup: its id, its phase and build, whether the standard set holds it, the
+    /// records it implements.
+    Fixups(fixups::Fixups),
     /// The build history: build and inspect the local index.
     History {
         #[command(subcommand)]
         command: history::HistoryCommand,
     },
     /// Read one mod archive, load it and report what it is: WADs, files, characters, units,
-    /// what the client loads, and whose bytes its files are.
-    Load(load::Load),
+    /// what the client loads, and whose bytes its files are. With `--fix`, apply the fixups
+    /// and report what they changed.
+    Load(Box<load::Load>),
+    /// Repair one mod archive: the mod as it is, at its own slots and paths, with its bins
+    /// fixed for the install's build, written as a mod project and, with `--modpkg`, packed.
+    Repair(Box<repair::Repair>),
 }
 
 impl Command {
@@ -48,8 +58,10 @@ impl Command {
                 }
                 Ok(ExitCode::SUCCESS)
             }
+            Command::Fixups(command) => command.run(),
             Command::History { command } => command.run().map(|()| ExitCode::SUCCESS),
             Command::Load(command) => command.run(),
+            Command::Repair(command) => command.run(),
         }
     }
 }
