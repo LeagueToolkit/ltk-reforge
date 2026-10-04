@@ -1,22 +1,25 @@
-//! What the commands that run a mod share: the inputs a run is judged against, the steps of
-//! `load`, and the diagnostics as a terminal shows them.
+//! What the commands that run a mod share: the inputs a run is judged against, the choices a
+//! command line makes for a run, the write, and the diagnostics as a terminal shows them.
 
-use std::collections::BTreeSet;
+use std::process::ExitCode;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Args;
-use reforge::archive::Archive;
-use reforge::diag::{DiagnosticPolicy, Diagnostics, Render, Sink};
+use fs_err as fs;
+use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Sink, Stage};
 use reforge::env::Env;
 use reforge::game::{Game, Install, MimirAbsent, Names, Schema, mimir_cache_dir};
 use reforge::history;
-use reforge::load::{LoadError, Loader};
-use reforge::model::Mod;
+use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter, ProjectDir};
+use reforge::{Run, RunError};
 use reforge_census::GitRepo;
 
 /// The exit code of a run that a fatal diagnostic ended. A fault ends with 1.
 pub const HALTED: u8 = 2;
+
+/// The exit code of a run whose write the caller's policy refused.
+pub const BLOCKED: u8 = 3;
 
 /// The inputs a run is judged against, as a command line names them.
 #[derive(Args)]
@@ -109,49 +112,85 @@ impl Inputs {
     }
 }
 
-/// What `load` came to.
-pub struct Loaded {
-    /// The mod, as far as the steps went.
-    pub module: Mod,
-    /// Whether a fatal diagnostic ended the load.
-    pub halted: bool,
-}
-
-/// The steps of `load` in order. A halt keeps the mod as far as it went, for the report.
-///
-/// `restored` names, in lowercase, the WADs an earlier run of the same mod found to restore a
-/// model from before its rework: a package of that run does not hold the files that showed
-/// it.
-pub fn load(
-    loader: &mut Loader<'_>,
-    archive: Archive,
-    restored: &BTreeSet<String>,
-    sink: &mut Sink<'_>,
-) -> Result<Loaded> {
-    let mut module = loader.open(archive);
-    let fault = "an input of the run did not answer while the mod was loaded";
-    loader.fix_files(&mut module, sink).context(fault)?;
-    loader.take_game_bins(&mut module, sink).context(fault)?;
-    let known = module.wads.iter();
-    let known: Vec<_> = known
-        .filter(|(_, wad)| restored.contains(wad.name.lower()))
-        .map(|(id, _)| id)
-        .collect();
-    module.restorations.extend(known);
-    let halted = match loader.survey(&mut module, sink) {
-        Ok(()) => false,
-        Err(LoadError::Halted(_)) => true,
-        Err(error) => return Err(error).context(fault),
-    };
-    if !halted {
-        loader.resolve(&mut module, sink).context(fault)?;
+/// Reads the archive file into a run, and takes the run through its stages up to `last`. A
+/// fatal diagnostic ends the run early and is no error.
+pub fn through(run: &mut Run<'_>, archive: &Utf8Path, last: Stage) -> Result<()> {
+    match run.read_file(archive) {
+        Ok(_) | Err(RunError::Halted(_)) => {}
+        Err(error) => return Err(error.into()),
     }
-    Ok(Loaded { module, halted })
+    Ok(run.through(last)?)
 }
 
-/// Prints every diagnostic a policy does not hide, one per line.
-pub fn print(log: &Diagnostics, cx: &Render<'_>, policy: &DiagnosticPolicy) {
-    for diagnostic in log.iter().filter(|d| !policy.hides(d)) {
+/// The checks a command line leaves on. An id that names no check is refused.
+pub fn checks(off: &[String]) -> Result<CheckSet> {
+    let mut selection = CheckSelection::standard();
+    for id in off {
+        selection = selection.without(id.as_str());
+    }
+    if let Some(unknown) = selection.unknown().first() {
+        let known: Vec<String> = CheckSet::catalog()
+            .iter()
+            .map(|info| info.id.to_string())
+            .collect();
+        bail!("{unknown} is no check: {}", known.join(", "));
+    }
+    Ok(CheckSet::from(&selection))
+}
+
+/// The policy a command line gives: nothing blocks unless a filter says so.
+pub fn blocking(filters: &[String]) -> Result<DiagnosticPolicy> {
+    let mut policy = DiagnosticPolicy::default();
+    for text in filters {
+        let filter = Filter::parse(text).with_context(|| format!("the filter {text:?}"))?;
+        policy = policy.with(filter, Action::Block);
+    }
+    Ok(policy)
+}
+
+/// Writes a run's package as a project directory in `out` and, when asked, as a `.modpkg`,
+/// each with the report beside it. Says whether the policy refused the write.
+pub fn write(
+    run: &mut Run<'_>,
+    out: &Utf8Path,
+    modpkg: bool,
+    policy: &DiagnosticPolicy,
+) -> Result<bool> {
+    let project = ProjectDir::new(out);
+    let packed = Modpkg::new(out);
+    let mut writers: Vec<&dyn PackageWriter> = vec![&project];
+    if modpkg {
+        writers.push(&packed);
+    }
+    match run.write(&writers, policy) {
+        Ok(()) => Ok(false),
+        Err(RunError::Refused(_)) => Ok(true),
+        Err(error) => Err(error).with_context(|| format!("writing in {out}")),
+    }
+}
+
+/// Writes a run's report, as JSON, to a file.
+pub fn save_report(run: &Run<'_>, path: &Utf8Path) -> Result<()> {
+    Ok(fs::write(path, run.report().to_json() + "\n")?)
+}
+
+/// The exit code of a run: halted, refused its write, or done.
+pub fn exit(run: &Run<'_>, refused: bool) -> ExitCode {
+    match (run.halted(), refused) {
+        (Some(_), _) => ExitCode::from(HALTED),
+        (None, true) => ExitCode::from(BLOCKED),
+        (None, false) => ExitCode::SUCCESS,
+    }
+}
+
+/// Prints every diagnostic of a run that a policy does not hide, one per line.
+pub fn print(run: &Run<'_>, policy: &DiagnosticPolicy) {
+    let speller = run.speller();
+    let cx = &Render {
+        names: &speller,
+        module: run.module(),
+    };
+    for diagnostic in run.log().iter().filter(|d| !policy.hides(d)) {
         // The fixups and the checks share their codes: the one that raised a line is named
         // at its end.
         let by = diagnostic.by.as_deref();

@@ -4,7 +4,9 @@
 mod term;
 mod fixups;
 mod history;
+mod inspect;
 mod load;
+mod port;
 mod repair;
 mod run;
 
@@ -36,10 +38,18 @@ enum Command {
         #[command(subcommand)]
         command: history::HistoryCommand,
     },
+    /// Inspect one mod archive: read, load and fix it, gather what is true of it and choose
+    /// each unit's target slot. Reports the facts, the decision and what the other levels of
+    /// animation reuse would choose. Writes no package.
+    Inspect(Box<inspect::Inspect>),
     /// Read one mod archive, load it and report what it is: WADs, files, characters, units,
     /// what the client loads, and whose bytes its files are. With `--fix`, apply the fixups
     /// and report what they changed.
     Load(Box<load::Load>),
+    /// Port one mod archive: each unit the author made, over the game's own skin at its
+    /// target, as a patch of the game's bin with the mod's own objects and files under a
+    /// namespace. Written as a mod project and, with `--modpkg`, packed.
+    Port(Box<port::PortCommand>),
     /// Repair one mod archive: the mod as it is, at its own slots and paths, with its bins
     /// fixed for the install's build, written as a mod project and, with `--modpkg`, packed.
     Repair(Box<repair::Repair>),
@@ -60,7 +70,9 @@ impl Command {
             }
             Command::Fixups(command) => command.run(),
             Command::History { command } => command.run().map(|()| ExitCode::SUCCESS),
+            Command::Inspect(command) => command.run(),
             Command::Load(command) => command.run(),
+            Command::Port(command) => command.run(),
             Command::Repair(command) => command.run(),
         }
     }
