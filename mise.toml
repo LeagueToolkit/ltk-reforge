@@ -1,0 +1,24 @@
+# The tools of the checks and of the Windows build on Linux, and the tasks that run them
+# (#ADR-0053). scripts/README.md, "cross", has the system packages they need.
+
+[tools]
+# The version rust-toolchain.toml pins.
+rust = { version = "1.99", components = "clippy,rustfmt" }
+node = "24"
+# The version app/package.json pins: a later pnpm refuses to stand in for it.
+pnpm = "11.13.0"
+"github:rust-cross/cargo-xwin" = "0.23.1"
+
+[tasks.check]
+description = "The checks: format, lints, tests, and the front end's"
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets --locked -- -D warnings",
+  "cargo test --workspace --locked",
+  "pnpm --dir app install --frozen-lockfile",
+  "pnpm --dir app check",
+]
+
+[tasks.build-windows]
+description = "The command, the app and its installer for x86_64-pc-windows-msvc"
+run = "bash scripts/cross/build-windows.sh"

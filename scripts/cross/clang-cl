@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# clang-cl for the Windows build on Linux, with SSE4.1 on for the sources written for it.
+#
+# libwebp keeps its SSE4.1 code in files named `*_sse41.c` and calls it only on a CPU that has
+# it. MSVC compiles those intrinsics with no flag. clang refuses them without `-msse4.1`, and
+# the flag given to every source would let the rest of the C code need SSE4.1 too.
+flags=()
+for arg in "$@"; do
+  case "$arg" in
+    *_sse41.c) flags=(-msse4.1) ;;
+  esac
+done
+exec clang-cl "${flags[@]}" "$@"

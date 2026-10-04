@@ -1,5 +1,27 @@
 # scripts
 
+## cross
+
+The build for Windows on Linux (#ADR-0053), and what the checks need there.
+
+| script | what it is for |
+|---|---|
+| `cross/setup-ubuntu.sh` | installs the system packages on Ubuntu: the LLVM tools, NSIS, and the libraries Tauri links on Linux. Run as root |
+| `cross/build-windows.sh` | builds the command, the app and its installer for `x86_64-pc-windows-msvc`, under `target/x86_64-pc-windows-msvc/release/` |
+| `cross/clang-cl` | the C compiler of that build: `clang-cl`, with SSE4.1 on for libwebp's SSE4.1 sources |
+
+The other tools (Rust, Node, pnpm, cargo-xwin) are pinned in `mise.toml` at the root, with two
+tasks:
+
+```
+sudo bash scripts/cross/setup-ubuntu.sh
+mise install
+mise run check            # format, lints, tests, the front end's checks
+mise run build-windows
+```
+
+The workflows in `.github/workflows/` run the same three steps.
+
 ## corpus
 
 The corpus tooling (#ADR-0044, #ADR-0045): a run of reforge over the mods of the datasets, the

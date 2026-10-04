@@ -208,9 +208,10 @@ run on downloaded mods has to withstand.
 
 ## Releases
 
-`.github/workflows/release.yml` builds the app's installer and the command on Windows and
-attaches them to a GitHub release of `v<version>`, the version in the workspace's
-`Cargo.toml`. A pushed tag that matches the version publishes the release. A run started by
+`.github/workflows/build.yml` runs the checks and builds the app's installer and the command
+for Windows, on Linux (#ADR-0053), on a pull request and on a push to master.
+`.github/workflows/release.yml` calls it and attaches what it built to a GitHub release of
+`v<version>`, the version in the workspace's `Cargo.toml`. A pushed tag that matches the version publishes the release. A run started by
 hand from the Actions tab releases the head of the branch it runs on, as a draft unless told
 otherwise, and GitHub tags a draft when it is published. A version is released from one commit,
 so a release of new commits starts with a version bump.
