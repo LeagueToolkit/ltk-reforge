@@ -1,0 +1,143 @@
+# A release: the app's installer and the command, built on Windows and attached to a GitHub
+# release of the tag `v<version>`, the version being the workspace's in Cargo.toml.
+#
+# - Push a tag `v<version>` that matches Cargo.toml: the release is published.
+# - Or run this workflow by hand from the Actions tab, on the branch to release: it releases
+#   that branch's head, as a draft unless told not to. GitHub tags a draft when it is published.
+#
+# A version is released from one commit. A version already tagged at another commit is refused,
+# so a new release is a version bump in Cargo.toml first. A run again of the same version
+# replaces the assets, and moves a draft to the commit it built.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: "Make a draft, to read before publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The notes list the commits since the last tag.
+          fetch-depth: 0
+
+      - name: Resolve the version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          TAG="v$VERSION"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_NAME" != "$TAG" ]]; then
+            echo "::error::The tag $GITHUB_REF_NAME is not the version in Cargo.toml, $VERSION."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$TAG" > /dev/null; then
+            AT=$(git rev-list -n 1 "$TAG")
+            if [[ "$AT" != "$GITHUB_SHA" ]]; then
+              echo "::error::$TAG is released at ${AT:0:7}. Raise the version in Cargo.toml to release ${GITHUB_SHA:0:7}."
+              exit 1
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "::notice::Releasing $TAG from ${GITHUB_SHA:0:7}"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: app/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      # Installs the toolchain rust-toolchain.toml pins, and caches the build.
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          # Its default, `-D warnings`, belongs to the checks, not to a release.
+          rustflags: ""
+
+      - name: Install the front end's dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # First, and `--locked`: a Cargo.lock that does not match Cargo.toml stops the release here.
+      - name: Build the command
+        run: cargo build --release --locked -p reforge-cli
+
+      - name: Build the app and its installer
+        working-directory: app
+        run: pnpm tauri build --ci
+
+      - name: Gather the assets
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $out = New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/assets"
+          Copy-Item target/release/bundle/nsis/*-setup.exe $out
+          Compress-Archive -Path target/release/reforge.exe `
+            -DestinationPath "$out/reforge-cli_${env:VERSION}_x64.zip"
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - name: Write the notes
+        shell: bash
+        run: |
+          PREVIOUS=$(git describe --tags --abbrev=0 --match 'v*' "$GITHUB_SHA^" 2> /dev/null || true)
+          {
+            if [[ -n "$PREVIOUS" ]]; then
+              echo "Changes since $PREVIOUS:"
+              echo
+              git log --no-merges --format='- %s' "$PREVIOUS..$GITHUB_SHA"
+            else
+              echo "The first release."
+            fi
+            echo
+            echo "The installer is not signed, so Windows asks before it runs it."
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          DRAFT: ${{ inputs.draft && '--draft' || '' }}
+        run: |
+          ASSETS=("$RUNNER_TEMP"/assets/*)
+          if DRAFTED=$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null); then
+            if [[ "$DRAFTED" == "true" ]]; then
+              gh release edit "$TAG" --target "$GITHUB_SHA"
+            fi
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            PRERELEASE=""
+            if [[ "$VERSION" == *-* ]]; then PRERELEASE="--prerelease"; fi
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --target "$GITHUB_SHA" \
+              --title "reforge $TAG" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              $DRAFT $PRERELEASE
+          fi

@@ -206,6 +206,19 @@ Two faults of the crates reforge reads and packs with come before a release
 ([ROADMAP.md](ROADMAP.md), "Upstream"): a crafted archive can end the process, which a tool
 run on downloaded mods has to withstand.
 
+## Releases
+
+`.github/workflows/release.yml` builds the app's installer and the command on Windows and
+attaches them to a GitHub release of `v<version>`, the version in the workspace's
+`Cargo.toml`. A pushed tag that matches the version publishes the release. A run started by
+hand from the Actions tab releases the head of the branch it runs on, as a draft unless told
+otherwise, and GitHub tags a draft when it is published. A version is released from one commit,
+so a release of new commits starts with a version bump.
+
+The notes list the commit subjects since the last tag. The installer is not signed and the app
+has no updater, so Windows asks before running the installer and a new version is installed by
+hand.
+
 ## An AI agent
 
 Proposed, not decided (#ADR-0049): an agent as a third caller, for a mod the default settings
