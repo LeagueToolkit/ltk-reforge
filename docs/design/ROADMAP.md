@@ -87,9 +87,8 @@ In this order. Each item is one or more changes measured against the baseline.
 
 ## After
 
-- The GUI as a caller of `reforge` ([ARCHITECTURE.md](ARCHITECTURE.md), "Callers"). The
-  catalog, the selection and the run a stage at a time are built.
-- A prebuilt history index, distributed.
+- The first release, a standalone app (#ADR-0046), with the history index distributed
+  (#ADR-0047): its plan is [ROADMAP-UX.md](ROADMAP-UX.md).
 - The test realm's builds in the history.
 - A shared schema crate with LTK Manager.
 
