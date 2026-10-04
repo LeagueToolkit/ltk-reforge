@@ -50,7 +50,11 @@ export function Shell({ children }: { children: ReactNode }) {
         </NavLink>
       </nav>
       <main className="min-w-0 flex-1 overflow-y-auto p-8" data-ui="Shell:main">
-        {children}
+        {/* The width the pages are drawn at by the default window. A wider window buys
+            margins, as LTK Manager's pages do: lines past it read worse, not better. */}
+        <div className="mx-auto w-full max-w-4xl" data-ui="Shell:page">
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -30,6 +30,8 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   red, taken from Ornn's base splash art, is `app/src/styles/reforge.css` over them. LTK
   Manager's lint rules apply as its own, so the warnings it gives on its components are given
   here too.
+- The pages share one column, centred, at the width the default window draws them at. A wider
+  window buys margins, as LTK Manager's pages do (its `docs/ux/HOME.md`, "Layout").
 - The crate's modules: `inputs` opens the inputs once and raises what they found into every
   run's log, as the command raises it when it opens them; `state` holds them open for the
   settings as they stand; `run` takes a request (the kind, the archive, the last stage, the
