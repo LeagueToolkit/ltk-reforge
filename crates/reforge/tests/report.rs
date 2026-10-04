@@ -3,12 +3,14 @@
 use reforge::archive::{Archive, Caps};
 use reforge::diag::{Diagnostics, Render, Stage};
 use reforge::env::Env;
+use reforge::fixups::{FixupSet, Rule};
 use reforge::load::{Dating, FileProvenance, Inventory, LoadError, LoadOptions, Loader, against};
 use reforge::model::entity::{FileSource, FileUse};
-use reforge::report::{Report, SCHEMA};
-use reforge_testkit::bins::{Skin, bin, blob, entry, linked_bin};
+use reforge::model::{ContentId, hash, value};
+use reforge::report::{AgainRow, Report, SCHEMA};
+use reforge_testkit::bins::{Skin, bin, blob, entry, float, linked_bin, object};
 use reforge_testkit::skins::{self, BASE_TEX, WAD, base_skin, skin_bin};
-use reforge_testkit::{LoadRun, MemoryHistory, ModArchive};
+use reforge_testkit::{LoadRun, MemoryHistory, ModArchive, PackRun};
 use serde_json::{Value, json};
 
 const ENTRY: &str = "Characters/Test/Skins/Skin0";
@@ -80,6 +82,7 @@ fn a_report_with_no_part_holds_its_schema_and_nothing_else() {
     assert_eq!(report["inputs"], Value::Null);
     assert_eq!(report["halted"], Value::Null);
     assert_eq!(report["dating"], Value::Null);
+    assert_eq!(report["package"], Value::Null);
     for table in ["wads", "files", "characters", "units", "diagnostics"] {
         assert_eq!(report[table], json!([]), "{table}");
     }
@@ -300,4 +303,107 @@ fn a_run_with_no_history_says_it_was_judged_against_the_install_alone() {
     let report = parsed(&Report::builder().env(&env).build());
     assert_eq!(report["inputs"]["build"], "16.19.1");
     assert_eq!(report["inputs"]["history"], Value::Null);
+}
+
+#[test]
+fn a_report_holds_the_package_with_the_digest_of_each_object_of_its_bins() {
+    let env = env();
+    let material = object("M", "Material", vec![("junk", float(1.0))]);
+    let skin = bin(vec![entry(ENTRY, &own_skin()), material]);
+    let archive = ModArchive::new()
+        .file(WAD, &skin_bin("test", 0), skin)
+        .file(WAD, OWN_MESH, blob(OWN_MESH));
+    // One fixup: a field no bin of the game holds, removed.
+    let set = FixupSet::empty().with(Rule::remove_fields("Material", ["junk"]).id("no-junk"));
+    let run = PackRun::of(&env, &set, &archive);
+    let built = Report::builder().package(run.package()).build();
+    let report = parsed(&built);
+
+    let package = &report["package"];
+    assert_eq!(package["name"], "Synthetic-reforgetests");
+    assert_eq!(package["version"], "1.0.0");
+    let chunks = package["chunks"].as_array().expect("rows");
+    assert_eq!(chunks.len(), 2);
+    let mesh = &chunks[0];
+    assert_eq!(mesh["path"], OWN_MESH);
+    assert_eq!(mesh["origin"], "kept");
+    assert_eq!(mesh["content"], ContentId::of(&blob(OWN_MESH)).hex());
+    assert_eq!(mesh.get("objects"), None);
+    assert_eq!(mesh.get("edited"), None);
+
+    let skin = &chunks[1];
+    let bytes = &run.chunk(&skin_bin("test", 0)).bytes;
+    assert_eq!(skin["layer"], "base");
+    assert_eq!(skin["wad"], WAD);
+    assert_eq!(skin["path"], skin_bin("test", 0));
+    assert_eq!(skin["origin"], "delta");
+    assert_eq!(skin["size"], bytes.len());
+    assert_eq!(skin["content"], ContentId::of(bytes).hex());
+    let chunk = run.chunk(&skin_bin("test", 0));
+    assert_eq!(skin["file"], chunk.origin.file().to_string());
+    // Each object by its entry hash, in file order, with the digest of the value written.
+    let digest = |name: &str| hash::hex(&value::digest(run.fix.object(name)));
+    let entry_of = |name: &str| format!("{:08x}", reforge::model::name_hash(name).0);
+    assert_eq!(
+        skin["objects"],
+        json!({ entry_of(ENTRY): digest(ENTRY), entry_of("M"): digest("M") })
+    );
+    assert_eq!(skin["edited"], json!([entry_of("M")]));
+    // The changed object again, with its fields in the order of their hashes: it holds none
+    // after the fixup, so the two digests are one.
+    assert_eq!(skin["values"], json!({ entry_of("M"): digest("M") }));
+    let keys: Vec<&String> = skin["objects"].as_object().expect("a map").keys().collect();
+    assert_eq!(keys, [&entry_of(ENTRY), &entry_of("M")]);
+    assert_eq!(
+        built.to_json(),
+        Report::builder().package(run.package()).build().to_json()
+    );
+}
+
+#[test]
+fn a_report_says_what_repairing_the_repaired_mod_again_changed() {
+    let env = env();
+    let material = object("M", "Material", vec![("junk", float(1.0))]);
+    let skin = bin(vec![entry(ENTRY, &own_skin()), material]);
+    let archive = ModArchive::new()
+        .file(WAD, &skin_bin("test", 0), skin)
+        .file(WAD, OWN_MESH, blob(OWN_MESH));
+    let set = FixupSet::empty().with(Rule::remove_fields("Material", ["junk"]).id("no-junk"));
+    let first = PackRun::of(&env, &set, &archive);
+    let second = PackRun::of(&env, &set, &first.archive());
+
+    // The package repaired again: no value changes, and every chunk is the same.
+    let again = AgainRow::of(
+        first.package(),
+        Some(second.package()),
+        Some(&second.fix.changes),
+    );
+    assert!(again.same(), "{again:?}");
+    let report = parsed(&Report::builder().again(again).build());
+    assert_eq!(
+        report["again"],
+        json!({ "built": true, "fixups": [], "chunks_differing": 0, "chunks": [] })
+    );
+
+    // Against the archive's own run, which changed the material: the fixup and the bin.
+    let unrepaired = PackRun::of(&env, &FixupSet::empty(), &archive);
+    let again = AgainRow::of(
+        unrepaired.package(),
+        Some(first.package()),
+        Some(&first.fix.changes),
+    );
+    assert!(!again.same());
+    let row = serde_json::to_value(&again).expect("a row is data");
+    assert_eq!(row["fixups"], json!([{ "fixup": "no-junk", "values": 1 }]));
+    assert_eq!(row["chunks_differing"], 1);
+    assert_eq!(row["chunks"][0]["wad"], WAD);
+    let shipped = &unrepaired.chunk(&skin_bin("test", 0)).bytes;
+    let repaired = &first.chunk(&skin_bin("test", 0)).bytes;
+    assert_eq!(row["chunks"][0]["first"], ContentId::of(shipped).hex());
+    assert_eq!(row["chunks"][0]["second"], ContentId::of(repaired).hex());
+
+    // A second run that builds nothing is no repair that changes nothing.
+    assert!(!AgainRow::of(first.package(), None, None).same());
+    // A report nobody asked a second run of holds no such part.
+    assert_eq!(parsed(&Report::builder().build()).get("again"), None);
 }
