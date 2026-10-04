@@ -17,6 +17,8 @@ pub mod env;
 
 pub mod load;
 
+pub mod fixups;
+
 pub mod report;
 
 /// Every diagnostic code a run can raise, in the order of the modules that declare them.
@@ -32,6 +34,8 @@ pub fn codes() -> impl Iterator<Item = diag::Code> {
         load::dating::CODES,
         load::inventory::CODES,
         load::provenance::CODES,
+        load::bank::CODES,
+        fixups::CODES,
     ]
     .into_iter()
     .flatten()
