@@ -18,8 +18,9 @@ use crate::diag::Sink;
 use crate::load::provenance::{AtPath, BytesOrigin};
 use crate::model::entity::{CharId, LinkTo, Mod, ObjectId, UnitId};
 use crate::model::hash::skin_paths;
+use crate::model::known::class;
 use crate::model::{
-    BinHash, ChunkPath, Dump, DumpCx, SkinEntry, Slot, WadHash, clean, path_hash, value,
+    BinHash, ChunkPath, Dump, DumpCx, SkinEntry, Slot, WadHash, clean, name_hash, path_hash, value,
 };
 
 /// The bin of shader definitions, which the client loads whatever it plays.
@@ -241,7 +242,29 @@ impl Walk<'_, '_> {
 
         let (order, own) = pool(m, self.objects, unit);
         let entry_value = SkinEntry::read(self.objects.value(entry));
-        let (resolver, graph) = (entry_value.resolver(), entry_value.graph());
+        let (linked, graph) = (entry_value.resolver(), entry_value.graph());
+        // #ADR-0056: a link nothing loads at the target gives way to the resolver under the
+        // slot's own name.
+        let resolves = |name: BinHash| {
+            own.get(name).is_some()
+                || champion_pool.get(name).is_some()
+                || game.holds(name)
+                || source_bins.iter().any(|(_, held)| held.holds(name))
+        };
+        let own_name = name_hash(&skin_paths::resolver_entry(
+            &m.characters[node.character].spelled,
+            t,
+        ));
+        let is_resolver = |object: ObjectId| {
+            self.objects.value(object).class_hash == name_hash(class::RESOURCE_RESOLVER)
+        };
+        let stale_link =
+            linked.filter(|&name| !resolves(name) && own.get(own_name).is_some_and(is_resolver));
+        let resolver = if stale_link.is_some() {
+            Some(own_name)
+        } else {
+            linked
+        };
 
         let mut reach = UnitReach {
             target: t,
@@ -253,11 +276,14 @@ impl Walk<'_, '_> {
             leftovers: Vec::new(),
             carried_for_overrides: 0,
         };
-        let mut seen: BTreeSet<BinHash> = BTreeSet::new();
+        let mut seen: BTreeSet<BinHash> = stale_link.into_iter().collect();
         // Each name with the object that reached it, and whether through the game's objects
         // only: those are followed for overridden files, and are no one's loose end.
         let mut queue: VecDeque<(BinHash, Option<ObjectId>, bool)> =
             VecDeque::from([(self.objects.entry(entry), None, false)]);
+        if stale_link.is_some() {
+            queue.push_back((own_name, Some(entry), false));
+        }
         let mut parents: HashMap<ObjectId, Vec<ObjectId>> = HashMap::new();
         let mut adopted: HashMap<BinHash, ObjectId> = HashMap::new();
         while let Some((name, parent, under_game)) = queue.pop_front() {
@@ -340,6 +366,7 @@ impl Walk<'_, '_> {
         let fates: HashMap<ObjectId, Fate> = reach.objects.iter().copied().collect();
         let mut kept: BTreeSet<ObjectId> = BTreeSet::new();
         let mut stack = vec![entry];
+        stack.extend(stale_link.and_then(|_| own.get(own_name)));
         while let Some(object) = stack.pop() {
             if !kept.insert(object) || fates.get(&object) == Some(&Fate::Game) {
                 continue;

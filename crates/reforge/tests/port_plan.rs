@@ -12,7 +12,9 @@ use reforge::port::{
     Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, PlanError, Policy, PortOptions,
     RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached,
 };
-use reforge_testkit::bins::{Skin, bin, blob, entry, graph, particle, resolver, text, with_link};
+use reforge_testkit::bins::{
+    Skin, bin, blob, entry, graph, particle, resolver, resolver_with, text, with_link,
+};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
 use reforge_testkit::plans::{
     champion_and_unbound_pet, old_model_and_pet, paste_and_own_skin3, reworked,
@@ -109,6 +111,33 @@ fn reach_sorts_what_the_entry_reaches() {
     assert_eq!(verdict(&run, "test", 0, BASE_PARTICLE_TEX), None);
     // The leftover is not carried, so neither is what it names.
     assert_eq!(verdict(&run, "test", 0, "assets/mod/a/leftover.tex"), None);
+}
+
+#[test]
+fn an_entry_linking_a_resolver_nothing_loads_reaches_the_resolver_under_the_slots_name() {
+    // #ADR-0056: the entry links the resolver of the skin it was pasted from.
+    let pasted = "Characters/Test/Skins/Skin9/Resources";
+    let objects = vec![
+        entry(SKIN0, &own_skin("a", GRAPH0, pasted)),
+        own_graph("a", GRAPH0),
+        resolver_with(RESOURCES0, &[("Test_Q_Cast", OWN_PARTICLE)]),
+        particle(OWN_PARTICLE, OWN_TEX),
+    ];
+    let mut files = own_files("a");
+    files.push((OWN_TEX.into(), blob(OWN_TEX)));
+    files.push((skin_bin("test", 0), bin(objects)));
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    assert_eq!(
+        fate(&run, 0, RESOURCES0),
+        Some(Fate::Resolver),
+        "{}",
+        run.dump()
+    );
+    assert_eq!(fate(&run, 0, OWN_PARTICLE), Some(Fate::Carried));
+    let reach = run.port.reach.of(run.unit("test", 0)).expect("reached");
+    assert!(reach.dangling.is_empty() && reach.leftovers.is_empty());
 }
 
 #[test]

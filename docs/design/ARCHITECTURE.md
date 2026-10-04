@@ -462,7 +462,8 @@ object takes a name of its own, which every link to it follows.
    names that resolve to the game's bins at T or to the champion's unit, the names nothing
    holds, the game bins the port keeps as links, and the objects nothing reaches
    (#GAME-BEHAVIOR-0006). A game object naming a file the mod overrides is carried, with every
-   game object on the way to it.
+   game object on the way to it. A resolver under the slot's own name stands in for a
+   resolver link nothing loads at T (#ADR-0056).
 4. **`FileRefs`**, per unit: each file a ported object names, as a `FileVerdict`: the game's at
    a path (in a WAD mounted with the champion, #GAME-BEHAVIOR-0007), the mod's own and
    shipped, held only by a WAD that is not mounted, or dangling. A stale copy is the game's

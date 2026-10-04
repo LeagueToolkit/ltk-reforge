@@ -28,6 +28,11 @@ The client loads it as the base skin. What plays depends on what was pasted: ski
 skin N's skeleton play as on skin N. Names of skin N's objects that the client loads only for
 skin N resolve only where the mod ships them.
 
+The entry can link skin N's resolver while the mod ships its resolver, with its own particle
+systems, under the base's name. No bin loaded for the base holds skin N's resolver, so the
+link resolves to nothing there. What the client's spells play through that link is not
+established.
+
 ## The repair
 
 On the base, where the work fits the base's rig. Otherwise a mod for skin N.
@@ -36,5 +41,8 @@ On the base, where the work fits the base's rig. Otherwise a mod for skin N.
 
 - ltk-forge's first corpus run (2026-09-29, 1,029 mods): 154 units pasted and fitting the base,
   676 fitting only their premium origin, 30 derived from the base.
+- One mod with the entry linking skin 5's resolver and its own resolver under the base's name,
+  ported to the base with that resolver's map laid over the game's: the port showed the mod's
+  effects in game (2026-10-05, build 16.19).
 - ltk-forge's first full datasets run (2026-09-30, 5,544 mods): 300 pasted and fitting the base,
   607 fitting only their premium origin, 2,209 on the base.
