@@ -12,10 +12,17 @@ workspace = true
 
 [dependencies]
 reforge-magic.workspace = true
+reforge-wwise.workspace = true
 ltk_hash.workspace = true
 ltk_meta.workspace = true
 ltk_wad.workspace = true
 ltk_mesh.workspace = true
+ltk_texture.workspace = true
+ltk_mod_project = { workspace = true, features = ["modpkg"] }
+ltk_modpkg.workspace = true
+ltk_hashtable.workspace = true
+ltk_game_data.workspace = true
+ddsfile.workspace = true
 ltk_hashdb.workspace = true
 ltk_mimir_cache.workspace = true
 indexmap.workspace = true
