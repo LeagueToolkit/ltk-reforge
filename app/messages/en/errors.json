@@ -1,6 +1,15 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "error.BAD_FILTER.title": "The filter {filter} does not read",
+  "error.GAME_UNREADABLE.title": "The game at {path} does not open",
+  "error.INTERNAL.title": "Something went wrong in the app",
+  "error.NAMES_UNREADABLE.title": "The hash tables do not open",
   "error.NO_DATA_DIR.title": "The app has no folder for its data",
+  "error.NO_GAME.description": "Find the game, or choose its folder, under Inputs",
+  "error.NO_GAME.title": "No game is chosen",
+  "error.NO_OUTPUT.title": "No folder to write the package in",
   "error.SETTINGS_UNWRITABLE.title": "The settings did not save",
+  "error.UNKNOWN_CHECK.title": "{id} is no check of this version",
+  "error.UNKNOWN_FIXUP.title": "{id} is no fixup of this version",
   "error_unknown_title": "Something went wrong"
 }

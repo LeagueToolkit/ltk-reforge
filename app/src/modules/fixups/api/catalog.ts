@@ -15,3 +15,16 @@ export const catalogQuery = () =>
 export function useFixupCatalog() {
   return useQuery(catalogQuery());
 }
+
+/** Every check of the library. The list is built into the app, so it never goes stale. */
+export const checksQuery = () =>
+  queryOptions({
+    queryKey: ["checks", "catalog"] as const,
+    queryFn: queryFn(commands.checkCatalog),
+    staleTime: Infinity,
+  });
+
+/** Every check of the library, in the order they run. */
+export function useCheckCatalog() {
+  return useQuery(checksQuery());
+}

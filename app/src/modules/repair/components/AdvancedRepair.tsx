@@ -1,0 +1,225 @@
+import { PlayIcon } from "@phosphor-icons/react";
+import { useState } from "react";
+
+import { Button, FailureNote, SectionCard, SegmentedControl, Switch } from "@/components";
+import { m } from "@/i18n";
+import type { RunView, StageName } from "@/lib/bindings.gen";
+import { FindingList, worstFirst } from "@/modules/findings";
+import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
+import { useInputs } from "@/modules/inputs";
+
+import { useRunRepair } from "../api/run";
+import { runSettings, toggled, useRepairStore } from "../state/repairStore";
+import { ChangesList } from "./ChangesList";
+import { useOutputFolder } from "./ModCard";
+import { RunSummary } from "./RunSummary";
+import { StageStrip, stageLabel } from "./StageStrip";
+import { type ToggleItem, ToggleList } from "./ToggleList";
+
+const REPAIR_STAGES: StageName[] = ["read", "load", "fix", "build", "check", "write"];
+
+/** The run settings: the last stage, the stale copies, and what refuses the write. */
+function SettingsCard({ onRun, running }: { onRun: () => void; running: boolean }) {
+  const advanced = useRepairStore((state) => state.advanced);
+  const setAdvanced = useRepairStore((state) => state.setAdvanced);
+  const resetAdvanced = useRepairStore((state) => state.resetAdvanced);
+  const archive = useRepairStore((state) => state.archive);
+  const inputs = useInputs();
+  const options = REPAIR_STAGES.map((stage) => ({ value: stage, label: stageLabel(stage) }));
+
+  return (
+    <SectionCard
+      title={m.advanced_settings_title()}
+      action={
+        <Button size="xs" variant="ghost" onClick={resetAdvanced}>
+          {m.advanced_reset_action()}
+        </Button>
+      }
+    >
+      <div className="flex items-center justify-between gap-4">
+        <p className="text-sm text-surface-100 select-none">{m.advanced_through_label()}</p>
+        <SegmentedControl
+          options={options}
+          value={advanced.through}
+          onChange={(through) => setAdvanced({ through })}
+          aria-label={m.advanced_through_label()}
+        />
+      </div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-surface-100 select-none">{m.advanced_keep_stale_label()}</p>
+          <p className="text-xs text-surface-400 select-none">
+            {m.advanced_keep_stale_description()}
+          </p>
+        </div>
+        <Switch
+          checked={advanced.keepStale}
+          onCheckedChange={(keepStale) => setAdvanced({ keepStale })}
+          aria-label={m.advanced_keep_stale_label()}
+        />
+      </div>
+      <label className="flex flex-col gap-1">
+        <span className="text-sm text-surface-100 select-none">{m.advanced_block_label()}</span>
+        <span className="text-xs text-surface-400 select-none">
+          {m.advanced_block_description()}
+        </span>
+        <textarea
+          rows={2}
+          value={advanced.block.join("\n")}
+          onChange={(event) =>
+            setAdvanced({ block: event.target.value.split("\n").map((line) => line.trim()) })
+          }
+          className="rounded-md border border-surface-600 bg-surface-950/40 p-2 font-mono text-xs text-surface-100 focus-visible:outline-2 focus-visible:outline-accent-500"
+        />
+      </label>
+      <div className="flex justify-end">
+        <Button
+          variant="filled"
+          left={<PlayIcon weight="bold" />}
+          loading={running}
+          disabled={!archive || !inputs.isSuccess}
+          onClick={onRun}
+        >
+          {m.advanced_run_action()}
+        </Button>
+      </div>
+    </SectionCard>
+  );
+}
+
+/** What one stage gave: its result where the views draw one, and the findings it raised. */
+function StageDetail({ view, stage }: { view: RunView; stage: StageName }) {
+  const state = view.stages.find((s) => s.stage === stage)?.state;
+  const findings = worstFirst(view.findings.filter((finding) => finding.stage === stage));
+  return (
+    <div className="flex flex-col gap-4" data-ui="StageDetail">
+      <SectionCard title={stageLabel(stage)} description={m[`stage.${stage}.description`]()}>
+        {state === "not-run" && (
+          <p className="text-sm text-surface-400 select-none">{m.advanced_stage_not_run()}</p>
+        )}
+        {stage === "build" && view.package && (
+          <p className="text-sm text-surface-200">
+            {m.advanced_package_label({
+              name: view.package.name,
+              version: view.package.version,
+              chunks: view.package.chunks,
+              patches: view.package.patches,
+            })}
+          </p>
+        )}
+        {stage === "write" && view.written && (
+          <p className="font-mono text-xs break-all text-surface-200">
+            {m.advanced_written_label({ path: view.written })}
+          </p>
+        )}
+        <FindingList findings={findings} empty={m.advanced_stage_findings_empty()} />
+      </SectionCard>
+      {stage === "fix" && state !== "not-run" && <ChangesList changes={view.changes} />}
+    </div>
+  );
+}
+
+/** The fixups and the checks, each turned on and off from the standard set. */
+function Toggles() {
+  const advanced = useRepairStore((state) => state.advanced);
+  const setAdvanced = useRepairStore((state) => state.setAdvanced);
+  const fixups = useFixupCatalog();
+  const checks = useCheckCatalog();
+
+  const fixupItems: ToggleItem[] = (fixups.data ?? []).map((fixup) => {
+    const on = fixup.default
+      ? !advanced.fixupsOff.includes(fixup.id)
+      : advanced.fixupsOn.includes(fixup.id);
+    return {
+      id: fixup.id,
+      title: fixup.title,
+      meta: fixup.records.join(" "),
+      on,
+      changed: on !== fixup.default,
+    };
+  });
+  const toggleFixup = (id: string) => {
+    const fixup = fixups.data?.find((entry) => entry.id === id);
+    if (fixup?.default) {
+      setAdvanced({ fixupsOff: toggled(advanced.fixupsOff, id) });
+    } else {
+      setAdvanced({ fixupsOn: toggled(advanced.fixupsOn, id) });
+    }
+  };
+
+  const checkItems: ToggleItem[] = (checks.data ?? []).map((check) => {
+    const on = !advanced.checksOff.includes(check.id);
+    return {
+      id: check.id,
+      title: check.title,
+      meta: check.record ?? "",
+      on,
+      changed: !on,
+    };
+  });
+
+  return (
+    <>
+      <ToggleList
+        title={m.fixups_list_title()}
+        description={m.advanced_fixups_description()}
+        items={fixupItems}
+        onToggle={toggleFixup}
+      />
+      <ToggleList
+        title={m.advanced_checks_title()}
+        description={m.advanced_checks_description()}
+        items={checkItems}
+        onToggle={(id) => setAdvanced({ checksOff: toggled(advanced.checksOff, id) })}
+      />
+    </>
+  );
+}
+
+/**
+ * The advanced view (#ADR-0050): the run's stages in order, a run up to one of them, and the
+ * settings the library has. Each run is a new run from the archive.
+ */
+export function AdvancedRepair() {
+  const archive = useRepairStore((state) => state.archive);
+  const advanced = useRepairStore((state) => state.advanced);
+  const last = useRepairStore((state) => state.last);
+  const out = useOutputFolder();
+  const run = useRunRepair();
+  const [selected, setSelected] = useState<StageName | null>(null);
+
+  const start = () => {
+    if (!archive) {
+      return;
+    }
+    setSelected(null);
+    run.mutate({
+      archive,
+      through: advanced.through,
+      settings: runSettings({ ...advanced, block: advanced.block.filter(Boolean) }),
+      out: advanced.through === "write" ? out : null,
+    });
+  };
+  const lastRan = last?.stages.filter((stage) => stage.state !== "not-run").at(-1)?.stage;
+  const shown = selected ?? lastRan ?? "read";
+
+  return (
+    <div className="flex flex-col gap-6" data-ui="AdvancedRepair">
+      <SettingsCard onRun={start} running={run.isPending} />
+      {run.isError && <FailureNote failure={run.error} />}
+      {last && (
+        <>
+          <RunSummary view={last} />
+          <StageStrip
+            stages={last.stages}
+            findings={last.findings}
+            selected={shown}
+            onSelect={setSelected}
+          />
+          <StageDetail view={last} stage={shown} />
+        </>
+      )}
+      <Toggles />
+    </div>
+  );
+}

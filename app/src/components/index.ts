@@ -4,3 +4,4 @@ export * from "./FailureNote";
 export * from "./SectionCard";
 export * from "./SegmentedControl";
 export * from "./Spinner";
+export * from "./Switch";

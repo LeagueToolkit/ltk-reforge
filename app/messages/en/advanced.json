@@ -1,0 +1,18 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "advanced_block_description": "Filters of findings that refuse the write, one per line: a code, an area, or terms like severity=error",
+  "advanced_block_label": "Refuse the write on",
+  "advanced_checks_description": "What the built package is held to",
+  "advanced_checks_title": "Checks",
+  "advanced_fixups_description": "The repairs a run makes, in the order they run",
+  "advanced_keep_stale_description": "Copies of game files from an older build, carried as the mod's own",
+  "advanced_keep_stale_label": "Keep stale copies",
+  "advanced_package_label": "{name} {version}: {chunks} chunks, {patches} patches",
+  "advanced_reset_action": "Standard settings",
+  "advanced_run_action": "Run",
+  "advanced_settings_title": "Run settings",
+  "advanced_stage_findings_empty": "This stage raised nothing",
+  "advanced_stage_not_run": "The run did not reach this stage",
+  "advanced_through_label": "Run through",
+  "advanced_written_label": "Written to {path}"
+}

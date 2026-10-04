@@ -106,7 +106,15 @@ export default tseslint.config(
             ],
           },
           callees: {
-            exclude: ["invoke", "listen", "emit", "navigate", "console\\..*", "getElementById"],
+            exclude: [
+              "invoke",
+              "listen",
+              "emit",
+              "navigate",
+              "console\\..*",
+              "getElementById",
+              ".*lastIndexOf",
+            ],
           },
           "object-properties": {
             exclude: ["to", "search", "key", "id", "className", "data-ui"],

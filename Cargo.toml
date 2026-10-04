@@ -78,6 +78,9 @@ pretty_assertions = "1"
 # versions LTK Manager pins.
 tauri = "2"
 tauri-build = "2"
+tauri-plugin-dialog = "2"
+# How LTK Manager finds the game install on a machine.
+ltk_mod_core = "0.1.1"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }

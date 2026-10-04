@@ -1,0 +1,8 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "findings_by_label": "by {by}",
+  "severity.error.label": "Error",
+  "severity.fatal.label": "Fatal",
+  "severity.note.label": "Note",
+  "severity.warning.label": "Warning"
+}

@@ -1,4 +1,4 @@
-import { GearSixIcon, WrenchIcon } from "@phosphor-icons/react";
+import { GearSixIcon, StackIcon, WrenchIcon } from "@phosphor-icons/react";
 import { Link, type LinkProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
@@ -39,6 +39,10 @@ export function Shell({ children }: { children: ReactNode }) {
         <NavLink to="/" exact>
           <WrenchIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_repair_label()}
+        </NavLink>
+        <NavLink to="/inputs">
+          <StackIcon weight="bold" className="h-4 w-4" />
+          {m.shell_nav_inputs_label()}
         </NavLink>
         <NavLink to="/settings">
           <GearSixIcon weight="bold" className="h-4 w-4" />

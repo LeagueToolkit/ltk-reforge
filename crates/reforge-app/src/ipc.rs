@@ -14,10 +14,17 @@ pub const BINDINGS: &str = "../../app/src/lib/bindings.gen.ts";
 
 /// The builder the bindings are generated from and the handler is built from.
 pub fn builder() -> Builder<Wry> {
-    Builder::<Wry>::new().commands(collect_commands![
+    // A count or a size as a TypeScript `number`, as LTK Manager writes them: none comes near
+    // 2^53.
+    let builder = Builder::<Wry>::new().dangerously_cast_bigints_to_number();
+    builder.commands(collect_commands![
         commands::get_settings,
         commands::save_settings,
         commands::fixup_catalog,
+        commands::check_catalog,
+        commands::find_game,
+        commands::open_inputs,
+        commands::run_repair,
     ])
 }
 

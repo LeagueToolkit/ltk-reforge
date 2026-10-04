@@ -5,10 +5,15 @@
   "modules": ["./node_modules/@inlang/plugin-message-format/dist/index.js"],
   "plugin.inlang.messageFormat": {
     "pathPattern": [
+      "./messages/{locale}/advanced.json",
       "./messages/{locale}/errors.json",
+      "./messages/{locale}/findings.json",
       "./messages/{locale}/fixups.json",
+      "./messages/{locale}/inputs.json",
+      "./messages/{locale}/repair.json",
       "./messages/{locale}/settings.json",
       "./messages/{locale}/shell.json",
+      "./messages/{locale}/stages.json",
       "./messages/{locale}/common.json"
     ]
   }

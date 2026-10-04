@@ -21,6 +21,9 @@ export function FailureNote({ failure, className }: FailureNoteProps) {
       <WarningCircleIcon weight="bold" className="mt-0.5 h-4 w-4 shrink-0" />
       <div className="min-w-0">
         <p className="select-none">{copy.title}</p>
+        {copy.description && (
+          <p className="text-xs text-surface-300 select-none">{copy.description}</p>
+        )}
         {copy.detail && (
           <p className="font-mono text-xs break-words text-surface-400">{copy.detail}</p>
         )}

@@ -19,6 +19,23 @@ pub struct Settings {
     /// The colour scheme.
     #[serde(rename = "appearance.theme")]
     pub theme: Theme,
+    /// The game install a run is judged against: its folder, its `Game` folder or
+    /// `DATA/FINAL`. None until it is found or picked.
+    #[serde(rename = "inputs.game")]
+    pub game: Option<String>,
+    /// The hash cache's folder. None: the one LTK Manager keeps on this machine (#ADR-0048).
+    #[serde(rename = "inputs.hashes")]
+    pub hashes: Option<String>,
+    /// The meta schema database. None: the copy LTK Manager keeps on this machine.
+    #[serde(rename = "inputs.schema")]
+    pub schema: Option<String>,
+    /// The history index's folder. None: a run is judged against the install alone
+    /// (#ADR-0047).
+    #[serde(rename = "inputs.history")]
+    pub history: Option<String>,
+    /// The folder a package is written in. None: the mod's own folder.
+    #[serde(rename = "output.folder")]
+    pub output: Option<String>,
 }
 
 /// A colour scheme.

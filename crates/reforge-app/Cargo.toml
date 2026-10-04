@@ -20,6 +20,9 @@ tauri-build.workspace = true
 [dependencies]
 reforge.workspace = true
 tauri.workspace = true
+tauri-plugin-dialog.workspace = true
+ltk_mod_core.workspace = true
+camino.workspace = true
 specta.workspace = true
 specta-typescript.workspace = true
 tauri-specta.workspace = true
@@ -32,4 +35,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+reforge-testkit.workspace = true
 tempfile.workspace = true
+zip.workspace = true

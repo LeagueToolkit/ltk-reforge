@@ -10,15 +10,124 @@ export const commands = {
 	saveSettings: (settings: Settings) => __TAURI_INVOKE<({ ok: true; value: Settings }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("save_settings", { settings }),
 	/**  Every fixup of the library, in the order they run. */
 	fixupCatalog: () => __TAURI_INVOKE<({ ok: true; value: FixupEntry[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("fixup_catalog"),
+	/**  Every check of the library, in the order they run. */
+	checkCatalog: () => __TAURI_INVOKE<({ ok: true; value: CheckEntry[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("check_catalog"),
+	/**  The game install on this machine, found as LTK Manager finds it. None when none is found. */
+	findGame: () => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("find_game"),
+	/**  The inputs the settings choose, opened, and what opening them found. */
+	openInputs: () => __TAURI_INVOKE<({ ok: true; value: InputsView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("open_inputs"),
+	/**  A repair of a mod, as far as the request asks, against the inputs the settings choose. */
+	runRepair: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_repair", { request }),
 };
 
 /* Types */
+/**  What a fixup left where a value was. */
+export type AfterView = 
+/**  The value in the form the target build reads. */
+{ as: "value"; 
+/**  Its kind. */
+kind: string; 
+/**  The value on one line. */
+text: string } | 
+/**  The same value under another field or in another struct. */
+{ as: "moved"; 
+/**  Where it is now. */
+to: string } | 
+/**  Removed, with nothing lost. */
+{ as: "removed" } | 
+/**  Removed, and the mod's own build read it. */
+{ as: "lost" } | 
+/**  Left as it was: no conversion to the kind the target build reads. */
+{ as: "unconvertible"; 
+/**  The kind the target build reads there. */
+wants: string };
+
 /**  What went wrong, as the fields the front end translates over. */
 export type AppError = 
 /**  The settings file did not write. */
 { code: "SETTINGS_UNWRITABLE"; detail: string } | 
 /**  The app could not name its data directory. */
-{ code: "NO_DATA_DIR"; detail: string };
+{ code: "NO_DATA_DIR"; detail: string } | 
+/**  No game install is chosen. */
+{ code: "NO_GAME" } | 
+/**  The game install chosen does not open. */
+{ code: "GAME_UNREADABLE"; path: string; detail: string } | 
+/**  The name tables do not open. */
+{ code: "NAMES_UNREADABLE"; detail: string } | 
+/**  A fixup id the library does not have. */
+{ code: "UNKNOWN_FIXUP"; id: string } | 
+/**  A check id the library does not have. */
+{ code: "UNKNOWN_CHECK"; id: string } | 
+/**  A filter of the findings that block the write does not parse. */
+{ code: "BAD_FILTER"; filter: string; detail: string } | 
+/**  A write was asked for with no folder to write in. */
+{ code: "NO_OUTPUT" } | 
+/**  A fault of the app's own, with no remedy a person can take. */
+{ code: "INTERNAL"; detail: string };
+
+/**  What a fixup did at one place. */
+export type ChangeView = {
+	/**  The object's entry hash, as eight hex digits. */
+	entry: string,
+	/**  Whether a unit's skin entry reaches the object. */
+	reached: boolean,
+	/**  Where the value was, its fields spelled. */
+	path: string,
+	/**  The value before. None for a value the fixup added. */
+	before?: ValueView | null,
+	/**  What is there after. */
+	after: AfterView,
+};
+
+/**  A check of the package, as the list of checks shows it. */
+export type CheckEntry = {
+	/**  The name it is turned on and off by. */
+	id: string,
+	/**  One line for a person: what it checks. */
+	title: string,
+	/**  The record it rests on, by its code. */
+	record: string | null,
+	/**  Whether the standard set holds it. */
+	default: boolean,
+};
+
+/**  One finding of a run. */
+export type Finding = {
+	/**  Its place in the run's log. */
+	id: number,
+	/**  Its code: `docs/design/CODES.md` lists every one. */
+	code: string,
+	/**  What the output loses. */
+	severity: Severity,
+	/**  What it speaks to: `run`, `input`, `decision`, `output`. */
+	channel: string,
+	/**  The stage that raised it. */
+	stage: string,
+	/**  What it is about. */
+	subject: Subject,
+	/**  The fixup or check that raised it. */
+	by?: string | null,
+	/**  The record it rests on, by its code. */
+	record?: string | null,
+	/**  One line for a person. */
+	message: string,
+};
+
+/**  What one fixup did. */
+export type FixupChanges = {
+	/**  The fixup's id. */
+	fixup: string,
+	/**  Values kept, in the form the target build reads. */
+	changed: number,
+	/**  Values removed with nothing lost. */
+	removed: number,
+	/**  Values removed that the mod's own build read. */
+	lost: number,
+	/**  Values with no conversion, left as they are. */
+	unconvertible: number,
+	/**  Its changes, in the order made. */
+	changes: ChangeView[],
+};
 
 /**  A fixup, as the list of fixups shows it. */
 export type FixupEntry = {
@@ -47,6 +156,140 @@ export type FixupPhase =
 /**  What the target build does not declare, removed. */
 { name: "strip" };
 
+/**  The game install as read. */
+export type GameView = {
+	/**  The folder. */
+	path: string,
+	/**  The build it says it is. */
+	build: string | null,
+	/**  How many of its WADs did not read. */
+	unreadable_wads: number,
+};
+
+/**  The hash tables as read. */
+export type HashesView = {
+	/**  The hash cache's folder. None when the platform names none. */
+	dir: string | null,
+	/**  The tables of it that opened. */
+	tables: string[],
+};
+
+/**  The history index as read. */
+export type HistoryView = {
+	/**  Its folder. None when none was chosen or it did not open. */
+	dir: string | null,
+	/**  The newest build it holds. */
+	newest_build: string | null,
+	/**  How many builds it holds. */
+	builds: number | null,
+};
+
+/**  The inputs as the front end shows them: each one, and what opening them found. */
+export type InputsView = {
+	/**  The game install. */
+	game: GameView,
+	/**  The hash tables. */
+	hashes: HashesView,
+	/**  The schema database. */
+	schema: SchemaView,
+	/**  The history index. */
+	history: HistoryView,
+	/**  What opening them found, as each run reports it. */
+	findings: Finding[],
+};
+
+/**  The mod, as its archive and `META/info.json` name it. */
+export type ModView = {
+	/**  The archive's file name. */
+	file_name: string,
+	/**  The first twelve hex digits of the archive's SHA-256. */
+	mod_id: string,
+	/**  Its name. */
+	name?: string | null,
+	/**  Its author. */
+	author?: string | null,
+	/**  Its version. */
+	version?: string | null,
+	/**  Its description. */
+	description?: string | null,
+};
+
+/**  The package a run built. */
+export type PackageView = {
+	/**  The project's name. */
+	name: string,
+	/**  Its version. */
+	version: string,
+	/**  How many chunks it holds. */
+	chunks: number,
+	/**  How many patches it holds. */
+	patches: number,
+};
+
+/**  What the front end asks a run to do. */
+export type RunRequest = {
+	/**  The mod archive: a `.fantome`, or a zip of the same layout. */
+	archive: string,
+	/**  The last stage to run. `write` runs every stage and writes the package. */
+	through: StageName,
+	/**  The settings. */
+	settings: RunSettings,
+	/**  The folder the `.modpkg` and its report are written in. Required to write. */
+	out: string | null,
+};
+
+/**
+ *  The settings a run takes, each one the library's (`docs/design/ROADMAP-UX.md`, "Two views
+ *  of one run"). The default is the standard set.
+ */
+export type RunSettings = {
+	/**  Fixups turned off. */
+	fixups_off?: string[],
+	/**  Fixups turned on that the standard set leaves out. */
+	fixups_on?: string[],
+	/**  Checks turned off. */
+	checks_off?: string[],
+	/**  Carry stale copies as the mod's own files. */
+	keep_stale?: boolean,
+	/**
+	 *  Filters of the findings that refuse the write: codes or areas and `key=value` terms.
+	 *  None blocks by default (#ADR-0003).
+	 */
+	block?: string[],
+};
+
+/**  A run as the views show it. */
+export type RunView = {
+	/**  Each stage of the run's kind, in order, and how far it got. */
+	stages: StageView[],
+	/**  The mod, once it was read. */
+	meta: ModView | null,
+	/**  The fatal finding that ended the run, by its id. */
+	halted: number | null,
+	/**  Every finding, in the order raised: the inputs' first. */
+	findings: Finding[],
+	/**  What each fixup did, in the order they ran. */
+	changes: FixupChanges[],
+	/**  The package, once it was built. */
+	package: PackageView | null,
+	/**  The `.modpkg` written. */
+	written: string | null,
+	/**  Whether a finding the settings block refused the write. */
+	refused: boolean,
+	/**  An input that did not answer, which ended the run. */
+	fault: string | null,
+	/**  How long the run took, in milliseconds. Shown, never written to a report. */
+	millis: number,
+};
+
+/**  The schema database as read. */
+export type SchemaView = {
+	/**  The file that was read. None when none was found or it did not read. */
+	path: string | null,
+	/**  The newest build number it describes. */
+	latest_build: string | null,
+};
+
 /**
  *  The app's settings, as `settings.json` holds them.
  * 
@@ -55,6 +298,81 @@ export type FixupPhase =
 export type Settings = {
 	/**  The colour scheme. */
 	"appearance.theme"?: Theme,
+	/**
+	 *  The game install a run is judged against: its folder, its `Game` folder or
+	 *  `DATA/FINAL`. None until it is found or picked.
+	 */
+	"inputs.game"?: string | null,
+	/**  The hash cache's folder. None: the one LTK Manager keeps on this machine (#ADR-0048). */
+	"inputs.hashes"?: string | null,
+	/**  The meta schema database. None: the copy LTK Manager keeps on this machine. */
+	"inputs.schema"?: string | null,
+	/**
+	 *  The history index's folder. None: a run is judged against the install alone
+	 *  (#ADR-0047).
+	 */
+	"inputs.history"?: string | null,
+	/**  The folder a package is written in. None: the mod's own folder. */
+	"output.folder"?: string | null,
+};
+
+/**  How much a finding costs the output, as the report names it. */
+export type Severity = 
+/**  Nothing is lost. */
+"note" | 
+/**  The output may differ from what the author saw, or an input limits the run. */
+"warning" | 
+/**  Something of the mod is not in the output, or is wrong in it. */
+"error" | 
+/**  There is no output. */
+"fatal";
+
+/**  A stage of a run, in the order they run. */
+export type StageName = 
+/**  The archive read under its caps. */
+"read" | 
+/**  The WADs, files, bins and units found. */
+"load" | 
+/**  The values brought to the target build. */
+"fix" | 
+/**  What is true of the mod. A port's alone. */
+"facts" | 
+/**  The target chosen. A port's alone. */
+"decide" | 
+/**  The units placed. A port's alone. */
+"plan" | 
+/**  The package built. */
+"build" | 
+/**  The package checked as the game would apply it. */
+"check" | 
+/**  The package written. */
+"write";
+
+/**  How far a stage got. */
+export type StageState = 
+/**  It ran to its end. */
+"ran" | 
+/**  A fatal finding ended the run in it. */
+"halted" | 
+/**  The run did not reach it. */
+"not-run";
+
+/**  A stage of the run and how far it got. */
+export type StageView = {
+	/**  The stage. */
+	stage: StageName,
+	/**  How far it got. */
+	state: StageState,
+};
+
+/**  What a finding is about. */
+export type Subject = {
+	/**  The kind of thing: `wad`, `file`, `object`, `input`. */
+	kind: string,
+	/**  The id the report's tables join on. */
+	id: string,
+	/**  The name for a person. */
+	name: string,
 };
 
 /**  A colour scheme. */
@@ -65,4 +383,12 @@ export type Theme =
 "dark" | 
 /**  Light. */
 "light";
+
+/**  A value on one line, with its kind. */
+export type ValueView = {
+	/**  The value's kind, as the meta schema names kinds. */
+	kind: string,
+	/**  The value on one line. */
+	text: string,
+};
 

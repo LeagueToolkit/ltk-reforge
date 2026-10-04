@@ -1,8 +1,10 @@
-//! The fixups as the front end lists them. The library's types carry no `specta::Type`, since
-//! `reforge` holds nothing a UI needs alone (#ADR-0046), so these mirror them on the wire.
+//! The fixups and the checks as the front end lists them. The library's types carry no
+//! `specta::Type`, since `reforge` holds nothing a UI needs alone (#ADR-0046), so these mirror
+//! them on the wire.
 
 use reforge::fixups::FixupSet;
 use reforge::model::{FixupInfo, Phase};
+use reforge::package::{CheckInfo, CheckSet};
 use serde::Serialize;
 
 /// A fixup, as the list of fixups shows it.
@@ -65,4 +67,33 @@ impl From<&FixupInfo> for FixupEntry {
 /// Every fixup of the library, in the order they run.
 pub fn catalog() -> Vec<FixupEntry> {
     FixupSet::catalog().iter().map(FixupEntry::from).collect()
+}
+
+/// A check of the package, as the list of checks shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+pub struct CheckEntry {
+    /// The name it is turned on and off by.
+    pub id: String,
+    /// One line for a person: what it checks.
+    pub title: String,
+    /// The record it rests on, by its code.
+    pub record: Option<String>,
+    /// Whether the standard set holds it.
+    pub default: bool,
+}
+
+impl From<&CheckInfo> for CheckEntry {
+    fn from(info: &CheckInfo) -> Self {
+        Self {
+            id: info.id.to_string(),
+            title: info.title.to_string(),
+            record: info.record.map(|record| record.to_string()),
+            default: info.default,
+        }
+    }
+}
+
+/// Every check of the library, in the order they run.
+pub fn checks() -> Vec<CheckEntry> {
+    CheckSet::catalog().iter().map(CheckEntry::from).collect()
 }

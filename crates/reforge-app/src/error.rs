@@ -20,6 +20,42 @@ pub enum AppError {
     /// The app could not name its data directory.
     #[error("no data directory: {detail}")]
     NoDataDir { detail: String },
+    /// No game install is chosen.
+    #[error("no game install is chosen")]
+    NoGame,
+    /// The game install chosen does not open.
+    #[error("the game at {path} does not open: {detail}")]
+    GameUnreadable { path: String, detail: String },
+    /// The name tables do not open.
+    #[error("the name tables do not open: {detail}")]
+    NamesUnreadable { detail: String },
+    /// A fixup id the library does not have.
+    #[error("{id} is no fixup")]
+    UnknownFixup { id: String },
+    /// A check id the library does not have.
+    #[error("{id} is no check")]
+    UnknownCheck { id: String },
+    /// A filter of the findings that block the write does not parse.
+    #[error("the filter {filter} does not parse: {detail}")]
+    BadFilter { filter: String, detail: String },
+    /// A write was asked for with no folder to write in.
+    #[error("no folder to write the package in")]
+    NoOutput,
+    /// A fault of the app's own, with no remedy a person can take.
+    #[error("{detail}")]
+    Internal { detail: String },
+}
+
+/// An error and what caused it, on one line.
+pub(crate) fn chain(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        text.push_str(": ");
+        text.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    text
 }
 
 /// What a command answers: `{ ok: true, value }` or `{ ok: false, error }`.

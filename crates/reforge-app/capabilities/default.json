@@ -2,5 +2,5 @@
   "identifier": "default",
   "description": "What the app's one window may call",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-show"]
+  "permissions": ["core:default", "core:window:allow-show", "dialog:allow-open"]
 }

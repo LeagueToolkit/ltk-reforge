@@ -3,7 +3,8 @@
 The plan for the first release of reforge as a desktop app, and what a person starting that
 work needs to know of the library. The decisions are #ADR-0046 (a standalone app on LTK
 Manager's stack), #ADR-0047 (the history index, distributed and grown on the user's machine),
-#ADR-0048 (the hash tables on the machine) and #ADR-0049 (an AI agent as a caller, proposed).
+#ADR-0048 (the hash tables on the machine), #ADR-0049 (an AI agent as a caller, proposed) and
+#ADR-0050 (two views of one run).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
 
@@ -24,9 +25,16 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   the commands (`pnpm generate:types`) and committed; a test of the crate fails when they
   differ from the commands.
 - The settings are one JSON file in the app's data directory, a key per setting id
-  (`appearance.theme`).
-- The theme (`app/src/styles/`) and the components are LTK Manager's, copied. Its lint
-  rules apply as its own, so the warnings it gives on its components are given here too.
+  (`appearance.theme`, `inputs.game`, `output.folder`).
+- The theme (`app/src/styles/`) and the components are LTK Manager's, copied. reforge's own
+  red, taken from Ornn's base splash art, is `app/src/styles/reforge.css` over them. LTK
+  Manager's lint rules apply as its own, so the warnings it gives on its components are given
+  here too.
+- The crate's modules: `inputs` opens the inputs once and raises what they found into every
+  run's log, as the command raises it when it opens them; `state` holds them open for the
+  settings as they stand; `run` takes a request (the archive, the last stage, the settings,
+  the folder written in) through a new `Repairer` run; `view` reads the views of a run from
+  the report.
 - The stack is LTK Manager's: Tauri 2, React and TypeScript, Vite, Tailwind, Base UI
   components, TanStack router, query, form and table, zustand, zod, paraglide for messages,
   and `tauri-specta` for typed commands. Where a choice of library or convention comes up,
@@ -83,7 +91,14 @@ before it.
 | the schema database | LTK Manager's copy on the machine | the types come from the install's bins alone |
 | the history index | fetched prebuilt, or built from a clone (#ADR-0047) | the run is judged against the install alone, and says so |
 
-The app says which inputs it read and how old each is, since a report differs with them.
+The app says which inputs it read and how old each is, since a report differs with them: the
+install's build, the newest build the schema and the history index describe, and what opening
+each one raised. On a first start with no game chosen, the app looks for one with
+`ltk_mod_core`, as LTK Manager does, and chooses the one it finds.
+
+On this machine (2026-10-04), the inputs open in 1.7 s with the name-hash index already built,
+and a repair of a mod of 27 MB runs through check in 0.4 s and through write in 0.5 s. The
+report of that run is the command's, byte for byte, with the same inputs.
 
 ## The history index
 
@@ -102,15 +117,50 @@ The app says which inputs it read and how old each is, since a report differs wi
 Not settled: who builds and publishes the prebuilt index, how the commits after an index's
 head are fetched with no full clone, and how one bin entry's text is fetched with no clone.
 
+## Two views of one run
+
+#ADR-0050. The simple view runs every stage with the standard settings and writes the
+`.modpkg`. The advanced view shows the stages in order, each with whether it ran, its result
+and its findings, and runs up to a stage the user chooses.
+
+The settings a run takes, each where the library keeps it, and nothing beside them:
+
+| setting | where | repair | port |
+|---|---|---|---|
+| a fixup on or off, and rules added | `FixupSelection` | yes | yes |
+| a check on or off | `CheckSet` | yes | yes |
+| the target policy (auto, base, origin, slot, a skin) and the level of animation reuse | `Policy` | | yes |
+| keep stale copies | `Repairer`, `Porter` | yes | yes |
+| cut events from the game's bank only | `Porter` | | yes |
+| which findings block the write | `DiagnosticPolicy` | yes | yes |
+
+The decide stage gives, per unit, the chosen skin, the reason, every candidate with its checks,
+and what the other levels of animation reuse choose. The advanced view shows all of it, and the
+user picks another policy and runs again.
+
+- The simple view's one button runs every stage with `severity=error` blocking the write. A
+  mod with no error is written by that run. A mod with one is not: the view shows every
+  finding, errors first, and a second button writes it with nothing blocking, as a new run.
+- The app holds no rule about a mod. It shows what the library returned and passes settings in.
+- Every finding shows its code. A fixup and a finding that name a record link to it.
+- A mod's name, description and paths reach the screen through `clean`: the crate reads its
+  views of a run from `Report::to_json`, which writes every character a terminal acts on as an
+  escape.
+- Wanted, and a library change: a target per unit. The policy chooses for all units at once.
+
 ## The first version
 
 1. The shell of the app: the crate, the front end, the typed commands, the settings.
 2. The inputs found, shown and changed by the user.
-3. A repair: pick a mod, list the fixups with their records and turn each on or off, run,
-   show what each fixup changed and every finding, write the `.modpkg`.
-4. The history index, as far as step 2 of the list above.
-5. A selection of fixups saved and loaded, and a rule added in the app.
-6. A port, with the decision and its candidates shown.
+3. A repair in the simple view: pick a mod, run every stage, show what each fixup changed and
+   every finding, write the `.modpkg`.
+4. The advanced view of a repair: the stages, a run up to one of them, the fixups and checks
+   turned on and off, the findings that block the write.
+5. The history index, as far as step 2 of the list above.
+6. A selection of fixups saved and loaded, and a rule added in the app.
+7. A port in both views, with the decision, its candidates and the policy.
+
+Steps 1 to 4 are built. Step 5 waits on who publishes the prebuilt index.
 
 Two faults of the crates reforge reads and packs with come before a release
 ([ROADMAP.md](ROADMAP.md), "Upstream"): a crafted archive can end the process, which a tool
