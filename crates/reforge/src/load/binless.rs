@@ -165,7 +165,7 @@ impl<'a> Binless<'a> {
             .iter()
             .filter_map(|&file| match m.files[file].source {
                 FileSource::Made { from, .. } => Some(from),
-                FileSource::Archive | FileSource::Game => None,
+                FileSource::Archive | FileSource::Rewritten { .. } | FileSource::Game => None,
             })
             .collect();
         let mut out = Overrides::default();

@@ -24,7 +24,7 @@ use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
 use crate::game::Game;
 use crate::history::HistoryError;
 use crate::model::entity::{FileId, FileKind, MadeBy, WadId};
-use crate::model::{ChunkPath, panic_text};
+use crate::model::{ChunkPath, FixupInfo, Phase, panic_text};
 
 /// A format the game dropped for another at the same stem.
 #[derive(Debug, PartialEq, Eq)]
@@ -408,13 +408,14 @@ impl LegacyFormats {
 }
 
 impl FileFixup for LegacyFormats {
-    fn id(&self) -> &'static str {
-        "legacy-formats"
-    }
-
-    fn records(&self) -> &'static [Record] {
-        const RECORDS: &[Record] = &[Record::game_change(7), Record::game_change(8)];
-        RECORDS
+    fn info(&self) -> &FixupInfo {
+        static INFO: FixupInfo = FixupInfo::built_in(
+            "legacy-formats",
+            "Files in a format the game dropped, made the format it reads",
+            &[Record::game_change(7), Record::game_change(8)],
+            Phase::Files,
+        );
+        &INFO
     }
 
     fn destinations(&self, path: &ChunkPath, _game: &dyn Game) -> Vec<ChunkPath> {

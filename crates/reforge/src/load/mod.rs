@@ -5,10 +5,12 @@
 //! The stage is five steps, each a method of [`Loader`], in this order:
 //!
 //! 1. `open`: the WADs and files of the archive;
-//! 2. `fix_files`: the file fixups, so that what they make is seen as the mod's own file;
+//! 2. `fix_files`: the file fixups that make files, so that what they make is seen as the
+//!    mod's own file;
 //! 3. `take_game_bins`: the game's bins for a WAD with no skin bin (#MOD-ARTIFACT-0013);
 //! 4. `survey`: WAD roles, characters and skin units, by path;
-//! 5. `resolve`: the bins the client loads, each unit's load and entry, each file's use.
+//! 5. `resolve`: the bins the client loads, each unit's load and entry, each file's use, then
+//!    the file fixups that rewrite a file the client uses.
 //!
 //! Ids are handed out in creation order: WADs by lowercase name, files by path hash within a
 //! WAD with the files made after them, bins in load order (each unit's load in unit order,
@@ -17,6 +19,7 @@
 //!
 //! `docs/design/ARCHITECTURE.md`, "The model" and "Fixups" (file fixups).
 
+pub mod bank;
 mod binless;
 mod client;
 pub mod dating;
@@ -30,12 +33,14 @@ pub mod rework;
 mod stale;
 mod survey;
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use self::bank::BankId;
 use self::binless::Binless;
 use self::client::ClientLoad;
 pub use self::dating::Dating;
-pub use self::files::{FileFixCx, FileFixup, NewFile, one_record};
+pub use self::files::{FileFixCx, FileFixup, FileStep, NewFile, one_record};
 pub use self::findings::{
     BinUnreadable, CODES, ChampionAmbiguous, ChampionGuessed, EntryDuplicates, EqualToGame,
     FormerPathFiles, LinksMissing, LocalePacked, LocaleWad, MissingLink, NoSkin, Restoration,
@@ -54,9 +59,9 @@ use crate::diag::{Halted, Sink};
 use crate::env::Env;
 use crate::game::{GameError, NameBook, Speller};
 use crate::history::HistoryError;
-use crate::model::entity::{FileId, FileNode, FileSource, FileUse, ModWad, WadRole};
+use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, ModWad, WadRole};
 use crate::model::known::{class, field};
-use crate::model::{ChunkPath, Mod, Spell, WadName};
+use crate::model::{ChunkPath, Mod, Spell, WadHash, WadName, bin, value};
 
 /// How many bins one root's load follows, the root included.
 pub const MAX_LOAD_BINS: usize = 64;
@@ -127,9 +132,14 @@ impl LoadOptions {
     }
 
     /// The built-in file fixups, in the order they run. `moved-assets` comes after
-    /// `legacy-formats`: it skips a file a twin was made of.
+    /// `legacy-formats`: it skips a file a twin was made of. `bank-id` runs at a later step
+    /// than both ([`FileStep::AfterResolve`]), wherever it is in the list.
     pub fn standard_fixups() -> Vec<Arc<dyn FileFixup>> {
-        vec![Arc::new(LegacyFormats), Arc::new(MovedAssets)]
+        vec![
+            Arc::new(LegacyFormats),
+            Arc::new(MovedAssets),
+            Arc::new(BankId),
+        ]
     }
 
     /// Turns a file fixup off by its id, `legacy-formats`. An id of no fixup in the list
@@ -144,6 +154,14 @@ impl LoadOptions {
     #[must_use]
     pub fn without_fixups(mut self) -> Self {
         self.fixups.clear();
+        self
+    }
+
+    /// Runs these file fixups, in this order, and no other: what a chosen set of fixups
+    /// holds for the file set.
+    #[must_use]
+    pub fn file_fixups(mut self, fixups: Vec<Arc<dyn FileFixup>>) -> Self {
+        self.fixups = fixups;
         self
     }
 
@@ -302,6 +320,49 @@ impl<'a> Loader<'a> {
         }
     }
 
+    /// Gives each file that has no path the path a bin of the mod spells for its hash, for the
+    /// file fixups to read, and says which files it named. The caller takes the paths back.
+    ///
+    /// A file fixup finds the file it makes a twin of by its path. A chunk of a packed WAD at
+    /// a path the game dropped has a path only where a bin of the mod spells it, which no
+    /// table does, and `resolve` learns that path after the fixups ran. Without it the twin is
+    /// missing from a repair, and is made when the repaired mod is repaired again (#ADR-0011).
+    /// The path is the fixups' alone: what names a file for the rest of the run is what the
+    /// client loads, read in `resolve`.
+    fn lend_spelled_paths(m: &mut Mod) -> Vec<FileId> {
+        if m.files.values().all(|file| file.path.is_some()) {
+            return Vec::new();
+        }
+        let mut spelled: BTreeMap<WadHash, ChunkPath> = BTreeMap::new();
+        for file in m.files.values().filter(|file| file.kind == FileKind::Bin) {
+            let Ok(parsed) = bin::parse(&file.bytes) else {
+                continue;
+            };
+            let objects = parsed.objects.iter();
+            for named in objects.flat_map(|object| value::file_refs(&object.value)) {
+                let path = named.spelled().and_then(|path| ChunkPath::parse(path).ok());
+                if let Some(path) = path {
+                    spelled.entry(path.hash()).or_insert(path);
+                }
+            }
+        }
+        let unnamed: Vec<FileId> = m
+            .files
+            .iter()
+            .filter(|(_, file)| file.path.is_none())
+            .map(|(id, _)| id)
+            .collect();
+        let mut lent = Vec::new();
+        for id in unnamed {
+            if let Some(path) = spelled.get(&m.files[id].hash) {
+                m.files[id].path = Some(path.clone());
+                m.named_by_table.insert(id);
+                lent.push(id);
+            }
+        }
+        lent
+    }
+
     /// Step 1: the mod's WADs and files as the archive ships them. No WAD has a role and no
     /// file a use yet.
     pub fn open(&mut self, archive: Archive) -> Mod {
@@ -345,15 +406,17 @@ impl<'a> Loader<'a> {
         m
     }
 
-    /// Step 2: runs the file fixups the options hold, in their order. Each raises through a
-    /// sink that names it, and the one record it implements when it implements one.
-    ///
-    /// What a fixup makes is not charged to the archive's budget: an SCB written from an SCO
-    /// is new bytes, of about the size of the file it was made from.
-    pub fn fix_files(&mut self, m: &mut Mod, sink: &mut Sink<'_>) -> Result<(), Fault> {
+    /// Runs the file fixups of one step, in the order the options hold them. Each raises
+    /// through a sink that names it, and the one record it implements when it implements one.
+    fn run_file_fixups(
+        &mut self,
+        step: FileStep,
+        m: &mut Mod,
+        sink: &mut Sink<'_>,
+    ) -> Result<(), Fault> {
         let fixups = self.options.fixups.clone();
-        for fixup in fixups {
-            let mut sink = sink.by(fixup.id(), one_record(&*fixup));
+        for fixup in fixups.iter().filter(|fixup| fixup.step() == step) {
+            let mut sink = sink.by(fixup.id(), one_record(&**fixup));
             fixup.fix(&mut FileFixCx {
                 module: m,
                 game: self.env.game(),
@@ -363,6 +426,22 @@ impl<'a> Loader<'a> {
                 sink: &mut sink,
             })?;
         }
+        Ok(())
+    }
+
+    /// Step 2: runs the file fixups the options hold that make files
+    /// ([`FileStep::BeforeSurvey`]), in their order.
+    ///
+    /// What a fixup makes is not charged to the archive's budget: an SCB written from an SCO
+    /// is new bytes, of about the size of the file it was made from.
+    pub fn fix_files(&mut self, m: &mut Mod, sink: &mut Sink<'_>) -> Result<(), Fault> {
+        let lent = Self::lend_spelled_paths(m);
+        let ran = self.run_file_fixups(FileStep::BeforeSurvey, m, sink);
+        for id in lent {
+            m.files[id].path = None;
+            m.named_by_table.remove(&id);
+        }
+        ran?;
         self.name_files(m);
         Ok(())
     }
@@ -381,11 +460,12 @@ impl<'a> Loader<'a> {
     }
 
     /// Step 5: reads the bins the client loads, gives each unit its load and its skin entry,
-    /// and each file its use.
+    /// and each file its use. Then runs the file fixups the options hold that rewrite a file
+    /// the client uses ([`FileStep::AfterResolve`]), in their order.
     pub fn resolve(&mut self, m: &mut Mod, sink: &mut Sink<'_>) -> Result<(), Fault> {
         ClientLoad::new(self.run(m)).run(sink)?;
         self.name_files(m);
-        Ok(())
+        self.run_file_fixups(FileStep::AfterResolve, m, sink)
     }
 
     /// The whole stage: the five steps in order. The results on the files (`Dating`,

@@ -302,6 +302,11 @@ fn a_base_mesh_and_skeleton_take_a_base_suffix() {
         rule("assets/characters/vi/skins/base/vi.skl").as_deref(),
         Some("assets/characters/vi/skins/base/vi_base.skl")
     );
+    // #GAME-CHANGE-0011: no other file of the folder.
+    assert_eq!(rule("assets/characters/vi/skins/base/vi.dds"), None);
+    assert_eq!(rule("assets/characters/vi/skins/base/vi_tx_cm.tex"), None);
+    assert_eq!(rule("assets/characters/vi/skins/base/vi.bin"), None);
+    assert_eq!(rule("assets/characters/vi/skins/base/vi"), None);
     // Not a name that has the suffix or holds a tag, and not a skin's own folder.
     assert_eq!(rule("assets/characters/vi/skins/base/vi_base.skn"), None);
     assert_eq!(rule("assets/characters/vi/skins/base/vi.rework.skn"), None);
@@ -364,6 +369,7 @@ fn the_candidates_of_a_path_are_each_rename_as_the_twin_and_then_as_it_is() {
         ["assets/characters/test/skins/base/test_base.skn"]
     );
     assert!(candidate_paths("assets/characters/test/skins/base/test_base.skn").is_empty());
+    assert!(candidate_paths("assets/characters/test/skins/base/test.dds").is_empty());
     assert!(candidate_paths("assets/characters/test/skins/skin03/test.skn").is_empty());
     // A bin Riot shares between skins moved into the character's folder.
     assert_eq!(
@@ -539,6 +545,36 @@ fn a_base_mesh_is_made_with_the_suffix_the_game_ships_it_under() {
     let moved = &one::<FilesMoved>(&f.log).files[0];
     assert_eq!(moved.rename.name, "base-suffix");
     assert_eq!(moved.records[0].to_string(), "#GAME-CHANGE-0011");
+}
+
+#[test]
+fn a_base_texture_is_not_made_under_a_base_suffix() {
+    // #GAME-CHANGE-0011: the game renamed the mesh and the skeleton. A texture it once held in
+    // the base folder is no earlier name of the one it ships with the suffix.
+    let (old, new) = (format!("{BASE}/vi.dds"), format!("{BASE}/vi_base.tex"));
+    let mut f = Fixture::new();
+    f.game.insert(&new, b"the game's other texture".to_vec());
+    f.game
+        .insert(&format!("{BASE}/vi_base.dds"), b"and its dds".to_vec());
+    f.file(&old, &dds());
+    f.run(&MovedAssets, &history(&[&old]));
+    assert!(f.at(&new).is_none());
+    assert_eq!(f.module.files.len(), 1);
+    assert!(f.log.is_empty(), "{:?}", f.codes());
+    // The file is covered by no file at the suffixed name.
+    let path = ChunkPath::parse(&old).unwrap();
+    assert!(MovedAssets.destinations(&path, &f.game).is_empty());
+
+    // The skeleton beside it is made.
+    let (old, new) = (format!("{BASE}/vi.skl"), format!("{BASE}/vi_base.skl"));
+    f.game.insert(&new, b"the game's skeleton".to_vec());
+    f.file(&old, b"the mod's own skeleton");
+    f.run(&MovedAssets, &history(&[&old]));
+    assert!(f.made(&new).is_some());
+    assert_eq!(
+        one::<FilesMoved>(&f.log).files[0].rename.name,
+        "base-suffix"
+    );
 }
 
 #[test]

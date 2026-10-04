@@ -21,8 +21,8 @@ use super::legacy::{
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
 use crate::game::Game;
 use crate::history::HistoryError;
-use crate::model::ChunkPath;
 use crate::model::entity::{FileId, FileKind, FileSource, MadeBy, WadId};
+use crate::model::{ChunkPath, FixupInfo, Phase};
 
 /// A file name and the directory it is in, as a step of a rename reads and gives them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,6 +62,10 @@ impl Name {
     }
 }
 
+/// The extensions of the files that took a `_base` suffix: the mesh and the skeleton, and no
+/// other file of the folder (#GAME-CHANGE-0011).
+const BASE_SUFFIXED: [&str; 2] = ["skn", "skl"];
+
 /// One step of a rename, from an asset's name at an earlier build to a later one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
@@ -70,8 +74,8 @@ pub enum Step {
     DropVariantTag,
     /// `4x_lux_base_tx_cm.dds` to `lux_base_tx_cm.dds`: the prefix is dropped.
     DropPrefix(&'static str),
-    /// `skins/base/vi.skn` to `skins/base/vi_base.skn`: a name in a base skin's folder takes
-    /// the suffix, unless it has it or holds a variant tag.
+    /// `skins/base/vi.skn` to `skins/base/vi_base.skn`: a mesh or a skeleton in a base skin's
+    /// folder takes the suffix, unless it has it or holds a variant tag.
     AddBaseSuffix,
     /// `data/darius_skins_skin0_skins_skin1.bin` to
     /// `data/characters/darius/darius_multi_skins_skin0_skins_skin1.bin`.
@@ -95,8 +99,10 @@ impl Step {
                 .map(|rest| name.renamed(rest.to_string())),
             Step::AddBaseSuffix => {
                 let (stem, extension) = base.rsplit_once('.')?;
-                let applies =
-                    dir.ends_with("/skins/base") && !stem.ends_with("_base") && !stem.contains('.');
+                let applies = BASE_SUFFIXED.contains(&extension)
+                    && dir.ends_with("/skins/base")
+                    && !stem.ends_with("_base")
+                    && !stem.contains('.');
                 applies.then(|| name.renamed(format!("{stem}_base.{extension}")))
             }
             Step::IntoCharacterFolder => {
@@ -467,12 +473,14 @@ impl MovedAssets {
 }
 
 impl FileFixup for MovedAssets {
-    fn id(&self) -> &'static str {
-        "moved-assets"
-    }
-
-    fn records(&self) -> &'static [Record] {
-        &[VARIANT_TAG, RESOLUTION_PREFIX, BASE_SUFFIX, SHARED_BIN]
+    fn info(&self) -> &FixupInfo {
+        static INFO: FixupInfo = FixupInfo::built_in(
+            "moved-assets",
+            "Files at a path the game shipped once, made where it ships the asset",
+            &[VARIANT_TAG, RESOLUTION_PREFIX, BASE_SUFFIX, SHARED_BIN],
+            Phase::Files,
+        );
+        &INFO
     }
 
     fn destinations(&self, path: &ChunkPath, game: &dyn Game) -> Vec<ChunkPath> {

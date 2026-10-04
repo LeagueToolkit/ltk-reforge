@@ -14,7 +14,7 @@ use reforge::load::{
     self, CODES, FileFixCx, FileFixup, LoadError, LoadOptions, Loader, NewFile, against,
 };
 use reforge::model::entity::{FileKind, FileSource, FileUse, MadeBy, WadRole};
-use reforge::model::{ChunkPath, Dump, DumpCx, NoNames, Spell, name_hash};
+use reforge::model::{ChunkPath, Dump, DumpCx, FixupInfo, NoNames, Phase, Spell, name_hash};
 use reforge_testkit::bins::{Skin, bin, blob, entry, linked_bin};
 use reforge_testkit::mods::FILE_NAME;
 use reforge_testkit::skins::{self, BASE_TEX, WAD, base_skin, skin_bin};
@@ -261,18 +261,14 @@ fn a_character_is_spelled_as_its_skin_entry_spells_it_and_its_names_are_learnt()
 /// A fixup that makes one file from the base texture and records that it ran.
 struct Copies {
     id: &'static str,
+    info: FixupInfo,
     to: &'static str,
-    records: &'static [Record],
     ran: Arc<Mutex<Vec<&'static str>>>,
 }
 
 impl FileFixup for Copies {
-    fn id(&self) -> &'static str {
-        self.id
-    }
-
-    fn records(&self) -> &'static [Record] {
-        self.records
+    fn info(&self) -> &FixupInfo {
+        &self.info
     }
 
     fn fix(&self, cx: &mut FileFixCx<'_, '_>) -> Result<(), HistoryError> {
@@ -315,8 +311,8 @@ fn the_file_fixups_run_in_the_order_of_the_options_each_through_its_own_sink() {
     let ran = Arc::new(Mutex::new(Vec::new()));
     let fixup = |id, to, records| Copies {
         id,
+        info: FixupInfo::built_in(id, "A copy of the base texture", records, Phase::Files),
         to,
-        records,
         ran: Arc::clone(&ran),
     };
     let options = LoadOptions::new()
@@ -356,16 +352,20 @@ fn the_file_fixups_run_in_the_order_of_the_options_each_through_its_own_sink() {
 }
 
 #[test]
-fn the_standard_file_fixups_are_legacy_formats_then_moved_assets() {
-    let ids = |options: &LoadOptions| -> Vec<&'static str> {
-        options.fixups.iter().map(|fixup| fixup.id()).collect()
+fn the_standard_file_fixups_are_legacy_formats_then_moved_assets_then_bank_id() {
+    let ids = |options: &LoadOptions| -> Vec<String> {
+        let fixups = options.fixups.iter();
+        fixups.map(|fixup| fixup.id().to_string()).collect()
     };
-    assert_eq!(ids(&LoadOptions::new()), ["legacy-formats", "moved-assets"]);
+    assert_eq!(
+        ids(&LoadOptions::new()),
+        ["legacy-formats", "moved-assets", "bank-id"]
+    );
     assert_eq!(
         ids(&LoadOptions::new().without_fixup("legacy-formats")),
-        ["moved-assets"]
+        ["moved-assets", "bank-id"]
     );
-    assert_eq!(ids(&LoadOptions::new().without_fixup("no-such")).len(), 2);
+    assert_eq!(ids(&LoadOptions::new().without_fixup("no-such")).len(), 3);
     assert!(ids(&LoadOptions::new().without_fixups()).is_empty());
     assert!(!LoadOptions::new().keep_stale);
 }
@@ -374,12 +374,14 @@ fn the_standard_file_fixups_are_legacy_formats_then_moved_assets() {
 struct Faulty;
 
 impl FileFixup for Faulty {
-    fn id(&self) -> &'static str {
-        "faulty"
-    }
-
-    fn records(&self) -> &'static [Record] {
-        &[]
+    fn info(&self) -> &FixupInfo {
+        static INFO: FixupInfo = FixupInfo::built_in(
+            "faulty",
+            "A history that does not answer",
+            &[],
+            Phase::Files,
+        );
+        &INFO
     }
 
     fn fix(&self, _: &mut FileFixCx<'_, '_>) -> Result<(), HistoryError> {

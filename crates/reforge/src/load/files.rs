@@ -1,5 +1,6 @@
-//! File fixups: repairs of the file set, made before characters and units are found, so that
-//! what they make is seen as the mod's own file at its path.
+//! File fixups: repairs of the file set. One that makes files runs before characters and units
+//! are found, so that what it makes is seen as the mod's own file at its path. One that
+//! rewrites a file the client uses runs once each file has its use.
 
 use std::sync::Arc;
 
@@ -7,17 +8,39 @@ use crate::diag::{Record, Sink};
 use crate::game::{Game, NameBook, Names, Speller};
 use crate::history::{History, HistoryError};
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, MadeBy, Occupied};
-use crate::model::{ChunkPath, ContentId, Mod, Spell};
+use crate::model::{ChunkPath, ContentId, FixupInfo, Mod, Spell};
 
-/// A repair of the mod's file set. It adds files and changes none: the file it starts from
-/// stays, for what the mod's own bins name.
+/// When in `load` a file fixup runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FileStep {
+    /// Before characters and units are found: a file it makes is surveyed as the mod's own.
+    BeforeSurvey,
+    /// After the bins the client loads are read: each file has its use, and its path where a
+    /// bin of the mod spells it.
+    AfterResolve,
+}
+
+/// A repair of the mod's file set. It adds a file beside the one it starts from, which stays
+/// for what the mod's own bins name, or rewrites the bytes of a file where it is.
 pub trait FileFixup: Send + Sync {
-    /// The name a caller turns it on and off by, `legacy-formats`.
-    fn id(&self) -> &'static str;
+    /// What a caller lists and toggles it by: its id, the records it implements, its phase.
+    /// A fixup of several records names, in each finding, the ones each file rests on.
+    fn info(&self) -> &FixupInfo;
 
-    /// The records it implements. A fixup of several names, in each finding, the ones each
-    /// file rests on.
-    fn records(&self) -> &'static [Record];
+    /// When in `load` it runs.
+    fn step(&self) -> FileStep {
+        FileStep::BeforeSurvey
+    }
+
+    /// The name a caller turns it on and off by, `legacy-formats`.
+    fn id(&self) -> &str {
+        self.info().id.as_str()
+    }
+
+    /// The records it implements.
+    fn records(&self) -> &[Record] {
+        &self.info().records
+    }
 
     /// Makes the files the rule gives, each with the file it was made from as its source. A
     /// history that does not answer is a fault, and nothing is made.
@@ -36,10 +59,7 @@ pub trait FileFixup: Send + Sync {
 /// The one record a fixup implements, for the sink it raises through. A fixup of several
 /// records leaves the sink's record empty.
 pub fn one_record(fixup: &dyn FileFixup) -> Option<Record> {
-    match fixup.records() {
-        [record] => Some(*record),
-        _ => None,
-    }
+    fixup.info().one_record()
 }
 
 /// A file a fixup makes from another file of the mod.
@@ -114,5 +134,19 @@ impl FileFixCx<'_, '_> {
                 by: file.by,
             },
         })
+    }
+
+    /// Replaces the bytes of a file with the ones a fixup wrote, where the file is. The file
+    /// keeps its id, its path, its kind and its use, and its size and content follow the new
+    /// bytes. A file the archive ships keeps the digest of the bytes it shipped in its source.
+    pub fn rewrite(&mut self, file: FileId, bytes: Arc<[u8]>, by: MadeBy) {
+        let node = &mut self.module.files[file];
+        if node.source == FileSource::Archive {
+            let shipped = node.content;
+            node.source = FileSource::Rewritten { by, shipped };
+        }
+        node.size = bytes.len() as u64;
+        node.content = ContentId::of(&bytes);
+        node.bytes = bytes;
     }
 }

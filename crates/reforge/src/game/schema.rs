@@ -19,7 +19,7 @@ use std::io;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use ltk_meta::PropertyKind as Kind;
+use ltk_meta::{PropertyKind as Kind, PropertyValueEnum};
 use serde::{Deserialize, Serialize};
 
 use super::Build;
@@ -73,6 +73,45 @@ pub struct FieldType {
 }
 
 impl FieldType {
+    /// The type a value has by its shape: its kind, a collection's key and item kinds, and
+    /// the class of the struct it is or of the first struct it holds. What a bin of the game
+    /// witnesses of a field the database does not describe.
+    pub fn of(value: &PropertyValueEnum) -> Self {
+        use PropertyValueEnum as V;
+        let class_of = |value: &V| match value {
+            V::Embedded(e) => Some(e.0.class_hash),
+            V::Struct(s) => Some(s.class_hash),
+            _ => None,
+        };
+        let first_class = |items: &[V]| items.iter().filter_map(class_of).find(|c| c.0 != 0);
+        let (key, item, class) = match value {
+            V::Container(c) => (None, Some(c.item_kind()), first_class(c.items())),
+            V::UnorderedContainer(c) => (None, Some(c.0.item_kind()), first_class(c.0.items())),
+            V::Optional(o) => (
+                None,
+                Some(o.item_kind()),
+                o.value().and_then(class_of).filter(|c| c.0 != 0),
+            ),
+            V::Map(m) => {
+                let first = m.entries().first().and_then(|(_, value)| class_of(value));
+                (
+                    Some(m.key_kind()),
+                    Some(m.value_kind()),
+                    first.filter(|c| c.0 != 0),
+                )
+            }
+            V::Embedded(e) => (None, None, Some(e.0.class_hash)),
+            V::Struct(s) => (None, None, Some(s.class_hash).filter(|c| c.0 != 0)),
+            _ => (None, None, None),
+        };
+        Self {
+            kind: value.kind(),
+            key,
+            item,
+            class,
+        }
+    }
+
     fn parse(slots: &[String; 4]) -> Result<Self, SchemaError> {
         let [kind, key, item, class] = slots;
         let kind = kind_named(kind)?;
