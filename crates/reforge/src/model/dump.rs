@@ -118,6 +118,9 @@ impl Dump for Mod {
                 FileSource::Made { from, by } => {
                     let _ = write!(out, " made({from}, {})", by.as_str());
                 }
+                FileSource::Rewritten { by, .. } => {
+                    let _ = write!(out, " rewritten({})", by.as_str());
+                }
                 FileSource::Game => out.push_str(" game"),
             }
             let _ = writeln!(out, "\n     {}", self.file_name(id, cx.names));

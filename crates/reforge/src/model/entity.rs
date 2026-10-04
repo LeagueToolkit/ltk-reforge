@@ -178,7 +178,7 @@ pub struct Extra {
     pub head: Vec<u8>,
 }
 
-/// The rule by which a file fixup made a file from another.
+/// The rule by which a file fixup made a file from another, or rewrote a file where it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MadeBy {
@@ -186,6 +186,8 @@ pub enum MadeBy {
     LegacyFormat,
     /// A file at a path the game shipped once, made where it ships the asset.
     MovedAsset,
+    /// A bank whose header id was zero, given the id its file name hashes to.
+    BankId,
 }
 
 impl MadeBy {
@@ -194,6 +196,7 @@ impl MadeBy {
         match self {
             MadeBy::LegacyFormat => "legacy-format",
             MadeBy::MovedAsset => "moved-asset",
+            MadeBy::BankId => "bank-id",
         }
     }
 }
@@ -210,6 +213,14 @@ pub enum FileSource {
         from: FileId,
         /// The rule that made it.
         by: MadeBy,
+    },
+    /// The archive ships it, and a file fixup rewrote its bytes where it is. The file's size
+    /// and content are those of the bytes it holds.
+    Rewritten {
+        /// The rule that rewrote it.
+        by: MadeBy,
+        /// The digest of the bytes the archive ships.
+        shipped: ContentId,
     },
     /// The game's own bin, taken as the mod's for a mod that ships none. Not the author's: it
     /// dates nothing.
@@ -505,7 +516,7 @@ impl Mod {
     pub fn origin_of(&self, file: FileId) -> FileId {
         match self.files[file].source {
             FileSource::Made { from, .. } => from,
-            FileSource::Archive | FileSource::Game => file,
+            FileSource::Archive | FileSource::Rewritten { .. } | FileSource::Game => file,
         }
     }
 

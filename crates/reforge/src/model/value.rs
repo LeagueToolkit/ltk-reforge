@@ -1,11 +1,13 @@
-//! Reading bin values: fields by name, links, file references and digests.
+//! Reading bin values: fields by name, links, file references, digests and a value on one line.
 
 use std::io::Cursor;
 
-use ltk_meta::{BinObject, PropertyValueEnum};
+use ltk_meta::{BinObject, PropertyKind as Kind, PropertyValueEnum};
 use sha2::{Digest, Sha256};
 
 use super::hash::{BinHash, WadHash, name_hash, path_hash};
+use super::names::Spell;
+use super::walk;
 
 /// The property at a chain of field names, through structs, embeds and options.
 pub fn get<'a>(object: &'a BinObject, path: &[&str]) -> Option<&'a PropertyValueEnum> {
@@ -168,10 +170,37 @@ pub fn walk_object<'a>(object: &'a BinObject, visit: &mut impl FnMut(&'a Propert
     }
 }
 
+/// The values a field holds itself: the value when it is no collection, else a list's items, a
+/// present option's value, a map's keys and values. A struct among them is given and not
+/// entered: the walk visits it.
+pub fn direct<'a>(value: &'a PropertyValueEnum, visit: &mut impl FnMut(&'a PropertyValueEnum)) {
+    match value {
+        PropertyValueEnum::Container(c) => c.items().iter().for_each(visit),
+        PropertyValueEnum::UnorderedContainer(c) => c.0.items().iter().for_each(visit),
+        PropertyValueEnum::Optional(o) => o.value().into_iter().for_each(visit),
+        PropertyValueEnum::Map(m) => {
+            for (key, value) in m.entries() {
+                visit(key);
+                visit(value);
+            }
+        }
+        _ => visit(value),
+    }
+}
+
+/// Every value an object's structs hold themselves, struct by struct in the walk's order.
+fn each_direct<'a>(object: &'a BinObject, mut visit: impl FnMut(&'a PropertyValueEnum)) {
+    walk::structs(object, |s| {
+        for (_, value) in s.fields() {
+            direct(value, &mut visit);
+        }
+    });
+}
+
 /// Every object an object names, in order of appearance, without repeats.
 pub fn links(object: &BinObject) -> Vec<BinHash> {
     let mut out = Vec::new();
-    walk_object(object, &mut |v| {
+    each_direct(object, |v| {
         if let PropertyValueEnum::ObjectLink(l) = v
             && l.value.0 != 0
             && !out.contains(&l.value)
@@ -185,15 +214,107 @@ pub fn links(object: &BinObject) -> Vec<BinHash> {
 /// Every file an object names, in order of appearance, without repeats.
 pub fn file_refs(object: &BinObject) -> Vec<FileRef> {
     let mut out = Vec::new();
-    walk_object(object, &mut |v| {
+    each_direct(object, |v| {
         if let Some(file) = as_file(v)
-            && !matches!(v, PropertyValueEnum::Optional(_))
             && !out.contains(&file)
         {
             out.push(file);
         }
     });
     out
+}
+
+/// The name of a kind as the meta schema database and a report write it.
+pub fn kind_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::None => "None",
+        Kind::Bool => "Bool",
+        Kind::I8 => "I8",
+        Kind::U8 => "U8",
+        Kind::I16 => "I16",
+        Kind::U16 => "U16",
+        Kind::I32 => "I32",
+        Kind::U32 => "U32",
+        Kind::I64 => "I64",
+        Kind::U64 => "U64",
+        Kind::F32 => "F32",
+        Kind::Vector2 => "Vec2",
+        Kind::Vector3 => "Vec3",
+        Kind::Vector4 => "Vec4",
+        Kind::Matrix44 => "Mtx44",
+        Kind::Color => "Color",
+        Kind::String => "String",
+        Kind::Hash => "Hash",
+        Kind::WadChunkLink => "File",
+        Kind::Container => "List",
+        Kind::UnorderedContainer => "List2",
+        Kind::Struct => "Pointer",
+        Kind::Embedded => "Embed",
+        Kind::ObjectLink => "Link",
+        Kind::Optional => "Option",
+        Kind::Map => "Map",
+        Kind::BitBool => "Flag",
+    }
+}
+
+/// How many characters of a string [`brief`] shows before it cuts it.
+pub const BRIEF_TEXT: usize = 96;
+
+/// A value on one bounded line, for a person: a scalar whole, a string up to [`BRIEF_TEXT`]
+/// characters, a struct as its class and how many fields it holds, a collection as how many
+/// items of which kind. A string is the mod's own text: a caller cleans the line before it
+/// prints it.
+pub fn brief(value: &PropertyValueEnum, names: &dyn Spell) -> String {
+    use PropertyValueEnum as V;
+    let strukt = |s: &ltk_meta::property::values::Struct| match s.class_hash.0 {
+        0 => "null".to_string(),
+        _ => {
+            let n = s.properties.len();
+            let noun = if n == 1 { "field" } else { "fields" };
+            format!("{} {{{n} {noun}}}", names.class_or_hex(s.class_hash))
+        }
+    };
+    match value {
+        V::None(_) => "none".to_string(),
+        V::Bool(v) => v.value.to_string(),
+        V::BitBool(v) => v.value.to_string(),
+        V::I8(v) => v.value.to_string(),
+        V::U8(v) => v.value.to_string(),
+        V::I16(v) => v.value.to_string(),
+        V::U16(v) => v.value.to_string(),
+        V::I32(v) => v.value.to_string(),
+        V::U32(v) => v.value.to_string(),
+        V::I64(v) => v.value.to_string(),
+        V::U64(v) => v.value.to_string(),
+        V::F32(v) => format!("{:?}", v.value),
+        V::Vector2(v) => format!("{:?}", v.value.to_array()),
+        V::Vector3(v) => format!("{:?}", v.value.to_array()),
+        V::Vector4(v) => format!("{:?}", v.value.to_array()),
+        V::Matrix44(v) => format!("{:?}", v.value.to_cols_array()),
+        V::Color(v) => format!("{:?}", v.value),
+        V::String(v) if v.value.chars().count() > BRIEF_TEXT => {
+            let head: String = v.value.chars().take(BRIEF_TEXT).collect();
+            format!("{head:?}...")
+        }
+        V::String(v) => format!("{:?}", v.value),
+        V::Hash(v) => format!("{:08x}", v.value.0),
+        V::ObjectLink(v) => names.entry_or_hex(v.value),
+        V::WadChunkLink(v) => names.path_or_hex(v.value),
+        V::Struct(s) => strukt(s),
+        V::Embedded(e) => strukt(&e.0),
+        V::Container(c) => format!("[{} {}]", c.len(), kind_name(c.item_kind())),
+        V::UnorderedContainer(c) => format!("[{} {}]", c.0.len(), kind_name(c.0.item_kind())),
+        V::Optional(o) => match o.value() {
+            Some(inner) => format!("some({})", brief(inner, names)),
+            None => "none".to_string(),
+        },
+        V::Map(m) => format!(
+            "{{{} {} to {}}}",
+            m.entries().len(),
+            kind_name(m.key_kind()),
+            kind_name(m.value_kind())
+        ),
+    }
 }
 
 /// The SHA-256 of an object as `ltk_meta` writes it: equal objects give equal digests whatever
