@@ -478,6 +478,31 @@ fn of_two_files_with_one_rename_the_first_is_made() {
 }
 
 #[test]
+fn a_file_that_is_the_games_own_at_its_path_gives_way_to_the_mods_own_bytes() {
+    // #ADR-0023: two files under one tag. The first is what the game shipped at that path,
+    // a stale copy at a former path, and the second the mod's own texture.
+    let (one_tag, other_tag) = (format!("{BASE}/test.a.skn"), format!("{BASE}/test.b.skn"));
+    let files: [(&str, &[u8]); 2] = [(&one_tag, b"the game's a mesh"), (&other_tag, b"own")];
+    let mut f = Fixture::new();
+    for (path, bytes) in files {
+        f.file(path, bytes);
+    }
+    let history = history(&[&one_tag, &other_tag]);
+    let history = history.with_content(&one_tag, b"the game's a mesh", 0..=0);
+    f.run(&MovedAssets, &history);
+    let (mesh, from) = f.made(BASE_MESH).expect("made");
+    assert_eq!((from, &*mesh.bytes), (f.id_of(&other_tag), &b"own"[..]));
+    assert_eq!(one::<FilesMoved>(&f.log).passed_over, [f.id_of(&one_tag)]);
+
+    // Alone, the game's own file at the former path is still made the asset's.
+    let mut f = Fixture::new();
+    f.file(&one_tag, b"the game's a mesh");
+    f.run(&MovedAssets, &history);
+    let (_, from) = f.made(BASE_MESH).expect("made");
+    assert_eq!(from, f.id_of(&one_tag));
+}
+
+#[test]
 fn the_mods_own_file_at_the_path_wins() {
     let old = format!("{BASE}/4x_test.dds");
     let files: [(&str, &[u8]); 2] = [(&old, &dds()), (BASE_TEX, b"the mod's own texture")];

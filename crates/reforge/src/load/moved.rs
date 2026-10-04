@@ -4,8 +4,10 @@
 //! by the renames Riot made ([`RENAMES`]), and the game must ship it. The file is made there as
 //! a legacy format's twin is made, beside the original.
 //!
-//! When several files of the mod name one asset, the mod's own file at the path wins, then the
-//! rename listed first, the format the game ships before the file's own. Without a history no
+//! When several files of the mod name one asset, the mod's own file at the path wins, then a
+//! file of the mod's own bytes before one that holds what the game shipped at its path
+//! (#ADR-0023: a stale copy is no override, at a former path either), then the rename listed
+//! first, the format the game ships before the file's own. Without a history no
 //! path is known to be a former one, and nothing moves: an author's `foo.backup.dds` does not
 //! take over `foo.tex`.
 
@@ -22,7 +24,7 @@ use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
 use crate::game::Game;
 use crate::history::HistoryError;
 use crate::model::entity::{FileId, FileKind, FileSource, MadeBy, WadId};
-use crate::model::{ChunkPath, FixupInfo, Phase};
+use crate::model::{ChunkPath, FileKey, FixupInfo, Phase};
 
 /// A file name and the directory it is in, as a step of a rename reads and gives them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -337,6 +339,9 @@ pub const CODES: &[Code] = &[FilesMoved::CODE, MovesFailed::CODE];
 
 /// A file that would take a path.
 struct Want {
+    /// Whether the file holds bytes the game shipped at the file's own path. Asked only
+    /// where several files would take the path.
+    the_games: bool,
     rank: usize,
     file: FileId,
     rename: &'static Rename,
@@ -390,11 +395,19 @@ impl MovedAssets {
             if let Some(candidate) = shipped {
                 let wants = wanted.entry((file.wad, candidate.path)).or_default();
                 wants.push(Want {
+                    the_games: false,
                     rank: candidate.rank,
                     file: id,
                     rename: candidate.rename,
                     twin_of: candidate.twin_of,
                 });
+            }
+        }
+        for wants in wanted.values_mut().filter(|wants| wants.len() > 1) {
+            for want in wants {
+                let file = &cx.module.files[want.file];
+                let key = FileKey::from_sha256(&file.content.0);
+                want.the_games = cx.history.held(file.hash, key)?.is_some();
             }
         }
         Ok(wanted)
@@ -411,7 +424,7 @@ impl MovedAssets {
                 found.passed_over.extend(wants.iter().map(|want| want.file));
                 continue;
             }
-            wants.sort_by_key(|want| (want.rank, want.file));
+            wants.sort_by_key(|want| (want.the_games, want.rank, want.file));
             let mut done = false;
             for want in wants {
                 if done {
