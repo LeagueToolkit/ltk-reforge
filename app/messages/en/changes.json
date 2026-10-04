@@ -1,0 +1,48 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "changes_added_label": "added",
+  "changes_after_lost": "removed; the mod's build read it",
+  "changes_after_moved": "moved to",
+  "changes_after_removed": "removed",
+  "changes_after_unconvertible": "kept as it is: no conversion to {wants}",
+  "changes_description": "Every value the fixups changed. Open a fixup or an object to see each value before and after.",
+  "changes_empty": "No fixup changed anything",
+  "changes_field_filter_label": "Show only the changes of {field}",
+  "changes_filter_label": "Filter changes",
+  "changes_filter_placeholder": "Filter by object, field, path or value",
+  "changes_group_fixup_label": "By fixup",
+  "changes_group_label": "Group changes",
+  "changes_group_object_label": "By object",
+  "changes_more_action": "Show {count} more",
+  "changes_none_match": "No change matches the filter",
+  "changes_objects_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} object",
+        "countPlural=other": "{count} objects"
+      }
+    }
+  ],
+  "changes_outcome.changed.description": "Kept, in the form the target build reads",
+  "changes_outcome.changed.label": "kept",
+  "changes_outcome.lost.description": "Removed, and the mod's own build read them: the target build cannot hold them",
+  "changes_outcome.lost.label": "lost",
+  "changes_outcome.removed.description": "Removed with nothing lost: no build since the mod's own read them",
+  "changes_outcome.removed.label": "removed",
+  "changes_outcome.unconvertible.description": "Left as they are, with no conversion to what the target build reads; the client skips them",
+  "changes_outcome.unconvertible.label": "no conversion",
+  "changes_title": "What changed",
+  "changes_unreached_label": "only for a port: no skin entry reaches it",
+  "changes_values_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} value",
+        "countPlural=other": "{count} values"
+      }
+    }
+  ]
+}

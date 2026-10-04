@@ -3,30 +3,30 @@
 //! request is a new `Run` from the archive, and no stage's result is kept between requests.
 //!
 //! The stages are run one at a time, as `Run::through` runs them, so a [`Watch`] hears each
-//! one start and end, and each finding as it is raised.
+//! one start and end, each finding as it is raised, and what each stage gave as it ends.
 
+mod drawn;
 mod views;
 
 use std::time::Instant;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use camino::Utf8PathBuf;
 use parking_lot::Mutex;
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
-use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter, Thumbnail};
+use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy};
 use reforge::{Porter, Repairer, Run, RunError};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use self::drawn::Drawn;
 pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
 use crate::runlog::{Capture, LogLine};
 use crate::selection::FixupChoice;
-use crate::view::{Finding, read_clean, through_clean};
+use crate::view::Finding;
 
 /// A stage of a run, in the order they run.
 #[derive(
@@ -204,6 +204,15 @@ pub trait Watch {
     fn log(&mut self) -> Option<Box<dyn Fn(LogLine) + Send + Sync>> {
         None
     }
+
+    /// Whether the watch takes what each stage gave. A part is read from the run's report,
+    /// which is built for it.
+    fn takes_parts(&self) -> bool {
+        false
+    }
+
+    /// What a stage gave the views, as it ends.
+    fn part(&mut self, _part: PartView) {}
 }
 
 /// A watch that hears nothing.
@@ -219,14 +228,6 @@ pub fn stages_of(inputs: &Inputs, kind: RunKind) -> Vec<StageName> {
         RunKind::Port => Porter::new(env).run().stages(),
     };
     stages.iter().map(|&stage| StageName::of(stage)).collect()
-}
-
-/// A thumbnail as a `data:` URL the window shows as an image.
-fn data_url(thumbnail: &Thumbnail) -> String {
-    format!(
-        "data:image/webp;base64,{}",
-        BASE64.encode(thumbnail.bytes())
-    )
 }
 
 fn millis_since(at: Instant) -> u64 {
@@ -301,7 +302,13 @@ pub fn run(
         watch.stage(stage, StageEvent::Ended { millis });
         timed.push((stage, millis));
         match ran {
-            Ok(()) => {}
+            Ok(()) => {
+                if watch.takes_parts()
+                    && let Some(part) = Drawn::part(&run, stage)
+                {
+                    watch.part(part);
+                }
+            }
             Err(RunError::Halted(_)) => break,
             Err(error) => {
                 fault = Some(chain(&error));
@@ -330,31 +337,18 @@ pub fn run(
     let millis = millis_since(started);
     drop(capture);
 
-    let mut parts: ReportParts = read_clean(&run.report().to_json());
-    // The report names the mod once `load` made it; a run stopped after `read` has the
-    // archive's word for it.
-    let meta = parts
-        .meta
-        .take()
-        .or_else(|| run.archive().map(|archive| through_clean(&archive.meta)));
-    let targets = parts.named_targets();
-    let thumbnail = run.package().and_then(|package| package.thumbnail.as_ref());
-    let thumbnail = thumbnail.map(data_url);
+    let drawn = Drawn::of(&run);
     let log = std::mem::take(&mut *lines.lock());
     Ok(RunView {
         stages: stage_views(&run, &timed),
-        meta,
-        halted: parts.halted,
-        findings: parts.diagnostics,
-        changes: parts.changes.unwrap_or_default(),
-        targets,
-        package: parts.package.map(|row| PackageView {
-            name: row.name,
-            version: row.version,
-            chunks: row.chunks.len(),
-            patches: row.patches.len(),
-            thumbnail,
-        }),
+        meta: drawn.meta,
+        halted: drawn.halted,
+        findings: drawn.findings,
+        changes: drawn.changes,
+        objects: drawn.objects,
+        targets: drawn.targets,
+        package: drawn.package,
+        names: drawn.names,
         written,
         refused,
         fault,

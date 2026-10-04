@@ -38,7 +38,8 @@ pub fn builder() -> Builder<Wry> {
             InstallProgress,
             commands::RunStage,
             commands::RunFinding,
-            commands::RunLog
+            commands::RunLog,
+            commands::RunPart
         ])
 }
 

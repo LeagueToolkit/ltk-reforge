@@ -4,19 +4,21 @@ import { useState } from "react";
 import { Button, FailureNote, SectionCard, SegmentedControl, Switch } from "@/components";
 import { m } from "@/i18n";
 import type { PolicyView, RunView, StageName } from "@/lib/bindings.gen";
+import { ChangesExplorer } from "@/modules/changes";
 import { FindingList, worstFirst } from "@/modules/findings";
 import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
 import { useInputs, useInputsGate } from "@/modules/inputs";
 
 import { useRunMod, useRunStages } from "../api/run";
 import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state/repairStore";
-import { ChangesList } from "./ChangesList";
 import { DecisionsView } from "./DecisionsView";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { PolicyCard } from "./PolicyCard";
 import { RulesCard } from "./RulesCard";
 import { RunDetails } from "./RunDetails";
+import { fixupDetail } from "./RunFindings";
+import { liveResults, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
 import { StageStrip, stageLabel } from "./StageStrip";
 import { type ToggleItem, ToggleList } from "./ToggleList";
@@ -143,9 +145,16 @@ function StageDetail({
             {m.advanced_written_label({ path: view.written })}
           </p>
         )}
-        <FindingList findings={findings} empty={m.advanced_stage_findings_empty()} />
+        <FindingList
+          findings={findings}
+          empty={m.advanced_stage_findings_empty()}
+          detailOf={fixupDetail(view.changes, view.objects)}
+          names={view.names}
+        />
       </SectionCard>
-      {stage === "fix" && state !== "not-run" && <ChangesList changes={view.changes} />}
+      {stage === "fix" && state === "ran" && (
+        <ChangesExplorer changes={view.changes} objects={view.objects} findings={view.findings} />
+      )}
       {stage === "decide" && view.targets && (
         <DecisionsView targets={view.targets} onPolicy={onPolicy} />
       )}
@@ -250,6 +259,7 @@ export function AdvancedRepair() {
       <SettingsCard stages={stages} onRun={() => start()} running={run.isPending} />
       {dialog}
       {live && <LiveProgress live={live} stages={stages} />}
+      {live && <RunResults {...liveResults(live)} />}
       {run.isError && <FailureNote failure={run.error} />}
       {last && !live && (
         <>

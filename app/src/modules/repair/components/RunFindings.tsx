@@ -1,19 +1,44 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { Button, SectionCard } from "@/components";
 import { m } from "@/i18n";
-import type { Finding } from "@/lib/bindings.gen";
-import { FindingList, worstFirst } from "@/modules/findings";
+import type { Finding, FixupChanges, ObjectView } from "@/lib/bindings.gen";
+import { FindingChanges, isFixupFinding } from "@/modules/changes";
+import { FindingList, type IdNames, worstFirst } from "@/modules/findings";
+
+/** What a finding opens to: a fixup's finding, the changes it counts, once they came. */
+export function fixupDetail(changes: FixupChanges[] | null, objects: ObjectView[]) {
+  return function detailOf(finding: Finding): ReactNode {
+    if (!changes || !isFixupFinding(finding)) {
+      return null;
+    }
+    return <FindingChanges finding={finding} changes={changes} objects={objects} />;
+  };
+}
+
+export interface RunFindingsProps {
+  findings: Finding[];
+  /** What the fixups changed. Null until `fix` ended. */
+  changes: FixupChanges[] | null;
+  objects: ObjectView[];
+  /** A name for each id a finding's fields can hold. */
+  names: IdNames;
+}
 
 /**
  * A run's findings, the worst first. Errors and warnings are always shown; the notes are
- * folded behind a button, since a run raises many and none of them loses anything.
+ * folded behind a button, since a run raises many and none of them loses anything. A fixup's
+ * notes are under "What changed" with its changes, once they came.
  */
-export function RunFindings({ findings }: { findings: Finding[] }) {
+export function RunFindings({ findings, changes, objects, names }: RunFindingsProps) {
   const [notes, setNotes] = useState(false);
-  const sorted = worstFirst(findings);
-  const shown = notes ? sorted : sorted.filter((finding) => finding.severity !== "note");
-  const noteCount = findings.length - sorted.filter((f) => f.severity !== "note").length;
+  const listed = worstFirst(
+    findings.filter(
+      (finding) => !(changes && isFixupFinding(finding) && finding.severity === "note"),
+    ),
+  );
+  const problems = listed.filter((finding) => finding.severity !== "note");
+  const noteCount = listed.length - problems.length;
 
   return (
     <SectionCard
@@ -28,7 +53,12 @@ export function RunFindings({ findings }: { findings: Finding[] }) {
         )
       }
     >
-      <FindingList findings={shown} empty={m.repair_findings_empty()} />
+      <FindingList
+        findings={notes ? listed : problems}
+        empty={m.repair_findings_empty()}
+        detailOf={fixupDetail(changes, objects)}
+        names={names}
+      />
     </SectionCard>
   );
 }

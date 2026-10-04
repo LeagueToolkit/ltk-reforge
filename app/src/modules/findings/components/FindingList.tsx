@@ -2,9 +2,12 @@ import { InfoIcon, WarningIcon, XCircleIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { match } from "ts-pattern";
 
+import { Disclosure } from "@/components";
 import { m } from "@/i18n";
 import type { Finding, Severity } from "@/lib/bindings.gen";
 import { twMerge } from "@/utils";
+
+import { DataTree, hasFields, type IdNames } from "./DataTree";
 
 function severityIcon(severity: Severity): ReactNode {
   return match(severity)
@@ -20,21 +23,56 @@ export function severityLabel(severity: Severity): string {
   return m[`severity.${severity}.label`]();
 }
 
-function FindingRow({ finding }: { finding: Finding }) {
+function FindingHead({ finding, folds }: { finding: Finding; folds: boolean }) {
   return (
-    <li className="flex items-start gap-3 py-2" data-ui="FindingList:row">
+    <span className="flex items-start gap-3">
       <span className="mt-0.5 shrink-0" title={severityLabel(finding.severity)}>
         {severityIcon(finding.severity)}
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm break-words text-surface-100">{finding.message}</p>
-        <p className="flex flex-wrap gap-x-2 font-mono text-xs text-surface-400">
+      <span className="min-w-0 flex-1">
+        <span
+          className={twMerge(
+            "block text-sm break-words text-surface-100",
+            folds && "line-clamp-2 group-data-[panel-open]:line-clamp-none",
+          )}
+        >
+          {finding.message}
+        </span>
+        <span className="flex flex-wrap gap-x-2 font-mono text-xs text-surface-400">
           <span className="text-surface-300">{finding.code}</span>
           <span className="break-all">{finding.subject.name}</span>
           {finding.by && <span>{m.findings_by_label({ by: finding.by })}</span>}
           {finding.record && <span className="text-accent-300">{finding.record}</span>}
-        </p>
-      </div>
+        </span>
+      </span>
+    </span>
+  );
+}
+
+interface FindingRowProps {
+  finding: Finding;
+  detail: ReactNode;
+  names: IdNames | undefined;
+}
+
+function FindingRow({ finding, detail, names }: FindingRowProps) {
+  const opens = detail != null || hasFields(finding.data);
+  if (!opens) {
+    return (
+      <li className="py-2 pl-5" data-ui="FindingList:row">
+        <FindingHead finding={finding} folds={false} />
+      </li>
+    );
+  }
+  return (
+    <li data-ui="FindingList:row">
+      <Disclosure
+        summary={<FindingHead finding={finding} folds />}
+        summaryClassName="py-2"
+        panelClassName="pb-3 pl-12"
+      >
+        {detail ?? <DataTree value={finding.data} names={names} />}
+      </Disclosure>
     </li>
   );
 }
@@ -44,17 +82,27 @@ export interface FindingListProps {
   /** What the list says when it holds nothing. */
   empty: string;
   className?: string;
+  /**
+   * What a finding opens to in place of its fields, such as the changes a fixup's finding
+   * counts. Null for a finding that opens to its fields, when it has any.
+   */
+  detailOf?: (finding: Finding) => ReactNode;
+  /** A name for each id a finding's fields can hold. */
+  names?: IdNames;
 }
 
-/** Findings in the order raised, each with its severity, code, subject and record. */
-export function FindingList({ findings, empty, className }: FindingListProps) {
+/**
+ * Findings in the order given, each with its severity, code, subject and record, and each
+ * opening to its details: what the caller draws for it, else its fields.
+ */
+export function FindingList({ findings, empty, className, detailOf, names }: FindingListProps) {
   if (findings.length === 0) {
     return <p className="text-sm text-surface-400 select-none">{empty}</p>;
   }
   return (
     <ul className={twMerge("divide-y divide-surface-700/50", className)} data-ui="FindingList">
       {findings.map((finding) => (
-        <FindingRow key={finding.id} finding={finding} />
+        <FindingRow key={finding.id} finding={finding} detail={detailOf?.(finding)} names={names} />
       ))}
     </ul>
   );

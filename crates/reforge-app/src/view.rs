@@ -59,6 +59,11 @@ pub struct Finding {
     pub record: Option<String>,
     /// One line for a person.
     pub message: String,
+    /// The finding's fields, as `docs/design/CODES.md` names them for its code. A hash in
+    /// them is written as hex, unspelled.
+    #[serde(default)]
+    #[specta(type = specta_typescript::Unknown)]
+    pub data: Value,
 }
 
 impl Finding {

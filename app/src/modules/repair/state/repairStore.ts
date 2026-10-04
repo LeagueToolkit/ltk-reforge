@@ -1,13 +1,19 @@
+import { match } from "ts-pattern";
 import { create } from "zustand";
 
 import type {
   Finding,
+  FixupChanges,
   LogLine,
+  ObjectView,
+  PackageView,
+  PartView,
   RuleSpec,
   RunKind,
   RunSettings,
   RunView,
   StageName,
+  TargetsView,
 } from "@/lib/bindings.gen";
 
 /** Which view of the run the page shows (#ADR-0050). */
@@ -70,12 +76,45 @@ export interface LiveStage {
   millis?: number;
 }
 
-/** The run under way, from its events: the stages started and ended, findings, details. */
+/**
+ * The run under way, from its events: the stages started and ended, the findings and details
+ * as they come, and what each stage gave as it ended.
+ */
 export interface LiveRun {
   started: number;
   stages: Partial<Record<StageName, LiveStage>>;
   findings: Finding[];
   log: LogLine[];
+  /** What the fixups changed, once `fix` ended. */
+  changes: FixupChanges[] | null;
+  objects: ObjectView[];
+  /** The decisions, once `decide` ended. */
+  targets: TargetsView | null;
+  /** The package, once `build` ended. */
+  package: PackageView | null;
+}
+
+/** A run with nothing heard of it yet, started now. */
+export function startedRun(): LiveRun {
+  return {
+    started: Date.now(),
+    stages: {},
+    findings: [],
+    log: [],
+    changes: null,
+    objects: [],
+    targets: null,
+    package: null,
+  };
+}
+
+/** The run under way with what a stage gave as it ended. */
+export function withPart(live: LiveRun, part: PartView): LiveRun {
+  return match(part)
+    .with({ part: "changes" }, ({ changes, objects }) => ({ ...live, changes, objects }))
+    .with({ part: "targets" }, ({ targets }) => ({ ...live, targets }))
+    .with({ part: "package" }, ({ package: built }) => ({ ...live, package: built }))
+    .exhaustive();
 }
 
 interface RepairState {

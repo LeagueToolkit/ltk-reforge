@@ -1,6 +1,8 @@
 //! A run as the views show it, read from its report (`crate::view`): each stage's state, the
 //! mod, the findings, what each fixup changed, the decisions of a port, and the package.
 
+use std::collections::BTreeMap;
+
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
@@ -88,24 +90,45 @@ pub enum AfterView {
     },
 }
 
+/// Which `fixup.*` finding a change counts under: its code is `fixup.` and this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum OutcomeView {
+    /// A value kept, in the form the target build reads.
+    Changed,
+    /// A value removed with nothing lost.
+    Removed,
+    /// A value removed that the mod's own build read.
+    Lost,
+    /// A value with no conversion, left as it is.
+    Unconvertible,
+}
+
 /// What a fixup did at one place.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct ChangeView {
+    /// The object the value is in, by its id in the report: `%o14`.
+    pub object: String,
     /// The object's entry hash, as eight hex digits.
     pub entry: String,
+    /// The class and the field the value was in, or for a value added the field it is in:
+    /// `Class.field`, each spelled where a name is known. Empty for a change at the object
+    /// itself.
+    pub field: String,
+    /// The finding the change counts under.
+    pub outcome: OutcomeView,
     /// Whether a unit's skin entry reaches the object.
     pub reached: bool,
     /// Where the value was, its fields spelled.
     pub path: String,
     /// The value before. None for a value the fixup added.
-    #[serde(default)]
     pub before: Option<ValueView>,
     /// What is there after.
     pub after: AfterView,
 }
 
 /// What one fixup did.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct FixupChanges {
     /// The fixup's id.
     pub fixup: String,
@@ -119,6 +142,42 @@ pub struct FixupChanges {
     pub unconvertible: usize,
     /// Its changes, in the order made.
     pub changes: Vec<ChangeView>,
+}
+
+/// An object a fixup changed, as the run spells it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct ObjectView {
+    /// Its id in the report: `%o14`.
+    pub id: String,
+    /// Its entry name, else its hash as eight hex digits.
+    pub entry: String,
+    /// Its class's name, else the hash as eight hex digits.
+    pub class: String,
+    /// The bin it is in: the bin's path, else its hash as sixteen hex digits.
+    pub bin: String,
+}
+
+/// What a stage gave the views, sent to the window as the stage ends.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(tag = "part", rename_all = "kebab-case")]
+pub enum PartView {
+    /// What the fixups changed, after `fix`.
+    Changes {
+        /// What each fixup did, in the order they ran.
+        changes: Vec<FixupChanges>,
+        /// The objects they changed.
+        objects: Vec<ObjectView>,
+    },
+    /// The decisions, after `decide`.
+    Targets {
+        /// The decisions.
+        targets: TargetsView,
+    },
+    /// The package, after `build`.
+    Package {
+        /// The package.
+        package: PackageView,
+    },
 }
 
 /// A policy: how a target is chosen, and how much animation reuse is accepted.
@@ -237,6 +296,8 @@ pub struct RunView {
     pub findings: Vec<Finding>,
     /// What each fixup did, in the order they ran.
     pub changes: Vec<FixupChanges>,
+    /// The objects the fixups changed.
+    pub objects: Vec<ObjectView>,
     /// The decisions, for a port that reached `decide`.
     pub targets: Option<TargetsView>,
     /// The package, once it was built.
@@ -251,6 +312,30 @@ pub struct RunView {
     pub millis: u64,
     /// The run's details: the library's spans and events, as the window showed them.
     pub log: Vec<LogLine>,
+    /// A name for each id of the report's tables and of the objects the fixups changed: what
+    /// a finding's fields name by id (`%w0`, `%f12`, `%c0`, `%u0`, `%o14`).
+    pub names: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct WadRow {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub(super) struct FileRow {
+    pub id: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    pub hash: String,
+}
+
+#[derive(Deserialize)]
+pub(super) struct UnitRow {
+    pub id: String,
+    pub character_name: String,
+    pub slot: u16,
 }
 
 #[derive(Deserialize)]
@@ -263,6 +348,29 @@ pub(super) struct PackageRow {
     pub patches: Vec<IgnoredAny>,
 }
 
+/// What a fixup did at one place, as the report holds it.
+#[derive(Deserialize)]
+pub(super) struct ChangeRow {
+    pub object: String,
+    pub entry: String,
+    pub reached: bool,
+    pub path: String,
+    #[serde(default)]
+    pub before: Option<ValueView>,
+    pub after: AfterView,
+}
+
+/// What one fixup did, as the report holds it.
+#[derive(Deserialize)]
+pub(super) struct FixupRow {
+    pub fixup: String,
+    pub changed: usize,
+    pub removed: usize,
+    pub lost: usize,
+    pub unconvertible: usize,
+    pub changes: Vec<ChangeRow>,
+}
+
 #[derive(Deserialize)]
 pub(super) struct CharacterRow {
     pub id: String,
@@ -270,16 +378,22 @@ pub(super) struct CharacterRow {
 }
 
 /// The parts of the report the views draw.
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 pub(super) struct ReportParts {
     #[serde(default, rename = "mod")]
     pub meta: Option<ModView>,
     #[serde(default)]
     pub halted: Option<u32>,
     #[serde(default)]
+    pub wads: Vec<WadRow>,
+    #[serde(default)]
+    pub files: Vec<FileRow>,
+    #[serde(default)]
     pub characters: Vec<CharacterRow>,
     #[serde(default)]
-    pub changes: Option<Vec<FixupChanges>>,
+    pub units: Vec<UnitRow>,
+    #[serde(default)]
+    pub changes: Option<Vec<FixupRow>>,
     #[serde(default)]
     pub targets: Option<TargetsView>,
     #[serde(default)]
@@ -288,6 +402,25 @@ pub(super) struct ReportParts {
 }
 
 impl ReportParts {
+    /// A name for each id of the tables: a WAD's name, a file's path else its hash, a
+    /// character's name, and a unit's character and slot as a finding's subject names it.
+    pub fn names(&self) -> BTreeMap<String, String> {
+        let wads = self
+            .wads
+            .iter()
+            .map(|wad| (wad.id.clone(), wad.name.clone()));
+        let files = self.files.iter().map(|file| {
+            let name = file.path.clone().unwrap_or_else(|| file.hash.clone());
+            (file.id.clone(), name)
+        });
+        let characters = (self.characters.iter()).map(|c| (c.id.clone(), c.spelled.clone()));
+        let units = self.units.iter().map(|unit| {
+            let name = format!("{} skin{}", unit.character_name, unit.slot);
+            (unit.id.clone(), name)
+        });
+        wads.chain(files).chain(characters).chain(units).collect()
+    }
+
     /// The decisions, each with its character's name.
     pub fn named_targets(&mut self) -> Option<TargetsView> {
         let mut targets = self.targets.take()?;

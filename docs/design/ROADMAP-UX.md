@@ -32,9 +32,10 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   here too.
 - The crate's modules: `inputs` opens the inputs once and raises what they found into every
   run's log, as the command raises it when it opens them; `state` holds them open for the
-  settings as they stand; `run` takes a request (the archive, the last stage, the settings,
-  the folder written in) through a new `Repairer` run; `view` reads the views of a run from
-  the report.
+  settings as they stand; `run` takes a request (the kind, the archive, the last stage, the
+  settings, the folder written in) through a new `Porter` or `Repairer` run and reads what the
+  views draw from its report; `view` passes every string of a report through `clean` on the
+  way.
 - The stack is LTK Manager's: Tauri 2, React and TypeScript, Vite, Tailwind, Base UI
   components, TanStack router, query, form and table, zustand, zod, paraglide for messages,
   and `tauri-specta` for typed commands. Where a choice of library or convention comes up,
@@ -163,9 +164,22 @@ user picks another policy and runs again.
 - The mod card shows the package's thumbnail: the WebP the library encoded from the mod's
   image (#ADR-0051), never the archive's own bytes.
 - The app runs the stages one at a time, as `Run::through` does, and tells the window as each
-  starts and ends, and each finding as it is raised. A run's details are the library's
-  `tracing` spans, one per stage with its time, its debug events, and what other crates warn
-  of (`reforge_app::runlog`), shown folded. Progress inside a stage waits on the library.
+  starts and ends, and each finding as it is raised. A stage that gives a part sends it as it
+  ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the
+  changes, `decide` the decisions, `build` the package. The window shows each part as it
+  comes, in the same place it shows the ended run's (`reforge_app::run`, `drawn`). A run's
+  details are the library's `tracing` spans, one per stage with its time, its debug events,
+  and what other crates warn of (`reforge_app::runlog`), shown folded. Progress inside a stage
+  waits on the library.
+- Every finding opens to its details. A fixup's `fixup.*` finding opens to the values it
+  counts, object by object, each with its path and its value before and after. Another
+  finding opens to its fields, and an id among them (`%f12`) shows the name the report's
+  tables give it.
+- "What changed" holds every value the fixups changed, by fixup or by object, filtered by a
+  word of its object, field, path or value and by outcome. A change carries its class and
+  field and its outcome from the run's own `Changes`, which the report lists in the same
+  order. A fixup's notes are shown there, with their codes, and not among the findings; its
+  warnings are in both.
 - A rule is edited as its JSON is written, and a choice of fixups is saved and loaded as the
   selection file the command reads with `--fixups` (`reforge_app::selection`).
 - A run with an input absent asks first: with no game it does not start, and with no history

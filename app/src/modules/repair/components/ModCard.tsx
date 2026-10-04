@@ -22,7 +22,9 @@ export function ModCard() {
   const archive = useRepairStore((state) => state.archive);
   const setArchive = useRepairStore((state) => state.setArchive);
   const meta = useRepairStore((state) => state.last?.meta);
-  const thumbnail = useRepairStore((state) => state.last?.package?.thumbnail);
+  const thumbnail = useRepairStore(
+    (state) => (state.live ? state.live.package : state.last?.package)?.thumbnail,
+  );
   const settings = useSettings();
   const save = useSaveSettings();
   const out = useOutputFolder();

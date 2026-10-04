@@ -10,7 +10,7 @@ import {
 } from "@/lib/bindings.gen";
 import { queryFn, unwrap } from "@/utils";
 
-import { useRepairStore } from "../state/repairStore";
+import { startedRun, useRepairStore, withPart } from "../state/repairStore";
 
 /** The stages of a run of the kind, as the library names them. They are built into the app. */
 export const runStagesQuery = (kind: RunKind) =>
@@ -31,7 +31,7 @@ export function useRunMod() {
   const setLive = useRepairStore((state) => state.setLive);
   return useMutation({
     mutationFn: async (request: RunRequest) => {
-      setLive(() => ({ started: Date.now(), stages: {}, findings: [], log: [] }));
+      setLive(() => startedRun());
       return unwrap(await commands.runMod(request));
     },
     onSuccess: (view) => setLast(view),
@@ -61,6 +61,9 @@ export function useRunEvents() {
       ),
       events.runLog.listen(({ payload }) =>
         setLive((live) => live && { ...live, log: [...live.log, payload.line] }),
+      ),
+      events.runPart.listen(({ payload }) =>
+        setLive((live) => live && withPart(live, payload.part)),
       ),
     ];
     return () => {

@@ -44,6 +44,7 @@ export const events = {
 	installProgress: makeEvent<InstallProgress>("install-progress"),
 	runFinding: makeEvent<RunFinding>("run-finding"),
 	runLog: makeEvent<RunLog>("run-log"),
+	runPart: makeEvent<RunPart>("run-part"),
 	runStage: makeEvent<RunStage>("run-stage"),
 };
 
@@ -136,14 +137,24 @@ export type CandidateView = {
 
 /**  What a fixup did at one place. */
 export type ChangeView = {
+	/**  The object the value is in, by its id in the report: `%o14`. */
+	object: string,
 	/**  The object's entry hash, as eight hex digits. */
 	entry: string,
+	/**
+	 *  The class and the field the value was in, or for a value added the field it is in:
+	 *  `Class.field`, each spelled where a name is known. Empty for a change at the object
+	 *  itself.
+	 */
+	field: string,
+	/**  The finding the change counts under. */
+	outcome: OutcomeView,
 	/**  Whether a unit's skin entry reaches the object. */
 	reached: boolean,
 	/**  Where the value was, its fields spelled. */
 	path: string,
 	/**  The value before. None for a value the fixup added. */
-	before?: ValueView | null,
+	before: ValueView | null,
 	/**  What is there after. */
 	after: AfterView,
 };
@@ -228,6 +239,11 @@ export type Finding = {
 	record?: string | null,
 	/**  One line for a person. */
 	message: string,
+	/**
+	 *  The finding's fields, as `docs/design/CODES.md` names them for its code. A hash in
+	 *  them is written as hex, unspelled.
+	 */
+	data?: unknown,
 };
 
 /**  What one fixup did. */
@@ -376,6 +392,18 @@ export type ModView = {
 	description?: string | null,
 };
 
+/**  An object a fixup changed, as the run spells it. */
+export type ObjectView = {
+	/**  Its id in the report: `%o14`. */
+	id: string,
+	/**  Its entry name, else its hash as eight hex digits. */
+	entry: string,
+	/**  Its class's name, else the hash as eight hex digits. */
+	class: string,
+	/**  The bin it is in: the bin's path, else its hash as sixteen hex digits. */
+	bin: string,
+};
+
 /**  Where a unit's work comes from. */
 export type OriginView = {
 	/**  `base`, `premium`, `custom` or `unknown`. */
@@ -383,6 +411,17 @@ export type OriginView = {
 	/**  The premium skin, for a premium origin. */
 	slot?: number | null,
 };
+
+/**  Which `fixup.*` finding a change counts under: its code is `fixup.` and this. */
+export type OutcomeView = 
+/**  A value kept, in the form the target build reads. */
+"changed" | 
+/**  A value removed with nothing lost. */
+"removed" | 
+/**  A value removed that the mod's own build read. */
+"lost" | 
+/**  A value with no conversion, left as it is. */
+"unconvertible";
 
 /**  The package a run built. */
 export type PackageView = {
@@ -400,6 +439,23 @@ export type PackageView = {
 	 */
 	thumbnail: string | null,
 };
+
+/**  What a stage gave the views, sent to the window as the stage ends. */
+export type PartView = 
+/**  What the fixups changed, after `fix`. */
+{ part: "changes"; 
+/**  What each fixup did, in the order they ran. */
+changes: FixupChanges[]; 
+/**  The objects they changed. */
+objects: ObjectView[] } | 
+/**  The decisions, after `decide`. */
+{ part: "targets"; 
+/**  The decisions. */
+targets: TargetsView } | 
+/**  The package, after `build`. */
+{ part: "package"; 
+/**  The package. */
+package: PackageView };
 
 /**  A policy: how a target is chosen, and how much animation reuse is accepted. */
 export type PolicyView = {
@@ -471,6 +527,12 @@ export type RunLog = {
 	line: LogLine,
 };
 
+/**  What a stage of the run under way gave the views, as it ended. */
+export type RunPart = {
+	/**  The part. */
+	part: PartView,
+};
+
 /**  What the front end asks a run to do. */
 export type RunRequest = {
 	/**  A repair or a port. */
@@ -532,6 +594,8 @@ export type RunView = {
 	findings: Finding[],
 	/**  What each fixup did, in the order they ran. */
 	changes: FixupChanges[],
+	/**  The objects the fixups changed. */
+	objects: ObjectView[],
 	/**  The decisions, for a port that reached `decide`. */
 	targets: TargetsView | null,
 	/**  The package, once it was built. */
@@ -546,6 +610,11 @@ export type RunView = {
 	millis: number,
 	/**  The run's details: the library's spans and events, as the window showed them. */
 	log: LogLine[],
+	/**
+	 *  A name for each id of the report's tables and of the objects the fixups changed: what
+	 *  a finding's fields name by id (`%w0`, `%f12`, `%c0`, `%u0`, `%o14`).
+	 */
+	names: { [key in string]: string },
 };
 
 /**  The schema database as read. */

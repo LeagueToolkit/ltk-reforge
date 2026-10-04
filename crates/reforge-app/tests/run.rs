@@ -11,8 +11,8 @@ use reforge::model::BinHash;
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
-    self, AfterView, RunKind, RunRequest, RunSettings, RunView, StageEvent, StageName, StageState,
-    Unwatched, Watch,
+    self, AfterView, OutcomeView, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent,
+    StageName, StageState, Unwatched, Watch,
 };
 use reforge_app::runlog::LogLine;
 use reforge_app::selection::{FixupChoice, RuleOp, RuleSpec};
@@ -248,6 +248,42 @@ fn what_a_fixup_changed_reaches_the_view_value_by_value() {
         change.before.as_ref().map(|value| value.text.as_str()),
         Some("true")
     );
+    // The field has no name in any table, so it is its hash; the class has one.
+    assert_eq!(change.field, format!("{EMITTER}.086379e1"));
+    assert_eq!(change.outcome, OutcomeView::Removed);
+    let object = view
+        .objects
+        .iter()
+        .find(|object| object.id == change.object);
+    let object = object.unwrap_or_else(|| panic!("{} is not in {:?}", change.object, view.objects));
+    assert_eq!(object.class, EMITTER);
+    assert!(object.bin.ends_with(".bin"), "{}", object.bin);
+}
+
+#[test]
+fn each_stage_that_gives_a_part_sends_it_as_it_ends_and_the_view_holds_the_same() {
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), StageName::Check);
+    request.kind = RunKind::Port;
+    let mut heard = Heard::default();
+
+    let view = run::run(&bench.inputs, &request, &mut heard).unwrap();
+
+    let [
+        PartView::Changes { changes, objects },
+        PartView::Targets { targets },
+        PartView::Package { package },
+    ] = heard.parts.as_slice()
+    else {
+        panic!(
+            "the parts of a port, in the order of its stages: {:?}",
+            heard.parts
+        );
+    };
+    assert_eq!(changes, &view.changes);
+    assert_eq!(objects, &view.objects);
+    assert_eq!(Some(targets), view.targets.as_ref());
+    assert_eq!(Some(package), view.package.as_ref());
 }
 
 #[test]
@@ -277,9 +313,18 @@ struct Heard {
     stages: Vec<(StageName, &'static str)>,
     findings: Arc<Mutex<Vec<Finding>>>,
     lines: Arc<Mutex<Vec<LogLine>>>,
+    parts: Vec<PartView>,
 }
 
 impl Watch for Heard {
+    fn takes_parts(&self) -> bool {
+        true
+    }
+
+    fn part(&mut self, part: PartView) {
+        self.parts.push(part);
+    }
+
     fn stage(&mut self, stage: StageName, event: StageEvent) {
         let event = match event {
             StageEvent::Started => "started",
@@ -330,6 +375,11 @@ fn a_port_runs_the_stages_of_a_port_and_names_each_units_target() {
     assert!(!decision.candidates.is_empty());
     // The other three levels of animation reuse, compared.
     assert_eq!(decision.alternatives.len(), 3);
+    // What a finding's fields name by id.
+    let name = |id: &str| view.names.get(id).map(String::as_str);
+    assert_eq!(name("%u0"), Some("test skin0"));
+    assert_eq!(name("%c0"), Some("test"));
+    assert!(name("%w0").is_some_and(|wad| wad.ends_with(".wad.client")));
 }
 
 #[test]

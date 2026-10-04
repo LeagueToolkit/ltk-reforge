@@ -7,12 +7,10 @@ import { useInputs, useInputsGate } from "@/modules/inputs";
 
 import { useRunMod, useRunStages } from "../api/run";
 import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
-import { ChangesList } from "./ChangesList";
-import { DecisionsView } from "./DecisionsView";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { RunDetails } from "./RunDetails";
-import { RunFindings } from "./RunFindings";
+import { resultsOf, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
 
 /** The write is refused while the run holds an error, so every error is seen before it. */
@@ -48,6 +46,7 @@ export function SimpleRepair() {
     gate(() => run.mutate(request));
   };
   const stages = useRunStages(kind);
+  const results = resultsOf(live, last);
 
   return (
     <div className="flex flex-col gap-6" data-ui="SimpleRepair">
@@ -70,11 +69,9 @@ export function SimpleRepair() {
         <>
           <RunSummary view={last} onWriteAnyway={() => start([])} writing={run.isPending} />
           <RunDetails lines={last.log} />
-          <RunFindings findings={last.findings} />
-          {last.targets && <DecisionsView targets={last.targets} />}
-          <ChangesList changes={last.changes} />
         </>
       )}
+      {results && <RunResults {...results} />}
     </div>
   );
 }

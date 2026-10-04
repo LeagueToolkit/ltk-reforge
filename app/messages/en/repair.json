@@ -1,13 +1,6 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-  "repair_after_lost": "removed; the mod's build read it",
-  "repair_after_moved": "moved to {to}",
-  "repair_after_removed": "removed",
-  "repair_after_unconvertible": "kept: no conversion to {wants}",
   "repair_archive_filter_label": "Mod archives",
-  "repair_changes_empty": "No fixup changed anything",
-  "repair_changes_title": "What was fixed",
-  "repair_counts_label": "{changed} changed, {removed} removed, {lost} lost, {unconvertible} kept",
   "repair_findings_empty": "Nothing to report",
   "repair_findings_title": "Findings",
   "repair_mod_by_label": "by {author}",
@@ -24,7 +17,6 @@
   "repair_out_mod_folder_label": "The mod's folder",
   "repair_out_reset_action": "Use the mod's folder",
   "repair_out_title": "Written to",
-  "repair_running_label": "Running",
   "repair_status_fault_title": "The run stopped: an input did not answer",
   "repair_status_halted_title": "No package: {message}",
   "repair_status_refused_description": "Each error is listed below. A package written anyway holds what each one says it loses.",
@@ -33,6 +25,5 @@
   "repair_status_written_title": "Written",
   "repair_summary_counts_label": "{errors} errors, {warnings} warnings, {notes} notes",
   "repair_summary_time_label": "in {seconds} s",
-  "repair_unreached_label": "only for a port: no skin entry reaches it",
   "repair_write_anyway_action": "Write anyway"
 }

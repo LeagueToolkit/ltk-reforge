@@ -14,7 +14,7 @@ use crate::state::IndexJob;
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::error::{AppError, IpcResult};
 use crate::inputs::{self, Choice, InputsView};
-use crate::run::{self, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
+use crate::run::{self, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
 use crate::runlog::LogLine;
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
@@ -98,6 +98,13 @@ pub struct RunLog {
     pub line: LogLine,
 }
 
+/// What a stage of the run under way gave the views, as it ended.
+#[derive(Debug, Clone, Serialize, specta::Type, tauri_specta::Event)]
+pub struct RunPart {
+    /// The part.
+    pub part: PartView,
+}
+
 /// Sends what a run hears to the window as events.
 struct Window(AppHandle);
 
@@ -118,6 +125,14 @@ impl Watch for Window {
         Some(Box::new(move |line| {
             let _ = RunLog { line }.emit(&app);
         }))
+    }
+
+    fn takes_parts(&self) -> bool {
+        true
+    }
+
+    fn part(&mut self, part: PartView) {
+        let _ = RunPart { part }.emit(&self.0);
     }
 }
 
