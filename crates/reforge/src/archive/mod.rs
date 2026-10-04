@@ -32,7 +32,7 @@ pub use self::kind::file_kind;
 pub use self::packed::PackedError;
 use self::reader::Reader;
 use crate::diag::{Halted, Sink};
-use crate::model::entity::{Extra, FileKind, ModMeta, WadLayout};
+use crate::model::entity::{Extra, FileKind, ModImage, ModMeta, WadLayout};
 use crate::model::{ChunkPath, ContentId, Spelled, WadHash, WadName};
 
 /// One file of a WAD of the archive, in memory.
@@ -84,6 +84,8 @@ pub struct Archive {
     /// Its entries outside `META/info.json` and the WADs, in archive order. A separator `\` in a
     /// name is written `/`.
     pub extras: Vec<Extra>,
+    /// Its `META/image.png`, when it has one. The entry is among the extras too.
+    pub image: Option<ModImage>,
 }
 
 impl Archive {
@@ -124,6 +126,7 @@ impl Archive {
             },
             wads: parts.wads,
             extras: parts.extras,
+            image: parts.image,
         })
     }
 

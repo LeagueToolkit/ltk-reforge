@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::io::{self, Cursor, Read};
+use std::sync::Arc;
 
 use reforge_magic::HEAD_LEN;
 use zip::result::ZipError;
@@ -16,7 +17,7 @@ use super::info::Info;
 use super::name::{EntryName, WadPart};
 use super::packed::{PackedFailure, PackedWad};
 use super::{ArchiveWad, Chunk};
-use crate::model::entity::{Extra, WadLayout};
+use crate::model::entity::{Extra, MAX_IMAGE_BYTES, ModImage, WadLayout};
 use crate::model::{ChunkPath, Spelled, WadHash, WadName};
 
 /// The two codecs a run reads. Fewer decoders are fewer for an untrusted archive to reach.
@@ -142,8 +143,12 @@ pub(super) struct Parts {
     pub(super) info: Info,
     pub(super) wads: Vec<ArchiveWad>,
     pub(super) extras: Vec<Extra>,
+    pub(super) image: Option<ModImage>,
     pub(super) findings: Findings,
 }
+
+/// The entry a mod's image is at, as Fantome names it.
+const IMAGE_ENTRY: &str = "META/image.png";
 
 /// The pass over the archive's entries.
 pub(super) struct Reader<'a> {
@@ -154,6 +159,7 @@ pub(super) struct Reader<'a> {
     /// By lowercase name: the loose and the packed forms of one WAD are one WAD, in any case.
     wads: BTreeMap<String, OpenWad>,
     extras: Vec<Extra>,
+    image: Option<ModImage>,
     findings: Findings,
 }
 
@@ -185,6 +191,7 @@ impl<'a> Reader<'a> {
             info: Info::default(),
             wads: BTreeMap::new(),
             extras: Vec::new(),
+            image: None,
             findings: Findings::default(),
         })
     }
@@ -214,6 +221,7 @@ impl<'a> Reader<'a> {
             info: self.info,
             wads,
             extras: self.extras,
+            image: self.image,
             findings: self.findings,
         }
     }
@@ -355,7 +363,7 @@ impl<'a> Reader<'a> {
     }
 
     /// An entry outside `META/info.json` and the WADs: its name, size and first bytes are kept,
-    /// enough to say what it is, and its content is never read whole.
+    /// enough to say what it is. Only the mod's image is read whole (#ADR-0051).
     fn extra(&mut self, index: usize, name: Spelled) {
         let declared = match self.declared(index) {
             Ok(declared) => declared,
@@ -371,11 +379,31 @@ impl<'a> Reader<'a> {
             // A head that reads short or not at all still leaves the name to tell by.
             let _ = file.take(HEAD_LEN as u64).read_to_end(&mut head);
         }
+        let named = name.raw().trim_start_matches('/');
+        if self.image.is_none() && named.eq_ignore_ascii_case(IMAGE_ENTRY) {
+            self.image = Some(self.image_at(index, declared.size));
+        }
         self.extras.push(Extra {
             name,
             size: declared.size,
             head,
         });
+    }
+
+    /// The mod's image. An entry that does not read raises nothing here: the build says why
+    /// the package has no thumbnail.
+    fn image_at(&mut self, index: usize, declared: u64) -> ModImage {
+        if declared > MAX_IMAGE_BYTES {
+            return ModImage::TooLarge(declared);
+        }
+        match self.bytes_of(index) {
+            // The declared size is the archive's word.
+            Ok(inflated) if inflated.bytes.len() as u64 > MAX_IMAGE_BYTES => {
+                ModImage::TooLarge(inflated.bytes.len() as u64)
+            }
+            Ok(inflated) => ModImage::Held(Arc::from(inflated.bytes)),
+            Err(_) => ModImage::Unreadable,
+        }
     }
 
     /// An entry's bytes, or none when the entry is skipped with a finding.

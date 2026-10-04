@@ -375,6 +375,7 @@ impl<'a> Loader<'a> {
         }
         let mut m = Mod::new(archive.meta);
         m.extras = archive.extras;
+        m.image = archive.image;
         for wad in archive.wads {
             let id = m.wads.push(ModWad {
                 name: wad.name,

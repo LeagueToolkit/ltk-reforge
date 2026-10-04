@@ -25,6 +25,7 @@ ltk_modpkg.workspace = true
 ltk_hashtable.workspace = true
 ltk_game_data.workspace = true
 ddsfile.workspace = true
+image.workspace = true
 ltk_hashdb.workspace = true
 ltk_mimir_cache.workspace = true
 indexmap.workspace = true

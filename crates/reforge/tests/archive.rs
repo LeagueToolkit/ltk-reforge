@@ -11,7 +11,7 @@ use reforge::archive::{
     RepackDuplicates, StoredCrcWrong, TooManyEntries, WadUnreadable, file_kind,
 };
 use reforge::diag::{Channel, Diag, Diagnostics, Halted, Render, Severity, Stage, Subject};
-use reforge::model::entity::{FileKind, WadLayout};
+use reforge::model::entity::{FileKind, MAX_IMAGE_BYTES, ModImage, WadLayout};
 use reforge::model::{ContentId, PathError, Spelled, WadHash, path_hash};
 
 use reforge_testkit::archive::{
@@ -184,6 +184,43 @@ fn entries_outside_the_wads_are_kept_as_a_name_a_size_and_first_bytes() {
         ],
         "a directory is no entry, and a codec that is not read leaves the name"
     );
+    assert!(log.is_empty(), "{:?}", codes(&log));
+}
+
+#[test]
+fn the_mods_image_is_held_whole_and_no_other_extra_is() {
+    let wad = ("WAD/Lux.wad.client/data/x.bin", &b"one"[..], STORED);
+    let bytes = zip(&[
+        wad,
+        ("meta/IMAGE.png", b"the image", DEFLATED),
+        ("META/image.png", b"a second image", STORED),
+        ("META/image.jpg", b"another name", STORED),
+    ]);
+    let (archive, log) = read(&bytes);
+    assert_eq!(
+        archive.image,
+        Some(ModImage::Held(b"the image"[..].into())),
+        "the first entry at the name, in any case"
+    );
+    assert_eq!(archive.extras.len(), 3, "the image is an extra as before");
+    assert!(log.is_empty(), "{:?}", codes(&log));
+
+    let (archive, _) = read(&zip(&[wad, ("META/readme.md", b"text", STORED)]));
+    assert_eq!(archive.image, None);
+}
+
+#[test]
+fn an_image_over_the_cap_or_that_does_not_read_is_not_held_and_raises_nothing() {
+    let wad = ("WAD/Lux.wad.client/data/x.bin", &b"one"[..], STORED);
+    let large = vec![0u8; MAX_IMAGE_BYTES as usize + 1];
+    let (archive, log) = read(&zip(&[wad, ("META/image.png", &large, DEFLATED)]));
+    assert_eq!(archive.image, Some(ModImage::TooLarge(MAX_IMAGE_BYTES + 1)));
+    assert!(log.is_empty(), "{:?}", codes(&log));
+
+    let mut bytes = zip(&[wad, ("META/image.png", b"the image", STORED)]);
+    rewrite(&mut bytes, "META/image.png", Field::Method(14));
+    let (archive, log) = read(&bytes);
+    assert_eq!(archive.image, Some(ModImage::Unreadable));
     assert!(log.is_empty(), "{:?}", codes(&log));
 }
 

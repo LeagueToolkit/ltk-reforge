@@ -19,6 +19,7 @@ mod overlay;
 mod port;
 mod ptch;
 mod texture;
+mod thumbnail;
 mod wired;
 mod write;
 
@@ -42,13 +43,15 @@ pub use self::findings::{
     Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
     FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBinFailed,
     NotWritten, Place, Ported, RecordSkipped, ResolverFrozen, RoundTripFailed, RoundTripProblem,
-    Shape, TextureContained, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
+    Shape, TextureContained, ThumbnailDropped, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted,
+    Written,
 };
 pub use self::inplace::{BuildError, InPlaceBuilder};
 pub use self::overlay::{AppliedBin, AppliedPatch, Held, Loaded, Outcome, Overlay};
 pub use self::port::PortBuilder;
 pub use self::ptch::{PtchBuilder, Unnamed};
 pub use self::texture::{TexContainer, TexRefusal, dds_to_tex};
+pub use self::thumbnail::{THUMBNAIL_FILE, Thumbnail, ThumbnailRefusal};
 pub use self::wired::{LeftBehind, LeftOut, Wired};
 pub use self::write::{
     MANIFEST_FILE, MAX_NAME_BYTES, Modpkg, PackageWriter, ProjectDir, REPORT_FILE, Refused,
@@ -71,6 +74,7 @@ pub const CODES: &[Code] = &[
     TextureContained::CODE,
     InPlace::CODE,
     Empty::CODE,
+    ThumbnailDropped::CODE,
     ManifestUnreadable::CODE,
     ApplyFailed::CODE,
     RecordSkipped::CODE,
@@ -286,8 +290,8 @@ impl HashTables {
     }
 }
 
-/// What a run writes: layers of chunks, the hash tables, the project's config and the evidence
-/// of the run. Only checked paths are in it.
+/// What a run writes: layers of chunks, the hash tables, the project's config, the evidence
+/// of the run and the thumbnail. Only checked paths are in it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Package {
     /// The project's config.
@@ -297,6 +301,9 @@ pub struct Package {
     /// The evidence of the run that built the package (#ADR-0041), which a writer embeds. None
     /// for a package no run built.
     pub evidence: Option<EvidenceDoc>,
+    /// The mod's image as a writer writes it (#ADR-0051). None for a mod with no image, or
+    /// with one that did not convert.
+    pub thumbnail: Option<Thumbnail>,
     layers: BTreeMap<Layer, BTreeMap<ChunkKey, Chunk>>,
     patches: BTreeMap<Layer, Vec<Patch>>,
 }
@@ -308,6 +315,7 @@ impl Package {
             config,
             tables: HashTables::default(),
             evidence: None,
+            thumbnail: None,
             layers: BTreeMap::from([(Layer::Base, BTreeMap::new())]),
             patches: BTreeMap::new(),
         }

@@ -4591,6 +4591,7 @@ dependencies = [
  "ddsfile",
  "fs-err",
  "glam",
+ "image",
  "indexmap 2.14.2",
  "ltk_anim",
  "ltk_game_data",

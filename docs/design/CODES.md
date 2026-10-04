@@ -170,6 +170,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `package.in-place` | note | a repair's output: files kept, bins written again, and the files left out because the client does not reach them, by reason: nothing loads or names them, at a former path, a stale copy, named only by removed values | `inplace.summary` |
 | `package.ported` | note | a port's output: files shipped, bins made, patches, and the files left out because the client does not reach them through the port, by reason | none |
 | `package.empty` | fatal | the package holds nothing | `emit.empty` |
+| `package.thumbnail-dropped` | note | the mod's image is not carried as the thumbnail, and why (#ADR-0051) | none |
 | `check.manifest-unreadable` | error | the package's manifest does not load | `verify.manifest` |
 | `check.apply-failed` | error | a patch does not apply to the game's bin | `verify.apply` |
 | `check.record-skipped` | error | records the overlay would skip | `verify.record-skipped` |

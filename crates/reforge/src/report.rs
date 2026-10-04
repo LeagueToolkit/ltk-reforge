@@ -418,6 +418,9 @@ pub struct PackageRow {
     pub paths: Vec<String>,
     /// The entry names its hash table names.
     pub entries: Vec<String>,
+    /// The digest of its thumbnail, when it has one (#ADR-0051).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thumbnail: Option<ContentId>,
 }
 
 /// How many values a fixup changed.
@@ -1182,6 +1185,7 @@ impl ReportBuilder {
             patches: patches.collect(),
             paths: package.tables.paths().map(str::to_string).collect(),
             entries: package.tables.entries().map(str::to_string).collect(),
+            thumbnail: package.thumbnail.as_ref().map(|t| ContentId::of(t.bytes())),
         });
         self
     }

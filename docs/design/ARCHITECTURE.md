@@ -587,6 +587,10 @@ object takes a name of its own, which every link to it follows.
   clock and no path of the machine, and no list by file or by object. `Run::build` sets it on
   the package from what the run holds. A run judged with an earlier run's evidence
   (`Run::known`) sets none: the piece of that dating is an id of the earlier run's mod.
+- **The thumbnail** is the mod's `META/image.png` (#ADR-0051). `read` holds the entry whole,
+  up to 5 MiB. `Run::build` decodes it as a PNG, a JPEG or a WebP and encodes it again as
+  WebP, and sets it on the package. An image that is not carried raises
+  `package.thumbnail-dropped`, and the package has none.
 - **The evidence sits in the project's `README.md`.** `ltk_modpkg` gives a `.modpkg` these
   meta chunks and no other: the metadata, a thumbnail, a readme, a license text and the hash
   tables. The readme and the license text are copied byte for byte, and the license text is
@@ -633,7 +637,9 @@ object takes a name of its own, which every link to it follows.
   `<project>_<version>.reforge-report.json` beside it. A write that fails leaves nothing, and a
   directory that is no mod project is not replaced. The evidence of a package that has one is
   written as `README.md` at the project's root, and the packer packs it as the `.modpkg`'s
-  readme, `_meta_/readme.md`. A layer's patches go under
+  readme, `_meta_/readme.md`. The thumbnail of a package that has one is written as
+  `thumbnail.webp` at the project's root and named in the config, and the packer packs it as
+  `_meta_/thumbnail.webp`. A layer's patches go under
   `content/<layer>/overrides/`, with its `game_data.yaml` beside them. A chunk with a part of its path longer
   than a file name may be is named by its hash in a project directory, and its path goes in
   the project's table of paths. The `.modpkg` is packed from a project directory by
@@ -685,13 +691,15 @@ object takes a name of its own, which every link to it follows.
   archive's bytes once.
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
   error on any input (banks, file kinds). A reader from another crate runs where its panic is
-  caught (bins, packed WADs, meshes, skeletons, clips).
+  caught (bins, packed WADs, meshes, skeletons, clips, the mod's image).
 - What a parser allocates is bounded by the bytes it is given: the archive's caps bound what is
   inflated, and a bank whose clips are larger than its data is refused. A failed allocation
   aborts the process and no panic guard catches it, so a size a reader from another crate
   reserves before it reads is checked first: a packed WAD whose header declares more chunks
   than its bytes can list is refused before `ltk_wad` mounts it, and one over the cap after
-  that. The game's own WADs hold up to some 200,000 chunks, so the cap is above that.
+  that. The game's own WADs hold up to some 200,000 chunks, so the cap is above that. The
+  mod's image is decoded under limits on its width, its height and the memory the decoder
+  asks for (#ADR-0051).
 - A mod's text reaches a terminal only through the `Speller` and `clean`.
 - A package's README is a file anyone can edit, so the evidence in it is read as a mod's input
   is: under a size cap, with a typed error for every refusal and no panic.

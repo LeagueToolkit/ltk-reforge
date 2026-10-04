@@ -8,6 +8,7 @@ use ltk_meta::PropertyKind as Kind;
 use serde::{Serialize, Serializer};
 
 use super::texture::TexRefusal;
+use super::thumbnail::ThumbnailRefusal;
 use super::wired::LeftBehind;
 use super::write::WriterKind;
 use crate::diag::{Channel, Code, Diag, DiagId, Message, Record, Severity, Subject};
@@ -510,6 +511,44 @@ impl Diag for Empty {
     fn message(&self, f: &mut Message<'_>) {
         f.text("the package holds nothing: the client uses none of the mod's ")
             .count(self.files, "file");
+    }
+}
+
+/// The mod's image is not the package's thumbnail (#ADR-0051). The package is whole without
+/// one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ThumbnailDropped {
+    /// Why.
+    #[serde(flatten)]
+    pub why: ThumbnailRefusal,
+}
+
+impl Diag for ThumbnailDropped {
+    const CODE: Code = code("package.thumbnail-dropped", Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("the mod's image is not carried as the thumbnail: ");
+        match self.why {
+            ThumbnailRefusal::EntryTooLarge { bytes } => {
+                let _ = write!(f, "its entry is {bytes} bytes");
+            }
+            ThumbnailRefusal::EntryUnreadable => {
+                f.text("its entry does not read");
+            }
+            ThumbnailRefusal::NotAnImage => {
+                f.text("it decodes as no PNG, JPEG or WebP");
+            }
+            ThumbnailRefusal::NotEncoded => {
+                f.text("it does not encode as WebP");
+            }
+            ThumbnailRefusal::TooLarge { bytes } => {
+                let _ = write!(f, "it is {bytes} bytes as WebP");
+            }
+        }
     }
 }
 

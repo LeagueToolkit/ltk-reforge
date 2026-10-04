@@ -128,8 +128,13 @@ impl ProjectConfig {
     }
 
     /// The config as a mod project holds it, with the layers of a package after the base
-    /// layer in their order, and the two hash tables.
-    pub fn to_project<'a>(&self, layers: impl Iterator<Item = &'a Layer>) -> ModProject {
+    /// layer in their order, the two hash tables, and the thumbnail's file when the project
+    /// has one.
+    pub fn to_project<'a>(
+        &self,
+        layers: impl Iterator<Item = &'a Layer>,
+        thumbnail: Option<&str>,
+    ) -> ModProject {
         let others = layers.filter(|layer| **layer != Layer::Base);
         let others = others.enumerate().map(|(i, layer)| ModProjectLayer {
             name: layer.name(),
@@ -153,7 +158,7 @@ impl ProjectConfig {
             layers: std::iter::once(ModProjectLayer::base())
                 .chain(others)
                 .collect(),
-            thumbnail: None,
+            thumbnail: thumbnail.map(str::to_string),
             hashtables: vec![
                 ModProjectHashtable {
                     path: PATHS_TABLE.into(),

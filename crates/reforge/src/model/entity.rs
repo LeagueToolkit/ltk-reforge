@@ -178,6 +178,20 @@ pub struct Extra {
     pub head: Vec<u8>,
 }
 
+/// The most bytes of `META/image.png` a run holds: what a packer takes as a thumbnail.
+pub const MAX_IMAGE_BYTES: u64 = 5 << 20;
+
+/// The archive's `META/image.png`: its bytes, or why the run does not hold them (#ADR-0051).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModImage {
+    /// The entry's bytes, inflated. Nothing says yet that they are an image.
+    Held(Arc<[u8]>),
+    /// The entry is over [`MAX_IMAGE_BYTES`], at this size.
+    TooLarge(u64),
+    /// The entry does not read.
+    Unreadable,
+}
+
 /// The rule by which a file fixup made a file from another, or rewrote a file where it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -424,6 +438,8 @@ pub struct Mod {
     pub units: Arena<SkinUnit>,
     /// The archive's entries outside its WADs and `META/info.json`, in archive order.
     pub extras: Vec<Extra>,
+    /// The archive's `META/image.png`, when it has one.
+    pub image: Option<ModImage>,
     /// WADs that restore a champion's model from before its rework. Their copies of the game's
     /// older bytes are the mod's own.
     pub restorations: BTreeSet<WadId>,
@@ -451,6 +467,7 @@ impl Mod {
             groups: Vec::new(),
             units: Arena::default(),
             extras: Vec::new(),
+            image: None,
             restorations: BTreeSet::new(),
             equal_to_game: BTreeSet::new(),
             named_by_table: BTreeSet::new(),

@@ -4,6 +4,7 @@
 //! ```text
 //! <out>/<project>/mod.config.json
 //!                 README.md
+//!                 thumbnail.webp
 //!                 reforge-report.json
 //!                 hashes/game.hashes.txt, hashes/binentries.hashes.txt
 //!                 content/<layer>/<Champion>.wad.client/<path>
@@ -19,6 +20,8 @@
 //!
 //! `README.md` holds the evidence of the run that built the package (#ADR-0041), and is
 //! written for a package that has it. The packer packs it as the `.modpkg`'s readme.
+//! `thumbnail.webp` is the mod's image (#ADR-0051), written for a package that has one and
+//! named in the config. The packer packs it as the `.modpkg`'s thumbnail.
 
 use std::io::{self, Write as _};
 
@@ -33,6 +36,7 @@ use serde::Serialize;
 use super::config::{ENTRIES_TABLE, PATHS_TABLE};
 use super::evidence::README_FILE;
 use super::findings::{Blocked, Written};
+use super::thumbnail::THUMBNAIL_FILE;
 use super::{ChunkKey, HashTables, Package};
 use crate::diag::{DiagId, DiagnosticPolicy, Diagnostics, Sink, Stage};
 use crate::model::ChunkPath;
@@ -170,7 +174,7 @@ impl Tree<'_> {
         Ok(fs::write(&path, bytes)?)
     }
 
-    /// Writes the chunks, the hash tables, the config and the evidence.
+    /// Writes the chunks, the hash tables, the config, the thumbnail and the evidence.
     fn write(&self) -> Result<Tally, WriteError> {
         let mut tally = Tally::default();
         let mut tables: HashTables = self.package.tables.clone();
@@ -212,9 +216,17 @@ impl Tree<'_> {
             &ENTRIES_TABLE.split('/').collect::<Vec<_>>(),
             entries.as_bytes(),
         )?;
-        let project = self.package.config.to_project(self.package.layers());
+        let thumbnail = self.package.thumbnail.as_ref();
+        let layers = self.package.layers();
+        let project = self
+            .package
+            .config
+            .to_project(layers, thumbnail.map(|_| THUMBNAIL_FILE));
         let config = project.to_config_string(ConfigFormat::Json)?;
         self.file(&[CONFIG_FILE], config.as_bytes())?;
+        if let Some(thumbnail) = thumbnail {
+            self.file(&[THUMBNAIL_FILE], thumbnail.bytes())?;
+        }
         if let Some(evidence) = &self.package.evidence {
             self.file(&[README_FILE], evidence.readme().as_bytes())?;
         }

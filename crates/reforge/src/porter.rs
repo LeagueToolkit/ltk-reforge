@@ -702,6 +702,9 @@ impl<'a> Run<'a> {
             };
             let mut package = built.map_err(RunError::of_build)?;
             package.evidence = self.evidence()?;
+            if let Some(image) = self.module.module().and_then(|m| m.image.as_ref()) {
+                package.carry_image(image, &mut self.log.at(Stage::Build));
+            }
             self.package = Some(package);
         }
         held(self.package.as_ref(), Stage::Build, Stage::Fix)
