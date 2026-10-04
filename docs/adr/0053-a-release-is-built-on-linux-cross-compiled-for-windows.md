@@ -30,8 +30,8 @@ on Linux.
 The checks run on Linux and a release is cross-compiled there, the user's choice of
 2026-10-04.
 
-- One script builds the command, the app and the installer, for a person and for the
-  workflows alike.
+- One sourced file sets the build's environment, for a person and for the workflows alike.
+  The workflows run the build's commands as steps of their own.
 - The tools that are not system packages are pinned in `mise.toml`, and its tasks run the
   checks and the build.
 - The workflows run in the Ubuntu release the build was tried on.

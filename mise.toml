@@ -11,6 +11,7 @@ pnpm = "11.13.0"
 
 [tasks.check]
 description = "The checks: format, lints, tests, and the front end's"
+# The `check` job of .github/workflows/build.yml runs the same commands, a step each.
 run = [
   "cargo fmt --all --check",
   "cargo clippy --workspace --all-targets --locked -- -D warnings",

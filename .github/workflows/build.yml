@@ -4,7 +4,7 @@
 # Runs on a pull request and on a push to master. release.yml calls it for the files it
 # publishes, so a release waits for the checks too.
 #
-# Both jobs run the tasks of mise.toml, in the Ubuntu the tasks were tried on.
+# Both jobs run the commands of mise.toml's tasks, a step each, in the Ubuntu they were tried on.
 
 name: Build
 
@@ -46,8 +46,20 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Run the checks
-        run: mise run check
+      - name: Check the format
+        run: cargo fmt --all --check
+
+      - name: Run the lints
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run the tests
+        run: cargo test --workspace --locked
+
+      - name: Install the front end's dependencies
+        run: pnpm --dir app install --frozen-lockfile
+
+      - name: Check the front end
+        run: pnpm --dir app check
 
   windows:
     runs-on: ubuntu-latest
@@ -63,14 +75,31 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # Microsoft's CRT and SDK, which cargo-xwin fetches on a first run.
+      # Microsoft's CRT and SDK, which cargo-xwin fetches on a first run: 15 minutes on a runner
+      # (2026-10-04). The key is raised by hand, to fetch them again.
       - uses: actions/cache@v4
         with:
           path: ~/.cache/cargo-xwin
-          key: cargo-xwin-${{ hashFiles('mise.toml') }}
+          key: cargo-xwin-1
+          restore-keys: cargo-xwin-
 
-      - name: Build the command, the app and its installer
-        run: mise run build-windows
+      # Each step below sources this again, for the variables: a step keeps none of the last one's.
+      - name: Fetch the Windows target, CRT and SDK
+        run: . scripts/cross/env.sh
+
+      # First, and `--locked`: a Cargo.lock that does not match Cargo.toml stops the build here.
+      - name: Build the command
+        run: |
+          . scripts/cross/env.sh
+          cargo build --release --locked -p reforge-cli --target x86_64-pc-windows-msvc
+
+      - name: Install the front end's dependencies
+        run: pnpm --dir app install --frozen-lockfile
+
+      - name: Build the app and its installer
+        run: |
+          . scripts/cross/env.sh
+          pnpm --dir app tauri build --ci --target x86_64-pc-windows-msvc
 
       - uses: actions/upload-artifact@v4
         with:

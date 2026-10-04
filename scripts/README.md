@@ -7,7 +7,8 @@ The build for Windows on Linux (#ADR-0053), and what the checks need there.
 | script | what it is for |
 |---|---|
 | `cross/setup-ubuntu.sh` | installs the system packages on Ubuntu: the LLVM tools, NSIS, and the libraries Tauri links on Linux. Run as root |
-| `cross/build-windows.sh` | builds the command, the app and its installer for `x86_64-pc-windows-msvc`, under `target/x86_64-pc-windows-msvc/release/` |
+| `cross/env.sh` | the environment of a build for `x86_64-pc-windows-msvc`, to source: it adds the Rust target, fetches Microsoft's CRT and SDK, and points the compilers and the linker at them |
+| `cross/build-windows.sh` | sources it and builds the command, the app and its installer, under `target/x86_64-pc-windows-msvc/release/` |
 | `cross/clang-cl` | the C compiler of that build: `clang-cl`, with SSE4.1 on for libwebp's SSE4.1 sources |
 
 The other tools (Rust, Node, pnpm, cargo-xwin) are pinned in `mise.toml` at the root, with two
@@ -20,7 +21,8 @@ mise run check            # format, lints, tests, the front end's checks
 mise run build-windows
 ```
 
-The workflows in `.github/workflows/` run the same three steps.
+The workflow `.github/workflows/build.yml` installs the same packages and tools, and runs the
+commands of the two tasks as steps of its own.
 
 ## corpus
 
