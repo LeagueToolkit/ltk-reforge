@@ -7,18 +7,18 @@ use ltk_meta::BinObject;
 use reforge::env::Env;
 use reforge::facts::ClipOrigin;
 use reforge::history::{NoHistory, Position};
-use reforge::model::{BankClip, BankRole, Layer, name_hash, value};
+use reforge::model::{BankClip, BankRole, Layer, Slot, name_hash, value};
 use reforge::port::{
     AudioCarried, AudioNotCarried, Carry, LiteralsRenamed, NotCarried, Policy, PortOptions,
 };
 use reforge_testkit::bins::{bin, graph, resolver, text};
 use reforge_testkit::facts::env;
-use reforge_testkit::skins::{BASE_CLIPS, WAD, skin_bin};
+use reforge_testkit::skins::{self, BASE_CLIPS, WAD, skin_bin};
 use reforge_testkit::sounds::{
     BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_WPK, audio_game, base_entry, clip,
     container, event, events_bank, media_bank, package, play, sfx, sound, voice_game, with_audio,
 };
-use reforge_testkit::{MemoryGame, MemoryHistory, ModArchive, PortRun};
+use reforge_testkit::{MemoryGame, MemoryHistory, ModArchive, PlanRun, PortRun};
 use reforge_wwise::{Bank, CLIENT_VERSION, id_of, kind};
 
 const GRAPH0: &str = "Characters/Test/Animations/Skin0";
@@ -121,8 +121,10 @@ fn own_clips_at_the_bases_path_go_in_a_unit_after_the_games() {
     );
     assert_eq!(paths, [audio_at.as_str(), events_at.as_str()]);
 
+    // #GAME-BEHAVIOR-0012: the clips keep the game's ids, so the game's events play them.
     // The media bank holds the own clips, at the client's version, under the id of the
-    // unit's name. The events bank holds a hierarchy with no object.
+    // unit's name. The events bank holds a hierarchy with no object, in a file named for
+    // its role (#GAME-BEHAVIOR-0013).
     let media = read(&run, &audio_at);
     assert_eq!(media.version, CLIENT_VERSION);
     assert_eq!(clip_ids(&media), [2, 9]);
@@ -139,6 +141,21 @@ fn own_clips_at_the_bases_path_go_in_a_unit_after_the_games() {
     assert_eq!(carried.banks[0].replaces, None);
     assert!(run.found::<AudioNotCarried>().is_empty());
     assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
+}
+
+#[test]
+fn own_clips_for_a_target_with_no_audio_block_are_not_carried() {
+    // The game's base skin has no audio block, so no events bank gives a header.
+    let env = env(skins::game(), NoHistory);
+    let run = PlanRun::of(&env, &over_the_base(134));
+    assert!(run.port().audio.is_empty(), "{}", run.dump());
+    // No bank of the game's is at the path, so each of the three clips is the mod's own.
+    let expected = NotCarried::NoGameAudio {
+        clips: 3,
+        target: Slot(0),
+    };
+    assert_eq!(run.only::<AudioNotCarried>().left, [expected]);
+    assert!(run.found::<AudioCarried>().is_empty());
 }
 
 #[test]
@@ -216,6 +233,8 @@ fn own_clips_at_a_premium_path_get_a_unit_of_their_own() {
     let run = port(&env, &archive);
 
     let audio = run.port.audio.of(run.unit("test", 0)).expect("planned");
+    // #GAME-BEHAVIOR-0011: the mod's tag goes after the game's, and the kept event is named
+    // under it.
     assert_eq!(audio.tags.len(), 1, "{}", run.dump());
     let tag = &audio.tags[0];
     assert!(tag.starts_with("TestMod"), "{tag}");
@@ -237,9 +256,10 @@ fn own_clips_at_a_premium_path_get_a_unit_of_their_own() {
         .map(|object| object.id)
         .collect();
     assert_eq!(kept, [id_of(&dance)]);
-    // Every node stays, the idle's action goes, and the dance's action names the new bank.
+    // #GAME-BEHAVIOR-0017: every node stays. The idle's action goes.
     assert!(events.object(12).is_some() && events.object(50).is_some());
     assert!(events.object(11).is_some() && events.object(21).is_none());
+    // #GAME-BEHAVIOR-0014: the dance's action names the new bank by its header's id.
     let action = events.object(20).expect("the dance's action");
     assert_eq!(action.play_bank(), Some(events.id()));
     let stem = unit.name.to_ascii_lowercase();
@@ -268,6 +288,30 @@ fn own_clips_at_a_premium_path_get_a_unit_of_their_own() {
     let literals = run.only::<LiteralsRenamed>();
     assert_eq!((literals.to_mod, literals.to_base), (1, 0));
     assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
+}
+
+#[test]
+fn a_literal_name_on_a_premium_tag_takes_the_bases_tag_where_the_base_lists_the_event() {
+    let env = env(audio_game(), NoHistory);
+    // Skin 3's audio block pasted onto the base, with no bank shipped: nothing is carried,
+    // and the port's audio is the base's.
+    let at = sfx("skin03", "test_skin03_sfx_audio");
+    let banks = [at.as_str()];
+    let archive = mod_of(&["TestSkin03"], &[skin3_unit(&banks)], &[]);
+    let run = PlanRun::of(&env, &archive);
+    assert!(run.port().audio.is_empty(), "{}", run.dump());
+
+    let m = &run.facts.fix.fixed;
+    let mut objects = m.objects.iter();
+    let graph = objects.find(|(_, object)| object.entry == name_hash(GRAPH0));
+    let (graph, _) = graph.expect("the mod's graph");
+    let graph = run.port().object(graph).expect("the graph ships");
+    let named = |field: &str| value::get(graph, &[field]).and_then(value::as_str);
+    // The base's unit lists the dance under the base's tag, and no idle.
+    assert_eq!(named("danceSound"), Some(BASE_DANCE));
+    assert_eq!(named("idleSound"), Some(IDLE));
+    let literals = run.only::<LiteralsRenamed>();
+    assert_eq!((literals.to_mod, literals.to_base), (0, 1));
 }
 
 /// A base events bank whose dance plays `clip`.
@@ -348,8 +392,8 @@ fn a_unit_of_the_games_name_on_banks_of_its_own_stands_in_for_the_games() {
     let mut game = audio_game();
     game.insert(SFX_EVENTS, base_events(1));
     let env = env(game, NoHistory);
-    // The unit keeps the base unit's name and loads banks of its own: a media bank of clip
-    // 77 and an events bank whose own event plays it.
+    // #MOD-ARTIFACT-0028: the unit keeps the base unit's name and loads banks of its own, a
+    // media bank of clip 77 and an events bank whose own event plays it.
     let (audio_at, events_at) = (
         sfx("base", "added_sfx_audio"),
         sfx("base", "added_sfx_events"),

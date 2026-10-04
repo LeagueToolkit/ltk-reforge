@@ -21,6 +21,8 @@ use reforge_testkit::SchemaRows;
 use reforge_testkit::bins::{bin, float, object, pointer, text};
 use reforge_testkit::schema::{field, kind, pointer as to};
 use reforge_testkit::skins::WAD;
+use reforge_testkit::sounds::{clip, media_bank, package as voice_package};
+use reforge_wwise::CLIENT_VERSION;
 use serde_json::json;
 
 const SKIN_BIN: &str = "data/characters/test/skins/skin0.bin";
@@ -187,6 +189,51 @@ fn the_round_trip_finds_a_bin_that_does_not_read() {
             "problems": [{ "problem": "unreadable", "reason": reason }],
         })
     );
+}
+
+/// #GAME-BEHAVIOR-0015: a sound bank loads at the client's version only, and a package
+/// holds no version.
+#[test]
+fn the_round_trip_finds_a_bank_made_that_the_client_does_not_load() {
+    let made = |bytes: Vec<u8>| Chunk {
+        bytes: bytes.into(),
+        origin: Origin::Bank(file()),
+    };
+    let media = |version: u32| media_bank("made_sfx_audio", version, vec![clip(1, 1)]);
+    let mut package = Package::new(config());
+    let banks = [
+        ("assets/sounds/mod/a/client.bnk", media(CLIENT_VERSION)),
+        ("assets/sounds/mod/a/older.bnk", media(134)),
+        ("assets/sounds/mod/a/torn.bnk", b"BKHD".to_vec()),
+        (
+            "assets/sounds/mod/a/voice.wpk",
+            voice_package(vec![clip(3, 3)]),
+        ),
+    ];
+    for (path, bytes) in banks {
+        package.insert(Layer::Base, key(path), made(bytes));
+    }
+    let schema = schema();
+    let set = CheckSet::from(&CheckSelection::standard().without("types"));
+    let log = checked(&package, Some(&schema), &set);
+
+    let [older, torn] = log.of::<RoundTripFailed>().collect::<Vec<_>>()[..] else {
+        panic!("two banks do not load");
+    };
+    assert_eq!(older.path.as_str(), "assets/sounds/mod/a/older.bnk");
+    let reason = "a bank of version 134".to_string();
+    assert_eq!(older.problems, [RoundTripProblem::Unreadable { reason }]);
+    assert_eq!(torn.path.as_str(), "assets/sounds/mod/a/torn.bnk");
+    assert!(matches!(
+        torn.problems[..],
+        [RoundTripProblem::Unreadable { .. }]
+    ));
+    let covered = Coverage::RoundTrip {
+        bins: 0,
+        objects: 0,
+        banks: 4,
+    };
+    assert_eq!(log.of::<Done>().collect::<Vec<_>>(), [&Done(covered)]);
 }
 
 #[test]

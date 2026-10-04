@@ -8,11 +8,12 @@ use reforge::facts::{
 };
 use reforge::game::{Build, Game, GameError, GameView, MAX_CHAIN, SkinClass};
 use reforge::history::NoHistory;
+use reforge::model::entity::FileId;
 use reforge::model::{Slot, WadHash, WadName, name_hash, path_hash};
-use reforge_testkit::bins::{Skin, bin, blob, entry, graph, linked_bin, text};
+use reforge_testkit::bins::{Skin, bin, blob, entry, graph, hiding, linked_bin, showing, text};
 use reforge_testkit::facts::{archive, env, mod_skin, own_skin};
 use reforge_testkit::skins::{self, BASE_MESH, BASE_SKEL, S3_CLIPS, S3_MESH, S3_SKEL};
-use reforge_testkit::{FactRun, MemoryGame, MemoryHistory, rigs};
+use reforge_testkit::{BrokenHistory, FactRun, MemoryGame, MemoryHistory, rigs};
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
 const GRAPH0: &str = "Characters/Test/Animations/Skin0";
@@ -57,6 +58,15 @@ fn own_model(mesh: Vec<u8>, skeleton: Vec<u8>, hidden: Option<&str>) -> Vec<(Str
             .properties
             .insert(name_hash("initialSubmeshToHide"), text(hidden));
     }
+    own_model_of(mesh, skeleton, vec![object, graph(GRAPH0, S3_CLIPS)])
+}
+
+/// The files of a skin0 mod on a mesh and a skeleton of its own, whose bin holds `objects`.
+fn own_model_of(
+    mesh: Vec<u8>,
+    skeleton: Vec<u8>,
+    objects: Vec<ltk_meta::BinObject>,
+) -> Vec<(String, Vec<u8>)> {
     vec![
         ("assets/mod/a/mesh.skn".to_string(), mesh),
         ("assets/mod/a/skeleton.skl".to_string(), skeleton),
@@ -64,11 +74,17 @@ fn own_model(mesh: Vec<u8>, skeleton: Vec<u8>, hidden: Option<&str>) -> Vec<(Str
             "assets/mod/a/body.tex".to_string(),
             blob("assets/mod/a/body.tex"),
         ),
-        (
-            skins::skin_bin("test", 0),
-            bin(vec![object, graph(GRAPH0, S3_CLIPS)]),
-        ),
+        (skins::skin_bin("test", 0), bin(objects)),
     ]
+}
+
+/// The file the mod ships at a path.
+fn shipped(run: &FactRun<'_>, path: &str) -> FileId {
+    let mut files = run.fix.fixed.files.iter();
+    let found = files.find(|(_, file)| file.hash == path_hash(path));
+    found
+        .map(|(id, _)| id)
+        .unwrap_or_else(|| panic!("the mod ships no file at {path}"))
 }
 
 fn check(run: &FactRun<'_>, slot: u16, aspect: Aspect) -> (Outcome, String) {
@@ -84,6 +100,7 @@ fn check(run: &FactRun<'_>, slot: u16, aspect: Aspect) -> (Outcome, String) {
     (check.fit.outcome, check.fit.why.to_string())
 }
 
+// #MOD-ARTIFACT-0024: visible.
 #[test]
 fn a_submesh_copied_from_a_premium_skin_blocks_the_base() {
     let env = env(game(), NoHistory);
@@ -128,6 +145,7 @@ fn a_submesh_copied_from_a_premium_skin_blocks_the_base() {
     );
 }
 
+// #MOD-ARTIFACT-0024: hidden and never shown.
 #[test]
 fn a_copied_submesh_hidden_and_never_shown_fits_with_a_fix() {
     let env = env(game(), NoHistory);
@@ -139,6 +157,91 @@ fn a_copied_submesh_hidden_and_never_shown_fits_with_a_fix() {
     assert_eq!(
         why,
         "remove never-shown copied submeshes: \"cape\" (skin 3)"
+    );
+    let rig = run
+        .facts
+        .rigs
+        .of(run.unit("test", 0))
+        .expect("the unit has a rig");
+    let visibility: Vec<Visibility> = rig.mesh.submeshes.iter().map(|s| s.visibility).collect();
+    assert_eq!(visibility, [Visibility::Visible, Visibility::HiddenNever]);
+}
+
+// #MOD-ARTIFACT-0024: hidden and shown.
+#[test]
+fn a_hidden_submesh_that_an_event_of_the_graph_shows_is_told_from_one_never_shown() {
+    let env = env(game(), NoHistory);
+    let mesh = rigs::mesh(&[("hat", HAT), ("cape", CAPE)], 0);
+    // The entry keeps skin 3's name, which makes skin 3 a candidate: the graph is the mod's
+    // own once it holds the event.
+    let skin = Skin {
+        name: "TestSkin03".into(),
+        ..own_skin("a", GRAPH0, RESOURCES0)
+    };
+    let objects = vec![
+        hiding(entry(SKIN0, &skin), "Hat Cape"),
+        showing(graph(GRAPH0, S3_CLIPS), &["CAPE"]),
+    ];
+    let files = own_model_of(mesh, rigs::skeleton(&["Root", "Hat"]), objects);
+    let run = FactRun::of(&env, &archive(&files));
+    let rig = run
+        .facts
+        .rigs
+        .of(run.unit("test", 0))
+        .expect("the unit has a rig");
+    let visibility: Vec<Visibility> = rig.mesh.submeshes.iter().map(|s| s.visibility).collect();
+    assert_eq!(
+        visibility,
+        [Visibility::HiddenNever, Visibility::HiddenShown],
+        "{}",
+        run.dump()
+    );
+    // The hat is the author's: hidden or not, it is no copy.
+    let copied: Vec<SubmeshesCopied> = run.found();
+    assert_eq!(copied.len(), 1);
+    let found = |submesh: &reforge::facts::CopiedSubmesh| {
+        (submesh.name.raw().to_string(), submesh.visibility)
+    };
+    let found: Vec<_> = copied[0].submeshes.iter().map(found).collect();
+    assert_eq!(found, [("cape".to_string(), Visibility::HiddenShown)]);
+}
+
+#[test]
+fn a_file_the_mod_ships_is_its_own_unless_its_bytes_are_the_games() {
+    let env = env(game(), NoHistory);
+    // The author's mesh, and the base's skeleton byte for byte under the mod's path.
+    let mesh = rigs::mesh(&[("hat", HAT)], 0);
+    let files = own_model(mesh, rigs::skeleton(&["Root", "Spine"]), None);
+    let run = FactRun::of(&env, &archive(&files));
+    let rig = run
+        .facts
+        .rigs
+        .of(run.unit("test", 0))
+        .expect("the unit has a rig");
+    let mesh = &rig.mesh.file;
+    assert_eq!(
+        (mesh.source, mesh.own, mesh.game_slots.len()),
+        (Source::Mod(shipped(&run, "assets/mod/a/mesh.skn")), true, 0),
+        "{}",
+        run.dump()
+    );
+    let skeleton = &rig.skeleton.file;
+    assert_eq!(
+        (skeleton.source, skeleton.own),
+        (
+            Source::Mod(shipped(&run, "assets/mod/a/skeleton.skl")),
+            false
+        )
+    );
+    let slots: Vec<u16> = skeleton.game_slots.iter().map(|slot| slot.0).collect();
+    assert_eq!(slots, [0, 7]);
+    assert!(mesh.source.is_shipped() && !Source::Game.is_shipped());
+    // The graph is in the mod's bin, and the clips it plays are the game's files.
+    assert_eq!(rig.graph, Some(GraphFrom::Archive));
+    assert!(
+        rig.clips
+            .iter()
+            .all(|clip| clip.file.source == Source::Game)
     );
 }
 
@@ -209,6 +312,7 @@ fn rig_files_that_do_not_read_are_reported_and_not_judged() {
     );
 }
 
+// #MOD-ARTIFACT-0025: an own model on a premium skin's whole animation set.
 #[test]
 fn borrowed_clips_are_sorted_by_how_they_meet_the_skeleton() {
     let env = env(game(), NoHistory);
@@ -232,7 +336,8 @@ fn borrowed_clips_are_sorted_by_how_they_meet_the_skeleton() {
         (reused.from, reused.clips, reused.same_joints),
         (Slot(3), 2, false)
     );
-    // Each clip moves `Root`, which the skeleton has, and `Cape`, which it lacks.
+    // #GAME-BEHAVIOR-0005: each clip moves `Root`, which the skeleton has, and `Cape`, which
+    // it lacks.
     assert_eq!(
         (reused.joints_fit, reused.joints_extra, reused.joints_off),
         (0, 2, 0)
@@ -252,6 +357,76 @@ fn borrowed_clips_are_sorted_by_how_they_meet_the_skeleton() {
         Why::NoSuchSkin { slot: Slot(55) }
     );
     assert!(!judge.at(Slot(55)).game_has_bin);
+}
+
+// #MOD-ARTIFACT-0025: each kind of another skin's clip against the unit's skeleton.
+#[test]
+fn a_borrowed_clip_is_counted_by_where_its_tracks_fall() {
+    let mut game = game();
+    game.insert(S3_CLIPS[0], rigs::clip(&["Root"]));
+    game.insert(S3_CLIPS[1], rigs::clip(&["Cape"]));
+    let env = env(game, NoHistory);
+    let mesh = rigs::mesh(&[("hat", HAT)], 0);
+    let run = FactRun::of(
+        &env,
+        &archive(&own_model(mesh, rigs::skeleton(&["Root", "Hat"]), None)),
+    );
+    let clips = run.facts.clips.of(run.unit("test", 0));
+    let at_base = &clips.expect("the unit has clip facts").at[&Slot(0)];
+    let reused = &at_base.reused[0];
+    assert_eq!((reused.from, reused.clips), (Slot(3), 2), "{}", run.dump());
+    // #GAME-BEHAVIOR-0005: the clip on `Root` plays whole, and the one on `Cape` moves
+    // nothing of the unit's model.
+    assert_eq!(
+        (
+            reused.joints_fit,
+            reused.joints_extra,
+            reused.joints_off,
+            reused.joints_unknown
+        ),
+        (1, 0, 1, 0)
+    );
+    assert!(reused.extra_joints.is_empty());
+}
+
+// #MOD-ARTIFACT-0025: the mod's own clips.
+#[test]
+fn an_own_clip_fits_where_it_moves_a_joint_of_the_skeleton() {
+    let env = env(game(), NoHistory);
+    let mesh = rigs::mesh(&[("hat", HAT)], 0);
+    let clips = [
+        "assets/mod/a/idle.anm",
+        "assets/mod/a/tail.anm",
+        "assets/mod/a/torn.anm",
+        "assets/mod/a/absent.anm",
+    ];
+    let objects = vec![
+        entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0)),
+        graph(GRAPH0, &clips),
+    ];
+    let mut files = own_model_of(mesh, rigs::skeleton(&["Root", "Hat"]), objects);
+    files.push((clips[0].to_string(), rigs::clip(&["Root", "Tail"])));
+    files.push((clips[1].to_string(), rigs::clip(&["Tail"])));
+    files.push((clips[2].to_string(), blob(clips[2])));
+    let run = FactRun::of(&env, &archive(&files));
+    let facts = run.facts.clips.of(run.unit("test", 0));
+    let at_base = &facts.expect("the unit has clip facts").at[&Slot(0)];
+    // #GAME-BEHAVIOR-0005: a track on `Root` is enough, and a clip with none on a joint of
+    // the skeleton moves nothing. The clip that does not read and the one nothing holds are
+    // not judged.
+    assert_eq!(
+        (
+            at_base.total,
+            at_base.fits,
+            at_base.own_off,
+            at_base.unknown
+        ),
+        (4, 1, 1, 2),
+        "{}",
+        run.dump()
+    );
+    assert_eq!(at_base.own, 3);
+    assert!(at_base.reused.is_empty() && at_base.own_work());
 }
 
 const OLD_MESH: &str = "assets/characters/test/skins/skin03/test_skin03.skins_test_skin03.skn";
@@ -319,6 +494,13 @@ fn the_catalog_holds_each_skin_with_its_class_and_its_objects() {
         catalog.skin(Slot(0)).map(|skin| skin.class),
         Some(SkinClass::Base)
     );
+    for slot in [3, 7] {
+        assert_eq!(
+            catalog.skin(Slot(slot)).map(|skin| skin.class),
+            Some(SkinClass::Premium),
+            "skin{slot}"
+        );
+    }
     assert_eq!(
         catalog.skin(Slot(9)).map(|skin| skin.class),
         Some(SkinClass::Chroma(Slot(3)))
@@ -485,4 +667,32 @@ fn a_game_chunk_that_does_not_read_is_a_fault() {
     };
     let gathered = reforge::facts::Facts::gather(&fix.fixed, &inputs);
     assert!(matches!(gathered, Err(FactsError::Game(_))));
+}
+
+#[test]
+fn a_history_that_does_not_answer_is_a_fault() {
+    // The mod is loaded and fixed against a history that answers, and its facts are gathered
+    // against one that does not.
+    let builds = ["16.18.1", "16.19.1"];
+    let answering = env(game(), MemoryHistory::new(&builds));
+    let files = [mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    let fix = reforge_testkit::FixRun::of(
+        &answering,
+        &reforge::fixups::FixupSet::standard(),
+        &archive(&files),
+    );
+    let speller = fix.speller();
+    let against = reforge::load::against(&answering, &speller);
+    let provenance = reforge::load::FileProvenance::find(&fix.fixed, &against);
+    let provenance = provenance.expect("the history answers");
+    let broken = env(game(), BrokenHistory(MemoryHistory::new(&builds)));
+    let inputs = reforge::facts::FactInputs {
+        env: &broken,
+        dating: &fix.dating,
+        files: &provenance,
+        names: &speller,
+        reworks: &reforge::load::ReworkTable::standard(),
+    };
+    let gathered = reforge::facts::Facts::gather(&fix.fixed, &inputs);
+    assert!(matches!(gathered, Err(FactsError::History(_))));
 }

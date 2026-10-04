@@ -262,7 +262,7 @@ fn legacy_files_are_made_the_twins_the_game_reads() {
 
     let (tex_id, tex) = f.at(&format!("{IDLE}.tex")).expect("the texture is made");
     let (scb_id, scb) = f.at(&format!("{BOMB}.scb")).expect("the mesh is made");
-    // The texture's bytes as they are: the client reads a DDS at a `.tex` path by its magic.
+    // #GAME-BEHAVIOR-0003: the texture's bytes as they are, a DDS at a `.tex` path.
     assert_eq!((tex.kind, scb.kind), (FileKind::Dds, FileKind::Scb));
     assert_eq!(&*tex.bytes, dds().as_slice());
     assert_eq!(tex.content, ContentId::of(&dds()));
@@ -459,6 +459,34 @@ fn an_sco_that_does_not_read_stays_and_is_reported() {
     let data = f.log.iter().nth(1).unwrap().data();
     assert_eq!(data["files"][0]["file"], "%f0");
     assert_eq!(data["files"][0]["why"], "read");
+}
+
+#[test]
+fn an_sco_the_mesh_writer_panics_on_stays_and_is_reported() {
+    // `ltk_io_ext` 0.4.7 asserts, in a build with debug assertions, that a mesh's name fits the
+    // 128 bytes an SCB keeps for it. A build without them cuts the name short and writes.
+    let name = "b".repeat(129);
+    let long = SCO.replace("Name= bomb", &format!("Name= {name}"));
+    let made = sco_to_scb(long.as_bytes());
+    if !cfg!(debug_assertions) {
+        assert!(made.is_ok(), "{made:?}");
+        return;
+    }
+    let Err(ConvertError::Panicked { reason }) = &made else {
+        panic!("the panic was not caught as an error: {made:?}");
+    };
+    assert!(reason.contains("str.len() <= N"), "{reason}");
+
+    let mut f = Fixture::new();
+    let mesh = f.file(&format!("{BOMB}.sco"), long.as_bytes());
+    f.run();
+    assert!(f.at(&format!("{BOMB}.scb")).is_none());
+    assert_eq!(f.codes(), ["file.format-unreadable"]);
+    let found = one::<FormatsUnreadable>(&f.log);
+    assert_eq!(found.files[0].file, mesh);
+    assert_eq!(found.files[0].why, made.unwrap_err());
+    let data = f.log.iter().next().unwrap().data();
+    assert_eq!(data["files"][0]["why"], "panicked");
 }
 
 #[test]

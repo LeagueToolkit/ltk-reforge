@@ -3,17 +3,19 @@
 //! has. The game is `reforge_testkit::skins`.
 
 use ltk_meta::property::values;
+use ltk_meta::{PropertyKind, PropertyValueEnum};
 use reforge::diag::{Diagnostics, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixInputs, FixupSet, ObjectSet, Rule};
 use reforge::game::{NameBook, Schema};
-use reforge::load::{Dating, LoadOptions};
+use reforge::load::{Dating, Fault, LoadOptions};
 use reforge::model::entity::ModMeta;
 use reforge::model::{ContentId, Dump, DumpCx, Mod, NoNames, Spelled, bin, name_hash, path_hash};
 use reforge::package::dds_to_tex;
 use reforge::package::{
-    BinWrite, BuildError, CheckSet, Empty, FieldUndeclared, InPlace, InPlaceBuilder, Layer,
-    LeftBehind, Origin, TexRefusal, TextureContained, TypeMismatch,
+    BinWrite, BuildError, CheckSelection, CheckSet, Empty, FieldUndeclared, InPlace,
+    InPlaceBuilder, Layer, LeftBehind, Made, Origin, ProjectConfig, RoundTripFailed, TexRefusal,
+    TextureContained, TypeMismatch,
 };
 use reforge_testkit::bins::{
     Skin, bin as bin_of, blob, entry, float, linked_bin, object, particle, text,
@@ -23,7 +25,7 @@ use reforge_testkit::schema::{field, kind};
 use reforge_testkit::skins::{
     self, BASE_PARTICLE_TEX, BASE_TEX, S3_PARTICLE_TEX, S3_TEX, WAD, base_skin, skin_bin,
 };
-use reforge_testkit::{MemoryHistory, ModArchive, PackRun, SchemaRows};
+use reforge_testkit::{BrokenHistory, FixRun, MemoryHistory, ModArchive, PackRun, SchemaRows};
 
 const ENTRY: &str = "Characters/Test/Skins/Skin0";
 const MESH: &str = "assets/mod/a/mesh.skn";
@@ -237,6 +239,7 @@ fn a_repaired_mod_repaired_again_changes_nothing() {
     assert_eq!((found.kept, found.rewritten, found.left.total()), (5, 0, 0));
 }
 
+/// #MOD-ARTIFACT-0007: a chunk named by its path hash, with no path any table spells.
 #[test]
 fn a_file_no_table_names_goes_under_its_hash() {
     let env = env();
@@ -265,6 +268,8 @@ fn the_package_names_the_files_its_bins_name_by_hash() {
     assert_eq!(run.package().tables.entries().count(), 0);
 }
 
+/// #GAME-BEHAVIOR-0003: a DDS that TEX's container does not hold stays a DDS at its `.tex`
+/// path.
 #[test]
 fn a_dds_at_a_tex_path_goes_into_texs_container_with_its_blocks() {
     let env = env();
@@ -339,6 +344,87 @@ fn a_package_that_would_hold_nothing_ends_the_run() {
     };
     assert_eq!(log.halted(), Some(halted));
     assert_eq!(log.of::<Empty>().next(), Some(&Empty { files: 0 }));
+}
+
+#[test]
+fn a_bin_of_the_old_numbering_is_written_whole() {
+    let env = env();
+    // A material the fixup changes, with a null pointer under the kind byte the old
+    // numbering has for a pointer: the kinds after `Hash` sat one lower before
+    // `WadChunkLink` took a number among them.
+    let null = PropertyValueEnum::Struct(values::Struct::default());
+    let material = object("M", "Material", vec![("junk", float(1.0)), ("child", null)]);
+    let mut old = bin_of(vec![material]);
+    let pointer: u8 = PropertyKind::Struct.into();
+    let mut field = name_hash("child").0.to_le_bytes().to_vec();
+    field.push(pointer);
+    let at = old.windows(field.len()).position(|bytes| bytes == field);
+    old[at.expect("the field and its kind") + 4] = 19;
+    let skin = linked_bin(vec![entry(ENTRY, &own_skin())], &[SHARED]);
+    let archive = ModArchive::new()
+        .file(WAD, &skin_bin("test", 0), skin)
+        .file(WAD, SHARED, old.clone())
+        .file(WAD, MESH, blob(MESH));
+    let mut run = PackRun::of(&env, &set(), &archive);
+
+    let chunk = run.chunk(SHARED);
+    let Origin::Rewritten { written, .. } = &chunk.origin else {
+        panic!("the bin is written again: {:?}", chunk.origin);
+    };
+    assert_eq!(written.how, BinWrite::Whole);
+    let found = run.only::<InPlace>();
+    assert_eq!((found.rewritten, found.whole), (1, 1));
+    // The bin written reads in the numbering of the target build, as the fixup left it.
+    let mut windows = chunk.bytes.windows(field.len());
+    assert!(windows.any(|bytes| bytes == field), "the pointer's kind");
+    let after = bin::parse(&chunk.bytes).expect("the bin written again reads");
+    assert_eq!(&after.objects[0].value, run.fix.object("M"));
+    assert!(
+        !after.objects[0]
+            .value
+            .properties
+            .contains_key(&name_hash("junk"))
+    );
+    let round_trip = CheckSet::from(&CheckSelection::standard().without("types"));
+    run.check(&round_trip);
+    assert_eq!(run.fix.log.of::<RoundTripFailed>().count(), 0);
+}
+
+#[test]
+fn a_history_that_does_not_answer_while_a_texture_is_judged_is_a_fault() {
+    let env = env();
+    // A DDS at the base texture's `.tex` path: in TEX's container it is judged again.
+    let archive = the_mod().file(WAD, BASE_TEX, dds(DdsPixels::Dxt1, (8, 8), 4));
+    let mut fix = FixRun::of(&env, &set(), &archive);
+    let raised = fix.log.len();
+    let history = BrokenHistory(MemoryHistory::new(&["16.19.300"]));
+    let broken = Env::builder()
+        .game(skins::game_at("16.19.300"))
+        .history(Box::new(history))
+        .build()
+        .expect("an environment");
+    let builder = InPlaceBuilder::new(&fix.fixed, &fix.changes);
+    let builder = builder.judged(&broken, &LoadOptions::default());
+    let built = builder.build(&mut fix.log.at(Stage::Build));
+    assert!(
+        matches!(built, Err(BuildError::Fault(Fault::History(_)))),
+        "{built:?}"
+    );
+    // A fault is no diagnostic, and ends no run.
+    assert_eq!((fix.log.len(), fix.log.halted()), (raised, None));
+}
+
+#[test]
+fn a_repairs_config_says_the_mod_was_repaired() {
+    let env = env();
+    let run = PackRun::of(&env, &set(), &the_mod());
+    let config = &run.package().config;
+    assert_eq!(config, &ProjectConfig::of(&run.fix.fixed, Made::Repaired));
+    let said = config.description.raw();
+    assert!(
+        said.starts_with("Repaired by reforge from synthetic.fantome ("),
+        "{said}"
+    );
 }
 
 #[test]

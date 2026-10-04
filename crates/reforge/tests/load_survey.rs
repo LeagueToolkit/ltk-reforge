@@ -88,6 +88,7 @@ fn a_champion_wad_gets_its_character_and_a_unit_per_skin_bin() {
 
 #[test]
 fn a_wad_named_for_no_champion_is_taken_as_the_champion_whose_skin_bins_it_ships() {
+    // #MOD-ARTIFACT-0011: a WAD under the mod's name.
     let (path, bytes) = test_bin(0, &base_skin());
     let archive = ModArchive::new()
         .file("Demon Test.wad.client", &path, bytes)
@@ -125,7 +126,7 @@ fn a_wad_whose_skin_bins_are_of_no_champion_of_the_game_is_not_guessed() {
 
 #[test]
 fn a_wad_shipping_only_a_sub_characters_bins_is_not_guessed() {
-    // The game keeps `testpet` in the champion's WAD, so it is no champion.
+    // #MOD-ARTIFACT-0011: the game keeps `testpet` in the champion's WAD, so it is no champion.
     let archive = ModArchive::new().file("Pet.wad.client", &skin_bin("testpet", 0), bin(vec![]));
     let env = env();
     let run = LoadRun::of(&env, options(), &archive);
@@ -134,6 +135,7 @@ fn a_wad_shipping_only_a_sub_characters_bins_is_not_guessed() {
 
 #[test]
 fn a_wad_named_for_no_champion_with_the_skin_bins_of_several_is_taken_as_none() {
+    // #MOD-ARTIFACT-0011: the bins' paths name two champions.
     let (test, test_bytes) = test_bin(0, &base_skin());
     let (other, other_bytes) = other_bin();
     let archive = ModArchive::new()
@@ -170,6 +172,7 @@ fn a_guess_does_not_take_a_champion_whose_own_wad_is_carried() {
 
 #[test]
 fn of_two_wads_for_one_champion_the_one_the_game_spells_is_carried() {
+    // #MOD-ARTIFACT-0012: every path of the `.wad` is in the `.wad.client`.
     let (path, bytes) = test_bin(0, &base_skin());
     let archive = ModArchive::new()
         .file("Test.wad", &path, bytes.clone())
@@ -204,7 +207,13 @@ fn a_second_wad_with_files_the_carried_one_lacks_is_a_warning() {
     let env = env();
     let run = LoadRun::of(&env, options(), &archive);
 
+    // #MOD-ARTIFACT-0012: the `.wad` holds a file at a path the `.wad.client` lacks.
     let differs = run.only::<WadDuplicateDiffers>();
+    assert_eq!(
+        (differs.wad, differs.carried, differs.champion.as_str()),
+        (WadId::new(0), WadId::new(1), "test")
+    );
+    assert_eq!(role(&run, 0), WadRole::Other);
     assert_eq!(differs.files.len(), 1);
     assert_eq!(
         run.module().files[differs.files[0]].hash,
@@ -252,6 +261,7 @@ fn a_locale_wad_beside_its_champions_keeps_its_locale() {
 
 #[test]
 fn a_mod_packed_into_a_locale_wad_is_the_champions() {
+    // #MOD-ARTIFACT-0010: the champion's skin bin in a locale WAD, and no champion WAD.
     let (path, bytes) = test_bin(0, &base_skin());
     let archive = ModArchive::new().file("Test.en_US.wad.client", &path, bytes);
     let env = env();
@@ -271,6 +281,7 @@ fn a_mod_packed_into_a_locale_wad_is_the_champions() {
 
 #[test]
 fn a_locale_wad_with_skin_bins_beside_the_champions_wad_is_a_locale_wad() {
+    // #MOD-ARTIFACT-0010: beside its champion's WAD a locale WAD is no artifact.
     let (path, bytes) = test_bin(0, &base_skin());
     let archive = ModArchive::new().file(WAD, &path, bytes.clone()).file(
         "Test.en_US.wad.client",

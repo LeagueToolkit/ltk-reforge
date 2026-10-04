@@ -200,6 +200,17 @@ fn every_row_of_the_table_is_removed_wherever_its_class_is_a_struct() {
             row("known-artifacts-vfx-system", 1),
         ]
     );
+    // Each is removed with nothing lost, and raised under the rule of its class.
+    for change in run.changes.iter() {
+        assert_eq!(change.after, After::Removed, "{change:?}");
+        assert_eq!(change.outcome(), Outcome::Removed);
+    }
+    for row in &TABLE {
+        let [removed] = run.raised::<Removed>(row.id)[..] else {
+            panic!("{}: {:?}", row.id, run.messages());
+        };
+        assert_eq!(removed.0.values, run.changes.of(row.id).len(), "{}", row.id);
+    }
     // The rule teaches the one name the table spells.
     let speller = run.speller();
     let paths: Vec<String> = run

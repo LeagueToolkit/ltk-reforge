@@ -399,6 +399,19 @@ fn a_fault_of_a_file_fixup_ends_the_load() {
         Err(LoadError::History(HistoryError::UnknownFamily(_)))
     ));
     assert!(run.log.is_empty());
+
+    // The step gives the fault as it is, and the stage makes it its own error.
+    let mut log = Diagnostics::new();
+    let archive = read(&small_mod(), &mut log);
+    let options = LoadOptions::new().without_fixups().fixup(Faulty);
+    let mut loader = Loader::new(&env).options(options);
+    let mut m = loader.open(archive);
+    let fixed = loader.fix_files(&mut m, &mut log.at(Stage::Load));
+    assert!(matches!(
+        fixed,
+        Err(load::Fault::History(HistoryError::UnknownFamily(_)))
+    ));
+    assert_eq!(m.files.len(), 3, "the files the archive ships stay");
 }
 
 #[test]

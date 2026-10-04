@@ -6,7 +6,7 @@ use reforge::diag::{Record, Severity, Stage};
 use reforge::env::Env;
 use reforge::fixups::{
     After, BinFixup, Changed, Classes, FixCx, FixError, FixInputs, FixupSelection, FixupSet,
-    ObjectSet, Outcome, Removed, Rule, TargetTypes, Unconvertible, rules,
+    ObjectSet, Outcome, Removed, Rule, SelectionError, TargetTypes, Unconvertible, rules,
 };
 use reforge::game::Schema;
 use reforge::history::HistoryError;
@@ -252,6 +252,27 @@ fn a_selection_round_trips() {
     );
     assert!(FixupSelection::from_json(r#"{"of": []}"#).is_err());
     assert_eq!(selection.unknown(), [&FixupId::from("an-optional-fixup")]);
+}
+
+#[test]
+fn a_selection_that_does_not_load_says_whether_the_file_or_its_text_failed() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+
+    let missing = FixupSelection::open(&root.join("no-such.json"));
+    assert!(matches!(missing, Err(SelectionError::Io(_))), "{missing:?}");
+
+    let path = root.join("fixups.json");
+    fs_err::write(&path, r#"{"off": "vfx-linger"}"#).unwrap();
+    let wrong = FixupSelection::open(&path);
+    assert!(matches!(wrong, Err(SelectionError::Json(_))), "{wrong:?}");
+    let not_json = FixupSelection::from_json("off: vfx-linger");
+    assert!(matches!(not_json, Err(SelectionError::Json(_))));
+
+    // A selection saved where no directory is does not write.
+    let nowhere = root.join("no-such-directory").join("fixups.json");
+    let saved = FixupSelection::standard().save(&nowhere);
+    assert!(matches!(saved, Err(SelectionError::Io(_))), "{saved:?}");
 }
 
 #[test]
@@ -683,6 +704,7 @@ fn a_fixup_written_in_code_takes_its_place_by_its_phase() {
         panic!("{:?}", run.changes);
     };
     assert_eq!(left.after, After::Unconvertible { wants: "U8" });
+    assert_eq!(left.outcome(), Outcome::Unconvertible);
     assert!(!left.edits() && !run.changes.edits(run.id("M")));
     assert_eq!(run.field("M", "count"), Some(&float(2.0)));
     let After::Value(after) = &converted.after else {

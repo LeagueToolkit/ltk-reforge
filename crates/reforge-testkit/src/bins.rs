@@ -163,6 +163,36 @@ pub fn with_link(mut object: BinObject, field: &str, target: &str) -> BinObject 
     object
 }
 
+/// The same skin entry with submeshes hidden at first: the names as its mesh block spells
+/// them, separated by spaces.
+///
+/// # Panics
+///
+/// When the entry holds no mesh block.
+pub fn hiding(mut entry: BinObject, submeshes: &str) -> BinObject {
+    let block = name_hash(field::SKIN_MESH_PROPERTIES);
+    let Some(PropertyValueEnum::Embedded(block)) = entry.properties.get_mut(&block) else {
+        panic!("the entry {:08x} holds no mesh block", entry.path_hash.0);
+    };
+    let hidden = name_hash(field::INITIAL_SUBMESH_TO_HIDE);
+    block.0.properties.insert(hidden, text(submeshes));
+    entry
+}
+
+/// The same graph with one visibility event more, which shows these submeshes.
+pub fn showing(mut graph: BinObject, submeshes: &[&str]) -> BinObject {
+    let items = submeshes.iter().map(|name| text(name)).collect();
+    let shown = values::Container::new(PropertyKind::String, items)
+        .unwrap_or_else(|error| panic!("a list of strings does not build: {error}"));
+    let shown = PropertyValueEnum::Container(shown);
+    let event = pointer(
+        class::SUBMESH_VISIBILITY_EVENT_DATA,
+        vec![(field::SHOW_SUBMESH_LIST, shown)],
+    );
+    graph.properties.insert(name_hash("showEvent"), event);
+    graph
+}
+
 /// A bin of these objects that links no bin.
 pub fn bin(objects: Vec<BinObject>) -> Vec<u8> {
     linked_bin(objects, &[])

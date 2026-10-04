@@ -53,6 +53,8 @@ const SKIN: &str = "data/characters/lux/skins/skin0.bin";
 
 #[test]
 fn chunks_are_found_by_path_and_by_hash() {
+    // #MOD-ARTIFACT-0007: two chunks named by their hash, one with an extension.
+    // #MOD-ARTIFACT-0008: a third whose extension is a number.
     let bytes = zip(&[
         (
             "META/info.json",
@@ -119,6 +121,38 @@ fn chunks_are_found_by_path_and_by_hash() {
         ["WAD/Lux.wad.client/0123456789abcdef.1"]
     );
     assert_eq!(codes(&log), ["archive.repack-duplicate"]);
+}
+
+#[test]
+fn a_name_is_a_hash_directly_under_its_wad_and_a_duplicate_by_a_whole_number() {
+    // #MOD-ARTIFACT-0007: sixteen hex digits inside a folder are a path.
+    // #MOD-ARTIFACT-0008: the number is everything after the first dot.
+    let in_folder = "data/0123456789abcdef.bin";
+    let bytes = zip(&[
+        (
+            "WAD/Lux.wad.client/data/0123456789abcdef.bin",
+            b"at a path",
+            STORED,
+        ),
+        ("WAD/Lux.wad.client/aaaaaaaaaaaaaaaa.bin.1", b"one", STORED),
+        ("WAD/Lux.wad.client/bbbbbbbbbbbbbbbb.1.bin", b"two", STORED),
+    ]);
+    let (archive, log) = read(&bytes);
+    let mut chunks: Vec<(WadHash, Option<&str>)> = archive.wads[0]
+        .chunks
+        .iter()
+        .map(|c| (c.hash, c.path.as_ref().map(|p| p.as_str())))
+        .collect();
+    chunks.sort_by_key(|(_, path)| path.is_none());
+    assert_eq!(chunks[0], (path_hash(in_folder), Some(in_folder)));
+    assert_eq!(
+        chunks[1..],
+        [
+            (WadHash(0xaaaa_aaaa_aaaa_aaaa), None),
+            (WadHash(0xbbbb_bbbb_bbbb_bbbb), None),
+        ]
+    );
+    assert!(log.is_empty(), "{:?}", codes(&log));
 }
 
 #[test]
@@ -196,6 +230,7 @@ fn wads_come_in_name_order_and_chunks_in_hash_order() {
 
 #[test]
 fn a_packed_wad_is_mounted_from_memory() {
+    // #MOD-ARTIFACT-0009
     let wad = packed_wad(&[(SKIN, b"inside a packed wad"), ("data/b.bin", b"second")]);
     let bytes = zip(&[("WAD/Lux.wad.client", &wad, STORED)]);
     let (archive, log) = read(&bytes);
@@ -572,7 +607,44 @@ fn a_packed_wad_whose_table_lies_is_refused_before_memory_is_reserved_for_it() {
 }
 
 #[test]
+fn a_packed_wad_the_reader_panics_on_is_skipped_and_the_archive_is_read_on() {
+    // `ltk_wad` 0.5.8 looks for the table of subchunks as it mounts. A chunk stored in
+    // subchunks that declares no subchunk and no inflated byte is read as that table, and the
+    // bytes before its first Zstandard frame are copied into a buffer of no length.
+    let good = packed_wad(&[("data/a.bin", b"some bytes of a chunk")]);
+    let mut crafted = good.clone();
+    let (data_at, compressed_size_at) = (WAD_TABLE_AT + 8, WAD_TABLE_AT + 12);
+    let (uncompressed_size_at, compression_at) = (WAD_TABLE_AT + 16, WAD_TABLE_AT + 20);
+    // One byte before the frame, so the frame is not the chunk's first byte.
+    put_u32(&mut crafted, data_at, get_u32(&good, data_at) - 1);
+    let compressed = get_u32(&good, compressed_size_at) + 1;
+    put_u32(&mut crafted, compressed_size_at, compressed);
+    put_u32(&mut crafted, uncompressed_size_at, 0);
+    // Compression 4, in subchunks, with no subchunk and the first of them at 0.
+    put_u32(&mut crafted, compression_at, 4);
+
+    let bytes = zip(&[
+        ("WAD/Lux.wad.client", &crafted, STORED),
+        ("WAD/Ahri.wad.client/data/x.bin", b"x", STORED),
+    ]);
+    let (archive, log) = read(&bytes);
+    assert_eq!(archive.wads.len(), 1);
+    assert_eq!(archive.wads[0].name.as_str(), "Ahri.wad.client");
+    let unreadable = one::<WadUnreadable>(&log);
+    assert_eq!(unreadable.wad.raw(), "Lux.wad.client");
+    let PackedError::Panicked { reason } = &unreadable.entries[0].why else {
+        panic!(
+            "the panic was not caught as an error: {:?}",
+            unreadable.entries[0].why
+        );
+    };
+    assert!(reason.contains("out of range"), "{reason}");
+    assert_eq!(codes(&log), ["archive.wad-unreadable"]);
+}
+
+#[test]
 fn a_stored_entry_with_a_wrong_checksum_is_read_and_noted() {
+    // #MOD-ARTIFACT-0006
     let name = "WAD/Lux.wad.client/data/x.bin";
     let mut bytes = zip(&[(name, b"stored bytes", STORED)]);
     rewrite(&mut bytes, name, Field::Crc(0xdead_beef));
@@ -585,7 +657,48 @@ fn a_stored_entry_with_a_wrong_checksum_is_read_and_noted() {
 }
 
 #[test]
+fn a_packed_wad_stored_with_a_wrong_checksum_is_mounted_and_noted() {
+    // #MOD-ARTIFACT-0006: every entry seen with it holds a WAD packed whole, and the content
+    // tells the artifact from damage.
+    let wad = packed_wad(&[(SKIN, b"inside a packed wad")]);
+    let (intact, damaged) = ("WAD/Lux.wad.client", "WAD/Ahri.wad.client");
+    let mut bytes = zip(&[
+        (intact, &wad, STORED),
+        (damaged, b"RW\x03\x04 and nothing else", STORED),
+    ]);
+    rewrite(&mut bytes, intact, Field::Crc(0xdead_beef));
+    rewrite(&mut bytes, damaged, Field::Crc(0xdead_beef));
+    let (archive, log) = read(&bytes);
+
+    assert_eq!(archive.wads.len(), 1);
+    let lux = &archive.wads[0];
+    assert_eq!(
+        (lux.name.as_str(), lux.layout),
+        ("Lux.wad.client", WadLayout::Packed)
+    );
+    assert_eq!(&*lux.chunks[0].bytes, b"inside a packed wad");
+    let wrong: Vec<(&str, Vec<&str>)> = log
+        .of::<StoredCrcWrong>()
+        .map(|found| (found.within.raw(), spelled(&found.entries)))
+        .collect();
+    assert_eq!(
+        wrong,
+        [
+            ("Lux.wad.client", vec![intact]),
+            ("Ahri.wad.client", vec![damaged])
+        ]
+    );
+    let unreadable = one::<WadUnreadable>(&log);
+    assert_eq!(unreadable.wad.raw(), "Ahri.wad.client");
+    assert!(matches!(
+        unreadable.entries[0].why,
+        PackedError::Mount { .. }
+    ));
+}
+
+#[test]
 fn a_compressed_entry_that_fails_its_checksum_is_skipped() {
+    // #MOD-ARTIFACT-0006: a compressed entry that fails its checksum is not the artifact.
     let name = "WAD/Lux.wad.client/data/x.bin";
     let mut bytes = zip(&[
         (name, b"deflated bytes, deflated bytes", DEFLATED),
@@ -703,6 +816,7 @@ fn an_archive_file_is_read_from_disk_under_the_cap_for_the_file() {
 
 #[test]
 fn the_first_chunk_at_a_path_stays_and_the_later_ones_are_noted() {
+    // #MOD-ARTIFACT-0007: an entry named by its path and one named by the hash of that path.
     let by_hash = format!("WAD/Lux.wad.client/{:016x}.bin", path_hash("data/y.bin").0);
     let bytes = zip(&[
         ("WAD/Lux.wad.client/data/x.bin", b"first", STORED),
@@ -745,6 +859,7 @@ fn the_first_chunk_at_a_path_stays_and_the_later_ones_are_noted() {
 
 #[test]
 fn the_loose_and_the_packed_form_of_one_wad_are_one_wad() {
+    // #MOD-ARTIFACT-0009: a WAD the archive holds both as a file and as a folder.
     let ahri = packed_wad(&[("data/a.bin", b"packed a"), ("data/b.bin", b"packed b")]);
     let zed = packed_wad(&[("data/a.bin", b"packed a"), ("data/b.bin", b"packed b")]);
     let jax = packed_wad(&[("data/a.bin", b"first packed")]);
@@ -821,6 +936,7 @@ fn the_loose_and_the_packed_form_of_one_wad_are_one_wad() {
 
 #[test]
 fn a_code_is_raised_once_per_subject_with_every_instance_in_it() {
+    // #MOD-ARTIFACT-0008: `.1` and `.2` are numbers, and `.7.bin` is not.
     let bytes = zip(&[
         ("WAD/Lux.wad.client/0123456789abcdef.1", b"1", STORED),
         ("WAD/Ahri.wad.client/0123456789abcdef.1", b"2", STORED),

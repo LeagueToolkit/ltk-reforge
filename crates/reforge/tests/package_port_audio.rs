@@ -2,17 +2,23 @@
 //! block of the patched skin entry, the patch of a voice layer applied over the base layer's
 //! result, and the package written. The game is `reforge_testkit::sounds`.
 
+use std::collections::BTreeMap;
+
 use ltk_meta::BinObject;
 use reforge::diag::{Diagnostics, Stage};
+use reforge::env::Env;
 use reforge::history::NoHistory;
-use reforge::model::{AudioBlock, Layer, SkinEntry, name_hash};
-use reforge::package::{Coverage, Done, MANIFEST_FILE, Origin, PackageWriter, Ported, ProjectDir};
-use reforge_testkit::bins::{bin, graph, resolver};
-use reforge_testkit::facts::env;
-use reforge_testkit::skins::{BASE_CLIPS, WAD, skin_bin};
+use reforge::model::{AudioBlock, ChunkPath, Layer, SkinEntry, name_hash, path_hash};
+use reforge::package::{
+    Coverage, Done, MANIFEST_FILE, Origin, Package, PackageWriter, PortBuilder, Ported, ProjectDir,
+};
+use reforge::port::{AudioNotCarried, BankUnit, NotCarried, Port, UnitAudio};
+use reforge_testkit::bins::{Skin, bin, entry, graph, resolver};
+use reforge_testkit::facts::{archive, env, mod_skin, own_files};
+use reforge_testkit::skins::{self, BASE_CLIPS, WAD, skin_bin};
 use reforge_testkit::sounds::{
     BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_WPK, audio_game, base_entry, clip, event,
-    events_bank, media_bank, package, play, sfx, sound, voice_game,
+    events_bank, media_bank, package, play, sfx, sound, voice_game, with_audio,
 };
 use reforge_testkit::{ModArchive, PortRun};
 use reforge_wwise::CLIENT_VERSION;
@@ -83,6 +89,8 @@ fn the_banks_ship_and_the_patch_adds_their_unit_after_the_games() {
     assert!(read_back, "{:#?}", run.messages());
 }
 
+/// #MOD-ARTIFACT-0028: a unit of the game's name on banks of the mod's own stands in for
+/// the game's.
 #[test]
 fn a_unit_that_stands_in_takes_the_games_unit_out_of_the_block() {
     let stem = "test_base_sfx_events";
@@ -197,6 +205,115 @@ fn a_locales_voice_ships_in_the_locales_wad_and_layer() {
     assert_eq!(patch.path.as_str(), "overrides/test-skin0-voice-en-us.ptch");
     let voiced = block(&run.applied(&layer, SKIN0_BIN).objects);
     assert!(voiced.units[2].name.ends_with("_en_us"));
+}
+
+/// What `PortBuilder` raises and builds from a run's mod and a plan, against a game.
+fn built(run: &PortRun<'_>, port: &Port, game: &Env) -> (Diagnostics, Package) {
+    let mut log = Diagnostics::new();
+    let speller = run.facts.fix.speller();
+    let builder = PortBuilder::new(&run.facts.fix.fixed, port, game, &speller);
+    let package = builder.build(&mut log.at(Stage::Build));
+    let package = package.unwrap_or_else(|error| panic!("no package: {error}\n{}", run.dump()));
+    (log, package)
+}
+
+#[test]
+fn a_games_entry_with_no_bank_unit_gives_no_model_for_the_ports_units() {
+    let planned = env(audio_game(), NoHistory);
+    let clips = vec![clip(1, 1), clip(2, 7), clip(9, 9)];
+    let media = media_bank("test_base_sfx_audio", 134, clips);
+    let run = PortRun::of(&planned, &mod_of(&[BASE_SFX], &[(SFX_AUDIO, media)]));
+    assert_eq!(run.only::<Ported>().banks, 2, "{}", run.dump());
+
+    // The plan adds a unit only where the game's entry has one, so the package is built
+    // here against a game whose entry has no audio block.
+    let silent = env(skins::game(), NoHistory);
+    let (log, package) = built(&run, &run.port, &silent);
+    let left = vec![NotCarried::NoUnitToModel { layer: Layer::Base }];
+    assert_eq!(
+        log.of::<AudioNotCarried>().collect::<Vec<_>>(),
+        [&AudioNotCarried {
+            unit: run.unit("test", 0),
+            left,
+        }]
+    );
+    // A bank ships only with the record that names its unit.
+    let mut origins = package.chunks().map(|(_, _, chunk)| &chunk.origin);
+    assert!(!origins.any(|origin| matches!(origin, Origin::Bank(_))));
+    let ported = log.of::<Ported>().next().expect("the build's finding");
+    assert_eq!((ported.banks, ported.left.recut), (0, 0));
+}
+
+#[test]
+fn a_skin_bin_written_whole_takes_no_voice_layers_patch() {
+    // The game's pet has a voice unit at its one skin. The mod's pet follows the champion to
+    // skin 3, where the game ships no bin of it, so its bin is written whole.
+    let pet_voice = Unit {
+        name: "TestPet_Base_VO",
+        ..BASE_VO
+    };
+    let pet_entry = "Characters/TestPet/Skins/Skin0";
+    let voiced = with_audio(
+        entry(pet_entry, &skins::pet_skin()),
+        &["TestPet"],
+        &[pet_voice],
+    );
+    let mut game = voice_game();
+    game.insert(&skin_bin("testpet", 0), bin(vec![voiced]));
+    let env = env(game, NoHistory);
+    let pet = Skin {
+        mesh: "assets/mod/pet/mesh.skn".into(),
+        skeleton: "assets/mod/pet/skeleton.skl".into(),
+        texture: "assets/mod/pet/body.tex".into(),
+        ..skins::pet_skin()
+    };
+    let mut files = own_files("pet");
+    let champion = "Characters/Test/Skins/Skin0";
+    files.push(mod_skin("test", 0, champion, &skins::skin3(), vec![]));
+    files.push(mod_skin("testpet", 0, pet_entry, &pet, vec![]));
+    let run = PortRun::of(&env, &archive(&files));
+    let unit = run.unit("testpet", 0);
+    let target = "data/characters/testpet/skins/skin3.bin";
+    assert!(
+        matches!(run.chunk(target).origin, Origin::Made(_)),
+        "{}",
+        run.dump()
+    );
+    assert!(run.port.audio.is_empty(), "{}", run.dump());
+
+    // The plan carries no audio to a slot the game has no skin of, so the voice unit is put
+    // in the plan by hand.
+    let made = "mods/synthetic.reforgetests/characters/testpet/skin3/audio/vo_audio.wpk";
+    let mut port = run.port.clone();
+    port.audio.units.push(UnitAudio {
+        unit,
+        units: vec![BankUnit {
+            name: "TestPet_Mod_VO".into(),
+            banks: vec![ChunkPath::parse(made).expect("a path")],
+            events: Vec::new(),
+            voice: true,
+            layer: Layer::Voice(None),
+            tag: None,
+            replaces: None,
+        }],
+        tags: Vec::new(),
+        renamed: BTreeMap::new(),
+    });
+    let (log, package) = built(&run, &port, &env);
+    assert_eq!(
+        log.of::<AudioNotCarried>().collect::<Vec<_>>(),
+        [&AudioNotCarried {
+            unit,
+            left: vec![NotCarried::NewBin],
+        }]
+    );
+    assert!(package.patches(&Layer::Voice(None)).is_empty());
+    assert!(matches!(
+        package
+            .by_hash(path_hash(target))
+            .map(|chunk| &chunk.origin),
+        Some(Origin::Made(_))
+    ));
 }
 
 #[test]

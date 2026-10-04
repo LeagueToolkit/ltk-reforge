@@ -3,19 +3,25 @@
 //! sub-characters, two units on one slot, the levels of animation reuse and reworks. The game
 //! is `reforge_testkit::skins`.
 
-use reforge::diag::Diag;
-use reforge::facts::{Made, Outcome, Verdict};
+use std::collections::BTreeMap;
+
+use reforge::diag::{Diag, Diagnostics, Stage};
+use reforge::facts::{Aspect, ClipBlock, ClipsAt, Made, Outcome, Reused, Verdict, Why};
 use reforge::history::NoHistory;
 use reforge::load::ReworkTable;
 use reforge::model::Slot;
 use reforge::port::{
-    AnimReuse, ForcedUnfit, Infeasible, NewBin, Policy, PreRework, Reason, Superseded,
-    TargetChosen, TargetPolicy, Unjudged,
+    AnimReuse, Conflict, Considered, ForcedUnfit, Infeasible, NewBin, Policy, PreRework, Reason,
+    SubLeft, Superseded, TargetChosen, TargetConflict, TargetPolicy, Unjudged, clip_fit,
 };
 use reforge_testkit::bins::{Skin, blob, graph, resolver};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
+use reforge_testkit::plans::{
+    NEW_TEX, OLD_TEX, champion_and_pet, champion_and_unbound_pet, old_model_and_pet,
+    paste_and_own_skin3, reworked,
+};
 use reforge_testkit::skins::{self, BASE_CLIPS, S3_CLIPS, S3_SKEL};
-use reforge_testkit::{FactRun, MemoryHistory, rigs};
+use reforge_testkit::{FactRun, rigs};
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
 const GRAPH0: &str = "Characters/Test/Animations/Skin0";
@@ -44,8 +50,15 @@ fn a_paste_on_the_premium_mesh_falls_back_to_its_skin() {
         (decision.chosen, decision.reason),
         (Some(Slot(3)), Reason::Fallback)
     );
-    assert!(!decision.candidates[0].feasible);
-    assert!(decision.candidates[1].feasible);
+    let weighed = decision.candidates.iter().map(|c| (c.why, c.feasible));
+    let weighed: Vec<_> = weighed.collect();
+    assert_eq!(
+        weighed,
+        [
+            (Considered::BaseFirst, false),
+            (Considered::PremiumOrigin, true)
+        ]
+    );
     assert_eq!(decision.chroma_followers, [Slot(9)]);
     let log = run.decided(block());
     let chosen: Vec<&TargetChosen> = log.of().collect();
@@ -161,6 +174,7 @@ fn a_forced_target_is_honoured_and_flagged() {
         (Some(Slot(0)), Reason::Forced)
     );
     assert!(decision.unfit);
+    assert_eq!(decision.candidates[0].why, Considered::Policy);
     let log = run.decided(forced);
     let unfit: Vec<&ForcedUnfit> = log.of().collect();
     assert_eq!(unfit.len(), 1);
@@ -174,20 +188,56 @@ fn a_forced_target_is_honoured_and_flagged() {
     assert!(decision.unfit, "the game has no skin 55");
 }
 
-/// A champion pasted from skin 3 beside its pet on the pet's base model.
-fn champion_and_pet() -> Vec<(String, Vec<u8>)> {
-    let pet = Skin {
-        texture: "assets/mod/pet/body.tex".into(),
-        ..skins::pet_skin()
-    };
-    vec![
-        mod_skin("test", 0, SKIN0, &skins::skin3(), vec![]),
-        (
-            "assets/mod/pet/body.tex".into(),
-            blob("assets/mod/pet/body.tex"),
-        ),
-        mod_skin("testpet", 0, "Characters/TestPet/Skins/Skin0", &pet, vec![]),
-    ]
+#[test]
+fn under_the_origin_policy_a_unit_goes_to_its_premium_origin_else_to_skin0() {
+    let env = env(skins::game(), NoHistory);
+    let origin = policy(TargetPolicy::Origin, AnimReuse::Block);
+    let files = [mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    let paste = FactRun::of(&env, &archive(&files));
+    let decision = paste.decide(origin, "test", 0);
+    assert_eq!(
+        (decision.chosen, decision.reason, decision.unfit),
+        (Some(Slot(3)), Reason::Forced, false),
+        "{}",
+        paste.dump()
+    );
+    assert_eq!(decision.candidates[0].why, Considered::Policy);
+    // A forced target that fits is said by no finding.
+    assert!(paste.decided(origin).is_empty());
+
+    // The mod's own rig derives from no premium skin.
+    let mut files = own_files("a");
+    let skin = own_skin("a", GRAPH0, RESOURCES0);
+    let extra = vec![own_graph("a", GRAPH0)];
+    files.push(mod_skin("test", 0, SKIN0, &skin, extra));
+    let own = FactRun::of(&env, &archive(&files));
+    let decision = own.decide(origin, "test", 0);
+    assert_eq!(
+        (decision.chosen, decision.reason),
+        (Some(Slot(0)), Reason::Forced),
+        "{}",
+        own.dump()
+    );
+}
+
+#[test]
+fn under_the_slot_policy_a_unit_stays_where_its_bin_sits() {
+    let env = env(skins::game(), NoHistory);
+    let files = [mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    let run = FactRun::of(&env, &archive(&files));
+    let stay = policy(TargetPolicy::Slot, AnimReuse::Block);
+    let decision = run.decide(stay, "test", 0);
+    // Under `auto` the paste falls back to skin 3: here it stays, and is flagged.
+    assert_eq!(
+        (decision.chosen, decision.reason, decision.unfit),
+        (Some(Slot(0)), Reason::Forced, true),
+        "{}",
+        run.dump()
+    );
+    let log = run.decided(stay);
+    let unfit: Vec<&ForcedUnfit> = log.of().collect();
+    assert_eq!(unfit.len(), 1);
+    assert_eq!((unfit[0].slot, unfit[0].follows), (Slot(0), false));
 }
 
 #[test]
@@ -202,8 +252,10 @@ fn a_sub_character_follows_its_champion() {
         (pet.chosen, pet.reason),
         (Some(Slot(3)), Reason::SubFollows)
     );
+    // #GAME-BEHAVIOR-0001: the client looks for the pet's skin 3 bin, which the game lacks.
     assert_eq!(pet.new_bin, Some(Slot(3)));
     assert!(pet.unfit);
+    assert_eq!(pet.candidates[0].why, Considered::ChampionTarget);
     let log = run.decided(block());
     assert_eq!(log.of::<NewBin>().count(), 1);
     let unfit: Vec<&ForcedUnfit> = log.of().collect();
@@ -245,6 +297,31 @@ fn a_sub_character_on_its_own_model_follows_to_the_base() {
     );
 }
 
+#[test]
+fn a_sub_character_whose_model_does_not_fit_the_base_is_left_to_the_game() {
+    let env = env(skins::game(), NoHistory);
+    let run = FactRun::of(&env, &archive(&champion_and_unbound_pet()));
+    let champion = run.decide(block(), "test", 0);
+    assert_eq!(champion.chosen, Some(Slot(0)), "{}", run.dump());
+    let pet = run.decide(block(), "testpet", 0);
+    assert_eq!(
+        (pet.chosen, pet.reason),
+        (None, Reason::SubLeftToBase),
+        "{}",
+        run.dump()
+    );
+    let skeleton = pet.candidates[0].checks.iter();
+    let skeleton: Vec<&Why> = skeleton
+        .filter(|check| check.fit.blocks())
+        .map(|check| &check.fit.why)
+        .collect();
+    assert_eq!(skeleton, [&Why::Unbound]);
+    let log = run.decided(block());
+    let left: Vec<&SubLeft> = log.of().collect();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].unit, pet.unit);
+}
+
 /// An object that makes a sub-character's bin differ from the game's.
 fn particle() -> ltk_meta::BinObject {
     reforge_testkit::bins::particle(
@@ -256,23 +333,7 @@ fn particle() -> ltk_meta::BinObject {
 #[test]
 fn a_unit_written_for_the_fallback_slot_supersedes_the_paste() {
     let env = env(skins::game(), NoHistory);
-    // A paste of skin 3 in skin0, and the author's own version at slot 3.
-    let mut files = own_files("a");
-    files.push(mod_skin("test", 0, SKIN0, &skins::skin3(), vec![]));
-    let own = own_skin(
-        "a",
-        "Characters/Test/Animations/Skin3",
-        "Characters/Test/Skins/Skin3/Resources",
-    );
-    let extra = vec![own_graph("a", "Characters/Test/Animations/Skin3")];
-    files.push(mod_skin(
-        "test",
-        3,
-        "Characters/Test/Skins/Skin3",
-        &own,
-        extra,
-    ));
-    let run = FactRun::of(&env, &archive(&files));
+    let run = FactRun::of(&env, &archive(&paste_and_own_skin3()));
     let targets = block().decide(&run.facts);
     let paste = run.decision(&targets, "test", 0);
     let written = run.decision(&targets, "test", 3);
@@ -293,6 +354,31 @@ fn a_unit_written_for_the_fallback_slot_supersedes_the_paste() {
         (paste.unit, written.unit)
     );
     assert!(targets.conflicts.is_empty());
+}
+
+#[test]
+fn two_units_of_one_rank_on_one_slot_are_reported_as_a_conflict() {
+    let env = env(skins::game(), NoHistory);
+    let run = FactRun::of(&env, &archive(&paste_and_own_skin3()));
+    let mut targets = block().decide(&run.facts);
+    let (paste, written) = (run.unit("test", 0), run.unit("test", 3));
+    let character = targets.decisions[&paste].character;
+    // A unit's rank ends on its slot, and a character has one unit per slot: no two units of
+    // a loaded mod tie. The conflict is given to the report as the decision would hold it.
+    targets.conflicts.push(Conflict {
+        character,
+        slot: Slot(3),
+        units: vec![paste, written],
+    });
+    let mut log = Diagnostics::new();
+    targets.report(&mut log.at(Stage::Decide));
+    let conflicts: Vec<&TargetConflict> = log.of().collect();
+    assert_eq!(conflicts.len(), 1);
+    assert_eq!(
+        (conflicts[0].character, conflicts[0].slot),
+        (character, Slot(3))
+    );
+    assert_eq!(conflicts[0].units, [paste, written]);
 }
 
 #[test]
@@ -374,6 +460,15 @@ fn the_level_of_animation_reuse_is_the_policys() {
         run.dump()
     );
     assert_eq!(blocked.played, Some(2));
+    let weighed = blocked.candidates.iter().map(|c| (c.why, c.feasible));
+    let weighed: Vec<_> = weighed.collect();
+    assert_eq!(
+        weighed,
+        [
+            (Considered::BaseFirst, false),
+            (Considered::ClipsSkin, true)
+        ]
+    );
     let allowed = at(AnimReuse::Allow);
     assert_eq!(
         (allowed.chosen, allowed.reason),
@@ -383,7 +478,10 @@ fn the_level_of_animation_reuse_is_the_policys() {
         .checks
         .last()
         .expect("the clips are judged");
-    assert_eq!(clips.fit.outcome, Outcome::Fits);
+    assert_eq!(
+        (clips.aspect, clips.fit.outcome),
+        (Aspect::Clips, Outcome::Fits)
+    );
     assert_eq!(
         clips.fit.why.to_string(),
         "3 of 3 fit, 2 reused from other skins (allow)"
@@ -465,29 +563,190 @@ fn a_unit_borrowing_one_clip_stays_at_its_slot() {
     );
 }
 
-const OLD_TEX: &str = "assets/characters/test/skins/base/test_old.tex";
-const NEW_TEX: &str = "assets/characters/test/skins/base/test_new.tex";
+/// A unit's clips at a slot: `total` played, `fits` of them the slot's own, the others these.
+fn clips_at(total: u32, fits: u32, reused: Vec<Reused>) -> ClipsAt {
+    ClipsAt {
+        total,
+        fits,
+        reused,
+        graph_found: true,
+        ..ClipsAt::default()
+    }
+}
 
-/// A history of two builds in which `test` is reworked at the second: the old texture's path
-/// is dropped at it, and the new one's ships from it.
-fn reworked() -> (MemoryHistory, ReworkTable) {
-    let history = MemoryHistory::new(&["16.18.1", "16.19.1"]);
-    let history = history.with_path(OLD_TEX, 0..=0).with_path(NEW_TEX, 1..=1);
-    (history, ReworkTable::new([("test", "16.19")]))
+/// Clips of skin 3 that the slot judged does not play, none of them judged by its joints.
+fn of_skin3(clips: u32) -> Reused {
+    Reused {
+        from: Slot(3),
+        clips,
+        same_joints: false,
+        joints_fit: 0,
+        joints_extra: 0,
+        joints_off: 0,
+        joints_unknown: 0,
+        extra_joints: BTreeMap::new(),
+    }
+}
+
+fn refused(clips: u32) -> ClipBlock {
+    let from = Slot(3);
+    ClipBlock::Refused { clips, from }
+}
+
+fn blocked_by(blocks: Vec<ClipBlock>) -> (Outcome, Why) {
+    (Outcome::DoesNotFit, Why::ClipsBlocked { blocks })
+}
+
+fn fit_of(at: &ClipsAt, level: AnimReuse) -> (Outcome, Why) {
+    let fit = clip_fit(at, level);
+    (fit.outcome, fit.why)
+}
+
+#[test]
+fn a_unit_that_plays_no_clip_is_not_judged_by_its_clips() {
+    for graph_found in [true, false] {
+        let at = ClipsAt {
+            graph_found,
+            ..ClipsAt::default()
+        };
+        for level in AnimReuse::ALL {
+            let expected = (Outcome::Unknown, Why::NoClips { graph_found });
+            assert_eq!(fit_of(&at, level), expected);
+            assert!(
+                !clip_fit(&at, level).blocks(),
+                "nothing judged rules no slot out"
+            );
+        }
+    }
+}
+
+#[test]
+fn under_block_a_clip_only_another_skin_plays_refuses_the_slot() {
+    let at = clips_at(3, 2, vec![of_skin3(1)]);
+    assert_eq!(fit_of(&at, AnimReuse::Block), blocked_by(vec![refused(1)]));
+    // The slot's own clips alone fit at every level.
+    let own = clips_at(2, 2, Vec::new());
+    for level in AnimReuse::ALL {
+        let why = Why::ClipsFit {
+            fits: 2,
+            total: 2,
+            reused: 0,
+            level: level.as_str(),
+            unknown: 0,
+        };
+        assert_eq!(fit_of(&own, level), (Outcome::Fits, why));
+    }
+}
+
+#[test]
+fn under_same_joints_a_clip_fits_when_its_skin_has_the_slots_joints() {
+    let same = Reused {
+        same_joints: true,
+        ..of_skin3(1)
+    };
+    let why = Why::ClipsFit {
+        fits: 3,
+        total: 3,
+        reused: 1,
+        level: "same-joints",
+        unknown: 0,
+    };
+    assert_eq!(
+        fit_of(&clips_at(3, 2, vec![same]), AnimReuse::SameJoints),
+        (Outcome::Fits, why)
+    );
+    let other = clips_at(3, 2, vec![of_skin3(1)]);
+    assert_eq!(
+        fit_of(&other, AnimReuse::SameJoints),
+        blocked_by(vec![refused(1)])
+    );
+}
+
+#[test]
+fn under_allow_a_borrowed_clip_fits_where_it_moves_a_joint_of_the_skeleton() {
+    // Four clips of skin 3: one on the skeleton's joints alone, one with other joints too,
+    // one whose joints did not read, one on none of the skeleton's joints.
+    let judged = Reused {
+        joints_fit: 1,
+        joints_extra: 1,
+        joints_unknown: 1,
+        joints_off: 1,
+        ..of_skin3(4)
+    };
+    let at = clips_at(5, 1, vec![judged]);
+    assert_eq!(fit_of(&at, AnimReuse::Allow), blocked_by(vec![refused(1)]));
+    // Without the clip that moves nothing, the unread one is counted and does not block.
+    let moving = Reused {
+        joints_fit: 1,
+        joints_extra: 1,
+        joints_unknown: 1,
+        ..of_skin3(3)
+    };
+    let why = Why::ClipsFit {
+        fits: 3,
+        total: 4,
+        reused: 2,
+        level: "allow",
+        unknown: 1,
+    };
+    assert_eq!(
+        fit_of(&clips_at(4, 1, vec![moving]), AnimReuse::Allow),
+        (Outcome::Fits, why)
+    );
+}
+
+#[test]
+fn under_own_rig_reuse_needs_the_authors_rig_and_half_the_clips_or_a_few_borrowed() {
+    let borrowed = Reused {
+        joints_fit: 3,
+        ..of_skin3(3)
+    };
+    // The game's rig, three of four clips skin 3's: neither an own rig nor a few borrowed.
+    let pasted = clips_at(4, 1, vec![borrowed.clone()]);
+    let needs = ClipBlock::NeedsOwnRig {
+        own_rig: false,
+        own: 0,
+        total: 4,
+    };
+    assert_eq!(
+        fit_of(&pasted, AnimReuse::OwnRig),
+        blocked_by(vec![refused(3), needs])
+    );
+    // The author's mesh and skeleton, and half the clips its own.
+    let own_work = ClipsAt {
+        own_rig: true,
+        own: 3,
+        ..clips_at(6, 3, vec![borrowed])
+    };
+    assert_eq!(fit_of(&own_work, AnimReuse::OwnRig).0, Outcome::Fits);
+    // One clip borrowed beside three the slot plays.
+    let one = Reused {
+        joints_fit: 1,
+        ..of_skin3(1)
+    };
+    let few = clips_at(4, 3, vec![one]);
+    assert_eq!(fit_of(&few, AnimReuse::OwnRig).0, Outcome::Fits);
+    assert_eq!(fit_of(&few, AnimReuse::Block), blocked_by(vec![refused(1)]));
+}
+
+#[test]
+fn an_own_clip_that_moves_no_joint_of_the_skeleton_refuses_the_slot_at_every_level() {
+    let at = ClipsAt {
+        own_off: 1,
+        own: 2,
+        ..clips_at(2, 1, Vec::new())
+    };
+    for level in AnimReuse::ALL {
+        let block = ClipBlock::OwnOff { clips: 1 };
+        assert_eq!(fit_of(&at, level), blocked_by(vec![block]));
+    }
 }
 
 #[test]
 fn a_texture_for_the_old_model_is_left_to_the_game() {
     let (history, table) = reworked();
     let env = env(skins::game(), history);
-    let skin = Skin {
-        texture: OLD_TEX.into(),
-        ..skins::base_skin()
-    };
-    let mut files = champion_and_pet();
-    files[0] = mod_skin("test", 0, SKIN0, &skin, vec![]);
-    files.push((OLD_TEX.into(), blob(OLD_TEX)));
-    let run = FactRun::with_reworks(&env, &archive(&files), &table);
+    let run = FactRun::with_reworks(&env, &archive(&old_model_and_pet()), &table);
     let judged: Vec<_> = run.facts.reworks.iter().collect();
     assert_eq!(judged.len(), 1);
     assert_eq!(
@@ -575,6 +834,22 @@ fn without_a_history_no_rework_is_judged() {
         &ReworkTable::new([("test", "16.19")]),
     );
     assert_eq!(run.facts.reworks.iter().count(), 0);
+}
+
+#[test]
+fn a_mod_with_no_file_around_the_rework_and_no_date_is_not_left_to_the_game() {
+    let (history, table) = reworked();
+    let env = env(skins::game(), history);
+    // The game's base model, and no file at a path the rework dropped or added.
+    let files = [mod_skin("test", 0, SKIN0, &skins::base_skin(), vec![])];
+    let run = FactRun::with_reworks(&env, &archive(&files), &table);
+    let judged: Vec<_> = run.facts.reworks.iter().collect();
+    assert_eq!(judged.len(), 1, "{}", run.dump());
+    assert_eq!(
+        (judged[0].made, judged[0].older, judged[0].newer),
+        (Made::Unknown, 0, 0)
+    );
+    assert_ne!(run.decide(block(), "test", 0).reason, Reason::PreRework);
 }
 
 #[test]

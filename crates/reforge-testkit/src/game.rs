@@ -58,6 +58,53 @@ impl MemoryGame {
     }
 }
 
+/// A game one of whose chunks is listed and does not read: a fault of the machine, for the
+/// tests of how a stage ends on one.
+pub struct BrokenGame {
+    game: MemoryGame,
+    broken: WadHash,
+}
+
+impl BrokenGame {
+    /// A game whose chunk at `path` does not read.
+    pub fn at(game: MemoryGame, path: &str) -> Self {
+        Self {
+            game,
+            broken: path_hash(path),
+        }
+    }
+
+    /// The chunks of the game by their size, in each WAD holding them.
+    pub fn sizes(&self) -> SizeIndex {
+        self.game.sizes()
+    }
+}
+
+impl Game for BrokenGame {
+    fn build(&self) -> Option<&Build> {
+        self.game.build()
+    }
+
+    fn describe(&self) -> String {
+        self.game.describe()
+    }
+
+    fn size(&self, path: WadHash) -> Option<u64> {
+        self.game.size(path)
+    }
+
+    fn read(&self, path: WadHash) -> Result<Option<Vec<u8>>, GameError> {
+        if path == self.broken {
+            return Err(GameError::Open(std::io::Error::other("the disk failed")));
+        }
+        self.game.read(path)
+    }
+
+    fn wads(&self, path: WadHash) -> Vec<WadName> {
+        self.game.wads(path)
+    }
+}
+
 impl Game for MemoryGame {
     fn build(&self) -> Option<&Build> {
         self.build.as_ref()

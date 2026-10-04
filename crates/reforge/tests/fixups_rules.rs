@@ -159,6 +159,27 @@ fn fixed<'a>(env: &'a Env, fields: Vec<(&str, V)>) -> FixRun<'a> {
     FixRun::of(env, &the_rules(), &archive(vec![emitter("E", fields)]))
 }
 
+/// Where each value a fixup changed was and where it is, spelled, in the order changed.
+///
+/// A change of the fixup that is no move fails the test.
+fn moves(run: &FixRun<'_>, fixup: &str) -> Vec<(String, String)> {
+    let speller = run.speller();
+    let changes = run.changes.of(fixup).iter();
+    changes
+        .map(|change| match &change.after {
+            After::Moved { to } => (change.path.spelled(&speller), to.spelled(&speller)),
+            other => panic!(
+                "{fixup} left {other:?} at {}",
+                change.path.spelled(&speller)
+            ),
+        })
+        .collect()
+}
+
+fn moved(from: &str, to: &str) -> (String, String) {
+    (from.to_string(), to.to_string())
+}
+
 fn gone(run: &FixRun<'_>, fields: &[&str]) {
     for name in fields {
         assert!(
@@ -188,8 +209,18 @@ fn an_emitters_filters_move_into_filtering() {
             .contains_key(&name_hash("spectatorPolicy"))
     );
     gone(&run, &["keywordsExcluded", "spectatorPolicy"]);
-    assert_eq!(run.changes.of("vfx-filtering").len(), 2);
+    assert_eq!(
+        moves(&run, "vfx-filtering"),
+        [
+            moved("keywordsExcluded", "Filtering.keywordsExcluded"),
+            moved("spectatorPolicy", "Filtering.spectatorPolicy"),
+        ]
+    );
     assert_eq!(run.changes.len(), 2);
+    let [changed] = run.raised::<Changed>("vfx-filtering")[..] else {
+        panic!("{:?}", run.messages());
+    };
+    assert_eq!((changed.0.values, changed.0.objects), (2, 1));
 }
 
 #[test]
@@ -220,7 +251,16 @@ fn an_emitters_linger_fields_move_into_linger_under_their_new_names() {
             "UseLingerScale",
         ],
     );
-    assert_eq!(run.changes.of("vfx-linger").len(), 4);
+    assert_eq!(
+        moves(&run, "vfx-linger"),
+        [
+            moved("lingerDrag", "Linger.KeyedLingerDrag"),
+            moved("lingerColor", "Linger.SeparateLingerColor"),
+            moved("useLingerColor", "Linger.UseSeparateLingerColor"),
+            moved("UseLingerScale", "Linger.UseLingerScale"),
+        ]
+    );
+    assert_eq!(run.raised::<Changed>("vfx-linger").len(), 1);
 }
 
 #[test]
@@ -238,6 +278,14 @@ fn an_emitters_bound_object_scale_moves_into_the_flex_shape() {
         Some(&float(0.25))
     );
     gone(&run, &["scaleEmitOffsetByBoundObjectSize"]);
+    assert_eq!(
+        moves(&run, "vfx-flex-shape"),
+        [moved(
+            "scaleEmitOffsetByBoundObjectSize",
+            "FlexShapeDefinition.scaleEmitOffsetByBoundObjectSize"
+        )]
+    );
+    assert_eq!(run.raised::<Changed>("vfx-flex-shape").len(), 1);
 }
 
 #[test]
@@ -295,6 +343,15 @@ fn an_emitters_simple_particle_fields_move_into_legacy_simple() {
     // The new class does not declare it: it stays where it is.
     assert_eq!(run.field("E", "scaleUpFromOrigin"), Some(&flag(true)));
     assert_eq!(get("scaleUpFromOrigin"), None);
+    assert_eq!(
+        moves(&run, "vfx-legacy-simple"),
+        [
+            moved("birthScale1", "LegacySimple.birthScale"),
+            moved("particleBind", "LegacySimple.particleBind"),
+        ]
+    );
+    assert_eq!(run.changes.len(), 2);
+    assert_eq!(run.raised::<Changed>("vfx-legacy-simple").len(), 1);
 }
 
 #[test]
@@ -319,6 +376,18 @@ fn an_emitters_second_texture_and_its_fields_move_into_texture_mult() {
     // The game's own spelling of the new name.
     assert_eq!(get("TextureMultFilpU"), Some(&flag(true)));
     gone(&run, &["particleUVScrollRateMult", "TextureMultFlipU"]);
+    assert_eq!(
+        moves(&run, "vfx-texture-mult"),
+        [
+            moved("textureMult", "textureMult.textureMult"),
+            moved(
+                "particleUVScrollRateMult",
+                "textureMult.ParticleIntegratedUvScrollMult"
+            ),
+            moved("TextureMultFlipU", "textureMult.TextureMultFilpU"),
+        ]
+    );
+    assert_eq!(run.raised::<Changed>("vfx-texture-mult").len(), 1);
 }
 
 #[test]

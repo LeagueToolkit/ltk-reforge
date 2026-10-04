@@ -7,7 +7,7 @@ use std::sync::Arc;
 use reforge::archive::file_kind;
 use reforge::diag::{Channel, Diag, Diagnostics, Render, Severity, Stage, Subject};
 use reforge::game::{Build, Game, GameError, SizeIndex};
-use reforge::history::{History, Life, NoHistory};
+use reforge::history::{History, HistoryError, Life, NoHistory};
 use reforge::load::Fault;
 use reforge::load::provenance::{
     Against, AtPath, BytesOrigin, CODES, FileProvenance, MAX_SAME_SIZE_READS, OlderGameFiles,
@@ -19,7 +19,7 @@ use reforge::model::entity::{
 use reforge::model::{
     BinHash, ChunkPath, ContentId, Mod, NoNames, Slot, Spell, Spelled, WadHash, WadName, path_hash,
 };
-use reforge_testkit::{MemoryGame, MemoryHistory};
+use reforge_testkit::{BrokenHistory, MemoryGame, MemoryHistory};
 
 const WAD: &str = "Test.wad.client";
 
@@ -643,6 +643,29 @@ fn a_game_chunk_that_does_not_read_is_a_fault() {
     let found = FileProvenance::find(&m, &against);
     assert!(matches!(found, Err(Fault::Game(_))));
     assert_eq!(m.files[copy].size, blob("game body").len() as u64);
+}
+
+#[test]
+fn a_history_that_does_not_answer_is_a_fault() {
+    let mut world = World::new();
+    world.ship(BODY, &blob("game body"));
+    let (mut m, wad) = test_mod();
+    let broken = BrokenHistory(builds());
+    let against = Against {
+        game: &world.game,
+        sizes: &world.sizes,
+        history: &broken,
+        names: &NoNames,
+    };
+
+    // Bytes the install holds are found there, and the history is not asked.
+    file(&mut m, wad, BODY, &blob("game body"));
+    assert!(FileProvenance::find(&m, &against).is_ok());
+
+    // Bytes it does not hold are the history's to place: they are not judged the mod's own.
+    file(&mut m, wad, "assets/mod/a/old.tex", &blob("old"));
+    let found = FileProvenance::find(&m, &against);
+    assert!(matches!(found, Err(Fault::History(HistoryError::Io(_)))));
 }
 
 #[test]

@@ -85,6 +85,24 @@ pub fn skeleton(joints: &[&str]) -> Vec<u8> {
     out.into_inner()
 }
 
+/// A skeleton of these joints as [`skeleton`] builds one, under a name of its own: its bytes
+/// are not those of [`skeleton`] for the same joints.
+///
+/// # Panics
+///
+/// When no joint is given, or `ltk_anim` does not write the skeleton.
+pub fn skeleton_named(name: &str, joints: &[&str]) -> Vec<u8> {
+    let (root, children) = joints.split_first().expect("a skeleton has a root joint");
+    let joint = |name: &&str| Box::new(JointBuilder::new(*name).with_influence(true));
+    let root = JointBuilder::new(*root).with_influence(true);
+    let root = root.with_children(children.iter().map(joint));
+    let rig = RigBuilder::new(name, name).with_root_joint(root).build();
+    let mut out = Cursor::new(Vec::new());
+    let written = rig.to_writer(&mut out);
+    written.unwrap_or_else(|error| panic!("the skeleton {name} writes: {error}"));
+    out.into_inner()
+}
+
 /// A clip of one frame with a track for each of these joints, bound by the hash of the
 /// joint's lowercase name.
 ///

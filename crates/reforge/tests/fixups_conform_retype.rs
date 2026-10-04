@@ -3,12 +3,19 @@
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
+use ltk_hashdb::{Compression, HashDbWriter};
 use ltk_meta::property::values;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum as V};
+use ltk_mimir_cache::{CommitItem, HashStore, Table};
+use reforge::diag::Stage;
 use reforge::env::Env;
 use reforge::fixups::conform::{Conversion, Retype};
-use reforge::fixups::{After, Change, Changed, FixupSet, Removed, Unconvertible};
-use reforge::game::{Names, Schema};
+use reforge::fixups::{
+    After, Change, Changed, FixError, FixInputs, FixupSet, ObjectSet, Outcome, Removed,
+    Unconvertible,
+};
+use reforge::game::{NameHashError, Names, Schema};
+use reforge::load::{Dating, LoadOptions};
 use reforge::model::{BinHash, Record, WadHash, name_hash, path_hash};
 use reforge_testkit::bins::{
     bin, blob, embedded, field_of, flag, float, link, object, pointer, text,
@@ -17,7 +24,7 @@ use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{
     embed, field, kind, list, list_of, list2, map, option, pointer as to,
 };
-use reforge_testkit::{FixRun, MemoryHistory, ModArchive, SchemaRows, skins};
+use reforge_testkit::{FixRun, LoadRun, MemoryHistory, ModArchive, SchemaRows, skins};
 use tempfile::TempDir;
 
 const THING: &str = "Thing";
@@ -198,29 +205,33 @@ fn rows(changes: &[Change], run: &FixRun<'_>) -> Vec<(String, &'static str, Stri
 
 #[test]
 fn the_catalogue_lists_each_conversion_with_the_records_it_follows() {
-    let rows: Vec<(String, Vec<String>)> = Conversion::ALL
+    let rows: Vec<(Conversion, String, Vec<String>)> = Conversion::ALL
         .iter()
         .map(|conversion| {
             let records = conversion.records().iter().map(Record::to_string);
-            (conversion.to_string(), records.collect())
+            (*conversion, conversion.to_string(), records.collect())
         })
         .collect();
-    let row = |name: &str, records: &[&str]| {
+    let row = |conversion: Conversion, name: &str, records: &[&str]| {
         let records = records.iter().map(ToString::to_string).collect();
-        (name.to_string(), records)
+        (conversion, name.to_string(), records)
     };
     assert_eq!(
         rows,
         [
-            row("retag", &["#GAME-CHANGE-0019"]),
-            row("hash-value", &["#GAME-CHANGE-0013"]),
-            row("rehash", &["#GAME-CHANGE-0013"]),
-            row("hash-key", &["#GAME-CHANGE-0013"]),
-            row("widen", &[]),
-            row("narrow", &["#GAME-CHANGE-0020", "#MOD-ARTIFACT-0021"]),
-            row("optional", &[]),
-            row("null-pointer", &[]),
-            row("empty-option", &[]),
+            row(Conversion::Retag, "retag", &["#GAME-CHANGE-0019"]),
+            row(Conversion::HashValue, "hash-value", &["#GAME-CHANGE-0013"]),
+            row(Conversion::Rehash, "rehash", &["#GAME-CHANGE-0013"]),
+            row(Conversion::HashKey, "hash-key", &["#GAME-CHANGE-0013"]),
+            row(Conversion::Widen, "widen", &[]),
+            row(
+                Conversion::Narrow,
+                "narrow",
+                &["#GAME-CHANGE-0020", "#MOD-ARTIFACT-0021"]
+            ),
+            row(Conversion::Optional, "optional", &[]),
+            row(Conversion::NullPointer, "null-pointer", &[]),
+            row(Conversion::EmptyOption, "empty-option", &[]),
         ]
     );
     for conversion in Conversion::ALL {
@@ -238,31 +249,43 @@ fn the_catalogue_lists_each_conversion_with_the_records_it_follows() {
 
 #[test]
 fn the_conversion_between_two_kinds_is_read_off_the_kinds() {
-    use Conversion as C;
     let between = Conversion::between;
     assert_eq!(
         between(Kind::String, Kind::WadChunkLink),
-        Some(C::HashValue)
+        Some(Conversion::HashValue)
     );
-    assert_eq!(between(Kind::Hash, Kind::WadChunkLink), Some(C::Rehash));
-    assert_eq!(between(Kind::Hash, Kind::ObjectLink), Some(C::Retag));
+    assert_eq!(
+        between(Kind::Hash, Kind::WadChunkLink),
+        Some(Conversion::Rehash)
+    );
+    assert_eq!(
+        between(Kind::Hash, Kind::ObjectLink),
+        Some(Conversion::Retag)
+    );
     assert_eq!(
         between(Kind::Container, Kind::UnorderedContainer),
-        Some(C::Retag)
+        Some(Conversion::Retag)
     );
     // #GAME-CHANGE-0021: no value goes into an option.
     assert_eq!(between(Kind::F32, Kind::Optional), None);
-    assert_eq!(between(Kind::None, Kind::Struct), Some(C::NullPointer));
+    assert_eq!(
+        between(Kind::None, Kind::Struct),
+        Some(Conversion::NullPointer)
+    );
     // Wider, and every value of the old kind fits: a widening. Any other pair of integers
     // is a narrowing, the same width under another sign included.
-    assert_eq!(between(Kind::U8, Kind::U32), Some(C::Widen));
-    assert_eq!(between(Kind::U8, Kind::I16), Some(C::Widen));
-    assert_eq!(between(Kind::I8, Kind::U16), Some(C::Narrow));
-    assert_eq!(between(Kind::U8, Kind::I8), Some(C::Narrow));
-    assert_eq!(between(Kind::U32, Kind::U8), Some(C::Narrow));
+    assert_eq!(between(Kind::U8, Kind::U32), Some(Conversion::Widen));
+    assert_eq!(between(Kind::U8, Kind::I16), Some(Conversion::Widen));
+    assert_eq!(between(Kind::I8, Kind::U16), Some(Conversion::Narrow));
+    assert_eq!(between(Kind::U8, Kind::I8), Some(Conversion::Narrow));
+    assert_eq!(between(Kind::U32, Kind::U8), Some(Conversion::Narrow));
     assert_eq!(between(Kind::F32, Kind::String), None);
     assert_eq!(between(Kind::String, Kind::Struct), None);
     assert_eq!(between(Kind::F32, Kind::U8), None);
+    // A value of the kind read is not asked here: what it holds is converted, a map by
+    // `HashKey`, a present option by `Optional`, an empty one by `EmptyOption`.
+    assert_eq!(between(Kind::Map, Kind::Map), None);
+    assert_eq!(between(Kind::Optional, Kind::Optional), None);
 
     // #MOD-ARTIFACT-0022: what the manager makes at install.
     let at_install = |from, to| between(from, to).is_some_and(|c| c.at_install(from));
@@ -448,6 +471,56 @@ fn rehash_refuses_a_hash_no_name_spells() {
 }
 
 #[test]
+fn rehash_ends_the_run_with_a_fault_when_the_name_hash_index_does_not_read() {
+    // A hash cache whose path table spells one path, and its name-hash index on disk.
+    let keep = tempfile::tempdir().unwrap();
+    let dir = Utf8PathBuf::from_path_buf(keep.path().to_path_buf()).expect("a UTF-8 directory");
+    let (cache, staging, index) = (dir.join("cache"), dir.join("staging"), dir.join("index"));
+    fs::create_dir_all(&staging).unwrap();
+    let config = Table::Game.key_config();
+    let mut writer = HashDbWriter::with_key_config(config, Compression::None);
+    writer.insert(config.hash(SHARED), SHARED);
+    let table = staging.join("game.lhdb");
+    writer.build(fs::File::create(&table).unwrap()).unwrap();
+    let item = CommitItem::new(Table::Game, "1", table);
+    HashStore::at(&cache).commit(&[item], None).unwrap();
+    let names = Names::builder().mimir(&cache).name_hash_index(&index);
+    let names = names.build().expect("name tables");
+
+    let env = env_with(Made::Undated, names, skins::game_at("16.19.300"));
+    let archive = archive(vec![("file", hash("assets/nobody/knows.tex"))]);
+    let run = LoadRun::of(&env, LoadOptions::default(), &archive);
+    let LoadRun {
+        result,
+        mut log,
+        mut names,
+        ..
+    } = run;
+    let m = result.expect("a mod");
+
+    // The index loses its one record behind the handle the names hold open.
+    let file = index.join("name-hash.idx");
+    let whole = fs::metadata(&file).unwrap().len();
+    let cut = fs::OpenOptions::new().write(true).open(&file).unwrap();
+    cut.set_len(whole - 12).unwrap();
+    drop(cut);
+
+    let dating = Dating::default();
+    let mut inputs = FixInputs {
+        env: &env,
+        dating: &dating,
+        names: &mut names,
+    };
+    let applied = retype().apply(m, &ObjectSet::every(), &mut inputs, &mut log.at(Stage::Fix));
+    assert!(
+        matches!(applied, Err(FixError::Names(NameHashError::Io(_)))),
+        "{:?}",
+        applied.err()
+    );
+    assert!(log.iter().all(|d| d.stage != Stage::Fix));
+}
+
+#[test]
 fn rehash_tells_two_paths_of_one_name_hash_apart_by_the_characters_folders() {
     assert_eq!(name_hash(TWIN_OWN), name_hash(TWIN_SHARED));
     let (_keep, names) = tables(&[TWIN_OWN, TWIN_SHARED], &[]);
@@ -624,6 +697,8 @@ fn a_value_with_no_conversion_is_left_and_reported() {
         panic!("{:?}", run.messages());
     };
     assert_eq!(left.0.values, 2);
+    let outcomes: Vec<Outcome> = run.changes.iter().map(Change::outcome).collect();
+    assert_eq!(outcomes, [Outcome::Unconvertible, Outcome::Unconvertible]);
     assert!(run.changes.edited().is_empty());
 }
 

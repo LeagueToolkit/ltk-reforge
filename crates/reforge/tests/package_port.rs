@@ -9,12 +9,15 @@ use ltk_meta::property::values;
 use ltk_meta::{Bin, BinObject, PropertyKind, PropertyValueEnum};
 use reforge::diag::Diagnostics;
 use reforge::diag::Stage;
+use reforge::env::Env;
 use reforge::history::NoHistory;
+use reforge::load::Fault;
 use reforge::model::known::field;
 use reforge::model::{ContentId, SkinEntry, Slot, name_hash, path_hash, value};
 use reforge::package::{
-    Coverage, Done, Layer, MANIFEST_FILE, Modpkg, NewBinFailed, Origin, PackageWriter, PatchOf,
-    Ported, ProjectDir, ResolverFrozen, UnitPorted,
+    BinWrite, BuildError, Coverage, Done, EntryWhole, FieldKept, Layer, MANIFEST_FILE, Made,
+    Modpkg, NewBinFailed, NotWritten, Origin, PackageWriter, PatchOf, PortBuilder, Ported,
+    ProjectConfig, ProjectDir, ResolverFrozen, UnitPorted,
 };
 use reforge::port::{HudCarried, Policy, PortOptions};
 use reforge_testkit::bins::{
@@ -22,7 +25,7 @@ use reforge_testkit::bins::{
 };
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
 use reforge_testkit::skins::{self, BASE_CLIPS, BASE_PARTICLE, BASE_PARTICLE_TEX, WAD, skin_bin};
-use reforge_testkit::{FactRun, MemoryGame, MemoryHistory, PortRun};
+use reforge_testkit::{BrokenGame, FactRun, MemoryGame, MemoryHistory, PortRun};
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
 const GRAPH0: &str = "Characters/Test/Animations/Skin0";
@@ -291,6 +294,7 @@ fn a_sub_character_at_a_slot_the_game_lacks_gets_a_new_bin() {
     assert!(written.dependencies.contains(&graph_bin));
 }
 
+/// #GAME-BEHAVIOR-0008: the mod's keys go into the resolver under the game's own name.
 #[test]
 fn the_resolver_keeps_the_games_keys_under_the_mods() {
     // The game's resolver maps a key to its base particle. The mod's maps one of its own.
@@ -375,6 +379,7 @@ fn hud_port<'a>(env: &'a reforge::env::Env, icon: Vec<u8>) -> PortRun<'a> {
     PortRun::from_facts(env, facts, Policy::default(), PortOptions::default())
 }
 
+/// #GAME-BEHAVIOR-0004: the icon is named by a record on the champion's root bin.
 #[test]
 fn an_overridden_spell_icon_ships_in_the_hud_layer() {
     let env = env(hud_game(), NoHistory);
@@ -451,4 +456,148 @@ fn a_stale_copy_is_named_where_the_game_has_the_file() {
         Some(Slot(0))
     );
     assert_eq!(run.only::<Ported>().left.stale, 1);
+}
+
+/// The mod's own rig in the skin bin of a slot, under the names of that slot.
+fn own_mod_at(slot: u16) -> Vec<(String, Vec<u8>)> {
+    let entry_name = format!("Characters/Test/Skins/Skin{slot}");
+    let graph_name = format!("Characters/Test/Animations/Skin{slot}");
+    let resources = format!("{entry_name}/Resources");
+    let skin = own_skin("a", &graph_name, &resources);
+    let mut files = own_files("a");
+    let graph = own_graph("a", &graph_name);
+    files.push(mod_skin("test", slot, &entry_name, &skin, vec![graph]));
+    files
+}
+
+#[test]
+fn a_carried_field_the_mods_entry_lacks_keeps_the_games_value() {
+    // The game's entry holds an armor material, and the mod's entry holds none.
+    let mut game = skins::game();
+    let theirs = with_link(
+        entry(SKIN0, &skins::base_skin()),
+        "armorMaterial",
+        "Characters/Test/Skins/Skin0/Materials/Armor",
+    );
+    game.insert(
+        SKIN0_BIN,
+        bin(vec![
+            theirs,
+            graph(GRAPH0, BASE_CLIPS),
+            resolver(RESOURCES0),
+        ]),
+    );
+    let env = env(game, NoHistory);
+    let run = PortRun::of(&env, &archive(&own_mod()));
+    assert_eq!(
+        run.only::<FieldKept>(),
+        &FieldKept {
+            unit: run.unit("test", 0),
+            fields: vec![name_hash("armorMaterial")],
+        }
+    );
+    // A patch sets fields and removes none: the game's link stands in the patched entry.
+    let applied = run.applied(&Layer::Base, SKIN0_BIN);
+    let patched = object_of(&applied.objects, SKIN0);
+    assert!(patched.properties.contains_key(&name_hash("armorMaterial")));
+}
+
+#[test]
+fn an_entry_the_games_bin_does_not_hold_goes_into_the_patch_whole() {
+    // The game's skin 7 bin holds a resolver and no skin entry.
+    let mut game = skins::game();
+    let target = skin_bin("test", 7);
+    let resources = "Characters/Test/Skins/Skin7/Resources";
+    game.insert(&target, bin(vec![resolver(resources)]));
+    let env = env(game, NoHistory);
+    let run = PortRun::of(&env, &archive(&own_mod_at(7)));
+
+    let unit = run.unit("test", 7);
+    assert_eq!(
+        run.only::<EntryWhole>(),
+        &EntryWhole { unit },
+        "{}",
+        run.dump()
+    );
+    // The patch adds the object to the game's bin, under the name the mod gave it.
+    let applied = run.applied(&Layer::Base, &target);
+    assert!(applied.skipped.is_empty(), "{:?}", applied.skipped);
+    let entry_name = "Characters/Test/Skins/Skin7";
+    let added = SkinEntry::read(object_of(&applied.objects, entry_name));
+    let dir = format!("mods/{NS}/characters/test/skin7");
+    let mesh = added.mesh().expect("a mesh").hash();
+    assert_eq!(mesh, path_hash(&format!("{dir}/files/mesh.skn")));
+    object_of(&applied.objects, resources);
+}
+
+#[test]
+fn a_unit_whose_target_the_game_has_no_bin_for_is_not_written() {
+    // A champion's unit at a slot the game ships no skin bin of.
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&own_mod_at(5)));
+
+    let unit = run.unit("test", 5);
+    let target = skin_bin("test", 5);
+    let not_written = run.only::<NotWritten>();
+    assert_eq!(
+        (not_written.unit, not_written.target.as_str()),
+        (unit, target.as_str()),
+        "{}",
+        run.dump()
+    );
+    // No patch and no bin of the unit's is in the package.
+    let package = run.package();
+    assert_eq!(package.all_patches().count(), 0, "{}", run.dump());
+    assert!(run.found::<UnitPorted>().is_empty());
+    assert!(!run.ships(&format!("mods/{NS}/characters/test/skin5/animations.bin")));
+    assert_eq!(run.only::<Ported>().bins, 0);
+}
+
+#[test]
+fn a_game_bin_that_does_not_read_is_a_fault_of_the_build() {
+    let planned = env(skins::game(), NoHistory);
+    let run = PortRun::of(&planned, &archive(&own_mod()));
+    // The bin the unit's patch is for is listed and does not read.
+    let game = BrokenGame::at(skins::game(), SKIN0_BIN);
+    let sizes = game.sizes();
+    let broken = Env::builder().game(game).sizes(sizes).build();
+    let broken = broken.expect("an environment");
+    let mut log = Diagnostics::new();
+    let speller = run.facts.fix.speller();
+    let builder = PortBuilder::new(&run.facts.fix.fixed, &run.port, &broken, &speller);
+    let built = builder.build(&mut log.at(Stage::Build));
+    assert!(
+        matches!(built, Err(BuildError::Fault(Fault::Game(_)))),
+        "{built:?}"
+    );
+    // A fault is no diagnostic, and ends no run.
+    assert_eq!((log.len(), log.halted()), (0, None));
+}
+
+#[test]
+fn a_ports_config_says_the_mod_was_ported_and_its_bins_are_written_whole() {
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&own_mod()));
+    let config = &run.package().config;
+    let fixed = &run.facts.fix.fixed;
+    assert_eq!(config, &ProjectConfig::of(fixed, Made::Ported));
+    let said = config.description.raw();
+    assert!(
+        said.starts_with("Ported by reforge from synthetic.fantome ("),
+        "{said}"
+    );
+
+    // A bin the port makes has no bytes of the mod's to copy: every object is encoded, and
+    // the bin is read back against them.
+    let dir = format!("mods/{NS}/characters/test/skin0");
+    let Origin::Made(written) = &run.chunk(&format!("{dir}/vfx.bin")).origin else {
+        panic!("the port made the bin\n{}", run.dump());
+    };
+    assert_eq!(written.how, BinWrite::Whole);
+    let carried = format!("Mods/{NS}/Characters/Test/Skins/Skin0/Particles/Test_Own");
+    assert_eq!(
+        written.entries.iter().collect::<Vec<_>>(),
+        [&name_hash(&carried)]
+    );
+    assert_eq!(written.edited.len(), 1);
 }

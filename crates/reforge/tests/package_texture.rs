@@ -71,3 +71,45 @@ fn what_tex_does_not_hold_as_it_is_is_refused() {
     assert_eq!(refused(b"DDS and no header"), TexRefusal::Unreadable);
     assert_eq!(refused(b""), TexRefusal::Unreadable);
 }
+
+/// Sets one 32-bit word of a DDS header, counted from the header's size.
+fn set_word(dds: &mut [u8], word: usize, value: u32) {
+    let at = 4 + word * 4;
+    dds[at..at + 4].copy_from_slice(&value.to_le_bytes());
+}
+
+/// The header words of a DDS: its flags, its depth and its second set of capabilities.
+const FLAGS: usize = 1;
+const DEPTH: usize = 5;
+const CAPS2: usize = 27;
+
+#[test]
+fn a_cube_map_and_a_volume_are_not_one_surface() {
+    let flat = dds(DdsPixels::Dxt1, (8, 8), 1);
+    dds_to_tex(&flat).expect("TEX holds one surface");
+
+    // A cube map: the flag and its six faces.
+    let mut cube = flat.clone();
+    set_word(&mut cube, CAPS2, 0x200 | 0xfc00);
+    assert_eq!(dds_to_tex(&cube), Err(TexRefusal::NotOneSurface));
+
+    // A volume two slices deep: the header says it has a depth, and holds it.
+    let mut volume = flat.clone();
+    let flags = u32::from_le_bytes([volume[8], volume[9], volume[10], volume[11]]);
+    set_word(&mut volume, FLAGS, flags | 0x80_0000);
+    set_word(&mut volume, DEPTH, 2);
+    set_word(&mut volume, CAPS2, 0x20_0000);
+    assert_eq!(dds_to_tex(&volume), Err(TexRefusal::NotOneSurface));
+}
+
+#[test]
+fn a_side_longer_than_sixteen_bits_count_is_too_large() {
+    // TEX's header holds each side in two bytes.
+    let longest = dds(DdsPixels::Dxt1, (65_532, 4), 1);
+    let tex = dds_to_tex(&longest).expect("TEX holds a side of 65,532 pixels");
+    assert_eq!(&tex[4..8], b"\xfc\xff\x04\0");
+    let wide = dds(DdsPixels::Dxt1, (65_536, 4), 1);
+    assert_eq!(dds_to_tex(&wide), Err(TexRefusal::TooLarge));
+    let tall = dds(DdsPixels::Dxt1, (4, 65_536), 1);
+    assert_eq!(dds_to_tex(&tall), Err(TexRefusal::TooLarge));
+}

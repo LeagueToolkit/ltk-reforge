@@ -2,19 +2,25 @@
 //! each file is found, the names moved to the target and the names and places under the
 //! namespace. The game is `reforge_testkit::skins`.
 
+use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::model::entity::ObjectId;
 use reforge::model::{Slot, name_hash, path_hash, value};
 use reforge::port::{
-    Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, Policy, PortOptions, RefDangling,
-    RefUnmounted, Retargeted, UnitsLeft, Unreached,
+    Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, PlanError, Policy, PortOptions,
+    RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached,
 };
 use reforge_testkit::bins::{Skin, bin, blob, entry, graph, particle, resolver, with_link};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
+use reforge_testkit::plans::{
+    champion_and_unbound_pet, old_model_and_pet, paste_and_own_skin3, reworked,
+};
 use reforge_testkit::skins::{
     self, BASE_PARTICLE, BASE_PARTICLE_TEX, BASE_TEX, S3_TEX, WAD, base_skin, skin_bin,
 };
-use reforge_testkit::{ModArchive, PortRun};
+use reforge_testkit::{
+    BrokenGame, BrokenHistory, FactRun, MemoryHistory, ModArchive, PlanRun, PortRun,
+};
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
 const GRAPH0: &str = "Characters/Test/Animations/Skin0";
@@ -164,7 +170,49 @@ fn a_file_is_the_games_where_the_game_holds_its_bytes_and_ships_otherwise() {
     assert_eq!(run.only::<Carried>().repointed, 1);
 }
 
-/// A game where another champion's WAD holds a texture, with or without the champion's own.
+#[test]
+fn a_stale_copy_is_named_at_the_games_path_unless_the_options_keep_it() {
+    // #MOD-ARTIFACT-0004: at the base texture's path, the bytes the game shipped there at
+    // the build before.
+    let old: &[u8] = b"the base texture as the game shipped it at 16.18";
+    let history = MemoryHistory::new(&["16.18.1", "16.19.1"])
+        .with_content(BASE_TEX, old, 0..=0)
+        .with_path(BASE_TEX, 0..=1);
+    let env = env(skins::game(), history);
+    let mut files = own_mod(&[("fx", "P/Stale")], vec![particle("P/Stale", BASE_TEX)]);
+    files.push((BASE_TEX.into(), old.to_vec()));
+    let plan = |options: PortOptions| {
+        let facts = FactRun::of(&env, &archive(&files));
+        let targets = Policy::default().decide(&facts.facts);
+        PlanRun::decided(&env, facts, targets, options)
+    };
+    let verdict = |run: &PlanRun<'_>| {
+        let refs = run.port().refs.of(run.unit("test", 0)).expect("refs");
+        refs.refs.get(&path_hash(BASE_TEX)).cloned()
+    };
+
+    let run = plan(PortOptions::default());
+    let path = path_hash(BASE_TEX);
+    assert_eq!(
+        verdict(&run),
+        Some(FileVerdict::Game { path }),
+        "{}",
+        run.dump()
+    );
+    let kept = PortOptions {
+        keep_stale: true,
+        ..PortOptions::default()
+    };
+    let run = plan(kept);
+    assert!(
+        matches!(verdict(&run), Some(FileVerdict::Own { .. })),
+        "{}",
+        run.dump()
+    );
+}
+
+/// A game where another champion's WAD holds a texture, with or without the champion's own
+/// (#GAME-BEHAVIOR-0007).
 fn verdict_of_borrowed(wads: &[&str]) -> Option<FileVerdict> {
     let borrowed = "assets/characters/other/skins/base/other.tex";
     let mut game = skins::game();
@@ -205,7 +253,8 @@ fn a_file_only_another_champions_wad_holds_is_unmounted() {
 
 #[test]
 fn a_sub_character_reaches_its_champions_objects() {
-    // The pet's entry links a particle only the champion's skin bin holds, loaded beside it.
+    // #GAME-BEHAVIOR-0006: the pet's entry links a particle only the champion's skin bin
+    // holds, loaded beside it.
     let shared = "Characters/Test/Skins/Skin0/Particles/Shared";
     let champion = with_link(entry(SKIN0, &base_skin()), "fx", shared);
     let pet = with_link(
@@ -244,6 +293,26 @@ fn a_sub_character_reaches_its_champions_objects() {
 }
 
 #[test]
+fn a_repath_tools_tag_is_dropped_from_the_name_a_file_ships_under() {
+    // #MOD-ARTIFACT-0026: the tag says the skin folder a tool took the file from.
+    let tagged = "assets/mod/a/glow.skins_test_skin3.tex";
+    let mut files = own_mod(
+        &[("fx", OWN_PARTICLE)],
+        vec![particle(OWN_PARTICLE, tagged)],
+    );
+    files.push((tagged.into(), blob(tagged)));
+    let env = env(skins::game(), NoHistory);
+    let run = PlanRun::of(&env, &archive(&files));
+
+    let m = &run.facts.fix.fixed;
+    let mut shipped = run.port().files.iter();
+    let place = shipped.find(|(file, _)| m.files[**file].hash == path_hash(tagged));
+    let place = place.map(|(_, place)| place.as_str());
+    let expected = format!("mods/{NS}/characters/test/skin0/vfx/own/glow.tex");
+    assert_eq!(place, Some(expected.as_str()), "{}", run.dump());
+}
+
+#[test]
 fn a_copy_leaves_the_port() {
     // The same skin bin at slots 0 and 7.
     let mut files = own_mod(&[], vec![]);
@@ -262,6 +331,117 @@ fn a_copy_leaves_the_port() {
     let raised = run.log.get(left.diagnostic).expect("the diagnostic");
     assert_eq!(raised.downcast_ref::<UnitsLeft>(), Some(finding));
     assert_eq!(run.port.units.len(), 1);
+}
+
+#[test]
+fn a_unit_whose_slot_another_unit_took_leaves_superseded() {
+    let env = env(skins::game(), NoHistory);
+    let run = PlanRun::of(&env, &archive(&paste_and_own_skin3()));
+    let written = run.unit("test", 3);
+    assert_eq!(run.port().shipping.ships, [written], "{}", run.dump());
+    let by = Some(written);
+    assert_eq!(run.left("test", 0), Some(Left::Superseded { by }));
+    assert_eq!(run.only::<UnitsLeft>().units.len(), 1);
+}
+
+#[test]
+fn a_unit_made_before_the_rework_leaves_with_its_sub_character() {
+    let (history, table) = reworked();
+    let env = env(skins::game(), history);
+    let facts = FactRun::with_reworks(&env, &archive(&old_model_and_pet()), &table);
+    let targets = Policy::default().decide(&facts.facts);
+    let run = PlanRun::decided(&env, facts, targets, PortOptions::default());
+    assert!(run.port().shipping.ships.is_empty(), "{}", run.dump());
+    assert_eq!(run.left("test", 0), Some(Left::PreRework));
+    assert_eq!(run.left("testpet", 0), Some(Left::PreRework));
+    // One finding per character.
+    assert_eq!(run.found::<UnitsLeft>().len(), 2);
+    assert!(run.port().units.is_empty());
+}
+
+#[test]
+fn a_sub_character_left_to_the_games_base_leaves_the_port() {
+    let env = env(skins::game(), NoHistory);
+    let run = PlanRun::of(&env, &archive(&champion_and_unbound_pet()));
+    let champion = run.unit("test", 0);
+    assert_eq!(run.port().shipping.ships, [champion], "{}", run.dump());
+    assert_eq!(run.left("testpet", 0), Some(Left::SubLeft));
+}
+
+#[test]
+fn a_sub_character_shipped_as_the_game_has_it_leaves_as_equal_to_the_games() {
+    // The mod's rig at skin0, and the sub-character's skin bin byte for byte the game's.
+    let mut files = own_mod(&[], vec![]);
+    files.push((skin_bin("testpet", 0), skins::pet_bin()));
+    let env = env(skins::game(), NoHistory);
+    let run = PlanRun::of(&env, &archive(&files));
+    let champion = run.unit("test", 0);
+    assert_eq!(run.port().shipping.ships, [champion], "{}", run.dump());
+    assert_eq!(run.left("testpet", 0), Some(Left::EqualToGame));
+    // It is no copy and was never weighed.
+    let pet = run.unit("testpet", 0);
+    assert!(!run.targets.decisions.contains_key(&pet));
+}
+
+#[test]
+fn a_unit_the_targets_hold_no_decision_for_leaves_with_no_target() {
+    let env = env(skins::game(), NoHistory);
+    let facts = FactRun::of(&env, &archive(&own_mod(&[], vec![])));
+    // Every policy decides for every representative unit: targets that lack one are a
+    // caller's own.
+    let mut targets = Policy::default().decide(&facts.facts);
+    let unit = facts.unit("test", 0);
+    assert!(targets.decisions.remove(&unit).is_some());
+    let run = PlanRun::decided(&env, facts, targets, PortOptions::default());
+    assert!(run.port().shipping.ships.is_empty(), "{}", run.dump());
+    assert_eq!(run.left("test", 0), Some(Left::NoTarget));
+    let left = run.only::<UnitsLeft>();
+    assert_eq!(left.units[0].why, Left::NoTarget);
+}
+
+/// An environment of the synthetic game in which the chunk at `path` does not read.
+fn env_broken_at(path: &str) -> Env {
+    let game = BrokenGame::at(skins::game(), path);
+    let sizes = game.sizes();
+    let env = Env::builder().game(game).sizes(sizes);
+    env.build().expect("a game was given")
+}
+
+#[test]
+fn a_game_bin_that_does_not_read_ends_the_plan_with_a_fault() {
+    let good = env(skins::game(), NoHistory);
+    let facts = FactRun::of(&good, &archive(&own_mod(&[], vec![])));
+    let targets = Policy::default().decide(&facts.facts);
+    // The plan compares what the entry reaches with the game's skin bin at the target.
+    let broken = env_broken_at(&skin_bin("test", 0));
+    let run = PlanRun::decided(&broken, facts, targets, PortOptions::default());
+    assert!(
+        matches!(run.port, Err(PlanError::Game(_))),
+        "{}",
+        run.dump()
+    );
+    assert!(run.log.is_empty(), "a fault is no diagnostic");
+}
+
+#[test]
+fn a_history_that_does_not_answer_ends_the_plan_with_a_fault() {
+    // A particle naming a file nothing holds: the plan asks the history whether the game
+    // ever shipped the path.
+    let files = own_mod(
+        &[("fx", "P/Nowhere")],
+        vec![particle("P/Nowhere", "assets/mod/a/nowhere.tex")],
+    );
+    let good = env(skins::game(), NoHistory);
+    let facts = FactRun::of(&good, &archive(&files));
+    let targets = Policy::default().decide(&facts.facts);
+    let history = BrokenHistory(MemoryHistory::new(&["16.19.1"]));
+    let broken = env(skins::game(), history);
+    let run = PlanRun::decided(&broken, facts, targets, PortOptions::default());
+    assert!(
+        matches!(run.port, Err(PlanError::History(_))),
+        "{}",
+        run.dump()
+    );
 }
 
 #[test]

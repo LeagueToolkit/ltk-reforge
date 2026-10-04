@@ -344,9 +344,30 @@ fn an_archive_inside_the_mod_and_bytes_of_no_kind_are_notes() {
     extra(&mut m, "backup.zip", 4096, ZIP);
 
     let inventory = Inventory::take(&m, &NoNames);
+    let found: Vec<(&str, &str, Kind)> = inventory
+        .found(Finding::NestedArchive)
+        .map(|item| (item.place.raw(), item.name.raw(), item.kind))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (WAD, "extras/sources.zip", Kind::Zip),
+            ("archive", "backup.zip", Kind::Zip),
+        ]
+    );
+    // A WAD is an archive too, and a game file: it is no finding.
+    assert_eq!(Finding::of(Kind::Zip, false), Some(Finding::NestedArchive));
+    assert_eq!(Finding::of(Kind::Wad, false), None);
+
     let log = raised(&inventory);
     let nested = log.of::<NestedArchives>().next().expect("the archives");
     assert_eq!(nested.items.len(), 2);
+    assert!(
+        nested
+            .items
+            .iter()
+            .all(|item| item.finding == Finding::NestedArchive)
+    );
     assert_eq!(NestedArchives::CODE.name, "inventory.nested-archive");
     assert_eq!(
         message(&log, NestedArchives::CODE),

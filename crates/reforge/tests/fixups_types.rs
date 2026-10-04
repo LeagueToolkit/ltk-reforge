@@ -3,14 +3,16 @@
 
 use ltk_meta::property::values;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum as V};
+use reforge::diag::Stage;
 use reforge::env::Env;
-use reforge::fixups::{FixupSet, Rule, TargetTypes, TypeSource};
-use reforge::game::{Build, FieldType, Schema};
+use reforge::fixups::{FixError, FixInputs, FixupSet, ObjectSet, Rule, TargetTypes, TypeSource};
+use reforge::game::{Build, FieldType, GameError, Schema};
+use reforge::load::{Dating, LoadOptions};
 use reforge::model::name_hash;
 use reforge_testkit::bins::{bin, embedded, float, linked_bin, object, pointer, text};
 use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{field, kind, pointer as to};
-use reforge_testkit::{FixRun, MemoryHistory, SchemaRows, skins};
+use reforge_testkit::{BrokenGame, FixRun, LoadRun, MemoryHistory, SchemaRows, skins};
 
 const DATED: &str = "assets/characters/test/skins/base/dated.tex";
 
@@ -175,6 +177,42 @@ fn the_bins_of_the_mods_characters_skins_are_witnessed() {
         Some(TypeSource::Install)
     );
     assert!(types.witnessed_len() > 2);
+}
+
+#[test]
+fn a_bin_of_the_game_that_does_not_read_ends_the_fix_with_a_fault() {
+    // Loaded against a game that reads, fixed against one whose bin of skin 7 does not.
+    let reads = Env::builder().game(skins::game_at("16.19.300"));
+    let reads = reads.build().unwrap();
+    let run = LoadRun::of(&reads, LoadOptions::default(), &skin_archive(vec![]));
+    let LoadRun {
+        result,
+        mut log,
+        mut names,
+        ..
+    } = run;
+    let m = result.expect("a mod");
+
+    let broken = BrokenGame::at(skins::game_at("16.19.300"), &skins::skin_bin("test", 7));
+    let env = Env::builder().game(broken).build().unwrap();
+    // The bin is there and does not read: its shapes are not taken as unknown.
+    let types = TargetTypes::of(&m, &env);
+    assert!(matches!(types, Err(GameError::Open(_))), "{types:?}");
+
+    let dating = Dating::default();
+    let mut inputs = FixInputs {
+        env: &env,
+        dating: &dating,
+        names: &mut names,
+    };
+    let set = FixupSet::empty();
+    let applied = set.apply(m, &ObjectSet::every(), &mut inputs, &mut log.at(Stage::Fix));
+    assert!(
+        matches!(applied, Err(FixError::Game(GameError::Open(_)))),
+        "{:?}",
+        applied.err()
+    );
+    assert!(log.iter().all(|d| d.stage != Stage::Fix));
 }
 
 #[test]

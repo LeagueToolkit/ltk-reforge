@@ -569,6 +569,8 @@ fn a_base_mesh_is_made_with_the_suffix_the_game_ships_it_under() {
     assert!(f.made(&new).is_some());
     let moved = &one::<FilesMoved>(&f.log).files[0];
     assert_eq!(moved.rename.name, "base-suffix");
+    assert_eq!(moved.rename.steps, [Step::AddBaseSuffix]);
+    assert_eq!(moved.how, Conversion::AsIs);
     assert_eq!(moved.records[0].to_string(), "#GAME-CHANGE-0011");
 }
 
@@ -617,6 +619,7 @@ fn a_shared_bin_is_made_in_the_characters_folder_and_other_bytes_are_not() {
         (moved.rename.name, moved.how),
         ("shared-bin", Conversion::AsIs)
     );
+    assert_eq!(moved.rename.steps, [Step::IntoCharacterFolder]);
     assert_eq!(moved.records[0].to_string(), "#GAME-CHANGE-0012");
 
     // A bin path is loaded as a bin: other bytes there are no bin the game moved.

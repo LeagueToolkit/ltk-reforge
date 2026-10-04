@@ -11,8 +11,9 @@ use reforge::diag::{Diagnostics, Render, Stage};
 use reforge::model::entity::FileId;
 use reforge::model::{ChunkPath, Spelled, WadName, path_hash};
 use reforge::package::{
-    Chunk, ChunkKey, Layer, MAX_NAME_BYTES, Modpkg, Package, PackageWriter, ProjectConfig,
-    ProjectDir, REPORT_FILE, WriteError, WriterKind, Written,
+    ArchiveRef, Chunk, ChunkKey, EVIDENCE_FORMAT, EvidenceDating, EvidenceDoc, EvidenceInputs,
+    Layer, MAX_NAME_BYTES, Made, Modpkg, Package, PackageWriter, Program, ProjectConfig,
+    ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written,
 };
 use reforge_testkit::bins::{bin, blob, object, text};
 use reforge_testkit::skins::WAD;
@@ -58,6 +59,41 @@ fn package() -> Package {
     package.insert(Layer::Base, key(TEXTURE), chunk(blob(TEXTURE)));
     package.insert(Layer::Base, key(BANK), chunk(blob(BANK)));
     package.tables.add_path("assets/mod/a/named.tex");
+    package
+}
+
+/// The evidence of a run that dated nothing, as a run sets it on the package it builds.
+fn evidence() -> EvidenceDoc {
+    EvidenceDoc {
+        format: EVIDENCE_FORMAT.into(),
+        program: Program {
+            name: "reforge".into(),
+            version: "0.1.0".into(),
+        },
+        run: Made::Repaired,
+        archive: ArchiveRef {
+            sha256: "ab".repeat(32),
+        },
+        inputs: EvidenceInputs {
+            build: Some("16.19.1".into()),
+            history: None,
+        },
+        dating: EvidenceDating {
+            not_before: None,
+            evidence: None,
+            dated: 0,
+            at_bound: 0,
+        },
+        restored: Vec::new(),
+        fixups: vec!["retype".into()],
+        port: None,
+    }
+}
+
+/// [`package`] with the evidence of a run.
+fn package_of_a_run() -> Package {
+    let mut package = package();
+    package.evidence = Some(evidence());
     package
 }
 
@@ -278,6 +314,8 @@ fn read_back(file: &Utf8Path) -> Vec<(u64, Vec<u8>)> {
     chunks
 }
 
+/// #MOD-ARTIFACT-0007: a chunk named by its hash in the project is at that hash in the
+/// package.
 #[test]
 fn a_modpkg_holds_every_chunk_and_reads_back() {
     let (_guard, out) = scratch();
@@ -317,12 +355,84 @@ fn a_modpkg_holds_every_chunk_and_reads_back() {
     assert_eq!(held(&long), skin_bytes());
 }
 
+/// #ADR-0041: the evidence is the project's `README.md`, at its root.
+#[test]
+fn a_project_of_a_package_with_evidence_holds_it_as_its_readme() {
+    let (_guard, out) = scratch();
+    let package = package_of_a_run();
+    let writer = ProjectDir::new(&out);
+    let written = writer.write(&package, REPORT).expect("the project writes");
+    // The README is no chunk of the package.
+    assert_eq!(written.chunks, 3);
+    let project = writer.path_of(&package);
+    assert!(
+        tree(&project).contains(&README_FILE.to_string()),
+        "{:#?}",
+        tree(&project)
+    );
+    let readme = fs::read_to_string(project.join(README_FILE)).expect("the README reads");
+    assert_eq!(readme, evidence().readme());
+    assert!(
+        !readme.contains('\r'),
+        "the README's lines end in a line feed"
+    );
+    assert_eq!(
+        EvidenceDoc::parse(&readme).expect("the evidence reads"),
+        Some(evidence())
+    );
+}
+
+/// #ADR-0041: the packer packs the project's `README.md` as the readme of the `.modpkg`,
+/// byte for byte.
+#[test]
+fn a_modpkg_of_a_package_with_evidence_holds_it_as_its_readme() {
+    let (_guard, out) = scratch();
+    let package = package_of_a_run();
+    let writer = Modpkg::new(&out);
+    writer.write(&package, REPORT).expect("the package writes");
+    let bytes = fs::read(writer.path_of(&package)).expect("the package reads");
+    let mut packed = Packed::mount_from_reader(Cursor::new(bytes)).expect("the package mounts");
+    let readme = packed.load_readme().expect("the package has a readme");
+    assert_eq!(readme, evidence().readme().into_bytes());
+    let readme = String::from_utf8(readme).expect("the readme is text");
+    assert_eq!(
+        EvidenceDoc::parse(&readme).expect("the evidence reads"),
+        Some(evidence())
+    );
+    // The chunks the client loads are the package's own, with none added for the readme.
+    let chunks = read_back(&writer.path_of(&package));
+    let held = |path: &str| chunks.iter().any(|(key, _)| *key == path_hash(path).0);
+    assert!(held(SKIN_BIN) && held(TEXTURE) && held(BANK));
+
+    // A package no run built has no readme.
+    let (_guard, bare) = scratch();
+    let writer = Modpkg::new(&bare);
+    writer.write(&self::package(), REPORT).expect("it writes");
+    let bytes = fs::read(writer.path_of(&package)).expect("the package reads");
+    let mut packed = Packed::mount_from_reader(Cursor::new(bytes)).expect("the package mounts");
+    assert!(packed.load_readme().is_err());
+}
+
 #[test]
 fn a_modpkg_that_fails_to_write_leaves_nothing() {
     let (_guard, out) = scratch();
     let failed = Modpkg::new(&out).write(&unwritable(), REPORT);
     assert!(failed.is_err(), "{failed:?}");
     assert_eq!(names(&out), Vec::<String>::new());
+}
+
+#[test]
+fn a_project_the_packer_refuses_does_not_pack_and_leaves_nothing() {
+    let (_guard, out) = scratch();
+    // A `.modpkg` holds a version of three numbers, and a project's config any text.
+    let mut package = package();
+    package.config.version = "1.2".into();
+    let failed = Modpkg::new(&out).write(&package, REPORT);
+    assert!(matches!(failed, Err(WriteError::Pack(_))), "{failed:?}");
+    assert_eq!(names(&out), Vec::<String>::new());
+
+    let written = ProjectDir::new(&out).write(&package, REPORT);
+    assert_eq!(written.expect("the project writes").chunks, 3);
 }
 
 #[test]
