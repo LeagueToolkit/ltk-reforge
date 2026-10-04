@@ -38,6 +38,9 @@ Taken on 2026-10-03, where no other date is given.
 | The crates and the command are named reforge | #ADR-0009 |
 | A history key is the head of a SHA-256 | #ADR-0037 |
 | Of two reduced copies of a texture the larger is taken (2026-10-04) | #ADR-0038 |
+| A package ships only what is wired up (2026-10-04) | #ADR-0039 |
+| Of several files for one asset, the mod's own bytes win (2026-10-04) | #ADR-0040 |
+| A package embeds the evidence of the run that made it (2026-10-04) | #ADR-0041 |
 | How the game client behaves is a fourth series of records, `docs/game-behavior/` | `AGENTS.md`, `docs/agents/records.md` |
 | A GUI is a caller of the library: fixups and checks are listed, turned on and off, and added as data where a table says it all | [ARCHITECTURE.md](ARCHITECTURE.md), "Callers" and "Fixups" |
 
@@ -219,24 +222,26 @@ and each is checked in game (the user, 2026-10-03). None is an ADR before that.
 
 ## Open
 
-- A repair ships bins at a former path that the client does not load, unfixed: 98 of the 144
-  mods with a value of another type after a repair, and 50 of the 271 with an undeclared field.
-  Whether a repair leaves such bins behind is not decided.
+- A run on the census history alone, with no install, and against the game at any build the
+  history holds. The history lacks two things a port reads from the game: the joints of an
+  animation clip, and an events bank's header and objects. Of the 568 sound units of a mod's
+  own that forge carried in the baseline, 322 can be cut from the mod's own events bank and 246,
+  in 217 of 383 mods, only from the game's (measured 2026-10-04). Every bank a port writes takes
+  its header from a game events bank. Both are asked of the census as a format 3.
+- Sound units forge leaves out that a port could carry (measured 2026-10-04, for step 5): 64
+  units in 18 mods have a second events bank of the client's version that plays their clips,
+  and forge reads only the first; 84 units have an events bank of version 134 that plays their
+  clips, and nothing converts a bank from 134 to 145.
 - An object of a class the build dropped is left as it is (`ItemRecommendationContextList`,
   gone at 16.6, in 227 mods' root bins).
 - A list of floats where the build reads a list of vectors, and the reverse, has no conversion
   (46 mods). Forge has none either.
-- A repair ships stale files, as forge does.
-- Fixups that follow forge where the census shows forge wrong. Each is changed after the repair
-  comparison is clean, as a counted deviation:
-  - the bound-object rule moves four fields; Riot moved eight at 12.6 and 12.21
-    (#GAME-CHANGE-0016);
-  - the sampler's slot name moved at 15.4, not 16.13, and from 15.21 to 16.12 `samplerName`
-    holds a sampler state, which the fixup would write over the slot name (#GAME-CHANGE-0014);
-  - a misplaced birth translation is mended only in a mod with no date or one before 13.15, and
-    is stripped in the 21 baseline mods dated 13.15 to 13.24 (#MOD-ARTIFACT-0019);
-  - a float where the build reads an option is wrapped as a present option, which is not what
-    Riot's own data did at 15.20 (#GAME-CHANGE-0021).
+- A package embeds the evidence of its run (#ADR-0041), and that is not built: the format of
+  the embedded data, where it sits in a `.modpkg` and in a project directory, and the reader
+  that takes it in place of judging the package's bytes. `reforge repair --again` carries the
+  date and the restorations from the first run in memory until then.
+- A birth translation in a `VfxShapeLegacy` is still stripped in the 206 mods dated 14.1 or
+  later (276,644 values), where the mod's own build never read the old `shape`.
 - The integer kinds a mod holds too wide are the game's own earlier kinds, narrowed from 9.22 on
   (#MOD-ARTIFACT-0021). They are game changes with no record of their own.
 - A copy of a game file under another path is looked for among the first 64 chunks of its size

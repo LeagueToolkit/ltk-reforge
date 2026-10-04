@@ -334,13 +334,22 @@ prints.
   serialised once, by the writer.
 - **Builders.** `PortBuilder` makes a package from a `Port`, `InPlaceBuilder` from a `FixedMod`.
   `PtchBuilder` collects records by field path.
-- **A repair's package** (`InPlaceBuilder`) holds every file the client uses at its own WAD and
-  path. A bin an object of which a fixup changed is written again through `ltk_meta`'s delta
-  writer, which copies every other object byte for byte, and whole where the delta writer
-  refuses the bin's numbering. Every other file keeps its bytes. A file nothing loads stays
-  behind, and so does one that only a value a fixup removed named. A file no table names goes
-  under its hash at its WAD's root (#MOD-ARTIFACT-0007). A package that would hold nothing ends
-  the run.
+- **Only what is wired up** (#ADR-0039, `Wired`). Either builder ships a file only when the
+  client reaches it: a bin the client loads, a file a loaded bin names, a file that overrides a
+  path the game's own bins read, a file a run made for one of those. A bin at a former path
+  that nothing loads, a file nothing names, a file that only a value a fixup removed named, and
+  a stale copy stay behind, each counted by its reason in the package's finding. A caller that
+  asks to keep stale copies gets them.
+- **A repair's package** (`InPlaceBuilder`) holds those files at their own WAD and path. A bin
+  an object of which a fixup changed is written again through `ltk_meta`'s delta writer, which
+  copies every other object byte for byte, and whole where the delta writer refuses the bin's
+  numbering. Every other file keeps its bytes. A file no table names goes under its hash at its
+  WAD's root (#MOD-ARTIFACT-0007). A package that would hold nothing ends the run.
+- **A repaired package is not the whole evidence of the mod.** The files left behind are part
+  of what `load` judged by: a mod's date, and that a WAD restores a model from before a rework.
+  A package repaired again from its own bytes alone dates differently in about half the mods,
+  and judges a restoration's old files stale. The report beside the package holds the date and
+  the restorations of the run that made it.
 - **`TexContainer`** puts a DDS at a `.tex` path in TEX's container where its blocks go in as
   they are (#ADR-0022), after either builder.
 - **Checks** implement `Check`: the patches applied as the overlay applies them, the types of

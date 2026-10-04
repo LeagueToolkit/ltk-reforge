@@ -212,3 +212,87 @@ The 15 mods of forge's in-game sample set (14 skin mods and a fix), repaired in 
 value is of another type than the build reads. A second repair changes nothing in any of them.
 One finding in the fix: two `ValueColor` fields under a hash no class declares, in a bin that is
 not written again.
+
+## The repair, of what is wired up (2026-10-04)
+
+`reforge repair --no-write --again` over the 5,137 mods after #ADR-0039 and the changes to four
+fixups, compared with forge's reports of the run above by `repair_compare.py --base`. forge was
+not run again. reforge took 1,895 s with twelve mods in parallel. 245 mods were run again after
+two changes the run led to (below).
+
+| mods | equal | accepted deviations only | other differences |
+|---:|---:|---:|---:|
+| 5,137 | 1,830 | 3,307 | 0 |
+
+What each change does over the datasets:
+
+| change | mods | what |
+|---|---:|---|
+| #ADR-0039, files left out | 3,297 | 146,896 files at a former path that nothing names, in 2,886 mods, and 87,466 stale copies, in 1,725, which forge writes. 279,006 files nothing loads or names and 140 named only by removed values are left out by both. 1,081,348 files are kept |
+| a texture that is a stale copy in TEX's container | 101 | 626 textures: a DDS made of a TEX the game shipped at an earlier build is that TEX again once in TEX's container. `load` judges the DDS, the build judges the TEX it ships |
+| `vfx-flex-shape`, #GAME-CHANGE-0016 | 1 | 2 values of `scaleEmitOffsetByBoundObjectHeight` moved, which the strip removed as lost. No bin the client loads holds one of the other three fields on an emitter |
+| `material-sampler-fields`, #GAME-CHANGE-0014 | 6 | 108 sampler states' names left for the strip, which the run above moved into `TextureName`: over the slot's name 106 times, in 4 mods |
+| `vfx-spawn-shape-birth-translation`, #MOD-ARTIFACT-0019 | 21 | the mods made from 13.15 to 13.24: 1,057 values moved to `EmitterPosition` and 3,049 removed where the emitter holds a position. 720 objects differ from forge's, in 20 mods. In the 206 mods made at 14.1 or later the strip removes 276,644 values, as before |
+| no value into an option, #GAME-CHANGE-0021 | 1 | 1 value, `WasdMoveOrderData.0x43bf3213` in a map's bin of a skin mod, left and reported unconvertible |
+| `material-default-technique` | 0 | each of the 17,842 values is `"normal"` |
+
+The accepted deviations of the comparison, by the mods with a difference under each: only what
+is wired up 3,297, stale once contained 101, the larger reduced copy 31, the birth translation
+20, one chunk per WAD and path 11, the twin of a file a bin names 9, the sampler state's name
+6, one chunk per path 4, `retype` enters what it retags 2, and one each for the flex-shape
+fields, the option and the order of fields.
+
+What reforge's own checks say of its repairs:
+
+- **Round trip.** No bin written again fails to read back.
+- **Repaired again.** No package changes when it is repaired again. The second run is given
+  what the first established of the mod, which its package does not show again: the dating,
+  and the WADs that restore a model from before its rework.
+  - 2,454 repaired mods date at another build by themselves: an object a fixup brought to the
+    target build is the game's own object of that build. One value, left because the mod's
+    own build read it, would be removed at the later dating.
+  - 43 mods hold a restoration. In 4 of them the files at paths the rework dropped are named
+    by nothing and are left out, so the package alone does not show a restoration: judged
+    with no fact of the first run, its copies of the game's older bytes are stale copies.
+- **Types.** 47 mods hold a value of another type than the build reads and 227 a field its
+  class does not declare, each in a bin the client loads. The findings in bins nothing loads
+  are gone: 98 of the 144 mods and 44 of the 271 of the run above hold none. What is left is
+  a value with no conversion (a float animation where the build reads a vector's, 26 mods) and
+  the class the game dropped at 16.6, `ItemRecommendationContextList` (227 mods).
+
+Two faults the second repair found, fixed in `load`:
+
+- Of several files of a mod that move to one asset, the first was taken. Where it holds what
+  the game shipped at its path, the file made of it is a stale copy and is left out, and the
+  second repair made the asset's file of the next. A file of the mod's own bytes is taken
+  first (#ADR-0023). 2 mods changed when repaired again. The load stage differs from forge in 6
+  of the 245 mods run again.
+- A texture judged in the container it ships in (above). 3 of the 233 mods the fixup changes
+  affect changed when repaired again.
+
+The load stage was compared again on the reduced corpus and on the 245 mods, with two accepted
+deviations added to `load_compare.py`. It was not compared again over the datasets.
+
+## Sound units of a mod's own (2026-10-04)
+
+Measured over forge's baseline reports and the mods' own banks, read in memory: where the events
+bank of a sound unit of the mod's own can be cut from.
+
+| the unit's events can be cut from | units | mods |
+|---|---:|---:|
+| the mod's own events bank, of the client's version | 322 | 199 |
+| the game's events bank only | 246 | 217 |
+| neither, and forge carried none of them | 145 | 84 |
+
+The first two rows are the 568 units forge carried, in 383 mods. Of the 246, 163 ship no events
+bank, 57 ship one whose events play none of the unit's clips, and 26 ship one of version 134
+that does.
+
+Of the 145: 64 units in 18 mods have a second events bank of the client's version that plays
+their clips, and forge reads the first only; 75 have a bank of version 134 that plays them; 5
+ship none.
+
+Every bank a port writes takes its header from a game events bank, the 5,017 units that play
+under the game's own events included. That is read from forge's code, not measured.
+
+Not measured: whether a unit cut from the mod's own bank plays in game.

@@ -17,8 +17,9 @@ prefixed file is a `.dds` in every case, and 69,849 of the 69,891 textures that 
 both.
 
 Game objects name the full texture and not its copies: 8 of the 139,142 prefixed paths under
-`assets/` were ever named by one. When the client reads a reduced copy in place of the full
-texture is not established.
+`assets/` were ever named by one. The client reads a reduced copy in place of the full texture
+at a lower texture quality setting: a mod whose author edited the texture at one resolution
+shows the game's own texture to a player at another setting.
 
 The game holds 8,492 prefixed paths at 8.20.2483196 and 68,646 at 14.21.6271015, the most of
 any build.
@@ -87,3 +88,6 @@ author kept the copies of the game's or made new ones.
   (#GAME-CHANGE-0009), because the mod ships a file for the asset already.
 - ltk-forge takes the `4x_` file before the `2x_` file when a mod ships both and no full
   texture. By the sizes above that is the smaller file.
+- That the client reads a reduced copy at a lower texture quality setting is the user's account
+  (2026-10-04), from players of a mod seeing the game's texture at another setting than its
+  author's. It is not checked in game for this record, and no game object names the copies.

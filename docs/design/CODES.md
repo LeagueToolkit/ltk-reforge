@@ -164,7 +164,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `package.entry-whole` | warning | the game's bin has no entry under the target's name; the mod's goes in whole | `lower.entry-whole` |
 | `package.resolver-frozen` | note | the resolver's map is written whole; keys the game adds later are lost until a rebuild | `write.resolver-frozen` |
 | `package.texture-contained` | note | DDS textures put in TEX's container; those kept as DDS, and why | `tex-container.swapped` |
-| `package.in-place` | note | a repair's output: files kept, bins written again, files left behind | `inplace.summary` |
+| `package.in-place` | note | a repair's output: files kept, bins written again, and the files left out because the client does not reach them, by reason: nothing loads or names them, at a former path, a stale copy, named only by removed values | `inplace.summary` |
 | `package.empty` | fatal | the package holds nothing | `emit.empty` |
 | `check.manifest-unreadable` | error | the package's manifest does not load | `verify.manifest` |
 | `check.apply-failed` | error | a patch does not apply to the game's bin | `verify.apply` |
