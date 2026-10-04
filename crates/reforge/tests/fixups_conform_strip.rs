@@ -177,8 +177,8 @@ fn a_field_under_a_pointer_or_a_list_is_stripped_and_a_stripped_struct_is_not_en
 
 #[test]
 fn a_field_a_bin_of_the_install_holds_on_the_class_stays() {
-    // The schema does not declare `seen`. The game's own bin holds it on the class at the
-    // target build, so the build reads it.
+    // #GAME-BEHAVIOR-0021: the schema does not declare `seen`, and the game's own bin holds
+    // it on the class at the target build.
     let mut game = skins::game_at("16.19.300");
     let held = object("G", EMITTER, vec![("seen", text("a"))]);
     game.insert(&skins::skin_bin("test", 5), bin(vec![held]));
