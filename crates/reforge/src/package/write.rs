@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! <out>/<project>/mod.config.json
+//!                 README.md
 //!                 reforge-report.json
 //!                 hashes/game.hashes.txt, hashes/binentries.hashes.txt
 //!                 content/<layer>/<Champion>.wad.client/<path>
@@ -15,6 +16,9 @@
 //! result into place when it is whole. A write that fails leaves nothing behind. Every path
 //! written is under the output directory, made of a project name, a [`WadName`] and the parts
 //! of a [`ChunkPath`].
+//!
+//! `README.md` holds the evidence of the run that built the package (#ADR-0041), and is
+//! written for a package that has it. The packer packs it as the `.modpkg`'s readme.
 
 use std::io::{self, Write as _};
 
@@ -27,6 +31,7 @@ use ltk_mod_project::{
 use serde::Serialize;
 
 use super::config::{ENTRIES_TABLE, PATHS_TABLE};
+use super::evidence::README_FILE;
 use super::findings::{Blocked, Written};
 use super::{ChunkKey, HashTables, Package};
 use crate::diag::{DiagId, DiagnosticPolicy, Diagnostics, Sink, Stage};
@@ -165,7 +170,7 @@ impl Tree<'_> {
         Ok(fs::write(&path, bytes)?)
     }
 
-    /// Writes the chunks, the hash tables and the config.
+    /// Writes the chunks, the hash tables, the config and the evidence.
     fn write(&self) -> Result<Tally, WriteError> {
         let mut tally = Tally::default();
         let mut tables: HashTables = self.package.tables.clone();
@@ -210,6 +215,9 @@ impl Tree<'_> {
         let project = self.package.config.to_project(self.package.layers());
         let config = project.to_config_string(ConfigFormat::Json)?;
         self.file(&[CONFIG_FILE], config.as_bytes())?;
+        if let Some(evidence) = &self.package.evidence {
+            self.file(&[README_FILE], evidence.readme().as_bytes())?;
+        }
         Ok(tally)
     }
 }

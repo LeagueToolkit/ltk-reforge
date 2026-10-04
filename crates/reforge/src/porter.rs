@@ -27,8 +27,8 @@ use crate::load::{
 };
 use crate::model::Mod;
 use crate::package::{
-    BuildError, CheckCx, CheckSet, InPlaceBuilder, Overlay, Package, PackageWriter, PortBuilder,
-    Refused, WriteError, WriterKind, permit,
+    BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
+    PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
@@ -170,6 +170,14 @@ impl Mode {
                 Stage::Check,
             ],
             Mode::InPlace => &[Stage::Load, Stage::Fix, Stage::Build, Stage::Check],
+        }
+    }
+
+    /// What a run of the mode does to the mod it packages.
+    fn made(self) -> Made {
+        match self {
+            Mode::Port => Made::Ported,
+            Mode::InPlace => Made::Repaired,
         }
     }
 }
@@ -556,10 +564,17 @@ impl<'a> Run<'a> {
                 };
                 let mut sink = self.log.at(Stage::Fix);
                 let set = &self.settings.fixups;
-                let applied = set.apply(module, &ObjectSet::every(), &mut inputs, &mut sink);
-                let (fixed, changes) = applied.map_err(RunError::Fix)?;
-                self.module = Reached::Fixed(fixed);
-                self.changes = Some(changes);
+                match set.apply_or_keep(module, &ObjectSet::every(), &mut inputs, &mut sink) {
+                    Ok((fixed, changes)) => {
+                        self.module = Reached::Fixed(fixed);
+                        self.changes = Some(changes);
+                    }
+                    // The report of a run ended here still holds what `load` gave.
+                    Err(unfixed) => {
+                        self.module = Reached::Loaded(unfixed.module);
+                        return Err(RunError::Fix(unfixed.fault));
+                    }
+                }
             }
         }
         match &self.module {
@@ -646,30 +661,53 @@ impl<'a> Run<'a> {
     }
 
     /// The stage `build`: the package, of the plan in a porter's run and of the fixed mod in
-    /// place in a repairer's. A package that would hold nothing ends the run.
+    /// place in a repairer's, with the evidence of the run in it (#ADR-0041). A package that
+    /// would hold nothing ends the run.
     pub fn build(&mut self) -> Result<&Package, RunError> {
         self.going()?;
         if self.package.is_none() {
-            let fixed = self.module.fixed(Stage::Build)?;
-            let mut sink = self.log.at(Stage::Build);
-            let built = match self.mode {
-                Mode::Port => {
-                    let port = held(self.plan.as_ref(), Stage::Build, Stage::Plan)?;
-                    let speller = Speller::new(&self.book, self.env.names());
-                    PortBuilder::new(fixed, port, self.env, &speller).build(&mut sink)
-                }
-                Mode::InPlace => {
-                    let changes = held(self.changes.as_ref(), Stage::Build, Stage::Fix)?;
-                    let options = self.settings.load_options();
-                    InPlaceBuilder::new(fixed, changes)
-                        .names(&self.book, self.env.names())
-                        .judged(self.env, &options)
-                        .build(&mut sink)
+            let built = {
+                let fixed = self.module.fixed(Stage::Build)?;
+                let mut sink = self.log.at(Stage::Build);
+                match self.mode {
+                    Mode::Port => {
+                        let port = held(self.plan.as_ref(), Stage::Build, Stage::Plan)?;
+                        let speller = Speller::new(&self.book, self.env.names());
+                        PortBuilder::new(fixed, port, self.env, &speller).build(&mut sink)
+                    }
+                    Mode::InPlace => {
+                        let changes = held(self.changes.as_ref(), Stage::Build, Stage::Fix)?;
+                        let options = self.settings.load_options();
+                        InPlaceBuilder::new(fixed, changes)
+                            .names(&self.book, self.env.names())
+                            .judged(self.env, &options)
+                            .build(&mut sink)
+                    }
                 }
             };
-            self.package = Some(built.map_err(RunError::of_build)?);
+            let mut package = built.map_err(RunError::of_build)?;
+            package.evidence = self.evidence()?;
+            self.package = Some(package);
         }
         held(self.package.as_ref(), Stage::Build, Stage::Fix)
+    }
+
+    /// The evidence the run's package embeds: what the run holds once the mod is fixed and,
+    /// in a porter's run, planned.
+    fn evidence(&self) -> Result<Option<EvidenceDoc>, RunError> {
+        // A dating an earlier run established names its piece by an id of that run's mod,
+        // which this run's mod does not spell.
+        if self.known.is_some() {
+            return Ok(None);
+        }
+        let fixed = self.module.fixed(Stage::Build)?;
+        let dating = held(self.dating.as_ref(), Stage::Build, Stage::Load)?;
+        let doc = EvidenceDoc::of(self.mode.made(), fixed, dating, self.env)
+            .fixups(self.settings.fixups.ids());
+        Ok(Some(match (&self.targets, &self.plan) {
+            (Some(targets), Some(port)) => doc.ported(targets, port, fixed),
+            _ => doc,
+        }))
     }
 
     /// The stage `check`: the chosen checks on the package. A porter's run applies the

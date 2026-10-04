@@ -2,6 +2,7 @@
 //! archive says of itself.
 
 use ltk_mod_project::{ModProject, ModProjectAuthor, ModProjectHashtable, ModProjectLayer};
+use serde::{Deserialize, Serialize};
 
 use super::Layer;
 use crate::model::entity::{CharKind, ModMeta};
@@ -16,12 +17,14 @@ pub const PATHS_TABLE: &str = "hashes/game.hashes.txt";
 /// Where the table of entry names is, in a project.
 pub const ENTRIES_TABLE: &str = "hashes/binentries.hashes.txt";
 
-/// What a run did to the mod it packages.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a run did to the mod it packages. Its name in a package's evidence is the kind of run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Made {
     /// The mod as it is, fixed for the target build.
+    #[serde(rename = "repair")]
     Repaired,
     /// The mod over the game's own skin.
+    #[serde(rename = "port")]
     Ported,
 }
 

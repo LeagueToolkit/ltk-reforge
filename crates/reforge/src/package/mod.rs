@@ -5,12 +5,14 @@
 //! for a port. An [`Overlay`] is a port's patches applied to the game's bins. A [`CheckSet`]
 //! reads both and raises what it finds. A [`PackageWriter`] puts the package on disk. Nothing
 //! a check finds stops the write (#ADR-0003): a caller's [`permit`] does, when its policy
-//! says so.
+//! says so. An [`EvidenceDoc`] is what the run established of the mod, which a writer embeds
+//! in the package (#ADR-0041).
 //!
 //! `docs/design/ARCHITECTURE.md`, "Package".
 
 mod check;
 mod config;
+mod evidence;
 mod findings;
 mod inplace;
 mod overlay;
@@ -31,6 +33,11 @@ pub use self::check::{
     Apply, Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, RoundTrip, Types,
 };
 pub use self::config::{Made, ProjectConfig};
+pub use self::evidence::{
+    ArchiveRef, EVIDENCE_FORMAT, EvidenceBound, EvidenceDating, EvidenceDoc, EvidenceError,
+    EvidenceHistory, EvidenceInputs, EvidencePiece, EvidencePolicy, EvidencePort, EvidenceUnit,
+    MAX_README_BYTES, PieceKind, Program, README_FILE,
+};
 pub use self::findings::{
     Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
     FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBinFailed,
@@ -279,24 +286,28 @@ impl HashTables {
     }
 }
 
-/// What a run writes: layers of chunks, the hash tables and the project's config. Only checked
-/// paths are in it.
+/// What a run writes: layers of chunks, the hash tables, the project's config and the evidence
+/// of the run. Only checked paths are in it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Package {
     /// The project's config.
     pub config: ProjectConfig,
     /// The names shipped for the hashes the package holds.
     pub tables: HashTables,
+    /// The evidence of the run that built the package (#ADR-0041), which a writer embeds. None
+    /// for a package no run built.
+    pub evidence: Option<EvidenceDoc>,
     layers: BTreeMap<Layer, BTreeMap<ChunkKey, Chunk>>,
     patches: BTreeMap<Layer, Vec<Patch>>,
 }
 
 impl Package {
-    /// A package with its base layer and no chunk.
+    /// A package with its base layer, no chunk and no evidence.
     pub fn new(config: ProjectConfig) -> Self {
         Self {
             config,
             tables: HashTables::default(),
+            evidence: None,
             layers: BTreeMap::from([(Layer::Base, BTreeMap::new())]),
             patches: BTreeMap::new(),
         }
@@ -447,6 +458,14 @@ impl Dump for Package {
         }
         for entry in self.tables.entries() {
             let _ = writeln!(out, "     names entry {entry}");
+        }
+        if let Some(evidence) = &self.evidence {
+            let _ = writeln!(
+                out,
+                "     evidence {EVIDENCE_FORMAT} fixups={} restored={}",
+                evidence.fixups.len(),
+                evidence.restored.len()
+            );
         }
         out
     }

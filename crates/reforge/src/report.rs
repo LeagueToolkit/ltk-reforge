@@ -32,7 +32,9 @@ use crate::model::hash::hex;
 use crate::model::{
     ChunkPath, ContentId, FixupId, Mod, Slot, Spell, WadName, bin, clean_json, value, walk,
 };
-use crate::package::{Layer, Origin as ChunkOrigin, Outcome, Overlay, Package, Patch, PatchOf};
+use crate::package::{
+    EvidenceDoc, Layer, Origin as ChunkOrigin, Outcome, Overlay, Package, Patch, PatchOf,
+};
 use crate::port::{Alternative, Decision, Policy, Port, Targets};
 
 /// The schema a report states. A field is added under the same schema; a field renamed or
@@ -912,6 +914,9 @@ pub struct Report {
     pub port: Option<serde_json::Value>,
     /// The package, when one was built.
     pub package: Option<PackageRow>,
+    /// The evidence the package embeds (#ADR-0041), when the run that built it gave it one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<EvidenceDoc>,
     /// What repairing the repaired mod again came to, when a caller asked for it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub again: Option<AgainRow>,
@@ -940,6 +945,7 @@ impl Report {
                 targets: None,
                 port: None,
                 package: None,
+                evidence: None,
                 again: None,
                 diagnostics: Vec::new(),
             },
@@ -1118,9 +1124,11 @@ impl ReportBuilder {
     }
 
     /// The package a port built, with each of its patches applied to the game's bin: the
-    /// digest of each object of the patched bin.
+    /// digest of each object of the patched bin. The evidence the package embeds is a part of
+    /// its own.
     #[must_use]
     pub fn package_applied(mut self, package: &Package, overlay: Option<&Overlay>) -> Self {
+        self.report.evidence = package.evidence.clone();
         let chunks = package.chunks().map(|(layer, key, chunk)| {
             let is_bin = key.path.extension() == Some("bin");
             let parsed = is_bin.then(|| bin::parse(&chunk.bytes).ok()).flatten();
