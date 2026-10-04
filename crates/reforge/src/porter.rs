@@ -157,10 +157,11 @@ enum Mode {
 }
 
 impl Mode {
-    /// The stages between `read` and `write`, in order.
+    /// The stages of a run of the mode, in order.
     fn stages(self) -> &'static [Stage] {
         match self {
             Mode::Port => &[
+                Stage::Read,
                 Stage::Load,
                 Stage::Fix,
                 Stage::Facts,
@@ -168,8 +169,16 @@ impl Mode {
                 Stage::Plan,
                 Stage::Build,
                 Stage::Check,
+                Stage::Write,
             ],
-            Mode::InPlace => &[Stage::Load, Stage::Fix, Stage::Build, Stage::Check],
+            Mode::InPlace => &[
+                Stage::Read,
+                Stage::Load,
+                Stage::Fix,
+                Stage::Build,
+                Stage::Check,
+                Stage::Write,
+            ],
         }
     }
 
@@ -391,6 +400,7 @@ pub struct Run<'a> {
     known: Option<Evidence>,
     log: Diagnostics,
     book: NameBook,
+    read: bool,
     archive: Option<Archive>,
     module: Reached,
     dating: Option<Dating>,
@@ -404,6 +414,7 @@ pub struct Run<'a> {
     package: Option<Package>,
     overlay: Option<Overlay>,
     checked: bool,
+    written: bool,
     again: Option<AgainRow>,
 }
 
@@ -416,6 +427,7 @@ impl<'a> Run<'a> {
             known: None,
             log: Diagnostics::new(),
             book: NameBook::new(),
+            read: false,
             archive: None,
             module: Reached::Nothing,
             dating: None,
@@ -429,6 +441,7 @@ impl<'a> Run<'a> {
             package: None,
             overlay: None,
             checked: false,
+            written: false,
             again: None,
         }
     }
@@ -461,6 +474,7 @@ impl<'a> Run<'a> {
         self.going()?;
         let mut sink = self.log.at(Stage::Read);
         let archive = Archive::read(bytes, file_name, &self.settings.caps, &mut sink)?;
+        self.read = true;
         Ok(self.archive.insert(archive))
     }
 
@@ -469,6 +483,7 @@ impl<'a> Run<'a> {
         self.going()?;
         let mut sink = self.log.at(Stage::Read);
         let archive = Archive::read_file(path, &self.settings.caps, &mut sink)?;
+        self.read = true;
         Ok(self.archive.insert(archive))
     }
 
@@ -842,6 +857,7 @@ impl<'a> Run<'a> {
                 source,
             })?;
         }
+        self.written = true;
         Ok(())
     }
 
@@ -898,6 +914,34 @@ impl<'a> Run<'a> {
     /// The diagnostic that ended the run, when one did.
     pub fn halted(&self) -> Option<Halted> {
         self.log.halted()
+    }
+
+    /// The stage a fatal diagnostic ended the run in, when one did.
+    pub fn halted_at(&self) -> Option<Stage> {
+        let halted = self.log.halted()?;
+        self.log.get(halted.0).map(|diagnostic| diagnostic.stage)
+    }
+
+    /// The stages of the run, in order, `read` and `write` among them. A repairer's run has
+    /// no `facts`, `decide` or `plan` (#ADR-0011).
+    pub fn stages(&self) -> &'static [Stage] {
+        self.mode.stages()
+    }
+
+    /// Whether a stage ran to its end. A stage a fatal diagnostic or a fault ended did not,
+    /// and neither did a write the caller's policy refused.
+    pub fn ran(&self, stage: Stage) -> bool {
+        match stage {
+            Stage::Read => self.read,
+            Stage::Load => matches!(self.module, Reached::Loaded(_) | Reached::Fixed(_)),
+            Stage::Fix => matches!(self.module, Reached::Fixed(_)),
+            Stage::Facts => self.facts.is_some(),
+            Stage::Decide => self.targets.is_some(),
+            Stage::Plan => self.plan.is_some(),
+            Stage::Build => self.package.is_some(),
+            Stage::Check => self.checked,
+            Stage::Write => self.written,
+        }
     }
 
     /// The names the run has learnt.

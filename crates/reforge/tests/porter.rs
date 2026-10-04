@@ -239,6 +239,88 @@ fn a_run_stopped_after_a_stage_reports_the_stages_it_ran() {
 }
 
 #[test]
+fn a_run_names_its_stages_and_says_which_ran_to_their_end() {
+    let env = game_env();
+    let bytes = own_mod();
+    let ran = |run: &Run<'_>| -> Vec<Stage> {
+        let stages = run.stages().iter().copied();
+        stages.filter(|&stage| run.ran(stage)).collect()
+    };
+
+    let porter = Porter::new(&env);
+    let mut run = porter.run();
+    assert_eq!(
+        run.stages(),
+        [
+            Stage::Read,
+            Stage::Load,
+            Stage::Fix,
+            Stage::Facts,
+            Stage::Decide,
+            Stage::Plan,
+            Stage::Build,
+            Stage::Check,
+            Stage::Write
+        ]
+    );
+    assert_eq!(ran(&run), []);
+    run.read(&bytes, FILE_NAME).expect("the archive reads");
+    assert_eq!(ran(&run), [Stage::Read]);
+    // `load` takes the archive, and `read` still ran.
+    run.through(Stage::Decide).expect("no fault");
+    assert_eq!(ran(&run), run.stages()[..5]);
+    run.through(Stage::Build).expect("no fault");
+    assert_eq!(ran(&run), run.stages()[..7]);
+    run.check().expect("the package is checked");
+    assert_eq!(ran(&run), run.stages()[..8]);
+    assert_eq!(run.halted_at(), None);
+
+    let repairer = Repairer::new(&env);
+    let mut repair = repairer.repair(&bytes, FILE_NAME).expect("no fault");
+    let in_place = [
+        Stage::Read,
+        Stage::Load,
+        Stage::Fix,
+        Stage::Build,
+        Stage::Check,
+        Stage::Write,
+    ];
+    assert_eq!(repair.stages(), in_place);
+    assert_eq!(ran(&repair), in_place[..5]);
+
+    // A write the policy refuses did not run. One that wrote did.
+    let dir = tempfile::tempdir().expect("a directory");
+    let out = Utf8Path::from_path(dir.path()).expect("a UTF-8 path");
+    let project = ProjectDir::new(out);
+    let writers: [&dyn PackageWriter; 1] = [&project];
+    let strict = DiagnosticPolicy::default().with(Filter::all(), Action::Block);
+    assert!(repair.write(&writers, &strict).is_err());
+    assert!(!repair.ran(Stage::Write));
+    repair
+        .write(&writers, &DiagnosticPolicy::default())
+        .expect("the package writes");
+    assert_eq!(ran(&repair), in_place);
+}
+
+#[test]
+fn a_stage_a_fatal_diagnostic_ended_did_not_run() {
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let run = porter
+        .port(&no_skin_mod(), FILE_NAME)
+        .expect("a halt is no error");
+    assert_eq!(run.halted_at(), Some(Stage::Load));
+    assert!(run.ran(Stage::Read));
+    assert!(run.module().is_some(), "the mod as far as load went");
+    assert!(!run.ran(Stage::Load) && !run.ran(Stage::Fix));
+
+    let mut run = porter.run();
+    assert!(run.read(b"no zip", FILE_NAME).is_err());
+    assert_eq!(run.halted_at(), Some(Stage::Read));
+    assert!(!run.ran(Stage::Read));
+}
+
+#[test]
 fn a_porter_decides_under_its_policy_and_records_the_compared_ones() {
     let env = game_env();
     let policy = Policy {

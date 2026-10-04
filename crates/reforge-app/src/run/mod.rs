@@ -79,17 +79,6 @@ pub enum RunKind {
     Port,
 }
 
-impl RunKind {
-    /// The stages of the kind, in order.
-    pub fn stages(self) -> &'static [StageName] {
-        use StageName::*;
-        match self {
-            RunKind::Repair => &[Read, Load, Fix, Build, Check, Write],
-            RunKind::Port => &[Read, Load, Fix, Facts, Decide, Plan, Build, Check, Write],
-        }
-    }
-}
-
 /// The settings a run takes, each one the library's (`docs/design/ROADMAP-UX.md`, "Two views
 /// of one run"). The default is the standard set and the default policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -283,11 +272,8 @@ pub fn run(
 
     let mut timed = Vec::new();
     let mut fault = None;
-    let stages = request.kind.stages();
-    for &stage in stages
-        .iter()
-        .filter(|&&stage| stage <= request.through.min(StageName::Check))
-    {
+    let stages = run.stages().iter().map(|&stage| StageName::of(stage));
+    for stage in stages.filter(|&stage| stage <= request.through.min(StageName::Check)) {
         watch.stage(stage, StageEvent::Started);
         let at = Instant::now();
         let ran = run_stage(&mut run, stage, &request.archive);
@@ -331,11 +317,10 @@ pub fn run(
         .meta
         .take()
         .or_else(|| run.archive().map(|archive| through_clean(&archive.meta)));
-    let reached = Reached::of(&run, written.is_some(), &timed);
     let targets = parts.named_targets();
     let log = std::mem::take(&mut *lines.lock());
     Ok(RunView {
-        stages: reached.views(stages, &timed),
+        stages: stage_views(&run, &timed),
         meta,
         halted: parts.halted,
         findings: parts.diagnostics,
@@ -372,64 +357,28 @@ fn run_stage(run: &mut Run<'_>, stage: StageName, archive: &str) -> Result<(), R
     }
 }
 
-/// How far a run got: the stage a fatal finding ended it in, and the stages whose result it
-/// holds.
-struct Reached {
-    halted_at: Option<StageName>,
-    holds: Vec<StageName>,
-}
-
-impl Reached {
-    fn of(run: &Run<'_>, written: bool, timed: &[(StageName, u64)]) -> Self {
-        let halted_at = run
-            .halted()
-            .and_then(|halted| run.log().get(halted.0))
-            .map(|finding| StageName::of(finding.stage));
-        let ran = |stage| timed.iter().any(|(timed, _)| *timed == stage);
-        let mut holds = Vec::new();
-        // The run gives the archive up to `load`; that `read` ran is the loop's to say.
-        let checks = [
-            (StageName::Read, ran(StageName::Read)),
-            (StageName::Load, run.module().is_some()),
-            (StageName::Fix, run.fixed().is_some()),
-            (StageName::Facts, run.facts().is_some()),
-            (StageName::Decide, run.targets().is_some()),
-            (StageName::Plan, run.port().is_some()),
-            (StageName::Build, run.package().is_some()),
-            (
-                StageName::Check,
-                run.package().is_some() && ran(StageName::Check),
-            ),
-            (StageName::Write, written),
-        ];
-        for (stage, held) in checks {
-            if held {
-                holds.push(stage);
+/// Each stage of a run, in order, with how far it got and how long it took.
+fn stage_views(run: &Run<'_>, timed: &[(StageName, u64)]) -> Vec<StageView> {
+    let halted_at = run.halted_at();
+    let stages = run.stages().iter();
+    stages
+        .map(|&stage| {
+            let state = match halted_at {
+                Some(at) if at == stage => StageState::Halted,
+                _ if run.ran(stage) => StageState::Ran,
+                _ => StageState::NotRun,
+            };
+            let stage = StageName::of(stage);
+            let millis = timed
+                .iter()
+                .find(|(timed, _)| *timed == stage)
+                .map(|(_, millis)| *millis)
+                .filter(|_| state != StageState::NotRun);
+            StageView {
+                stage,
+                state,
+                millis,
             }
-        }
-        Self { halted_at, holds }
-    }
-
-    fn views(&self, stages: &[StageName], timed: &[(StageName, u64)]) -> Vec<StageView> {
-        stages
-            .iter()
-            .map(|&stage| {
-                let state = match self.halted_at {
-                    Some(at) if at == stage => StageState::Halted,
-                    _ if self.holds.contains(&stage) => StageState::Ran,
-                    _ => StageState::NotRun,
-                };
-                let millis = timed
-                    .iter()
-                    .find(|(timed, _)| *timed == stage)
-                    .map(|(_, millis)| *millis)
-                    .filter(|_| state != StageState::NotRun);
-                StageView {
-                    stage,
-                    state,
-                    millis,
-                }
-            })
-            .collect()
-    }
+        })
+        .collect()
 }
