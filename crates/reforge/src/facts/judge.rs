@@ -122,8 +122,7 @@ impl fmt::Display for ClipBlock {
     }
 }
 
-/// Why a check came out as it did. Its text is ltk-forge's detail of the same check, so the two
-/// reports compare (#ADR-0004).
+/// Why a check came out as it did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Why {

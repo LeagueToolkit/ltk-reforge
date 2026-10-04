@@ -63,8 +63,9 @@ impl Retype {
         }
         match conform(value, &want, names) {
             Ok(converted) => converted.map(Verdict::Converted),
-            // #ADR-0004: forge leaves a list whose items have no conversion, under either
-            // list's tag. Only a value with no conversion of its own kind is removed.
+            // A list whose items have no conversion stays, under either list's tag, as in
+            // ltk-forge (`docs/design/ROADMAP.md`, "Open"). Only a value with no conversion of
+            // its own kind is removed.
             Err(wants) if dead && wants == want.kind => Some(Verdict::Dead),
             Err(wants) => Some(Verdict::NoRoad(wants)),
         }

@@ -69,8 +69,8 @@ fn is_repath_tag(part: &str) -> bool {
         ["skins", _, last] => skin(last) || *last == "base",
         [_, last] => skin(last),
         ["pie", "c", a, b] => digits(a) && digits(b),
-        // #ADR-0004: ltk-forge's rule, which takes `tftset7` and leaves the `tft_set7` mods
-        // carry. A port's paths are compared with ltk-forge's.
+        // Takes `tftset7` and leaves the `tft_set7` that mods carry (#MOD-ARTIFACT-0026): the
+        // rule is ltk-forge's, with no mod behind it (`docs/design/ROADMAP.md`, "Open").
         [set] => set
             .strip_prefix("tft")
             .and_then(|rest| rest.strip_prefix("set"))

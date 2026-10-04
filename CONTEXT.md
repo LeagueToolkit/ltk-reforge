@@ -109,6 +109,8 @@ commit takes the term here, not a synonym.
 |---|---|
 | datasets | the collections of archives the corpus is drawn from, each named by its SHA-256 |
 | corpus | the mods of the datasets in scope: champion skin mods, less duplicates |
-| reduced corpus | the fewest mods whose reports together show every feature the corpus shows |
-| baseline | one run over the corpus that later runs are compared with |
-| oracle | ltk-forge, whose output the rewrite is compared with |
+| edge case | one rule with an outcome of its own: a record's case, a diagnostic code, a variant of a closed set |
+| reduced corpus | the fewest mods that together show every edge case the corpus shows |
+| baseline | the reports of one run of reforge over the corpus, which later runs are compared with |
+| forge | ltk-forge, the retired program reforge rewrote |
+| oracle | ltk-forge in the comparisons of the rewrite, which ended with its retirement |

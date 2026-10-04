@@ -28,13 +28,16 @@ covers the area you change before changing it, and update it in the same change.
 - **Scripts write LF.** A Python script that rewrites a tracked file opens it with
   `newline="\n"` and pipes to git as bytes: text mode on Windows writes CRLF.
 - **Output is deterministic.** No clock, no machine state, no unordered map reaching output.
-- **Corpus runs** (`data/corpus/`, gitignored) take the mods a change affects first
-  (`port_run.py --list`), and the full datasets only for a new baseline.
+- **One rule at a time.** A change is made to one rule, with the test of its case, in the
+  stage that decides it (#ADR-0045).
+- **Corpus runs** use the scripts in `scripts/corpus/` and write under `data/corpus/`
+  (gitignored). A change is run over the reduced corpus first and compared with the baseline,
+  and over the full datasets only for a new baseline (#ADR-0044).
 - **Code shape.** A stage is a type and a module of `reforge`, and a module uses only the
   modules of earlier stages ([docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md), "Code
   shape" and "Crates and modules").
-- **"forge" means ltk-forge**, the program this rewrites. It is the oracle of the rewrite
-  (#ADR-0004) and is changed only for the comparison.
+- **"forge" means ltk-forge**, the retired program this rewrote (#ADR-0044). Nothing is
+  compared with it, and it is not built, run or changed.
 - Never commit or push unasked.
 
 ## Writing
@@ -128,9 +131,9 @@ Good  // A borrowed dance does not make the unit that skin's.
 ## Commits
 
 One conventional-commit subject line. No body, no trailers, no `Co-Authored-By`. The scope is
-a module of `reforge` (`model`, `diag`, `load`, `fixups`, `facts`, `port`, `package`), a crate
-without its prefix (`census`, `magic`, `wwise`, `cli`, `testkit`) or, outside
-one, the area (`docs`, `ci`, `workspace`).
+a module of `reforge` (`model`, `diag`, `load`, `fixups`, `facts`, `port`, `package`,
+`porter`), a crate without its prefix (`census`, `magic`, `wwise`, `cli`, `testkit`) or,
+outside one, the area (`docs`, `scripts`, `ci`, `workspace`).
 
 **A subject names the change, it does not describe it.** A plain verb and a domain noun phrase,
 about three to six words, in the codebase's vocabulary. No contrastive clause, no mechanism.

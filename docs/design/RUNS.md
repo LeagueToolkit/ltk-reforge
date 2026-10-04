@@ -654,19 +654,107 @@ text on standard error names the stage and not the step inside it.
 
 ## Ports in game (2026-10-04)
 
-23 sample mods ported by reforge against a copy of the game at 16.19 and written as
-`.modpkg`: the 15 of the in-game set and 8 that a change was tried on. Every port ended
-with exit 0.
+23 sample mods ported and repaired by reforge against a copy of the game at 16.19, each
+written as a `.modpkg`: the 15 of the in-game set and 8 that a change was tried on. Every port
+and every repair ended with exit 0.
 
-The user installed five of them in that copy of the game and each works:
+The user installed these in that copy of the game, and each works:
 
-| mod (SHA-256) | target | what it holds |
-|---|---|---|
-| `784c22089dfa…` | skin0, a sub-character following | a skin0 unit on the base |
-| `5c1f2ee92c54…` | skin0, a sub-character following | a premium paste that fits the base |
-| `21708c2c69f7…` | skin 16 by fallback, a sub-character following though its model does not fit | a submesh copied from a premium skin |
-| `b8a96bd3adfa…` | skin0 | one value lost by a fixup (`fixup.lost`) |
-| `ed8259ce1cd1…` | skin0, a sub-character following | effects built from other skins' files |
+| mod (SHA-256) | port | repair | the port's target | what it holds |
+|---|---|---|---|---|
+| `000d766b35b6…` | works | works | skin0 | a mod with no skin bin |
+| `00d1e642623e…` | works | works | skin0 | a premium paste that fits the base; a sound unit of its own |
+| `21708c2c69f7…` | works | works | skin 16 by fallback, a sub-character following though its model does not fit | a submesh copied from a premium skin |
+| `4c064748283f…` | works | works | skin0 | a skin0 unit on the base |
+| `5c1f2ee92c54…` | works | works | skin0, a sub-character following | a premium paste that fits the base |
+| `784c22089dfa…` | works | works | skin0, a sub-character following | a skin0 unit on the base |
+| `96e867967927…` | works | works | skin0, two sub-characters following | a premium paste that fits the base |
+| `d99c901022fa…` | works | works | skin0 | a skin0 unit on the base |
+| `b8a96bd3adfa…` | works | not tried | skin0 | one value lost by a fixup (`fixup.lost`) |
+| `ed8259ce1cd1…` | works | not tried | skin0, a sub-character following | effects built from other skins' files |
 
-Not checked: the other 18, a voice layer, a `hud` layer, and a bank unit cut from the mod's
-own events bank.
+"Works" is the user's judgement of the mod in game. What was looked at in each (the model,
+the effects, the sounds) is not recorded, but for the sounds of `00d1e642623e…`. Its port
+carries 10 own clips in a bank unit of its own, whose 9 events are cut from the game's events
+bank of the skin the mod pasted: the casts of three spells, a dagger picked up, the recall.
+The user heard the mod's own sounds in game, and the sounds of a dagger bouncing and landing,
+which the mod does not replace, as the base skin's. Whether the base skin's sound is heard
+beside the mod's on the same hook (#GAME-BEHAVIOR-0016) is not recorded.
+
+Not tried: the other 13 ports and 15 repairs, a voice layer and a `hud` layer.
+
+## The baselines and the edge cases (2026-10-04)
+
+The two baselines reforge is compared with (#ADR-0044), over the 5,137 mods of the datasets,
+against the 16.19.8207193 install copy and the history index of 755 builds. The tooling is
+`scripts/corpus/` of this repository.
+
+| baseline | command | mods | ended by a fatal diagnostic | failed | time |
+|---|---|---:|---|---:|---|
+| the port | `port --no-write` | 5,137 | 16: one `archive.no-skin`, 15 `package.empty` | 0 | 1,314 s at fourteen in parallel |
+| the repair | `repair --no-write --again` | 5,137 | 1: `archive.no-skin` | 0 | 1,808 s at fourteen in parallel, beside other work on the machine |
+
+**The port's baseline is not a new run.** Its reports are those of "The port", "The datasets
+again, on one program", made before the commands were rewritten ("The commands on a run").
+The release build of the rewritten commands gives the same reports: 30 mods spread evenly
+over the 5,137 and the 54 mods of the reduced corpus were run again, and each report is the
+baseline's byte for byte but for one line, the place of the install, which is the `--game`
+argument written back.
+
+**The repair's baseline** is one run of that build. Every repair that was built was built
+again from its own package (5,136), and no second repair changed a value or a chunk. 4,771
+repaired mods date at a build by themselves. The checks raise `check.field-undeclared` in 227
+mods and `check.type-mismatch` in 47, the port's 39 among them.
+
+**The edge cases** (#ADR-0045), derived from the reports of both baselines by `cases.py`:
+629 cases seen, 90 declared by the program and not seen. 232 show in both runs, 383 in the
+port only, 14 in the repair only. [CASES.md](CASES.md) lists them with their counts.
+
+| area | seen | not seen |
+|---|---:|---:|
+| run | 2 | 10 |
+| archive | 98 | 23 |
+| load | 79 | 9 |
+| fixups | 92 | 1 |
+| facts | 130 | 5 |
+| decision | 39 | 5 |
+| plan | 49 | 6 |
+| audio | 38 | 5 |
+| package | 44 | 16 |
+| checks | 24 | 10 |
+| records | 34 | 0 |
+
+22 cases are shown by one mod and 13 by two. No report holds a text field or a flag that the
+table of `cases.py` does not know. Deriving the cases from the 10,274 reports takes 11 s at
+sixteen in parallel.
+
+**The reduced corpus**: 54 mods show the 629 cases, 1.47 GB of archives. 11 of them are the
+only mod to show a case.
+
+| run of the reduced corpus | mods | ended by a fatal diagnostic | time at fourteen in parallel |
+|---|---:|---:|---|
+| `port --no-write`, twice | 54 | 3 | 22 s and 25 s |
+| `repair --no-write --again`, twice | 54 | 1 | 35 s and 34 s |
+
+- **Two runs.** The two runs of each command give the same 54 reports byte for byte, and
+  `compare.py` reports no difference.
+- **Against the baselines.** `compare.py` reports no difference between the baseline's
+  reports of the 54 mods and the reduced run's, for the port and for the repair.
+- The reports of the reduced runs show the same 629 cases.
+
+Not measured: `inspect` and `load` over the datasets, a run without the history index or the
+schema, and a run that writes.
+
+## The evidence embedded, against the baselines (2026-10-04)
+
+The first change measured against the baselines: every run embeds its evidence in the package
+(#ADR-0041), and the report holds it as a part of its own. The 54 mods of the reduced corpus,
+run with the change and compared with the baselines by `compare.py`:
+
+| command | mods | equal | with a difference | the differences |
+|---|---:|---:|---:|---|
+| `port --no-write` | 54 | 3 | 51 | the part `evidence`, in the 51 runs that build a package |
+| `repair --no-write --again` | 54 | 1 | 53 | the part `evidence`, in the 53 runs that build a package |
+
+No other section differs: no unit, decision, chunk, patch, fixup or diagnostic. The baselines
+of the datasets were not made again, so they hold no `evidence` part.

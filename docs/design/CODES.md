@@ -5,8 +5,8 @@ diagnostics` lists the codes that are declared. A code of this table that it doe
 still change.
 
 The scheme is in [DIAGNOSTICS.md](DIAGNOSTICS.md), "Names". The last column is ltk-forge's code
-for the same finding, which the comparison with ltk-forge reads (#ADR-0004). "none" marks a
-finding ltk-forge does not report.
+for the same finding. It is the map for a person who reads a report of ltk-forge's, and no
+program reads it (#ADR-0044). "none" marks a finding ltk-forge does not report.
 
 Channels: `input` is the archive as shipped, `decision` the facts and the choice of target,
 `output` what the package holds, changes or loses, `run` the run's other inputs.

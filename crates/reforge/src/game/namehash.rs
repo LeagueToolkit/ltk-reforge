@@ -6,7 +6,7 @@
 //! The file is a pure function of the table, so it is built where it is used and never shipped.
 //! Its stamp is the table's file name, which the cache changes with every version: a file of
 //! another stamp is built again. It is written under a temporary name and renamed into place.
-//! The format is ltk-forge's, so both programs share one file.
+//! The format and its magic are ltk-forge's: a file that program built is read as it is.
 //!
 //! | part | bytes |
 //! |---|---|

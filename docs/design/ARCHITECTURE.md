@@ -1,8 +1,8 @@
 # Architecture
 
-This is the design the rewrite builds. Each section is edited to what the code is as the code
-lands. The reasons are in [REVIEW.md](REVIEW.md). The order of work, and which steps are
-built, are in [ROADMAP.md](ROADMAP.md).
+This is the design of reforge. Each section is edited to what the code is as the code lands.
+The reasons are in [REVIEW.md](REVIEW.md), the review of ltk-forge this design answers. The
+order of work, and what is next, are in [ROADMAP.md](ROADMAP.md).
 
 ## Shape
 
@@ -148,7 +148,7 @@ The modules of `reforge`, each using only the ones above it:
 | `fixups` | the fixup engine and every rule |
 | `facts` | `Facts` and each result in it: copies, object provenance, origins, rigs, clips, reworks, sounds; `UnitJudge` |
 | `port` | `Policy`, `Targets`; `Port` and the steps of its plan: `Shipping`, `Reach`, `FileRefs`, `Layout`, `Renames`, `OwnClips`, `AudioPlan`, `HudPlan`; `Base` |
-| `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers |
+| `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers, `EvidenceDoc` |
 | `report` | `Report` and its rows |
 | `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)) |
 
@@ -174,6 +174,8 @@ tables (`history`) and the bin value helpers (`model`).
   at most one file per WAD and path hash. Adding a file where one exists adds nothing and says
   which file is there. A step that would add one (a file fixup, the game's bins for a mod with
   no skin bin) leaves the mod's own file in place.
+- **One object per entry hash in a bin.** Of the objects a bin lists under one entry hash, the
+  last is kept, and the bin is reported (#GAME-BEHAVIOR-0020).
 - **The port is new data.** `plan` clones the objects a unit carries and renames the clones.
   The mod's objects stay as the fixups left them.
 - **Closed sets are enums.** A layer is `Layer::Base`, `Voice` with its locale when it is one
@@ -222,8 +224,9 @@ the schema. It is immutable and built once by `Env::builder()`.
 
   A file that is absent, and one that does not read as what is asked, answer `None`. A chunk
   the game holds and does not give is a `GameError`.
-- **`History`** is a trait with one method per question in forge's query table. `SqliteHistory`
-  reads the index, `NoHistory` answers nothing, and the testkit has one in memory.
+- **`History`** is a trait with one method per question ([HISTORY.md](HISTORY.md), "The
+  questions"). `SqliteHistory` reads the index, `NoHistory` answers nothing, and the testkit
+  has one in memory.
 - **`Names`** holds the tables (Mimir, text tables) and does not change. Names a run learns
   (paths the archive spells, names the port makes) are in a `NameBook` the run owns. A `Speller`
   reads both in one order for every kind of hash: the run's names, Mimir, the text tables. A
@@ -384,7 +387,7 @@ pub struct Facts {
   champion's.
 - **A check is typed.** A `RigCheck` is an `Aspect` and a `Fit`: an `Outcome` (fits, fits with
   a fix, does not fit, unknown) and a `Why`, an enum with the data of each reason. The text of
-  a `Why` is ltk-forge's detail of the same check, so the two reports compare (#ADR-0004).
+  a `Why` is ltk-forge's wording of the same check ([ROADMAP.md](ROADMAP.md), "Open").
 - **Reworks.** Each reworked champion of the mod is judged made before or after its rework,
   from `load`'s count of its files around the rework and from the dating.
 - **Sounds.** For each representative unit whose entry holds an audio block: its tags, its
@@ -524,7 +527,8 @@ object takes a name of its own, which every link to it follows.
 
 `package` holds the output and everything after it.
 
-- **`Package`** is layers of chunks and patches, the hash tables and the project's config. A
+- **`Package`** is layers of chunks and patches, the hash tables, the project's config and the
+  evidence of the run that built it. A
   chunk is keyed by `(WadName, ChunkPath)` and says where its bytes come from (`Origin`): a file
   of the mod kept as it is, a bin written again with what it was built to hold, a texture put
   in TEX's container, a bin a port made, a bank a port made. A `Patch` is a typed manifest entry and its PTCH: the
@@ -538,8 +542,8 @@ object takes a name of its own, which every link to it follows.
   with one record per carried field of the skin entry that differs from the base (`Base`),
   the icons and loading screens only when they name a file the port ships; the resolver's
   map, the game's keys with the mod's laid over, written whole under the game's name
-  (#GAME-BEHAVIOR-0008, #ADR-0006); a bin of the carried objects and a bin of the graph when
-  it ships; the links the patched bin lacks. A sub-character the game ships no skin bin of at
+  (#GAME-BEHAVIOR-0008, #GAME-BEHAVIOR-0019, #ADR-0006); a bin of the carried objects and a
+  bin of the graph when it ships; the links the patched bin lacks. A sub-character the game ships no skin bin of at
   the target gets a whole `skin<T>.bin` in place of a patch: the game's skin0 bin renamed,
   the records applied, the links added (#ADR-0017). A unit whose target the game has no bin
   for is not written. The files ship at their places, the spell icons and HUD textures in the
@@ -570,10 +574,39 @@ object takes a name of its own, which every link to it follows.
 - **A repaired package is not the whole evidence of the mod.** The files left behind are part
   of what `load` judged by: a mod's date, and that a WAD restores a model from before a rework.
   A package repaired again from its own bytes alone dates differently in about half the mods,
-  and judges a restoration's old files stale. The report beside the package holds the date and
-  the restorations of the run that made it.
+  and judges a restoration's old files stale. So a package holds the evidence of the run that
+  built it (#ADR-0041).
+- **The evidence** is an `EvidenceDoc`, a document of the format `reforge.evidence/1`. It
+  holds the program and its version, the kind of run, the SHA-256 of the archive, the target
+  build and the history's head, the dating (the bound with its position in that history, the
+  piece that sets it by its path hash or entry hash and by the digest the history is asked
+  by, and the two counts), the WADs that restore a model from before a rework, the ids of the
+  fixups the run ran under, and for a port the policy and each unit that ships with its
+  character, its source slot, its target and the reason. It holds no id of the run's mod, no
+  clock and no path of the machine, and no list by file or by object. `Run::build` sets it on
+  the package from what the run holds. A run judged with an earlier run's evidence
+  (`Run::known`) sets none: the piece of that dating is an id of the earlier run's mod.
+- **The evidence sits in the project's `README.md`.** `ltk_modpkg` gives a `.modpkg` these
+  meta chunks and no other: the metadata, a thumbnail, a readme, a license text and the hash
+  tables. The readme and the license text are copied byte for byte, and the license text is
+  the terms the mod is shared under, so the readme takes the document. `ltk_mod_project`'s
+  packer takes the readme from `README.md` at the project's root. The file is a
+  heading and three sentences of fixed text with the program's version, the kind of run, the
+  target build and the archive's SHA-256, then one fenced block whose info string is the
+  format and whose body is the document as JSON, its keys in the order of the fields. A mod's
+  text is inside the block only, in a JSON string, with every character a terminal acts on
+  escaped. An archive's own readme is an entry outside its WADs, which no package carries, so
+  the README of a project is the run's alone.
+- **`EvidenceDoc::parse`** reads the document back from a README's text: `None` for a README
+  with no block of evidence, and an `EvidenceError` for a README over 1 MiB, a block of
+  another format number, a block that is not closed, a second block, a body that is not the
+  JSON of a document, and a field whose value is not what the field holds (a digest, a build,
+  a position outside the history named, a count above its total, a policy). A field it does
+  not know is ignored. No stage calls it: a run reads a mod archive, and judges it by its
+  bytes.
 - **`TexContainer`** puts a DDS at a `.tex` path in TEX's container where its blocks go in as
-  they are (#ADR-0022), after either builder.
+  they are (#ADR-0022), after either builder. A texture TEX does not hold as it is stays the
+  DDS it is (#GAME-BEHAVIOR-0003), one not in whole blocks among them (#GAME-BEHAVIOR-0018).
 - **`Overlay`** is a package's patches applied as LTK Manager's overlay applies them: each
   layer's manifest loaded with `ltk_game_data`, its edits applied to the game's bin, the base
   layer first and each other layer over the base layer's result. It holds, per patch, the bin
@@ -597,7 +630,9 @@ object takes a name of its own, which every link to it follows.
   directory and renames it into place, with the report beside the package: `<out>/<project>/`
   with `reforge-report.json` in it, and `<out>/<project>_<version>.modpkg` with
   `<project>_<version>.reforge-report.json` beside it. A write that fails leaves nothing, and a
-  directory that is no mod project is not replaced. A layer's patches go under
+  directory that is no mod project is not replaced. The evidence of a package that has one is
+  written as `README.md` at the project's root, and the packer packs it as the `.modpkg`'s
+  readme, `_meta_/readme.md`. A layer's patches go under
   `content/<layer>/overrides/`, with its `game_data.yaml` beside them. A chunk with a part of its path longer
   than a file name may be is named by its hash in a project directory, and its path goes in
   the project's table of paths. The `.modpkg` is packed from a project directory by
@@ -637,15 +672,16 @@ object takes a name of its own, which every link to it follows.
   unit and each file's place, the audio, the HUD edits), `build` and `check` the package with
   every chunk's digest and, for a bin, the digest of each object as
   `ltk_meta` writes it, and every patch with the game bin it patches and the digest of each
-  object of that bin after the patch. `reforge repair --again` adds what repairing the package
-  a second time, in memory, changed.
-- The corpus tooling in forge compares a report with forge's report of the same mod, section by
-  section, and keeps the list of accepted deviations with the reason for each.
+  object of that bin after the patch, and as the part `evidence` the document the package
+  embeds ([Package](#package)), field for field. `reforge repair --again` adds what repairing
+  the package a second time, in memory, changed.
+- The corpus scripts (`scripts/corpus/`) compare the reports of a run with the baseline's
+  reports of the same mods (#ADR-0044).
 
 ## Untrusted input
 
-- `archive` is the only module that reads a zip, under forge's caps. It holds the archive's
-  bytes once.
+- `archive` is the only module that reads a zip, under the caller's `Caps`. It holds the
+  archive's bytes once.
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
   error on any input (banks, file kinds). A reader from another crate runs where its panic is
   caught (bins, packed WADs, meshes, skeletons, clips).
@@ -656,6 +692,8 @@ object takes a name of its own, which every link to it follows.
   than its bytes can list is refused before `ltk_wad` mounts it, and one over the cap after
   that. The game's own WADs hold up to some 200,000 chunks, so the cap is above that.
 - A mod's text reaches a terminal only through the `Speller` and `clean`.
+- A package's README is a file anyone can edit, so the evidence in it is read as a mod's input
+  is: under a size cap, with a typed error for every refusal and no panic.
 - A writer takes `ChunkPath` and `WadName`, never a string.
 
 ## Code shape
@@ -673,15 +711,29 @@ object takes a name of its own, which every link to it follows.
 
 ## Tests
 
+- **Every edge case has a test of its own** (#ADR-0045). An edge case is a diagnostic code, a
+  variant of a closed set, a built-in fixup, or a record the code cites. Its test builds the
+  smallest fixture that shows it, calls the one stage that decides it, and asserts the typed
+  result and the diagnostic by type. It reads no dataset, no game copy and no history index.
+  [CASES.md](CASES.md) holds each case's baseline from the corpus.
+- **A case's test is in the file of the stage that decides it**, in the crate's `tests/`
+  directory: `archive.rs`, `load_*.rs`, `fixups_*.rs`, `facts_*.rs`, `port_decide.rs` for the
+  decision, `port_plan.rs` and `port_audio.rs` for the plan, `package_*.rs` for the build,
+  the checks and the writers, `porter.rs` for a run. A test's name is a sentence that says
+  the case. A test that shows a record's case cites the record by its code.
+- **`tests/cases.rs` is the guard.** It reads the sources and the test files, and fails when
+  no test names a code of `reforge::codes()`, a variant of a closed set it lists, a fixup of
+  `FixupSet::catalog()` or a record the sources cite. Its module comment states what counts
+  as naming one. It holds the list of the cases with no test, each with why. The list only
+  shrinks: the guard also fails when a test names a listed case. A closed set added to the
+  code is added to the guard's sets.
 - `reforge-testkit` builds a game with its skins, an archive, bins, rig files, banks, a schema
   from rows and a history from facts, with no file on disk. It has one run type per stage a
-  test starts from (`LoadRun`, `FixRun`, `FactRun`, `PortRun`, `PackRun`), each taking an
-  archive up to that stage.
-- A test calls the stage it tests and asserts on typed results and diagnostics by type. A
-  failed assertion on a run prints the run's dump and its diagnostics. No dump is compared
+  test starts from (`LoadRun`, `FixRun`, `FactRun`, `PlanRun`, `PortRun`, `PackRun`), each
+  taking an archive up to that stage, a game one chunk of which does not read and a history
+  that does not answer, for the faults.
+- A failed assertion on a run prints the run's dump and its diagnostics. No dump is compared
   with a stored one.
-- A test of a crate with fixtures is in the crate's `tests/` directory, one file per stage or
-  step.
 - `tests/porter.rs` holds `Porter`, `Repairer` and `Run`: a port and a repair, a run a stage
   at a time, a run stopped after each stage, a halted run's report, and that two runs of one
   archive give the same report, which holds the digest of every chunk.
