@@ -68,10 +68,7 @@ impl<'a> PackRun<'a> {
         let Ok(package) = &self.package else {
             panic!("no package to check");
         };
-        let cx = CheckCx {
-            package,
-            types: &types,
-        };
+        let cx = CheckCx::new(package, &types);
         checks.run(&cx, &mut self.fix.log.at(Stage::Check));
     }
 

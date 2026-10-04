@@ -343,7 +343,11 @@ fn a_report_holds_the_package_with_the_digest_of_each_object_of_its_bins() {
     assert_eq!(skin["size"], bytes.len());
     assert_eq!(skin["content"], ContentId::of(bytes).hex());
     let chunk = run.chunk(&skin_bin("test", 0));
-    assert_eq!(skin["file"], chunk.origin.file().to_string());
+    let file = chunk
+        .origin
+        .file()
+        .expect("a chunk of a repair is a file of the mod");
+    assert_eq!(skin["file"], file.to_string());
     // Each object by its entry hash, in file order, with the digest of the value written.
     let digest = |name: &str| hash::hex(&value::digest(run.fix.object(name)));
     let entry_of = |name: &str| format!("{:08x}", reforge::model::name_hash(name).0);

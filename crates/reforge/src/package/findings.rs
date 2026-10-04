@@ -12,8 +12,9 @@ use super::wired::LeftBehind;
 use super::write::WriterKind;
 use crate::diag::{Channel, Code, Diag, DiagId, Message, Record, Severity, Subject};
 use crate::game::FieldType;
+use crate::model::entity::UnitId;
 use crate::model::value::kind_name;
-use crate::model::{BinHash, ChunkPath, WadName};
+use crate::model::{BinHash, ChunkPath, WadHash, WadName};
 
 const fn code(name: &'static str, severity: Severity) -> Code {
     Code::new(name, Channel::Output, severity)
@@ -114,6 +115,381 @@ impl Diag for InPlace {
                 .count(self.unnamed, "file")
                 .text(" no table names, kept under their hash");
         }
+    }
+}
+
+fn hexes<S: Serializer>(hashes: &[BinHash], s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(hashes.iter().map(|hash| format!("{:08x}", hash.0)))
+}
+
+fn path_hexes<S: Serializer>(hashes: &[WadHash], s: S) -> Result<S::Ok, S::Error> {
+    s.collect_seq(hashes.iter().map(|hash| format!("{:016x}", hash.0)))
+}
+
+/// A unit that is not written: the game has no bin to patch at its target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NotWritten {
+    /// The unit.
+    pub unit: UnitId,
+    /// The bin the unit's patch is for.
+    pub target: ChunkPath,
+}
+
+impl Diag for NotWritten {
+    const CODE: Code = code("unit.not-written", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let _ = write!(
+            f,
+            "the game has no {} that reads as a bin; the unit is not written",
+            self.target
+        );
+    }
+}
+
+/// A skin bin written for a sub-character (#ADR-0017) to which records of the unit's patch
+/// did not apply.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NewBinFailed {
+    /// The unit.
+    pub unit: UnitId,
+    /// The bin written.
+    pub target: ChunkPath,
+    /// How many records applied.
+    pub applied: usize,
+    /// How many did not.
+    pub skipped: usize,
+}
+
+impl Diag for NewBinFailed {
+    const CODE: Code = code("unit.new-bin-failed", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let _ = write!(
+            f,
+            "{} written from the game's skin0: {} records applied, {} did not",
+            self.target, self.applied, self.skipped
+        );
+    }
+}
+
+/// What one unit's port holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnitPorted {
+    /// The unit.
+    pub unit: UnitId,
+    /// The game bin patched, or the bin written where the game has none.
+    pub target: ChunkPath,
+    /// How many records and whole objects the patch holds.
+    pub records: usize,
+    /// How many objects the unit's own bin carries.
+    pub carried: usize,
+    /// Whether the graph ships.
+    pub graph: bool,
+    /// Whether the target is a bin the port wrote whole (#ADR-0017).
+    pub new_bin: bool,
+}
+
+impl Diag for UnitPorted {
+    const CODE: Code = code("unit.ported", Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.records, "record");
+        let _ = write!(f, " on {}, ", self.target);
+        f.count(self.carried, "object").text(" carried");
+        if self.graph {
+            f.text(", the graph shipped");
+        }
+        if self.new_bin {
+            f.text("; the bin is written whole, from the game's skin0");
+        }
+    }
+}
+
+/// Carried fields the game's entry has and the mod's lacks. The game's stay: a patch cannot
+/// remove a field (#ADR-0026).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FieldKept {
+    /// The unit.
+    pub unit: UnitId,
+    /// The fields.
+    #[serde(serialize_with = "hexes")]
+    pub fields: Vec<BinHash>,
+}
+
+impl Diag for FieldKept {
+    const CODE: Code = code("package.field-kept", Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("the mod's entry lacks ");
+        f.list(&self.fields, |f, field| {
+            f.field(*field);
+        });
+        f.text("; the game's stays (a patch cannot remove a field)");
+    }
+}
+
+/// The game's bin holds no entry under the target's name: the mod's entry goes in whole.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EntryWhole {
+    /// The unit.
+    pub unit: UnitId,
+}
+
+impl Diag for EntryWhole {
+    const CODE: Code = code("package.entry-whole", Severity::Warning);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text(
+            "the game's bin holds no entry under the target's name; the mod's entry goes in whole",
+        );
+    }
+}
+
+/// A resolver's map written whole (#ADR-0006): the game's keys at the build of the run, with
+/// the mod's laid over.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ResolverFrozen {
+    /// The unit.
+    pub unit: UnitId,
+    /// How many keys the map written holds.
+    pub keys: usize,
+}
+
+impl Diag for ResolverFrozen {
+    const CODE: Code = code("package.resolver-frozen", Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let _ = write!(
+            f,
+            "the resolver's map is written whole ({} keys): keys the game adds later are not seen until the port is made again",
+            self.keys
+        );
+    }
+}
+
+/// A port's output: what the package holds, and the files of the mod it leaves out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ported {
+    /// Files of the mod shipped under the namespace.
+    pub files: usize,
+    /// Bins the port made.
+    pub bins: usize,
+    /// Banks the port made of the mod's own clips.
+    pub banks: usize,
+    /// Patches of game bins.
+    pub patches: usize,
+    /// Files left out, which the client does not reach through the port (#ADR-0039), by the
+    /// reason.
+    #[serde(flatten)]
+    pub left: LeftBehind,
+}
+
+impl Diag for Ported {
+    const CODE: Code = code("package.ported", Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.files, "file")
+            .text(" shipped under the namespace, ")
+            .count(self.bins, "bin")
+            .text(" and ")
+            .count(self.banks, "bank")
+            .text(" made, ")
+            .count(self.patches, "PTCH file")
+            .text(" on game bins");
+        if self.left.total() > 0 {
+            f.text("; ")
+                .count(self.left.total(), "file")
+                .text(" left out: ");
+            f.list(&self.left.reasons(), |f, (n, reason)| {
+                let _ = write!(f, "{n} {reason}");
+            });
+        }
+    }
+}
+
+/// A layer's manifest that does not load.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ManifestUnreadable {
+    /// The layer.
+    pub layer: String,
+    /// Why, as the reader says it.
+    pub reason: String,
+}
+
+impl Diag for ManifestUnreadable {
+    const CODE: Code = code("check.manifest-unreadable", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("the manifest of the layer ")
+            .text(&self.layer)
+            .text(" does not load: ")
+            .spelled(&self.reason);
+    }
+}
+
+/// A patch that does not apply to the bin it is for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ApplyFailed {
+    /// The layer of the patch.
+    pub layer: String,
+    /// The bin it is for.
+    pub target: ChunkPath,
+    /// Why, as the overlay says it. None when the game has no bin there.
+    pub reason: Option<String>,
+}
+
+impl Diag for ApplyFailed {
+    const CODE: Code = code("check.apply-failed", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Chunk(self.target.clone())
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("the patch of the layer ").text(&self.layer);
+        match &self.reason {
+            Some(reason) => f.text(" does not apply: ").spelled(reason),
+            None => f.text(" has no game bin to apply to"),
+        };
+    }
+}
+
+/// Edits of a patch that the overlay skips.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RecordSkipped {
+    /// The layer of the patch.
+    pub layer: String,
+    /// The bin it is for.
+    pub target: ChunkPath,
+    /// Each edit skipped, as the overlay says it.
+    pub records: Vec<String>,
+}
+
+impl Diag for RecordSkipped {
+    const CODE: Code = code("check.record-skipped", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Chunk(self.target.clone())
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.records.len(), "edit")
+            .text(" of the layer ")
+            .text(&self.layer)
+            .text(" do not apply: ");
+        f.list(&self.records, |f, record| {
+            f.spelled(record);
+        });
+    }
+}
+
+/// Links a patch adds that resolve to no bin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LinkUnresolved {
+    /// The bin patched.
+    pub target: ChunkPath,
+    /// The links.
+    pub links: Vec<String>,
+}
+
+impl Diag for LinkUnresolved {
+    const CODE: Code = code("check.link-unresolved", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Chunk(self.target.clone())
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("links the port adds resolve to nothing: ");
+        f.list(&self.links, |f, link| {
+            f.spelled(link);
+        });
+    }
+}
+
+/// Names the patched entry of a unit reaches that resolve to nothing, and did resolve in the
+/// mod.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NameUnresolved {
+    /// The unit.
+    pub unit: UnitId,
+    /// The names, by their hashes.
+    #[serde(serialize_with = "hexes")]
+    pub names: Vec<BinHash>,
+}
+
+impl Diag for NameUnresolved {
+    const CODE: Code = code("check.name-unresolved", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.names.len(), "name")
+            .text(" the patched entry reaches resolve to nothing: ");
+        f.list(&self.names, |f, name| {
+            f.entry(*name);
+        });
+    }
+}
+
+/// Files a unit's port names that are neither shipped nor the game's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FileMissing {
+    /// The unit.
+    pub unit: UnitId,
+    /// The files, by their path hashes.
+    #[serde(serialize_with = "path_hexes")]
+    pub files: Vec<WadHash>,
+}
+
+impl Diag for FileMissing {
+    const CODE: Code = code("check.file-missing", Severity::Error);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.files.len(), "file")
+            .text(" the port names are neither shipped nor the game's: ");
+        f.list(&self.files, |f, file| {
+            f.path(*file);
+        });
     }
 }
 
@@ -382,6 +758,8 @@ pub enum Coverage {
         bins: usize,
         /// How many changed objects were compared.
         objects: usize,
+        /// How many banks the run made were read back.
+        banks: usize,
     },
     /// Values typed against the target build.
     Types {
@@ -391,6 +769,21 @@ pub enum Coverage {
         fields: usize,
         /// What the types were read from.
         against: Against,
+    },
+    /// Patches applied to the game's bins as the overlay applies them.
+    Apply {
+        /// How many patches applied.
+        patches: usize,
+        /// How many names the patched entries reach.
+        reached: usize,
+        /// Names unresolved as they were in the mod.
+        names_known: usize,
+        /// Files unresolved as they were in the mod.
+        files_known: usize,
+        /// Names the game's own entry and resolver leave unresolved.
+        names_game: usize,
+        /// Files the game's own entry and resolver leave unresolved.
+        files_game: usize,
     },
 }
 
@@ -408,11 +801,18 @@ impl Diag for Done {
 
     fn message(&self, f: &mut Message<'_>) {
         match self.0 {
-            Coverage::RoundTrip { bins, objects } => {
+            Coverage::RoundTrip {
+                bins,
+                objects,
+                banks,
+            } => {
                 f.count(bins, "bin")
                     .text(" written again read back, ")
                     .count(objects, "changed object")
                     .text(" compared");
+                if banks > 0 {
+                    f.text(", ").count(banks, "bank").text(" made read back");
+                }
             }
             Coverage::Types {
                 bins,
@@ -431,6 +831,23 @@ impl Diag for Done {
                         f.text("the install's bins (no schema database)");
                     }
                 }
+            }
+            Coverage::Apply {
+                patches,
+                reached,
+                names_known,
+                files_known,
+                names_game,
+                files_game,
+            } => {
+                f.count(patches, "game bin")
+                    .text(" patched as the overlay patches, ")
+                    .count(reached, "name")
+                    .text(" reached");
+                let _ = write!(
+                    f,
+                    "; {names_known} names and {files_known} files unresolved as they were in the mod, {names_game} names and {files_game} files the game's own entry and resolver leave unresolved"
+                );
             }
         }
     }

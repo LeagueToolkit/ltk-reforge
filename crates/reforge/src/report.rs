@@ -14,6 +14,10 @@ use serde::Serialize;
 
 use crate::diag::{Diagnostic, Diagnostics, Render};
 use crate::env::Env;
+use crate::facts::{
+    ClipsAt, Facts, Judged, ObjectOrigin, Origin, UnitCandidates, UnitRig, UnitRole, UnitSounds,
+    Verdict, Via, Weight,
+};
 use crate::fixups::{After, Change, Changes, Counts, ObjectSet, Snapshot};
 use crate::game::{Build, Game};
 use crate::load::dating::{Bound, Piece};
@@ -28,7 +32,8 @@ use crate::model::hash::hex;
 use crate::model::{
     ChunkPath, ContentId, FixupId, Mod, Slot, Spell, WadName, bin, clean_json, value, walk,
 };
-use crate::package::{Origin, Package};
+use crate::package::{Layer, Origin as ChunkOrigin, Outcome, Overlay, Package, Patch, PatchOf};
+use crate::port::{Alternative, Decision, Policy, Port, Targets};
 
 /// The schema a report states. A field is added under the same schema; a field renamed or
 /// retyped takes the next number.
@@ -282,10 +287,11 @@ pub struct ChunkRow {
     pub path: ChunkPath,
     /// The hash the client finds it by, as sixteen hex digits.
     pub hash: String,
-    /// The file of the mod it was built from.
-    pub file: FileId,
+    /// The file of the mod it was built from. None for a bin a port made.
+    pub file: Option<FileId>,
     /// Where its bytes come from: `kept` for the file's own, `delta` or `whole` for a bin
-    /// written again, `contained` for a DDS put in TEX's container.
+    /// written again, `contained` for a DDS put in TEX's container, `made` for a bin a port
+    /// made.
     pub origin: &'static str,
     /// Its size in bytes.
     pub size: u64,
@@ -306,6 +312,94 @@ pub struct ChunkRow {
     pub values: IndexMap<String, String>,
 }
 
+/// A game bin after a patch, as the overlay applies it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AppliedRow {
+    /// `applied`, `failed` for a patch the overlay refused, `no-game-bin` where the game has
+    /// no bin at the target.
+    pub outcome: &'static str,
+    /// Why the overlay refused the patch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// The edits the overlay skipped.
+    pub skipped: Vec<String>,
+    /// The bins the patched bin links.
+    pub links: Vec<String>,
+    /// The SHA-256 of each object of the patched bin as `ltk_meta` writes it, by the
+    /// object's entry hash as eight hex digits, in file order.
+    pub objects: IndexMap<String, String>,
+}
+
+/// A patch of the package.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PatchRow {
+    /// The layer it is in.
+    pub layer: String,
+    /// The game bin it patches.
+    pub target: ChunkPath,
+    /// Where the PTCH is, in its layer.
+    pub path: ChunkPath,
+    /// What it is of.
+    #[serde(flatten)]
+    pub of: PatchOf,
+    /// The bins the manifest links to the patched bin.
+    pub links: Vec<ChunkPath>,
+    /// How many records and whole objects the PTCH holds.
+    pub records: usize,
+    /// The size of the PTCH in bytes.
+    pub size: u64,
+    /// The SHA-256 of the PTCH.
+    pub content: ContentId,
+    /// The game's bin after the patch, when the patches were applied.
+    pub applied: Option<AppliedRow>,
+}
+
+impl PatchRow {
+    fn of(layer: &Layer, at: usize, patch: &Patch, overlay: Option<&Overlay>) -> Self {
+        let applied = overlay.and_then(|overlay| overlay.of(layer, at));
+        let applied = applied.map(|applied| match &applied.outcome {
+            Outcome::NoGameBin => AppliedRow {
+                outcome: "no-game-bin",
+                reason: None,
+                skipped: Vec::new(),
+                links: Vec::new(),
+                objects: IndexMap::new(),
+            },
+            Outcome::Failed { reason } => AppliedRow {
+                outcome: "failed",
+                reason: Some(reason.clone()),
+                skipped: Vec::new(),
+                links: Vec::new(),
+                objects: IndexMap::new(),
+            },
+            Outcome::Applied(bin) => {
+                let digests = bin.objects.iter().map(|object| {
+                    let entry = format!("{:08x}", object.path_hash.0);
+                    (entry, hex(&value::digest(object)))
+                });
+                AppliedRow {
+                    outcome: "applied",
+                    reason: None,
+                    skipped: bin.skipped.clone(),
+                    links: bin.dependencies.clone(),
+                    objects: digests.collect(),
+                }
+            }
+        });
+        Self {
+            layer: layer.name(),
+            target: patch.target.clone(),
+            path: patch.path.clone(),
+            of: patch.of,
+            links: patch.links.clone(),
+            records: patch.records,
+            size: patch.bytes.len() as u64,
+            content: ContentId::of(&patch.bytes),
+            applied,
+        }
+    }
+}
+
 /// The package a run built.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PackageRow {
@@ -315,6 +409,9 @@ pub struct PackageRow {
     pub version: String,
     /// Its chunks, layer by layer, by WAD and path.
     pub chunks: Vec<ChunkRow>,
+    /// Its patches of game bins, layer by layer, in the order of each layer's manifest.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub patches: Vec<PatchRow>,
     /// The chunk paths its hash table names.
     pub paths: Vec<String>,
     /// The entry names its hash table names.
@@ -418,6 +515,303 @@ impl AgainRow {
     }
 }
 
+/// A unit's role among the copies of its character.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum CopyRow {
+    /// The one unit its cluster is ported as.
+    Representative {
+        /// The unit.
+        unit: UnitId,
+        /// Whether the cluster covers a skin other than the unit's own.
+        spread: bool,
+        /// Its copies.
+        copies: Vec<crate::facts::Member>,
+    },
+    /// A copy of its cluster's representative.
+    Copy {
+        /// The unit.
+        unit: UnitId,
+        /// The representative.
+        of: UnitId,
+        /// How it is the representative's work.
+        #[serde(flatten)]
+        kind: crate::facts::CopyKind,
+    },
+}
+
+/// An object of the mod that is the game's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GameObjectRow {
+    /// The object.
+    pub object: ObjectId,
+    /// `game-exact` for the game's object byte for byte, `game-renamed` for one saved under
+    /// another name.
+    pub origin: &'static str,
+    /// The game object's entry hash, as eight hex digits.
+    pub entry: String,
+    /// The skin whose bins hold it, when it is one skin's.
+    pub slot: Option<Slot>,
+    /// `install`, or `history` for an object the install does not hold.
+    pub via: &'static str,
+    /// The first build the game held it, for one found in the history.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first: Option<Build>,
+    /// The last build the game held it, for one found in the history.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last: Option<Build>,
+}
+
+/// Whose the mod's objects are.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObjectsRow {
+    /// How many objects the loaded bins hold.
+    pub total: usize,
+    /// How many of them are the mod's own.
+    pub own: usize,
+    /// The ones that are the game's, in object order.
+    pub game: Vec<GameObjectRow>,
+}
+
+/// One piece of evidence of a unit's origin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EvidenceItemRow {
+    /// What it is read from.
+    pub aspect: &'static str,
+    /// The skin it points at.
+    pub slot: Slot,
+    /// How much it weighs.
+    pub weight: Weight,
+    /// What it rests on, as one phrase.
+    pub detail: String,
+}
+
+/// A unit's origin.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OriginRow {
+    /// The unit.
+    pub unit: UnitId,
+    /// The skin its content derives from.
+    #[serde(flatten)]
+    pub verdict: Verdict,
+    /// The weight of the evidence that decided.
+    pub strength: Option<Weight>,
+    /// Whether the mesh its entry names is a file of the mod's own bytes.
+    pub own_mesh: bool,
+    /// The evidence, in the order found.
+    pub evidence: Vec<EvidenceItemRow>,
+}
+
+impl OriginRow {
+    fn of(unit: UnitId, origin: &Origin, names: &dyn Spell) -> Self {
+        let evidence = origin.evidence.items.iter().map(|item| EvidenceItemRow {
+            aspect: item.aspect.as_str(),
+            slot: item.slot,
+            weight: item.weight,
+            detail: item.detail(names),
+        });
+        Self {
+            unit,
+            verdict: origin.verdict,
+            strength: origin.strength,
+            own_mesh: origin.evidence.own_mesh,
+            evidence: evidence.collect(),
+        }
+    }
+}
+
+/// A unit's rig.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RigRow {
+    /// The unit.
+    pub unit: UnitId,
+    /// Its mesh, skeleton and clips.
+    #[serde(flatten)]
+    pub rig: UnitRig,
+}
+
+/// A unit's clips at each candidate slot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ClipsRow {
+    /// The unit.
+    pub unit: UnitId,
+    /// The clips judged at each slot.
+    pub at: BTreeMap<Slot, ClipsAt>,
+}
+
+/// What is known of placing a unit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CandidatesRow {
+    /// The unit.
+    pub unit: UnitId,
+    /// The facts at each candidate slot.
+    #[serde(flatten)]
+    pub candidates: UnitCandidates,
+}
+
+/// What is true of the mod.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct FactsRow {
+    /// The role of each unit the mod adds something to, in unit order.
+    pub copies: Vec<CopyRow>,
+    /// Whose the objects are.
+    pub objects: ObjectsRow,
+    /// The origin of each representative unit.
+    pub origins: Vec<OriginRow>,
+    /// The rig of each representative unit that has a skin entry.
+    pub rigs: Vec<RigRow>,
+    /// The clips of each of those units at each candidate slot.
+    pub clips: Vec<ClipsRow>,
+    /// The facts of placing each representative unit.
+    pub candidates: Vec<CandidatesRow>,
+    /// The reworked champions, judged.
+    pub reworks: Vec<Judged>,
+    /// The banks of each representative unit's audio block, with how many of their clips are
+    /// the mod's own.
+    pub sounds: Vec<SoundsRow>,
+}
+
+/// A unit's audio block and the banks of it the archive ships.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SoundsRow {
+    /// The unit.
+    pub unit: UnitId,
+    /// Its tags and bank units.
+    #[serde(flatten)]
+    pub sounds: UnitSounds,
+}
+
+impl FactsRow {
+    fn of(facts: &Facts, env: &Env, names: &dyn Spell) -> Self {
+        let copies = facts.copies.iter().map(|(unit, role)| match role {
+            UnitRole::Representative { members, spread } => CopyRow::Representative {
+                unit,
+                spread: *spread,
+                copies: members.clone(),
+            },
+            UnitRole::Copy { of, kind } => CopyRow::Copy {
+                unit,
+                of: *of,
+                kind: *kind,
+            },
+        });
+        let history = env.history();
+        let game_object = |object: ObjectId, origin: &ObjectOrigin| {
+            let (name, entry, slot, via) = match origin {
+                ObjectOrigin::GameExact { entry, slot, via } => ("game-exact", entry, slot, via),
+                ObjectOrigin::GameRenamed { entry, slot, via } => {
+                    ("game-renamed", entry, slot, via)
+                }
+                ObjectOrigin::Own => return None,
+            };
+            let life = match via {
+                Via::Install => None,
+                Via::History { life } => Some(life),
+            };
+            Some(GameObjectRow {
+                object,
+                origin: name,
+                entry: format!("{:08x}", entry.0),
+                slot: *slot,
+                via: if life.is_some() { "history" } else { "install" },
+                first: life.and_then(|life| history.version(life.first).cloned()),
+                last: life.and_then(|life| history.version(life.last).cloned()),
+            })
+        };
+        let total = facts.objects.iter().count();
+        let game: Vec<GameObjectRow> = facts
+            .objects
+            .iter()
+            .filter_map(|(object, origin)| game_object(object, origin))
+            .collect();
+        Self {
+            copies: copies.collect(),
+            objects: ObjectsRow {
+                total,
+                own: total - game.len(),
+                game,
+            },
+            origins: facts
+                .origins
+                .iter()
+                .map(|(unit, origin)| OriginRow::of(unit, origin, names))
+                .collect(),
+            rigs: facts
+                .rigs
+                .iter()
+                .map(|(unit, rig)| RigRow {
+                    unit,
+                    rig: rig.clone(),
+                })
+                .collect(),
+            clips: facts
+                .clips
+                .iter()
+                .map(|(unit, clips)| ClipsRow {
+                    unit,
+                    at: clips.at.clone(),
+                })
+                .collect(),
+            candidates: facts
+                .candidates
+                .iter()
+                .map(|(unit, candidates)| CandidatesRow {
+                    unit,
+                    candidates: candidates.clone(),
+                })
+                .collect(),
+            reworks: facts.reworks.iter().cloned().collect(),
+            sounds: facts
+                .sounds
+                .iter()
+                .map(|(unit, sounds)| SoundsRow {
+                    unit,
+                    sounds: sounds.clone(),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// A unit's decision, with what the compared policies choose.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DecisionRow {
+    /// The decision.
+    #[serde(flatten)]
+    pub decision: Decision,
+    /// What each compared policy chooses.
+    pub alternatives: Vec<Alternative>,
+}
+
+/// The decisions of a run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TargetsRow {
+    /// The policy the run decided under.
+    pub policy: Policy,
+    /// One decision per representative unit, in unit order.
+    pub decisions: Vec<DecisionRow>,
+    /// The slots two units of the same rank target.
+    pub conflicts: Vec<crate::port::Conflict>,
+}
+
+impl TargetsRow {
+    fn of(targets: &Targets) -> Self {
+        let decisions = targets.decisions.values().map(|decision| DecisionRow {
+            decision: decision.clone(),
+            alternatives: targets
+                .alternatives
+                .get(&decision.unit)
+                .cloned()
+                .unwrap_or_default(),
+        });
+        Self {
+            policy: targets.policy,
+            decisions: decisions.collect(),
+            conflicts: targets.conflicts.clone(),
+        }
+    }
+}
+
 /// What a diagnostic is about.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SubjectRow {
@@ -507,6 +901,15 @@ pub struct Report {
     /// What each fixup changed, in the order the fixups ran, when they ran. A fixup that
     /// changed nothing has no row.
     pub changes: Option<Vec<FixupRow>>,
+    /// What is true of the mod, when the facts were gathered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub facts: Option<FactsRow>,
+    /// The decisions, when targets were chosen.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub targets: Option<TargetsRow>,
+    /// The plan of a port, when one was made: `Port` as serde writes it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<serde_json::Value>,
     /// The package, when one was built.
     pub package: Option<PackageRow>,
     /// What repairing the repaired mod again came to, when a caller asked for it.
@@ -533,6 +936,9 @@ impl Report {
                 inventory: None,
                 provenance: None,
                 changes: None,
+                facts: None,
+                targets: None,
+                port: None,
                 package: None,
                 again: None,
                 diagnostics: Vec::new(),
@@ -675,10 +1081,46 @@ impl ReportBuilder {
         self
     }
 
+    /// What is true of the mod. The environment spells the builds of an object the history
+    /// holds, and `names` the entry a piece of evidence names.
+    #[must_use]
+    pub fn facts(mut self, facts: &Facts, env: &Env, names: &dyn Spell) -> Self {
+        self.report.facts = Some(FactsRow::of(facts, env, names));
+        self
+    }
+
+    /// The decisions of a policy, with what the policies compared with it choose.
+    #[must_use]
+    pub fn targets(mut self, targets: &Targets) -> Self {
+        self.report.targets = Some(TargetsRow::of(targets));
+        self
+    }
+
+    /// The plan of a port: the units that ship and why the others left, what each entry
+    /// reaches, where each file is found, the renames, and each unit's and file's place.
+    ///
+    /// # Panics
+    ///
+    /// When serde fails to write a plan into memory, which no value of one makes it do.
+    #[must_use]
+    pub fn port(mut self, port: &Port) -> Self {
+        let row = serde_json::to_value(port);
+        let row = row.unwrap_or_else(|error| panic!("a plan does not write: {error}"));
+        self.report.port = Some(row);
+        self
+    }
+
     /// The package a run built: every chunk with the digest of its bytes, and for a bin the
     /// digest of each object it holds.
     #[must_use]
-    pub fn package(mut self, package: &Package) -> Self {
+    pub fn package(self, package: &Package) -> Self {
+        self.package_applied(package, None)
+    }
+
+    /// The package a port built, with each of its patches applied to the game's bin: the
+    /// digest of each object of the patched bin.
+    #[must_use]
+    pub fn package_applied(mut self, package: &Package, overlay: Option<&Overlay>) -> Self {
         let chunks = package.chunks().map(|(layer, key, chunk)| {
             let is_bin = key.path.extension() == Some("bin");
             let parsed = is_bin.then(|| bin::parse(&chunk.bytes).ok()).flatten();
@@ -689,9 +1131,13 @@ impl ReportBuilder {
                 });
                 digests.collect()
             });
+            // Every object of a bin a port made is one it wrote: the chunk's `objects` say it.
             let edited = match &chunk.origin {
-                Origin::Rewritten { written, .. } => written.edited.as_slice(),
-                Origin::Kept(_) | Origin::Contained(_) => &[],
+                ChunkOrigin::Rewritten { written, .. } => written.edited.as_slice(),
+                ChunkOrigin::Kept(_)
+                | ChunkOrigin::Contained(_)
+                | ChunkOrigin::Made(_)
+                | ChunkOrigin::Bank(_) => &[],
             };
             let values = edited.iter().map(|object| {
                 let mut sorted = object.clone();
@@ -717,10 +1163,15 @@ impl ReportBuilder {
                 values,
             }
         });
+        let patches = package.layers().flat_map(|layer| {
+            let patches = package.patches(layer).iter().enumerate();
+            patches.map(move |(at, patch)| PatchRow::of(layer, at, patch, overlay))
+        });
         self.report.package = Some(PackageRow {
             name: package.config.name.clone(),
             version: package.config.version.clone(),
             chunks: chunks.collect(),
+            patches: patches.collect(),
             paths: package.tables.paths().map(str::to_string).collect(),
             entries: package.tables.entries().map(str::to_string).collect(),
         });

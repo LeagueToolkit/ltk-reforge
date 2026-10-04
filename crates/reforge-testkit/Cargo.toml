@@ -12,6 +12,11 @@ workspace = true
 
 [dependencies]
 reforge.workspace = true
+reforge-wwise.workspace = true
 ltk_meta.workspace = true
 ltk_wad.workspace = true
+ltk_mesh.workspace = true
+ltk_anim.workspace = true
+ltk_hash.workspace = true
+glam.workspace = true
 zip.workspace = true

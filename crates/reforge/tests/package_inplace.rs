@@ -449,6 +449,7 @@ fn a_file_the_client_does_not_reach_is_left_out_and_counted_by_its_reason() {
             former_path: 2,
             stale: 1,
             orphaned: 1,
+            ..LeftBehind::default()
         }
     );
     assert_eq!(found.kept, run.package().len());

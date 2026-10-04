@@ -1803,6 +1803,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "ltk_anim"
+version = "0.3.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ff2e67c41354bbfdad70c0e09f2ae71d341b4da5eb45c409aa4f520cdd40c2a"
+dependencies = [
+ "bitflags 2.13.2",
+ "bytemuck",
+ "byteorder",
+ "glam",
+ "ltk_hash",
+ "ltk_io_ext",
+ "num_enum",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "ltk_file"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2493,7 +2509,9 @@ dependencies = [
  "camino",
  "ddsfile",
  "fs-err",
+ "glam",
  "indexmap",
+ "ltk_anim",
  "ltk_game_data",
  "ltk_hash",
  "ltk_hashdb",
@@ -2553,7 +2571,6 @@ dependencies = [
  "reforge-census",
  "reforge-wwise",
  "serde_json",
- "zip",
 ]
 
 [[package]]
@@ -2568,9 +2585,14 @@ dependencies = [
 name = "reforge-testkit"
 version = "0.1.0"
 dependencies = [
+ "glam",
+ "ltk_anim",
+ "ltk_hash",
+ "ltk_mesh",
  "ltk_meta",
  "ltk_wad",
  "reforge",
+ "reforge-wwise",
  "zip",
 ]
 
@@ -3282,7 +3304,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

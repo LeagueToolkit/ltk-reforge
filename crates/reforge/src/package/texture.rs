@@ -222,9 +222,12 @@ impl TexContainer {
     /// holds as it is.
     pub fn apply(&mut self, package: &mut Package) {
         for (_, key, chunk) in package.chunks_mut() {
+            let Some(file) = chunk.origin.file() else {
+                continue;
+            };
             if let Some(tex) = self.contain(&key.path, &chunk.bytes) {
                 chunk.bytes = tex.into();
-                chunk.origin = Origin::Contained(chunk.origin.file());
+                chunk.origin = Origin::Contained(file);
                 self.shipped();
             }
         }

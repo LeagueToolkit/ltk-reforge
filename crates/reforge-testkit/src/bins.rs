@@ -140,6 +140,23 @@ pub fn resolver(entry_name: &str) -> BinObject {
     BinObject::builder(name_hash(entry_name), name_hash(class::RESOURCE_RESOLVER)).build()
 }
 
+/// A resolver whose map holds these keys, each naming the object of an entry name.
+pub fn resolver_with(entry_name: &str, keys: &[(&str, &str)]) -> BinObject {
+    let entries = keys.iter().map(|(key, target)| {
+        let key = PropertyValueEnum::Hash(values::Hash::new(name_hash(key)));
+        (key, link(target))
+    });
+    let map = values::Map::new(
+        PropertyKind::Hash,
+        PropertyKind::ObjectLink,
+        entries.collect(),
+    )
+    .unwrap_or_else(|error| panic!("a map of links does not build: {error}"));
+    BinObject::builder(name_hash(entry_name), name_hash(class::RESOURCE_RESOLVER))
+        .property(name_hash(field::RESOURCE_MAP), PropertyValueEnum::Map(map))
+        .build()
+}
+
 /// The same object with one more property: a link to `target` under `field`.
 pub fn with_link(mut object: BinObject, field: &str, target: &str) -> BinObject {
     object.properties.insert(name_hash(field), link(target));

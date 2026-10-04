@@ -4,6 +4,7 @@
 //! `docs/design/ARCHITECTURE.md`, "The environment".
 
 mod book;
+mod catalog;
 mod install;
 mod namehash;
 mod names;
@@ -18,6 +19,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 
 pub use self::book::NameBook;
+pub use self::catalog::{CatalogSkin, GameObject, MAX_CHAIN, SkinCatalog, SkinClass, graph_clips};
 pub use self::install::{
     Install, InstallError, NoBuild, SizeIndex, UnreadableWad, VersionUnknown, WadsUnreadable,
 };

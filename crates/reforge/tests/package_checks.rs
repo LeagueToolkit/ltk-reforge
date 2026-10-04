@@ -111,10 +111,7 @@ fn checked(package: &Package, schema: Option<&Schema>, checks: &CheckSet) -> Dia
     let build = Build::parse("16.19.300");
     let types = TargetTypes::new(schema, build.as_ref());
     let mut log = Diagnostics::new();
-    let cx = CheckCx {
-        package,
-        types: &types,
-    };
+    let cx = CheckCx::new(package, &types);
     checks.run(&cx, &mut log.at(Stage::Check));
     log
 }
@@ -132,6 +129,7 @@ fn a_bin_written_again_that_reads_back_as_built_passes() {
     let covered = Coverage::RoundTrip {
         bins: 1,
         objects: 1,
+        banks: 0,
     };
     assert_eq!(log.of::<Done>().collect::<Vec<_>>(), [&Done(covered)]);
     assert_eq!(log.worst(), Some(Severity::Note));
@@ -200,6 +198,7 @@ fn a_file_kept_as_it_is_is_not_read_back() {
     let covered = Coverage::RoundTrip {
         bins: 0,
         objects: 0,
+        banks: 0,
     };
     assert_eq!(log.of::<Done>().collect::<Vec<_>>(), [&Done(covered)]);
     assert_eq!(log.len(), 1);
@@ -338,10 +337,7 @@ fn without_a_schema_the_types_are_the_ones_the_installs_bins_hold() {
     ));
     let package = package_of(kept(mistyped()));
     let mut log = Diagnostics::new();
-    let cx = CheckCx {
-        package: &package,
-        types: &types,
-    };
+    let cx = CheckCx::new(&package, &types);
     types_only().run(&cx, &mut log.at(Stage::Check));
     let found = log.of::<TypeMismatch>().next().expect("it is found");
     assert_eq!((found.values, found.fields.len()), (2, 1));
@@ -383,7 +379,7 @@ fn what_a_check_finds_does_not_stop_the_write_unless_the_policy_says_so() {
 fn the_checks_are_listed_and_chosen_as_data() {
     let catalog = CheckSet::catalog();
     let ids: Vec<&str> = catalog.iter().map(|info| info.id.as_str()).collect();
-    assert_eq!(ids, ["types", "round-trip"]);
+    assert_eq!(ids, ["types", "round-trip", "apply"]);
     assert!(catalog.iter().all(|info| info.default));
     let json = serde_json::to_value(&catalog[0]).expect("a description is data");
     assert_eq!(
@@ -407,7 +403,7 @@ fn the_checks_are_listed_and_chosen_as_data() {
     assert_eq!(unknown, ["nothing"]);
     let set = CheckSet::from(&read);
     let ids: Vec<&str> = set.infos().iter().map(|info| info.id.as_str()).collect();
-    assert_eq!(ids, ["round-trip"]);
+    assert_eq!(ids, ["round-trip", "apply"]);
 }
 
 /// A check a caller adds: it raises what it covered and nothing else.
@@ -422,6 +418,7 @@ impl Check for Counted {
         sink.raise(Done(Coverage::RoundTrip {
             bins: cx.package.len(),
             objects: 0,
+            banks: 0,
         }));
     }
 }

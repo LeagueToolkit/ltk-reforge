@@ -6,6 +6,7 @@
 //!                 reforge-report.json
 //!                 hashes/game.hashes.txt, hashes/binentries.hashes.txt
 //!                 content/<layer>/<Champion>.wad.client/<path>
+//!                 content/<layer>/game_data.yaml, content/<layer>/overrides/<name>.ptch
 //! <out>/<project>_<version>.modpkg
 //! <out>/<project>_<version>.reforge-report.json
 //! ```
@@ -39,6 +40,10 @@ pub const MAX_NAME_BYTES: usize = 255;
 
 /// The config's file name in a project.
 const CONFIG_FILE: &str = "mod.config.json";
+
+/// The file name of a layer's manifest: the declaration LTK Manager's overlay applies the
+/// layer's patches by.
+pub const MANIFEST_FILE: &str = "game_data.yaml";
 
 /// What a writer puts on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -180,6 +185,16 @@ impl Tree<'_> {
                     // The name the chunk lost on disk, for whoever reads the package.
                     tables.add_path(key.path.as_str());
                 }
+            }
+            // The layer's patches, and the manifest that applies them (#ADR-0026).
+            for patch in self.package.patches(layer) {
+                let mut parts = vec!["content", layer_name.as_str()];
+                parts.extend(patch.path.parts());
+                self.file(&parts, &patch.bytes)?;
+            }
+            if let Some(manifest) = self.package.manifest(layer) {
+                let parts = ["content", layer_name.as_str(), MANIFEST_FILE];
+                self.file(&parts, manifest.as_bytes())?;
             }
         }
         let paths: String = tables.paths().map(|name| format!("{name}\n")).collect();

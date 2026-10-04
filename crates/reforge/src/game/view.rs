@@ -6,10 +6,15 @@ use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use super::catalog::{MAX_CHAIN, SkinCatalog};
 use super::{Build, Game, GameError};
-use crate::model::bin::{self, ParsedBin};
+use crate::model::bin::{self, ParsedBin, ParsedObject};
 use crate::model::hash::skin_paths;
-use crate::model::{ChunkPath, ContentId, SkinEntry, Slot, WadHash, WadName, value};
+use crate::model::rig::{self, MeshShape, Skeleton};
+use crate::model::{
+    BankClip, BinHash, ChunkPath, ContentId, EventsBank, MAX_SLOT, SkinEntry, Slot, WadHash,
+    WadName, name_hash, path_hash, value,
+};
 
 /// A bin of the game, parsed.
 #[derive(Debug)]
@@ -20,6 +25,14 @@ pub struct GameBin {
     pub parsed: ParsedBin,
     /// The files its objects name.
     pub files: BTreeSet<WadHash>,
+}
+
+impl GameBin {
+    /// The object of the bin under an entry hash.
+    pub fn object(&self, entry: BinHash) -> Option<&ParsedObject> {
+        let mut objects = self.parsed.objects.iter();
+        objects.find(|object| object.value.path_hash == entry)
+    }
 }
 
 /// The game's bins of one skin of a character.
@@ -72,6 +85,12 @@ pub struct GameView {
     contents: Kept<WadHash, Option<ContentId>>,
     bins: Kept<WadHash, Option<Arc<GameBin>>>,
     skins: Kept<(String, Slot), Option<Arc<GameSkin>>>,
+    catalogs: Kept<String, Arc<SkinCatalog>>,
+    skeletons: Kept<WadHash, Option<Arc<Skeleton>>>,
+    meshes: Kept<WadHash, Option<Arc<MeshShape>>>,
+    clips: Kept<WadHash, Option<Arc<[u32]>>>,
+    events_banks: Kept<WadHash, Option<Arc<EventsBank>>>,
+    bank_clips: Kept<WadHash, Option<Arc<[BankClip]>>>,
 }
 
 impl GameView {
@@ -82,7 +101,108 @@ impl GameView {
             contents: Kept::default(),
             bins: Kept::default(),
             skins: Kept::default(),
+            catalogs: Kept::default(),
+            skeletons: Kept::default(),
+            meshes: Kept::default(),
+            clips: Kept::default(),
+            events_banks: Kept::default(),
+            bank_clips: Kept::default(),
         }
+    }
+
+    /// The skins the game has for a character (#ADR-0043). Empty for a character the game has
+    /// no skin bin of.
+    pub fn catalog(&self, character: &str) -> Result<Arc<SkinCatalog>, GameError> {
+        let character = character.to_ascii_lowercase();
+        self.catalogs
+            .get_or(&character, || self.read_catalog(&character))
+    }
+
+    fn read_catalog(&self, character: &str) -> Result<Arc<SkinCatalog>, GameError> {
+        let mut catalog = SkinCatalog::default();
+        for slot in (0..=MAX_SLOT).map(Slot) {
+            let skin_bin = path_hash(&skin_paths::skin_bin(character, slot));
+            if !self.game.contains(skin_bin) {
+                continue;
+            }
+            catalog.note_bin(slot);
+            let Some(skin) = self.bin(skin_bin)? else {
+                continue;
+            };
+            let mut chain = vec![(skin_bin, skin)];
+            let mut at = 0;
+            while at < chain.len() && chain.len() < MAX_CHAIN {
+                let links = chain[at].1.parsed.dependencies.clone();
+                for link in links {
+                    let path = path_hash(&link);
+                    let known = chain.iter().any(|(held, _)| *held == path);
+                    if chain.len() >= MAX_CHAIN || known {
+                        continue;
+                    }
+                    if let Some(bin) = self.bin(path)? {
+                        chain.push((path, bin));
+                    }
+                }
+                at += 1;
+            }
+            let entry = name_hash(&skin_paths::skin_entry(character, slot));
+            catalog.add(slot, entry, chain);
+        }
+        catalog.close();
+        Ok(Arc::new(catalog))
+    }
+
+    /// The game's skeleton at a path (#ADR-0043). `None` when the game has no file there, or
+    /// the file reads as no skeleton.
+    pub fn skeleton(&self, path: WadHash) -> Result<Option<Arc<Skeleton>>, GameError> {
+        self.skeletons.get_or(&path, || {
+            let bytes = self.game.read(path)?;
+            Ok(bytes
+                .and_then(|bytes| Skeleton::parse(&bytes))
+                .map(Arc::new))
+        })
+    }
+
+    /// The shape of the game's mesh at a path (#ADR-0043). `None` when the game has no file
+    /// there, or the file reads as no mesh.
+    pub fn mesh_shape(&self, path: WadHash) -> Result<Option<Arc<MeshShape>>, GameError> {
+        self.meshes.get_or(&path, || {
+            let bytes = self.game.read(path)?;
+            Ok(bytes
+                .and_then(|bytes| MeshShape::parse(&bytes))
+                .map(Arc::new))
+        })
+    }
+
+    /// The hashes of the joints the game's clip at a path animates (#ADR-0043). `None` when
+    /// the game has no file there, or the file reads as no clip.
+    pub fn clip_joints(&self, path: WadHash) -> Result<Option<Arc<[u32]>>, GameError> {
+        self.clips.get_or(&path, || {
+            let bytes = self.game.read(path)?;
+            let joints = bytes.and_then(|bytes| rig::clip_joints(&bytes));
+            Ok(joints.map(Arc::from))
+        })
+    }
+
+    /// The header and the objects of the game's events bank at a path (#ADR-0043). `None`
+    /// when the game has no file there, or the file reads as no sound bank.
+    pub fn events_bank(&self, path: WadHash) -> Result<Option<Arc<EventsBank>>, GameError> {
+        self.events_banks.get_or(&path, || {
+            let bytes = self.game.read(path)?;
+            let bank = bytes.and_then(|bytes| EventsBank::read(&bytes));
+            Ok(bank.map(Arc::new))
+        })
+    }
+
+    /// The clips of the game's bank or package at a path, each by its id, its size and the
+    /// key of its bytes (#ADR-0043). `None` when the game has no file there, or the file
+    /// reads as neither.
+    pub fn bank_clips(&self, path: WadHash) -> Result<Option<Arc<[BankClip]>>, GameError> {
+        self.bank_clips.get_or(&path, || {
+            let bytes = self.game.read(path)?;
+            let clips = bytes.and_then(|bytes| BankClip::read(&bytes));
+            Ok(clips.map(Arc::from))
+        })
     }
 
     /// The digest of the game's bytes at a path. `None` when the game has no chunk there.

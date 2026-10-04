@@ -1,9 +1,11 @@
 //! The output of a run and everything after it: the package, its builders, the checks and the
 //! writers.
 //!
-//! A [`Package`] is built in memory, by [`InPlaceBuilder`] for a repair. A [`CheckSet`] reads
-//! it and raises what it finds. A [`PackageWriter`] puts it on disk. Nothing a check finds
-//! stops the write (#ADR-0003): a caller's [`permit`] does, when its policy says so.
+//! A [`Package`] is built in memory, by [`InPlaceBuilder`] for a repair and by [`PortBuilder`]
+//! for a port. An [`Overlay`] is a port's patches applied to the game's bins. A [`CheckSet`]
+//! reads both and raises what it finds. A [`PackageWriter`] puts the package on disk. Nothing
+//! a check finds stops the write (#ADR-0003): a caller's [`permit`] does, when its policy
+//! says so.
 //!
 //! `docs/design/ARCHITECTURE.md`, "Package".
 
@@ -11,6 +13,9 @@ mod check;
 mod config;
 mod findings;
 mod inplace;
+mod overlay;
+mod port;
+mod ptch;
 mod texture;
 mod wired;
 mod write;
@@ -23,29 +28,48 @@ use ltk_meta::BinObject;
 use serde::Serialize;
 
 pub use self::check::{
-    Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, RoundTrip, Types,
+    Apply, Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, RoundTrip, Types,
 };
 pub use self::config::{Made, ProjectConfig};
 pub use self::findings::{
-    Against, Blocked, Coverage, Done, Empty, FieldUndeclared, InPlace, Place, RoundTripFailed,
-    RoundTripProblem, Shape, TextureContained, TypeMismatch, TypeRow, UndeclaredRow, Written,
+    Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
+    FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBinFailed,
+    NotWritten, Place, Ported, RecordSkipped, ResolverFrozen, RoundTripFailed, RoundTripProblem,
+    Shape, TextureContained, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
 };
 pub use self::inplace::{BuildError, InPlaceBuilder};
+pub use self::overlay::{AppliedBin, AppliedPatch, Held, Loaded, Outcome, Overlay};
+pub use self::port::PortBuilder;
+pub use self::ptch::{PtchBuilder, Unnamed};
 pub use self::texture::{TexContainer, TexRefusal, dds_to_tex};
 pub use self::wired::{LeftBehind, LeftOut, Wired};
 pub use self::write::{
-    MAX_NAME_BYTES, Modpkg, PackageWriter, ProjectDir, REPORT_FILE, Refused, WriteError,
-    WriterKind, permit,
+    MANIFEST_FILE, MAX_NAME_BYTES, Modpkg, PackageWriter, ProjectDir, REPORT_FILE, Refused,
+    WriteError, WriterKind, permit,
 };
 use crate::diag::{Code, Diag};
-use crate::model::entity::FileId;
+pub use crate::model::Layer;
+use crate::model::entity::{CharId, FileId, UnitId};
 use crate::model::{BinHash, ChunkPath, Dump, DumpCx, WadHash, WadName};
 
 /// Every diagnostic code this module raises.
 pub const CODES: &[Code] = &[
+    NotWritten::CODE,
+    NewBinFailed::CODE,
+    UnitPorted::CODE,
+    FieldKept::CODE,
+    EntryWhole::CODE,
+    ResolverFrozen::CODE,
+    Ported::CODE,
     TextureContained::CODE,
     InPlace::CODE,
     Empty::CODE,
+    ManifestUnreadable::CODE,
+    ApplyFailed::CODE,
+    RecordSkipped::CODE,
+    LinkUnresolved::CODE,
+    NameUnresolved::CODE,
+    FileMissing::CODE,
     TypeMismatch::CODE,
     FieldUndeclared::CODE,
     RoundTripFailed::CODE,
@@ -53,54 +77,6 @@ pub const CODES: &[Code] = &[
     Written::CODE,
     Blocked::CODE,
 ];
-
-/// A part of a package a player turns on or off.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Layer {
-    /// What is always on.
-    Base,
-    /// The mod's own voice lines, of one locale when they come from a locale WAD.
-    Voice(Option<String>),
-    /// Spell icons and HUD textures.
-    Hud,
-}
-
-impl Layer {
-    /// The layer's name in a project and a package: `base`, `voice`, `voice-en-us`, `hud`.
-    pub fn name(&self) -> String {
-        match self {
-            Layer::Base => "base".to_string(),
-            Layer::Voice(None) => "voice".to_string(),
-            Layer::Voice(Some(locale)) => format!("voice-{}", locale.replace('_', "-")),
-            Layer::Hud => "hud".to_string(),
-        }
-    }
-
-    /// The layer's name for a person.
-    pub fn title(&self) -> String {
-        match self {
-            Layer::Base => "Base".to_string(),
-            Layer::Voice(None) => "Voice".to_string(),
-            Layer::Voice(Some(locale)) => format!("Voice ({locale})"),
-            Layer::Hud => "Spell icons and HUD".to_string(),
-        }
-    }
-
-    /// One line on what the layer holds.
-    pub fn description(&self) -> String {
-        match self {
-            Layer::Base => "Base layer of the mod".to_string(),
-            Layer::Voice(None) => "The mod's own voice lines".to_string(),
-            Layer::Voice(Some(locale)) => {
-                format!("The mod's own voice lines, from its {locale} WAD")
-            }
-            Layer::Hud => "The mod's spell icons and HUD textures; they show for the champion \
-                           under every skin"
-                .to_string(),
-        }
-    }
-}
 
 /// Where a chunk goes: a WAD and a path in it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -166,13 +142,31 @@ pub enum Origin {
     },
     /// A DDS texture of the mod, in TEX's container.
     Contained(FileId),
+    /// A bin a port made: its carried objects, its graph, or a skin bin the game does not
+    /// ship. No file of the mod holds it.
+    Made(WrittenBin),
+    /// A bank a port made: the own clips of a bank of the mod, a header beside a package, or
+    /// the events that play them.
+    Bank(FileId),
 }
 
 impl Origin {
-    /// The file of the mod the chunk was built from.
-    pub fn file(&self) -> FileId {
+    /// The file of the mod the chunk was built from. None for a bin a port made.
+    pub fn file(&self) -> Option<FileId> {
         match self {
-            Origin::Kept(file) | Origin::Contained(file) | Origin::Rewritten { file, .. } => *file,
+            Origin::Kept(file)
+            | Origin::Contained(file)
+            | Origin::Rewritten { file, .. }
+            | Origin::Bank(file) => Some(*file),
+            Origin::Made(_) => None,
+        }
+    }
+
+    /// What a bin written by the run was built to hold.
+    pub fn written(&self) -> Option<&WrittenBin> {
+        match self {
+            Origin::Rewritten { written, .. } | Origin::Made(written) => Some(written),
+            Origin::Kept(_) | Origin::Contained(_) | Origin::Bank(_) => None,
         }
     }
 
@@ -185,8 +179,47 @@ impl Origin {
                 BinWrite::Whole => "whole",
             },
             Origin::Contained(_) => "contained",
+            Origin::Made(_) => "made",
+            Origin::Bank(_) => "bank",
         }
     }
+}
+
+/// What a patch is of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "of", rename_all = "lowercase")]
+pub enum PatchOf {
+    /// A unit's skin bin at its target.
+    Skin {
+        /// The unit.
+        unit: UnitId,
+        /// The entry hash of the skin entry it patches.
+        #[serde(skip)]
+        entry: BinHash,
+    },
+    /// A champion's root bin.
+    Root {
+        /// The champion.
+        character: CharId,
+    },
+}
+
+/// A patch of a game bin (#ADR-0026): the PTCH and the entry of the layer's manifest that
+/// applies it and adds its links.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Patch {
+    /// The game bin it patches.
+    pub target: ChunkPath,
+    /// Where the PTCH is, in its layer.
+    pub path: ChunkPath,
+    /// The PTCH.
+    pub bytes: Arc<[u8]>,
+    /// The bins the manifest links to the patched bin.
+    pub links: Vec<ChunkPath>,
+    /// What it is of.
+    pub of: PatchOf,
+    /// How many records and whole objects the PTCH holds.
+    pub records: usize,
 }
 
 /// One chunk of a package.
@@ -255,6 +288,7 @@ pub struct Package {
     /// The names shipped for the hashes the package holds.
     pub tables: HashTables,
     layers: BTreeMap<Layer, BTreeMap<ChunkKey, Chunk>>,
+    patches: BTreeMap<Layer, Vec<Patch>>,
 }
 
 impl Package {
@@ -264,7 +298,52 @@ impl Package {
             config,
             tables: HashTables::default(),
             layers: BTreeMap::from([(Layer::Base, BTreeMap::new())]),
+            patches: BTreeMap::new(),
         }
+    }
+
+    /// Adds a patch to a layer, after the ones the layer holds.
+    pub fn patch(&mut self, layer: Layer, patch: Patch) {
+        self.layers.entry(layer.clone()).or_default();
+        self.patches.entry(layer).or_default().push(patch);
+    }
+
+    /// The patches of a layer, in the order its manifest lists them.
+    pub fn patches(&self, layer: &Layer) -> &[Patch] {
+        self.patches.get(layer).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every patch, layer by layer.
+    pub fn all_patches(&self) -> impl Iterator<Item = (&Layer, &Patch)> {
+        self.patches
+            .iter()
+            .flat_map(|(layer, patches)| patches.iter().map(move |patch| (layer, patch)))
+    }
+
+    /// A layer's manifest, `game_data.yaml`: one module per patch, which applies the PTCH to
+    /// the game's bin and adds the links. None for a layer with no patch. A writer writes
+    /// this text, and the apply check loads it.
+    pub fn manifest(&self, layer: &Layer) -> Option<String> {
+        let patches = self.patches(layer);
+        if patches.is_empty() {
+            return None;
+        }
+        // A JSON string is a YAML double-quoted scalar: a path may hold a space or a comma.
+        let quoted = |path: &ChunkPath| serde_json::Value::from(path.as_str()).to_string();
+        let mut text = String::from(
+            "# Written by reforge: each module applies a PTCH to a game bin and links the \
+             port's bins.\nversion: 1\nmodules:\n",
+        );
+        for patch in patches {
+            let _ = writeln!(text, "  - target: {}", quoted(&patch.target));
+            let _ = writeln!(text, "    edits:");
+            let _ = writeln!(text, "      - overrides: [{}]", quoted(&patch.path));
+            if !patch.links.is_empty() {
+                let links: Vec<String> = patch.links.iter().map(quoted).collect();
+                let _ = writeln!(text, "        links: [{}]", links.join(", "));
+            }
+        }
+        Some(text)
     }
 
     /// Puts a chunk in a layer. The chunk the layer held at the key comes back.
@@ -315,9 +394,17 @@ impl Package {
         self.layers.values().map(BTreeMap::len).sum()
     }
 
-    /// Whether the package holds no chunk.
+    /// Whether the package holds no chunk and no patch.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.len() == 0 && self.patches.values().all(Vec::is_empty)
+    }
+
+    /// The chunk of any layer the client finds by a path hash.
+    pub fn by_hash(&self, hash: WadHash) -> Option<&Chunk> {
+        let mut chunks = self.chunks();
+        chunks
+            .find(|(_, key, _)| key.hash() == hash)
+            .map(|(_, _, chunk)| chunk)
     }
 }
 
@@ -332,15 +419,27 @@ impl Dump for Package {
             self.len()
         );
         for (layer, key, chunk) in self.chunks() {
+            let file = chunk.origin.file();
+            let file = file.map_or(String::new(), |file| format!(" {file}"));
             let _ = writeln!(
                 out,
-                "     {} {}/{} {} {} {}",
+                "     {} {}/{} {} {}{file}",
                 layer.name(),
                 key.wad,
                 key.path,
                 chunk.bytes.len(),
                 chunk.origin.name(),
-                chunk.origin.file()
+            );
+        }
+        for (layer, patch) in self.all_patches() {
+            let _ = writeln!(
+                out,
+                "     {} patch {} on {} records={} links={}",
+                layer.name(),
+                patch.path,
+                patch.target,
+                patch.records,
+                patch.links.len()
             );
         }
         for path in self.tables.paths() {

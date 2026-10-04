@@ -1,5 +1,6 @@
 //! Reading bin values: fields by name, links, file references, digests and a value on one line.
 
+use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
 
 use ltk_meta::{BinObject, PropertyKind as Kind, PropertyValueEnum};
@@ -7,7 +8,6 @@ use sha2::{Digest, Sha256};
 
 use super::hash::{BinHash, WadHash, name_hash, path_hash};
 use super::names::Spell;
-use super::walk;
 
 /// The property at a chain of field names, through structs, embeds and options.
 pub fn get<'a>(object: &'a BinObject, path: &[&str]) -> Option<&'a PropertyValueEnum> {
@@ -170,37 +170,11 @@ pub fn walk_object<'a>(object: &'a BinObject, visit: &mut impl FnMut(&'a Propert
     }
 }
 
-/// The values a field holds itself: the value when it is no collection, else a list's items, a
-/// present option's value, a map's keys and values. A struct among them is given and not
-/// entered: the walk visits it.
-pub fn direct<'a>(value: &'a PropertyValueEnum, visit: &mut impl FnMut(&'a PropertyValueEnum)) {
-    match value {
-        PropertyValueEnum::Container(c) => c.items().iter().for_each(visit),
-        PropertyValueEnum::UnorderedContainer(c) => c.0.items().iter().for_each(visit),
-        PropertyValueEnum::Optional(o) => o.value().into_iter().for_each(visit),
-        PropertyValueEnum::Map(m) => {
-            for (key, value) in m.entries() {
-                visit(key);
-                visit(value);
-            }
-        }
-        _ => visit(value),
-    }
-}
-
-/// Every value an object's structs hold themselves, struct by struct in the walk's order.
-fn each_direct<'a>(object: &'a BinObject, mut visit: impl FnMut(&'a PropertyValueEnum)) {
-    walk::structs(object, |s| {
-        for (_, value) in s.fields() {
-            direct(value, &mut visit);
-        }
-    });
-}
-
-/// Every object an object names, in order of appearance, without repeats.
+/// Every object an object names, in the pre-order of its values, without repeats. The order
+/// decides which of two users of a file is its first (#ADR-0027).
 pub fn links(object: &BinObject) -> Vec<BinHash> {
     let mut out = Vec::new();
-    each_direct(object, |v| {
+    walk_object(object, &mut |v| {
         if let PropertyValueEnum::ObjectLink(l) = v
             && l.value.0 != 0
             && !out.contains(&l.value)
@@ -211,15 +185,170 @@ pub fn links(object: &BinObject) -> Vec<BinHash> {
     out
 }
 
-/// Every file an object names, in order of appearance, without repeats.
+/// Every file an object names, in the pre-order of its values, without repeats.
 pub fn file_refs(object: &BinObject) -> Vec<FileRef> {
     let mut out = Vec::new();
-    each_direct(object, |v| {
+    walk_object(object, &mut |v| {
+        // An option's value is visited itself.
         if let Some(file) = as_file(v)
+            && !matches!(v, PropertyValueEnum::Optional(_))
             && !out.contains(&file)
         {
             out.push(file);
         }
+    });
+    out
+}
+
+/// Applies `change` to every value under `value`, itself first. A map's keys are left as they
+/// are: the client looks an entry up by its key.
+pub fn each_mut(value: &mut PropertyValueEnum, change: &mut impl FnMut(&mut PropertyValueEnum)) {
+    change(value);
+    let mut item_at = |slot: Option<ltk_meta::ValueSlot<'_>>| {
+        if let Some(mut slot) = slot {
+            let mut item = slot.get().clone();
+            each_mut(&mut item, change);
+            // The item keeps its kind, so the collection takes it back.
+            let _ = slot.set(item);
+        }
+    };
+    match value {
+        PropertyValueEnum::Struct(s) => {
+            let fields = s.properties.values_mut();
+            fields.for_each(|v| each_mut(v, change));
+        }
+        PropertyValueEnum::Embedded(e) => {
+            let fields = e.0.properties.values_mut();
+            fields.for_each(|v| each_mut(v, change));
+        }
+        PropertyValueEnum::Container(c) => (0..c.len()).for_each(|i| item_at(c.slot(i))),
+        PropertyValueEnum::UnorderedContainer(c) => {
+            (0..c.0.len()).for_each(|i| item_at(c.0.slot(i)));
+        }
+        PropertyValueEnum::Optional(o) => item_at(o.slot()),
+        PropertyValueEnum::Map(m) => (0..m.entries().len()).for_each(|i| item_at(m.slot(i))),
+        _ => {}
+    }
+}
+
+/// A copy of an object with each hash of `renames` replaced, its own entry hash included: the
+/// links and the hash values it holds.
+pub fn rename_hashes(object: &BinObject, renames: &[(BinHash, BinHash)]) -> BinObject {
+    let map = |h: BinHash| {
+        let found = renames.iter().find(|(from, _)| *from == h);
+        found.map_or(h, |(_, to)| *to)
+    };
+    let mut out = object.clone();
+    out.path_hash = map(out.path_hash);
+    for value in out.properties.values_mut() {
+        each_mut(value, &mut |v| match v {
+            PropertyValueEnum::ObjectLink(l) => l.value = map(l.value),
+            PropertyValueEnum::Hash(h) => h.value = map(h.value),
+            _ => {}
+        });
+    }
+    out
+}
+
+/// A copy of an object with each hash a table renames replaced, its own entry hash included.
+/// A link always follows. A hash value that `keep` holds stays: the client looks such a value
+/// up as a key and not as an object's name.
+pub fn rename_hashes_by(
+    object: &BinObject,
+    renames: &HashMap<BinHash, BinHash>,
+    keep: &dyn Fn(BinHash) -> bool,
+) -> BinObject {
+    let map = |h: BinHash| renames.get(&h).copied().unwrap_or(h);
+    let mut out = object.clone();
+    out.path_hash = map(out.path_hash);
+    for value in out.properties.values_mut() {
+        each_mut(value, &mut |v| match v {
+            PropertyValueEnum::ObjectLink(l) => l.value = map(l.value),
+            PropertyValueEnum::Hash(h) if !keep(h.value) => h.value = map(h.value),
+            _ => {}
+        });
+    }
+    out
+}
+
+/// Whether an object's entry hash, a link or a hash value of it is one of `hashes`.
+pub fn names_any(object: &BinObject, hashes: &HashSet<BinHash>) -> bool {
+    if hashes.contains(&object.path_hash) {
+        return true;
+    }
+    let mut found = false;
+    walk_object(object, &mut |v| match v {
+        PropertyValueEnum::ObjectLink(l) => found |= hashes.contains(&l.value),
+        PropertyValueEnum::Hash(h) => found |= hashes.contains(&h.value),
+        _ => {}
+    });
+    found
+}
+
+/// Points each file reference of an object where `to` says, and keeps the reference's type:
+/// a path string takes the path, a chunk hash the path's hash. Gives how many references
+/// changed.
+pub fn rewrite_files(object: &mut BinObject, to: &dyn Fn(WadHash) -> Option<String>) -> usize {
+    let mut changed = 0;
+    for value in object.properties.values_mut() {
+        each_mut(value, &mut |v| match v {
+            PropertyValueEnum::String(s) if looks_like_path(&s.value) => {
+                if let Some(path) = to(path_hash(&s.value)) {
+                    s.value = path;
+                    changed += 1;
+                }
+            }
+            PropertyValueEnum::WadChunkLink(h) if h.value.0 != 0 => {
+                if let Some(path) = to(h.value) {
+                    h.value = path_hash(&path);
+                    changed += 1;
+                }
+            }
+            _ => {}
+        });
+    }
+    changed
+}
+
+/// Replaces each string an object holds for which `to` gives another, and gives how many
+/// changed. A map's keys are left as they are.
+pub fn rewrite_strings(
+    object: &mut BinObject,
+    to: &mut dyn FnMut(&str) -> Option<String>,
+) -> usize {
+    let mut changed = 0;
+    for value in object.properties.values_mut() {
+        each_mut(value, &mut |v| {
+            if let PropertyValueEnum::String(s) = v
+                && let Some(new) = to(&s.value)
+            {
+                s.value = new;
+                changed += 1;
+            }
+        });
+    }
+    changed
+}
+
+/// Whether an object holds a string that `wanted` takes, a map's keys included.
+pub fn any_string(object: &BinObject, wanted: &dyn Fn(&str) -> bool) -> bool {
+    let mut found = false;
+    walk_object(object, &mut |v| {
+        if let PropertyValueEnum::String(s) = v {
+            found = found || wanted(&s.value);
+        }
+    });
+    found
+}
+
+/// A copy of a value with every file reference blanked, so that a copy whose files were moved
+/// compares equal.
+pub fn without_paths(value: &PropertyValueEnum) -> PropertyValueEnum {
+    let mut out = value.clone();
+    each_mut(&mut out, &mut |v| match v {
+        PropertyValueEnum::String(s) if looks_like_path(&s.value) => s.value.clear(),
+        PropertyValueEnum::WadChunkLink(h) => h.value.0 = 0,
+        _ => {}
     });
     out
 }

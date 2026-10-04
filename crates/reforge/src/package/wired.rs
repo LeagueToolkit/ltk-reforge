@@ -24,6 +24,18 @@ pub enum LeftOut {
     Stale,
     /// Only values the fixups removed named it.
     Orphaned,
+    /// A port names the game's own file for it: the game holds its bytes where the champion
+    /// plays.
+    Game,
+    /// No object a port carries names it: a bin whose objects the port carries or leaves to
+    /// the game, a file only a unit that left the port names.
+    NotCarried,
+    /// A bank whose own clips ship in a bank the port made. Its other clips are the game's.
+    Recut,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 /// How many files a package leaves out, by the reason.
@@ -37,6 +49,15 @@ pub struct LeftBehind {
     pub stale: usize,
     /// Files only values the fixups removed named.
     pub orphaned: usize,
+    /// Files a port names the game's own file for.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub game: usize,
+    /// Files no object a port carries names.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub not_carried: usize,
+    /// Banks whose own clips ship in a bank a port made.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub recut: usize,
 }
 
 impl LeftBehind {
@@ -47,12 +68,16 @@ impl LeftBehind {
             LeftOut::FormerPath => self.former_path += 1,
             LeftOut::Stale => self.stale += 1,
             LeftOut::Orphaned => self.orphaned += 1,
+            LeftOut::Game => self.game += 1,
+            LeftOut::NotCarried => self.not_carried += 1,
+            LeftOut::Recut => self.recut += 1,
         }
     }
 
     /// How many files are left out, whatever the reason.
     pub fn total(&self) -> usize {
-        self.unused + self.former_path + self.stale + self.orphaned
+        let load = self.unused + self.former_path + self.stale + self.orphaned;
+        load + self.game + self.not_carried + self.recut
     }
 
     /// The counts that are not zero, each with its reason as a message says it.
@@ -62,6 +87,9 @@ impl LeftBehind {
             (self.former_path, "at a former path that nothing names"),
             (self.stale, "stale copies of the game's"),
             (self.orphaned, "that only removed values named"),
+            (self.game, "the game holds, named where the game has them"),
+            (self.not_carried, "that no carried object names"),
+            (self.recut, "banks whose own clips ship in a bank made"),
         ];
         all.into_iter().filter(|(n, _)| *n > 0).collect()
     }

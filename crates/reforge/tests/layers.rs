@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 /// `docs/design/ARCHITECTURE.md`, "Crates and modules".
 const ORDER: &[&str] = &[
     "model", "diag", "archive", "game", "history", "env", "load", "fixups", "facts", "port",
-    "package", "report",
+    "package", "report", "porter",
 ];
 
 fn sources(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -109,6 +109,34 @@ fn a_module_uses_only_the_modules_before_it() {
         seen.contains("model") && seen.contains("diag"),
         "the walk found the modules: {seen:?}"
     );
+}
+
+/// #ADR-0043: the facts and the decision ask the game typed questions. A chunk's bytes are
+/// read by `GameView`, which answers them.
+#[test]
+fn facts_and_port_read_no_game_chunk() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut wrong = Vec::new();
+    for module in ["facts", "port"] {
+        let mut files = Vec::new();
+        sources(&src.join(module), &mut files);
+        assert!(!files.is_empty(), "{module} has sources");
+        for file in files {
+            let text = fs_err::read_to_string(&file).expect("a source reads");
+            // The code alone: a comment may name the call.
+            let code = text
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"));
+            let code: String = code.collect::<Vec<_>>().join("\n");
+            let spaceless: String = code.split_whitespace().collect();
+            for call in ["Game::read", "game().read(", "game.read(", ".game.read("] {
+                if spaceless.contains(call) {
+                    wrong.push(format!("{} calls {call}", file.display()));
+                }
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
 
 #[test]

@@ -17,6 +17,8 @@ ltk_hash.workspace = true
 ltk_meta.workspace = true
 ltk_wad.workspace = true
 ltk_mesh.workspace = true
+ltk_anim.workspace = true
+glam.workspace = true
 ltk_texture.workspace = true
 ltk_mod_project = { workspace = true, features = ["modpkg"] }
 ltk_modpkg.workspace = true
