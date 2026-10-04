@@ -1,6 +1,6 @@
 # ADR-0004: ltk-forge is the oracle of the rewrite
 
-- **Status:** Accepted (2026-10-03)
+- **Status:** Superseded by #ADR-0044
 - **Related:** `docs/design/ROADMAP.md`, "Rules of the rewrite"; `docs/design/CODES.md`
 
 ## Context

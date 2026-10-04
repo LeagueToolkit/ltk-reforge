@@ -1,6 +1,6 @@
 # ADR-0043: Facts ask the game typed questions
 
-- **Status:** Accepted (2026-10-05)
+- **Status:** Accepted (2026-10-04)
 - **Related:** #ADR-0010, #ADR-0042, #ADR-0004; `docs/design/ARCHITECTURE.md`, "Facts"
 
 ## Context

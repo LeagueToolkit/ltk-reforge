@@ -1,6 +1,6 @@
 # ADR-0042: The census history is read from its history-v2 branch
 
-- **Status:** Accepted (2026-10-05)
+- **Status:** Accepted (2026-10-04)
 - **Related:** #ADR-0035, #ADR-0005, #ADR-0036; `docs/design/HISTORY.md`
 
 ## Context
@@ -12,7 +12,7 @@ not hold: the joints an animation clip animates, and an events bank's header and
 can be cut only from the game's events bank, and every bank a port writes takes its header from
 one.
 
-The user had the census add both (2026-10-05). The history with them is the branch
+The user had the census add both (2026-10-04). The history with them is the branch
 `history-v2` of the same repository. Its `census.yaml` still says format 2: the additions are
 new keys in entry files, and nothing that was there changed meaning. The branch `history`,
 without them, leaves the published repository.

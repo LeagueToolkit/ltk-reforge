@@ -363,7 +363,7 @@ datasets):
 - Two units of one character on one slot are ranked by a key that ends with the source slot,
   which differs between them. The ranks are never equal, so `target.conflict` is never raised.
 
-## Clip joints and events banks in the history index (2026-10-05)
+## Clip joints and events banks in the history index (2026-10-04)
 
 The census history's `history-v2` branch at commit `5b121f51ad75`: 755 builds, from
 8.20.2483196 to 16.19.8207193. The index was written to scratch directories. The index a run
@@ -651,3 +651,22 @@ equal.
 
 Not measured: the release build, the datasets, and a run that ends at a fault, whose error
 text on standard error names the stage and not the step inside it.
+
+## Ports in game (2026-10-04)
+
+23 sample mods ported by reforge against a copy of the game at 16.19 and written as
+`.modpkg`: the 15 of the in-game set and 8 that a change was tried on. Every port ended
+with exit 0.
+
+The user installed five of them in that copy of the game and each works:
+
+| mod (SHA-256) | target | what it holds |
+|---|---|---|
+| `784c22089dfa…` | skin0, a sub-character following | a skin0 unit on the base |
+| `5c1f2ee92c54…` | skin0, a sub-character following | a premium paste that fits the base |
+| `21708c2c69f7…` | skin 16 by fallback, a sub-character following though its model does not fit | a submesh copied from a premium skin |
+| `b8a96bd3adfa…` | skin0 | one value lost by a fixup (`fixup.lost`) |
+| `ed8259ce1cd1…` | skin0, a sub-character following | effects built from other skins' files |
+
+Not checked: the other 18, a voice layer, a `hud` layer, and a bank unit cut from the mod's
+own events bank.

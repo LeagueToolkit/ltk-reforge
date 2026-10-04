@@ -33,5 +33,5 @@ events banks of versions 125, 132, 134 and 145.
 - That media banks load at older versions was settled in game between 2026-09-23 and
   2026-09-26, before ltk-forge. ltk-forge's audio design states it and holds no account of the
   single checks.
-- The versions in the history: its index, built 2026-10-05, lists 5,775 events banks of
+- The versions in the history: its index, built 2026-10-04, lists 5,775 events banks of
   version 125, 43,471 of 132, 79,844 of 134 and 33,840 of 145.

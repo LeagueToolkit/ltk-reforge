@@ -41,7 +41,7 @@ Taken on 2026-10-03, where no other date is given.
 | A package ships only what is wired up (2026-10-04) | #ADR-0039 |
 | Of several files for one asset, the mod's own bytes win (2026-10-04) | #ADR-0040 |
 | A package embeds the evidence of the run that made it (2026-10-04) | #ADR-0041 |
-| The census history is read from its `history-v2` branch (2026-10-05) | #ADR-0042 |
+| The census history is read from its `history-v2` branch (2026-10-04) | #ADR-0042 |
 | How the game client behaves is a fourth series of records, `docs/game-behavior/` | `AGENTS.md`, `docs/agents/records.md` |
 | A GUI is a caller of the library: fixups and checks are listed, turned on and off, and added as data where a table says it all | [ARCHITECTURE.md](ARCHITECTURE.md), "Callers" and "Fixups" |
 
@@ -148,10 +148,10 @@ a `.troy` (#GAME-BEHAVIOR-0009), a PTCH record's path names (#GAME-BEHAVIOR-0010
 #GAME-BEHAVIOR-0017); a voice stub of an older version and a unit that stands in for the
 game's (#MOD-ARTIFACT-0027, #MOD-ARTIFACT-0028).
 
-Exit, met but for the check in game: over the datasets, the package contents compared with
-forge's, chunk paths and bytes and each patch applied to the game's bin
-([RUNS.md](RUNS.md), "The port"). The 14 in-game sample mods port with no finding of a check,
-and are still to be checked in game by a person.
+Exit, met: over the datasets, the package contents compared with forge's, chunk paths and
+bytes and each patch applied to the game's bin ([RUNS.md](RUNS.md), "The port"). The 14
+in-game sample mods port with no finding of a check. Five ports were checked in game by the
+user and work ([RUNS.md](RUNS.md), "Ports in game").
 
 ### 6. Closing
 
@@ -256,11 +256,12 @@ and each is checked in game (the user, 2026-10-03). None is an ADR before that.
   questions"). Still to do: a game source that answers from the history.
 - The history holds no vertex positions, so a source backed by it does not answer which
   submeshes of an own mesh are copied from another skin (#ADR-0043). No digest of rounded
-  positions is asked of the census (the user, 2026-10-05): a rounding rule frozen into the
+  positions is asked of the census (the user, 2026-10-04): a rounding rule frozen into the
   history serves one check, and stays in the data when the rule proves wrong, where an exact
   hash keeps its use.
-- The 14 in-game sample mods ported by reforge are not checked in game. No unit cut from the
-  mod's own events bank was checked in game in a port of reforge's.
+- Of the sample mods ported by reforge, five are checked in game ([RUNS.md](RUNS.md), "Ports
+  in game"). The others are not. No unit cut from the mod's own events bank was checked in
+  game in a port of reforge's.
 - The two reasons the build has for not writing a unit's audio (the game's entry has no bank
   unit to model one on; a skin bin written whole takes no layer) are carried over from forge
   and met by no mod of the datasets: a unit with either has no audio block at its target, and

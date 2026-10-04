@@ -1253,7 +1253,7 @@ impl BankFacts {
 /// its header, and its objects as their records in `bank_objects`.
 ///
 /// The objects are one value and not rows of a parts table: the 162,930 banks of the history
-/// list 49,000,478 objects (2026-10-05), and a parts row holds its owner and its ordinal beside
+/// list 49,000,478 objects (2026-10-04), and a parts row holds its owner and its ordinal beside
 /// the eight bytes of the record.
 pub struct EventBanks;
 
