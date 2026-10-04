@@ -41,6 +41,7 @@ Taken on 2026-10-03, where no other date is given.
 | A package ships only what is wired up (2026-10-04) | #ADR-0039 |
 | Of several files for one asset, the mod's own bytes win (2026-10-04) | #ADR-0040 |
 | A package embeds the evidence of the run that made it (2026-10-04) | #ADR-0041 |
+| The census history is read from its `history-v2` branch (2026-10-05) | #ADR-0042 |
 | How the game client behaves is a fourth series of records, `docs/game-behavior/` | `AGENTS.md`, `docs/agents/records.md` |
 | A GUI is a caller of the library: fixups and checks are listed, turned on and off, and added as data where a table says it all | [ARCHITECTURE.md](ARCHITECTURE.md), "Callers" and "Fixups" |
 
@@ -227,7 +228,10 @@ and each is checked in game (the user, 2026-10-03). None is an ADR before that.
   animation clip, and an events bank's header and objects. Of the 568 sound units of a mod's
   own that forge carried in the baseline, 322 can be cut from the mod's own events bank and 246,
   in 217 of 383 mods, only from the game's (measured 2026-10-04). Every bank a port writes takes
-  its header from a game events bank. Both are asked of the census as a format 3.
+  its header from a game events bank. The census holds both since 2026-10-05, on its
+  `history-v2` branch, which the reader walks (#ADR-0042). Still to build: the reader's parsing
+  of the two, their tables in the index, the index rebuilt from that branch, and a game source
+  that answers from the history.
 - Sound units forge leaves out that a port could carry (measured 2026-10-04, for step 5): 64
   units in 18 mods have a second events bank of the client's version that plays their clips,
   and forge reads only the first; 84 units have an events bank of version 134 that plays their

@@ -8,7 +8,10 @@ object, this clip, and when.
 ## The source
 
 The source is the census history in format 2 (#ADR-0035): one commit per live build on its
-`history` branch, from 8.20, and one file per WAD entry.
+`history-v2` branch, from 8.20, and one file per WAD entry. That branch is format 2 with two
+additions (#ADR-0042): the joints an animation clip animates (`clip.joints`), and an events
+bank's header and objects (`bank.header`, `bank.objects`). The data is in the history. The
+reader skips the new keys and the index does not hold them yet.
 
 | file | holds |
 |---|---|
@@ -33,7 +36,7 @@ build of its own at its own position, and it orders with the version it repeats.
 
 `reforge history index --repo <clone> [--until <commit or build>]`:
 
-1. Walks the `history` branch's first-parent chain oldest first, up to `--until`.
+1. Walks the `history-v2` branch's first-parent chain oldest first, up to `--until`.
 2. Diffs each commit's `files/` tree against its parent by object id. It descends only into
    subtrees that changed, and into a bin's entry texts only for the objects family.
 3. Reads and parses each changed file before and after on every core, and applies the
