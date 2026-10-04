@@ -1,6 +1,6 @@
 //! A material's default technique (#GAME-CHANGE-0015). The field went and nothing took its
 //! place. No removal rule says it: `"normal"` names the one technique the client uses anyway,
-//! and any other value chose a technique, which is lost.
+//! and any other value chose a technique, which is lost where the mod's own build read it.
 
 use super::Stated;
 use crate::fixups::{BinFixup, Classes, FixCx, TargetTypes};
@@ -49,7 +49,9 @@ impl BinFixup for DefaultTechnique {
             return;
         };
         let normal = as_str(&value).is_some_and(|name| name.eq_ignore_ascii_case(NORMAL));
-        if normal {
+        // A choice the mod's own build did not read was copied from an older mod: the author
+        // never saw it made.
+        if normal || !cx.read_at_source(s.class(), field, value.kind()) {
             cx.removed(s.path_of(field), &value);
         } else {
             cx.lost(s.path_of(field), &value);

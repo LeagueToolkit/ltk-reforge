@@ -45,6 +45,13 @@ fn schema() -> Schema {
                 old("UseLingerScale", kind("Bool")),
                 new("FlexShapeDefinition", to("VfxFlexShapeDefinitionData")),
                 old("scaleEmitOffsetByBoundObjectSize", kind("F32")),
+                old("scaleEmitOffsetByBoundObjectHeight", kind("F32")),
+                old("scaleEmitOffsetByBoundObjectRadius", kind("F32")),
+                old("flexScaleEmitOffset", to("FlexValueVector3")),
+                old("flexBirthTranslation", to("FlexValueVector3")),
+                old("scaleBirthScaleByBoundObjectSize", kind("F32")),
+                old("scaleBirthScaleByBoundObjectHeight", kind("F32")),
+                old("scaleBirthScaleByBoundObjectRadius", kind("F32")),
                 new("LegacySimple", to("VfxEmitterLegacySimple")),
                 old("birthScale1", vector()),
                 old("particleBind", kind("Vec2")),
@@ -73,7 +80,16 @@ fn schema() -> Schema {
         )
         .class(
             "VfxFlexShapeDefinitionData",
-            &[new("scaleEmitOffsetByBoundObjectSize", kind("F32"))],
+            &[
+                new("scaleEmitOffsetByBoundObjectSize", kind("F32")),
+                new("scaleEmitOffsetByBoundObjectHeight", kind("F32")),
+                new("scaleEmitOffsetByBoundObjectRadius", kind("F32")),
+                new("flexScaleEmitOffset", to("FlexValueVector3")),
+                new("flexBirthTranslation", to("FlexValueVector3")),
+                new("scaleBirthScaleByBoundObjectSize", kind("F32")),
+                new("scaleBirthScaleByBoundObjectHeight", kind("F32")),
+                new("scaleBirthScaleByBoundObjectRadius", kind("F32")),
+            ],
         )
         // The class holds no `scaleUpFromOrigin`: a field the new class does not declare.
         .class(
@@ -222,6 +238,39 @@ fn an_emitters_bound_object_scale_moves_into_the_flex_shape() {
         Some(&float(0.25))
     );
     gone(&run, &["scaleEmitOffsetByBoundObjectSize"]);
+}
+
+#[test]
+fn every_field_riot_moved_into_the_flex_shape_moves() {
+    // #GAME-CHANGE-0016: the five fields of 12.6 and the three of 12.21, each under its own
+    // name, in the order of the record.
+    let env = env(false);
+    let flex = |x: f32| pointer("FlexValueVector3", vec![("mValue", vector(x))]);
+    let moved = [
+        ("scaleEmitOffsetByBoundObjectSize", float(0.25)),
+        ("scaleEmitOffsetByBoundObjectHeight", float(0.5)),
+        ("scaleEmitOffsetByBoundObjectRadius", float(0.75)),
+        ("flexScaleEmitOffset", flex(1.0)),
+        ("flexBirthTranslation", flex(2.0)),
+        ("scaleBirthScaleByBoundObjectSize", float(1.25)),
+        ("scaleBirthScaleByBoundObjectHeight", float(1.5)),
+        ("scaleBirthScaleByBoundObjectRadius", float(1.75)),
+    ];
+    // The emitter holds them in another order than the record's.
+    let fields: Vec<(&str, V)> = moved.iter().rev().cloned().collect();
+    let run = fixed(&env, fields);
+    let held = run.child("E", "FlexShapeDefinition");
+    let expected: Vec<_> = moved.iter().map(|(name, _)| name_hash(name)).collect();
+    assert_eq!(
+        held.properties.keys().copied().collect::<Vec<_>>(),
+        expected
+    );
+    for (name, value) in &moved {
+        assert_eq!(held.properties.get(&name_hash(name)), Some(value), "{name}");
+    }
+    let names: Vec<&str> = moved.iter().map(|(name, _)| *name).collect();
+    gone(&run, &names);
+    assert_eq!(run.changes.of("vfx-flex-shape").len(), 8);
 }
 
 #[test]

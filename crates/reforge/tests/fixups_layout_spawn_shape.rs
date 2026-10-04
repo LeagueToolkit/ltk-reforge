@@ -68,6 +68,18 @@ fn env(dated: bool) -> Env {
     env.build().expect("an environment")
 }
 
+/// The target at build 300, with a history in which the mod's dated file first shipped at
+/// build 110, when the emitter's `shape` was read.
+fn env_made_with_the_shape() -> Env {
+    let history = MemoryHistory::new(&["1.0.50", "1.0.110", "16.19.300"]);
+    let history = history.with_content(DATED, &dated_bytes(), 1..=2);
+    let env = Env::builder()
+        .game(skins::game_at("16.19.300"))
+        .schema(schema())
+        .history(Box::new(history));
+    env.build().expect("an environment")
+}
+
 fn archive(objects: Vec<BinObject>) -> ModArchive {
     skin_archive(objects).file(skins::WAD, DATED, dated_bytes())
 }
@@ -362,4 +374,29 @@ fn the_fixups_run_where_the_target_reads_the_spawn_shape() {
     assert!(run.changes.is_empty());
     assert_eq!(run.object("Old"), &objects[0]);
     assert_eq!(run.object("Misplaced"), &objects[1]);
+}
+
+#[test]
+fn a_misplaced_birth_translation_is_mended_where_the_mods_own_build_read_the_shape() {
+    // #MOD-ARTIFACT-0019: made at 110, when the build read `shape`. The offset showed, and
+    // the converter that rewrote the emitter since put it where no build reads it.
+    let env = env_made_with_the_shape();
+    let misplaced = pointer(
+        LEGACY,
+        vec![
+            ("birthTranslation", vector(3.0)),
+            ("emitOffset", vector(2.0)),
+        ],
+    );
+    let objects = vec![emitter("E", vec![("SpawnShape", misplaced)])];
+    let run = FixRun::of(&env, &set(), &archive(objects));
+    assert_eq!(run.dating.build(), Some(110));
+    assert_eq!(constant(run.field("E", "EmitterPosition")), Some(3.0));
+    let held: Vec<_> = run.child("E", "SpawnShape").properties.keys().collect();
+    assert_eq!(held, [&name_hash("emitOffset")]);
+    let [change] = run.changes.of(MEND_ID) else {
+        panic!("{:?}", run.changes);
+    };
+    let to = on_emitter("EmitterPosition");
+    assert_eq!(change.after, After::Moved { to });
 }

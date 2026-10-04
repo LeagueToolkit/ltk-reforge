@@ -24,7 +24,7 @@ pub(super) const SPAWN_SHAPE: &str = "SpawnShape";
 pub(super) const EMITTER_POSITION: &str = "EmitterPosition";
 pub(super) const BIRTH_TRANSLATION: &str = "birthTranslation";
 pub(super) const LEGACY: &str = "VfxShapeLegacy";
-const SHAPE: &str = "shape";
+pub(super) const SHAPE: &str = "shape";
 
 const STATED: Stated = Stated {
     classes: &[LEGACY],

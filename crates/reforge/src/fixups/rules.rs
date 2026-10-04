@@ -46,12 +46,17 @@ pub fn linger() -> Rule {
         .record(Record::game_change(3))
 }
 
-/// An emitter's scales by its bound object, in `FlexShapeDefinition` (#GAME-CHANGE-0016).
+/// An emitter's scales by its bound object, in `FlexShapeDefinition` (#GAME-CHANGE-0016):
+/// the five fields that moved at 12.6, then the three that joined them at 12.21.
 pub fn flex_shape() -> Rule {
     Rule::move_fields(EMITTER)
         .into_field("FlexShapeDefinition", "VfxFlexShapeDefinitionData")
         .keep([
             "scaleEmitOffsetByBoundObjectSize",
+            "scaleEmitOffsetByBoundObjectHeight",
+            "scaleEmitOffsetByBoundObjectRadius",
+            "flexScaleEmitOffset",
+            "flexBirthTranslation",
             "scaleBirthScaleByBoundObjectSize",
             "scaleBirthScaleByBoundObjectHeight",
             "scaleBirthScaleByBoundObjectRadius",

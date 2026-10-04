@@ -208,16 +208,43 @@ fn a_sampler_with_no_sampler_name_is_left() {
 }
 
 #[test]
-fn a_samplers_fields_move_whatever_the_mods_date() {
-    // As ltk-forge does (#ADR-0004): a mod made at 250, when no build since read
-    // `samplerName`, is laid out all the same.
+fn a_sampler_name_the_mods_own_build_did_not_read_is_left() {
+    // Made at 250, when no build since read `samplerName`: the slot it names never showed.
     let env = env(true);
     let run = FixRun::of(&env, &set(), &archive(vec![old_material()]));
     assert_eq!(run.dating.build(), Some(250));
-    let get = |index: usize, name: &str| sampler_field(&run, "Materials/Body", index, name);
-    assert_eq!(get(0, "TextureName"), Some("Diffuse_Texture"));
-    assert_eq!(get(0, "texturePath"), Some("assets/mod/a/body.tex"));
-    assert_eq!(run.changes.of(SAMPLER_ID).len(), 3);
+    assert!(run.changes.of(SAMPLER_ID).is_empty(), "{:?}", run.changes);
+    assert_eq!(run.object("Materials/Body"), &old_material());
+}
+
+#[test]
+fn a_sampler_states_name_is_not_written_over_the_slots_name() {
+    // #GAME-CHANGE-0014: from 15.21 to 16.12 `samplerName` holds a sampler state's name,
+    // beside the slot's name in `TextureName`.
+    let env = env(false);
+    let state = sampler(&[
+        ("samplerName", "Wrap_No_Mip"),
+        ("TextureName", "Diffuse_Texture"),
+        ("texturePath", "assets/mod/a/body.tex"),
+    ]);
+    // The slot's name beside a `TextureName` that names no slot: the old layout with no
+    // texture.
+    let bare = sampler(&[("samplerName", "Mask_Texture"), ("TextureName", "")]);
+    let objects = vec![material("M", vec![state.clone(), bare])];
+    let run = FixRun::of(&env, &set(), &archive(objects));
+    let samplers = items(run.field("M", "samplerValues").expect("the samplers"));
+    assert_eq!(samplers[0], state);
+    let get = |name: &str| sampler_field(&run, "M", 1, name);
+    assert_eq!(get("TextureName"), Some("Mask_Texture"));
+    assert_eq!(get("texturePath"), Some(""));
+    assert_eq!(get("samplerName"), None);
+    let changed = run.changes.of(SAMPLER_ID).iter();
+    assert!(
+        changed
+            .clone()
+            .all(|change| change.path.to_string().contains("[1]"))
+    );
+    assert_eq!(changed.count(), 2);
 }
 
 #[test]
@@ -283,9 +310,9 @@ fn a_retired_default_technique_is_removed_and_a_choice_is_lost() {
 }
 
 #[test]
-fn a_default_technique_goes_whatever_the_mods_date() {
-    // As ltk-forge does (#ADR-0004): a choice is counted lost in a mod made at 250 too, when
-    // no build since read the field.
+fn a_choice_the_mods_own_build_did_not_read_is_removed() {
+    // Made at 250, when no build since read the field: the choice was copied from an older
+    // mod and the author never saw it made. Nothing is lost by it.
     let env = env(true);
     let objects = vec![technique("Materials/Glow", text("glowing"))];
     let run = FixRun::of(&env, &set(), &archive(objects));
@@ -293,7 +320,8 @@ fn a_default_technique_goes_whatever_the_mods_date() {
     let [change] = run.changes.of(TECHNIQUE_ID) else {
         panic!("{:?}", run.changes);
     };
-    assert_eq!(change.after, After::Lost);
+    assert_eq!(change.after, After::Removed);
+    assert!(run.raised::<Lost>(TECHNIQUE_ID).is_empty());
 }
 
 #[test]

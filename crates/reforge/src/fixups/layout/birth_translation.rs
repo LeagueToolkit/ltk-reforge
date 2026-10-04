@@ -2,6 +2,10 @@
 //! of the 14.1 change, which kept the old shape's `birthTranslation` in a class that never
 //! declared it. It is the emitter's `EmitterPosition`.
 //!
+//! It is mended where the mod's own build read the emitter's old `shape`: the offset showed
+//! there, and the converter that rewrote the emitter since lost it. A mod made at 14.1 or
+//! later never showed the offset, and its value is left for the strip.
+//!
 //! The fixup is a tool's damage and still runs in the layout phase, at 14.1 and after
 //! `vfx-spawn-shape` by its id. An emitter that holds both an old `shape` and a converter's
 //! spawn shape takes its position from the `shape`, the one its own build read. In the undo
@@ -11,7 +15,8 @@ use ltk_meta::PropertyValueEnum as V;
 
 use super::Stated;
 use super::spawn_shape::{
-    BIRTH_TRANSLATION, EMITTER, EMITTER_POSITION, LEGACY, SPAWN_SHAPE, target_reads_spawn_shape,
+    BIRTH_TRANSLATION, EMITTER, EMITTER_POSITION, LEGACY, SHAPE, SPAWN_SHAPE,
+    target_reads_spawn_shape,
 };
 use crate::fixups::{BinFixup, Classes, FixCx, TargetTypes};
 use crate::model::{FixupInfo, Phase, Record, StructMut, Version, name_hash};
@@ -53,9 +58,13 @@ impl BinFixup for BirthTranslation {
         let Some(V::Struct(shape)) = s.fields_mut().get_mut(&spawn_shape) else {
             return;
         };
-        let held = shape.properties.get(&translation);
-        let read = |value: &V| cx.read_at_source(legacy, translation, value.kind());
-        if shape.class_hash != legacy || !held.is_some_and(read) {
+        if shape.class_hash != legacy || !shape.properties.contains_key(&translation) {
+            return;
+        }
+        // No build read the value where it is. The one that showed is the old shape's, in a
+        // mod made while a build read `shape`, or one whose build is not known.
+        let read_shape = cx.types_since_source(name_hash(EMITTER), name_hash(SHAPE));
+        if read_shape.is_some_and(|types| types.is_empty()) {
             return;
         }
         let Some(value) = shape.properties.shift_remove(&translation) else {

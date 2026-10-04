@@ -218,7 +218,7 @@ fn the_catalogue_lists_each_conversion_with_the_records_it_follows() {
             row("hash-key", &["#GAME-CHANGE-0013"]),
             row("widen", &[]),
             row("narrow", &["#GAME-CHANGE-0020", "#MOD-ARTIFACT-0021"]),
-            row("optional", &["#GAME-CHANGE-0021"]),
+            row("optional", &[]),
             row("null-pointer", &[]),
             row("empty-option", &[]),
         ]
@@ -250,7 +250,8 @@ fn the_conversion_between_two_kinds_is_read_off_the_kinds() {
         between(Kind::Container, Kind::UnorderedContainer),
         Some(C::Retag)
     );
-    assert_eq!(between(Kind::F32, Kind::Optional), Some(C::Optional));
+    // #GAME-CHANGE-0021: no value goes into an option.
+    assert_eq!(between(Kind::F32, Kind::Optional), None);
     assert_eq!(between(Kind::None, Kind::Struct), Some(C::NullPointer));
     // Wider, and every value of the old kind fits: a widening. Any other pair of integers
     // is a narrowing, the same width under another sign included.
@@ -550,28 +551,34 @@ fn narrow_puts_an_integer_in_another_kind_only_where_it_fits() {
 }
 
 #[test]
-fn optional_keeps_a_value_present_in_the_option_the_build_reads() {
+fn optional_converts_the_value_a_present_option_holds() {
     let env = env(Made::Undated);
-    let run = retyped(
-        &env,
-        vec![("maybeFloat", float(800.0)), ("maybeFile", text(OWN))],
-    );
-    assert_eq!(
-        run.field("T", "maybeFloat"),
-        Some(&some(Kind::F32, float(800.0)))
-    );
-    // A value of a kind that converts to the option's.
+    let run = retyped(&env, vec![("maybeFile", some(Kind::String, text(OWN)))]);
     assert_eq!(
         run.field("T", "maybeFile"),
         Some(&some(Kind::WadChunkLink, file(OWN)))
     );
-    // A value of a kind that does not is left.
-    let run = retyped(&env, vec![("maybeFloat", text("800"))]);
-    assert_eq!(run.field("T", "maybeFloat"), Some(&text("800")));
+    assert_eq!(run.changes.counts().changed, 1);
+}
+
+#[test]
+fn a_value_where_the_build_reads_an_option_is_left_and_reported() {
+    // #GAME-CHANGE-0021: Riot's own objects lost the value when the field became an option.
+    let env = env(Made::Undated);
+    let fields = vec![("maybeFloat", float(800.0)), ("maybeFile", text(OWN))];
+    let run = retyped(&env, fields.clone());
+    assert_eq!(run.object("T"), &object("T", THING, fields));
     assert_eq!(
         rows(run.changes.of("retype"), &run),
-        [("maybeFloat".into(), "String", "left for Option".into())]
+        [
+            ("maybeFloat".into(), "F32", "left for Option".into()),
+            ("maybeFile".into(), "String", "left for Option".into()),
+        ]
     );
+    let [left] = run.raised::<Unconvertible>("retype")[..] else {
+        panic!("{:?}", run.messages());
+    };
+    assert_eq!(left.0.values, 2);
 }
 
 #[test]
@@ -736,7 +743,7 @@ fn a_mod_with_no_date_or_one_before_the_schema_is_not_judged() {
                     "Link",
                     format!("Hash {:08x}", name_hash("Queue/One").0)
                 ),
-                ("maybeFloat".into(), "F32", "Option some(800.0)".into()),
+                ("maybeFloat".into(), "F32", "left for Option".into()),
             ]
         );
         assert!(run.raised::<Removed>("retype").is_empty());

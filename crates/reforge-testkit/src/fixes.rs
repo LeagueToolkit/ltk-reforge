@@ -57,7 +57,23 @@ impl<'a> FixRun<'a> {
         archive: &ModArchive,
         objects: &dyn Fn(&reforge::model::Mod) -> ObjectSet,
     ) -> Self {
-        let options = LoadOptions::default().file_fixups(set.file_fixups());
+        let options = LoadOptions::default();
+        Self::under(env, set, archive, (options, objects))
+    }
+
+    /// As [`FixRun::of_objects`], with `load` under options of the caller's. The set's file
+    /// fixups take the place of the options' own.
+    ///
+    /// # Panics
+    ///
+    /// As [`FixRun::of`].
+    pub fn under(
+        env: &'a Env,
+        set: &FixupSet,
+        archive: &ModArchive,
+        (options, objects): (LoadOptions, &dyn Fn(&reforge::model::Mod) -> ObjectSet),
+    ) -> Self {
+        let options = options.file_fixups(set.file_fixups());
         let LoadRun {
             result, log, names, ..
         } = LoadRun::of(env, options, archive);

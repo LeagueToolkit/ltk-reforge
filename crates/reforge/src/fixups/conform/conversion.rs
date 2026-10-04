@@ -32,7 +32,7 @@ pub enum Conversion {
     Widen,
     /// An integer in another kind that holds its value.
     Narrow,
-    /// A value in an option of its kind, present.
+    /// A present option's value in the item kind the build reads.
     Optional,
     /// No value as a pointer to nothing.
     NullPointer,
@@ -78,7 +78,7 @@ impl Conversion {
             Self::HashKey => "Map to Map of other key and value kinds",
             Self::Widen => "an integer to a wider integer of every value it has",
             Self::Narrow => "an integer to any other integer",
-            Self::Optional => "a value to Option of its kind, or of a kind it converts to",
+            Self::Optional => "a present Option to Option of a kind its value converts to",
             Self::NullPointer => "None to Pointer",
             Self::EmptyOption => "an empty Option to Option of another item kind",
         }
@@ -93,7 +93,7 @@ impl Conversion {
             Self::HashKey => "each key and each value by its own conversion; one refuses the map",
             Self::Widen => "the same number",
             Self::Narrow => "the same number, where the kind holds it",
-            Self::Optional => "the value, present",
+            Self::Optional => "the value by its own conversion, present",
             Self::NullPointer => "a pointer of the zero class",
             Self::EmptyOption => "the item's tag alone",
         }
@@ -105,13 +105,11 @@ impl Conversion {
         const FILES_AS_HASHES: &[Record] = &[Record::game_change(13)];
         const LINKS_AS_HASHES: &[Record] = &[Record::game_change(19)];
         const INTEGERS_TOO_WIDE: &[Record] = &[Record::game_change(20), Record::mod_artifact(21)];
-        const MADE_OPTIONAL: &[Record] = &[Record::game_change(21)];
         match self {
             Self::Retag => LINKS_AS_HASHES,
             Self::HashValue | Self::Rehash | Self::HashKey => FILES_AS_HASHES,
             Self::Narrow => INTEGERS_TOO_WIDE,
-            Self::Optional => MADE_OPTIONAL,
-            Self::Widen | Self::NullPointer | Self::EmptyOption => &[],
+            Self::Widen | Self::Optional | Self::NullPointer | Self::EmptyOption => &[],
         }
     }
 
@@ -127,11 +125,13 @@ impl Conversion {
 
     /// The conversion that takes a value of one kind to another kind. None when no conversion
     /// does. A value whose kind is the one read is not asked here: its items go each by this,
-    /// a map by [`Conversion::HashKey`] and an empty option by [`Conversion::EmptyOption`].
+    /// a map by [`Conversion::HashKey`], a present option by [`Conversion::Optional`] and an
+    /// empty one by [`Conversion::EmptyOption`].
     pub fn between(from: Kind, to: Kind) -> Option<Self> {
         use Kind as K;
         Some(match (from, to) {
-            (_, K::Optional) => Self::Optional,
+            // #GAME-CHANGE-0021: Riot put no value into the option it made of a field.
+            (_, K::Optional) => return None,
             (K::String, K::WadChunkLink) => Self::HashValue,
             (K::Hash, K::WadChunkLink) => Self::Rehash,
             (K::None, K::Struct) => Self::NullPointer,
