@@ -41,6 +41,15 @@ jobs:
       - name: Install the system packages
         run: bash scripts/cross/setup-ubuntu.sh
 
+      # rustup and its toolchain, which mise installs outside the directory mise-action caches.
+      # With them in place mise downloads neither.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/bin
+          key: rustup-check-${{ hashFiles('rust-toolchain.toml') }}
+
       # The tools mise.toml lists, the Rust toolchain among them.
       - uses: jdx/mise-action@v2
 
@@ -70,6 +79,14 @@ jobs:
 
       - name: Install the system packages
         run: bash scripts/cross/setup-ubuntu.sh
+
+      # As in the job above, with the Windows target's standard library too.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.rustup
+            ~/.cargo/bin
+          key: rustup-windows-${{ hashFiles('rust-toolchain.toml') }}
 
       - uses: jdx/mise-action@v2
 
