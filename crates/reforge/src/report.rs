@@ -349,6 +349,12 @@ pub struct ChunkPair {
 pub struct AgainRow {
     /// Whether the second run built a package.
     pub built: bool,
+    /// The build the repaired mod dates at by itself, when the caller gave it. The second
+    /// run is judged with what the first established of the mod, its dating among it: an
+    /// object a fixup brought to the target build is the game's own of that build, and a
+    /// repaired mod dates by it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redated: Option<Bound>,
     /// The values the fixups changed the second time, by fixup. Empty when none did.
     pub fixups: Vec<FixupCount>,
     /// How many chunks the two packages do not hold alike.
@@ -392,10 +398,18 @@ impl AgainRow {
         });
         Self {
             built: second.is_some(),
+            redated: None,
             fixups: fixups.filter(|row| row.values > 0).collect(),
             chunks_differing: differing.len(),
             chunks: differing.into_iter().take(Self::SHOWN).collect(),
         }
+    }
+
+    /// The build the repaired mod dates at by itself.
+    #[must_use]
+    pub fn redated(mut self, dating: &Dating) -> Self {
+        self.redated = dating.not_before.clone();
+        self
     }
 
     /// Whether the second run changed nothing: no value, and no chunk.

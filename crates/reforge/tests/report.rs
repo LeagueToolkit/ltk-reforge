@@ -4,6 +4,9 @@ use reforge::archive::{Archive, Caps};
 use reforge::diag::{Diagnostics, Render, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, Rule};
+use reforge::game::Build;
+use reforge::history::Position;
+use reforge::load::dating::Bound;
 use reforge::load::{Dating, FileProvenance, Inventory, LoadError, LoadOptions, Loader, against};
 use reforge::model::entity::{FileSource, FileUse};
 use reforge::model::{ContentId, hash, value};
@@ -379,11 +382,21 @@ fn a_report_says_what_repairing_the_repaired_mod_again_changed() {
         Some(&second.fix.changes),
     );
     assert!(again.same(), "{again:?}");
-    let report = parsed(&Report::builder().again(again).build());
+    let report = parsed(&Report::builder().again(again.clone()).build());
     assert_eq!(
         report["again"],
         json!({ "built": true, "fixups": [], "chunks_differing": 0, "chunks": [] })
     );
+    // The build the repaired mod dates at by itself is beside it, where the caller gave it.
+    let dating = Dating {
+        not_before: Some(Bound {
+            at: Position(0),
+            build: Build::parse("16.18.1").expect("a build"),
+        }),
+        ..Dating::default()
+    };
+    let report = parsed(&Report::builder().again(again.redated(&dating)).build());
+    assert_eq!(report["again"]["redated"]["build"], "16.18.1");
 
     // Against the archive's own run, which changed the material: the fixup and the bin.
     let unrepaired = PackRun::of(&env, &FixupSet::empty(), &archive);
