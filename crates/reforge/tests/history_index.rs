@@ -10,9 +10,9 @@ use reforge::diag::{Diagnostics, Stage};
 use reforge::game::Build;
 use reforge::history::tables::{index_sql, schema_sql, table_names};
 use reforge::history::{
-    self, BuildRow, DB_FILE, FORMAT, Families, FileKind, History, HistoryAbsent, HistoryError,
-    IndexMissing, IndexStale, InstallNewer, Joint, Life, Position, STAMP_FILE, SqliteHistory,
-    Stamp,
+    self, BuildRow, ClipJoints, DB_FILE, FORMAT, Families, FileKind, History, HistoryAbsent,
+    HistoryError, IndexMissing, IndexStale, InstallNewer, Joint, Life, Position, STAMP_FILE,
+    SqliteHistory, Stamp,
 };
 use reforge::model::{ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 use rusqlite::Connection;
@@ -84,6 +84,9 @@ fn an_empty_index_answers_every_question_with_nothing() {
     assert!(history.events_playing(1).unwrap().is_empty());
     assert!(history.skeletons(path).unwrap().is_empty());
     assert!(history.meshes(path).unwrap().is_empty());
+    assert!(history.clip_joints(path).unwrap().is_empty());
+    assert_eq!(history.joints_of(key).unwrap(), None);
+    assert!(history.events_banks(path).unwrap().is_empty());
 }
 
 #[test]
@@ -145,6 +148,61 @@ fn rows_are_read_back_as_the_questions_spell_them() {
     };
     assert_eq!(skeletons[1].skeleton.joints[1], hip);
     assert_eq!(skeletons[1].skeleton.joints[0].parent, None);
+}
+
+#[test]
+fn a_clips_joints_and_a_banks_objects_are_read_back_through_their_records() {
+    // A record above `i64::MAX` is stored as a negative integer.
+    let (_scratch, dir) = index(
+        "INSERT INTO joint_lists (record, count, first, last, alive) VALUES (-5, 2, 0, 2, 2);
+         INSERT INTO list_joints VALUES (-5, 0, 4026531841), (-5, 1, 7);
+         INSERT INTO animations (path, key, joints, first, last, alive) \
+           VALUES (4, x'07070707070707070707070707070707', -5, 0, 1, 0), \
+                  (4, x'08080808080808080808080808080808', -5, 2, 2, 1), \
+                  (5, x'07070707070707070707070707070707', -5, 0, 2, 1);
+         INSERT INTO bank_objects (record, kind, id, body, first, last, alive) \
+           VALUES (-2, 2, 4026531841, x'0a0b', 0, 2, 1), (3, 4, 225, x'', 0, 2, 1);
+         INSERT INTO event_banks \
+           (id, path, record, version, bank_id, header, objects, first, last, alive) \
+           VALUES (1, 9, 11, 145, 5, x'9100000005000000', \
+                   x'0300000000000000feffffffffffffff', 0, 2, 1), \
+                  (2, 10, 12, 145, 5, x'9100000005000000', x'0900000000000000', 0, 2, 1);",
+    );
+    let history = SqliteHistory::open(&dir).unwrap();
+    let joints = vec![0xf000_0001, 7];
+    let clip = |key, life| ClipJoints {
+        life,
+        key: FileKey([key; 16]),
+        joints: joints.clone(),
+    };
+    let expected = [clip(7, Life::new(0, 1)), clip(8, Life::new(2, 2))];
+    assert_eq!(history.clip_joints(WadHash(4)).unwrap(), expected);
+    assert_eq!(history.joints_of(FileKey([7; 16])).unwrap(), Some(joints));
+    assert_eq!(history.joints_of(FileKey([9; 16])).unwrap(), None);
+
+    let banks = history.events_banks(WadHash(9)).unwrap();
+    assert_eq!(banks.len(), 1);
+    let bank = &banks[0].bank;
+    assert_eq!(banks[0].life, Life::new(0, 2));
+    assert_eq!((bank.version(), bank.bank_id()), (145, 5));
+    let objects: Vec<(u8, u32, &[u8])> = bank
+        .objects
+        .iter()
+        .map(|o| (o.kind, o.id, o.body.as_slice()))
+        .collect();
+    // In the order the bank lists them, not the order of the records.
+    let expected: [(u8, u32, &[u8]); 2] = [(4, 225, &[]), (2, 0xf000_0001, &[0x0a, 0x0b])];
+    assert_eq!(objects, expected);
+
+    // A bank that lists an object the index lacks is an error, not a shorter bank.
+    let lacking = history.events_banks(WadHash(10));
+    assert!(matches!(
+        lacking,
+        Err(HistoryError::BankObject {
+            path: WadHash(10),
+            record: 9
+        })
+    ));
 }
 
 #[test]

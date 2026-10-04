@@ -15,11 +15,14 @@
 use std::fmt;
 use std::hash::Hash;
 use std::str::FromStr;
+use std::sync::Arc;
 
+use reforge_wwise::Object;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::HistoryError;
+pub use crate::model::EventsBank;
 use crate::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 
 /// A build's number in the history, from 0, in the order the builds arrived.
@@ -60,9 +63,9 @@ pub enum Family {
     Files,
     /// Objects, and from their texts the files they name, their audio tags and bank units.
     Objects,
-    /// Clips, and the events that play them.
+    /// Clips, the events that play them, and the events banks' headers and objects.
     Clips,
-    /// Skeletons and meshes.
+    /// Skeletons, meshes, and the joints animation clips animate.
     Rigs,
     /// Textures.
     Textures,
@@ -244,13 +247,15 @@ pub enum Storage {
     Name,
     /// A name or none, as the id of its row in `names` or null.
     OptionalName,
+    /// Bytes as stored, a blob of any length.
+    Bytes,
 }
 
 impl Storage {
     fn sql(self) -> &'static str {
         match self {
             Storage::Integer | Storage::Name => "INTEGER NOT NULL",
-            Storage::Key => "BLOB NOT NULL",
+            Storage::Key | Storage::Bytes => "BLOB NOT NULL",
             Storage::OptionalName => "INTEGER",
         }
     }
@@ -286,6 +291,13 @@ const fn name(name: &'static str) -> Column {
     }
 }
 
+const fn bytes(name: &'static str) -> Column {
+    Column {
+        name,
+        storage: Storage::Bytes,
+    }
+}
+
 /// How a table's rows are found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
@@ -298,7 +310,9 @@ pub enum Shape {
 }
 
 /// The table that holds the ordered parts of another table's rows: a skeleton's joints, a
-/// mesh's submeshes. Its key is the owner's id and the part's ordinal.
+/// mesh's submeshes, a joint list's joints. Its key is the owner's id and the part's ordinal.
+/// The owner's id is its row id: the `id` of a `Recorded` table, the key of a table keyed by
+/// one integer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PartsDef {
     /// The table's name.
@@ -433,6 +447,8 @@ pub enum Cell<'a> {
     Name(&'a str),
     /// No name.
     NoName,
+    /// Bytes as stored.
+    Bytes(&'a [u8]),
 }
 
 impl From<u64> for Cell<'_> {
@@ -959,6 +975,11 @@ impl Digester {
         self.0.update(n.to_le_bytes());
     }
 
+    fn bytes(&mut self, bytes: &[u8]) {
+        self.int(bytes.len() as u64);
+        self.0.update(bytes);
+    }
+
     fn finish(self) -> u64 {
         let digest: [u8; 32] = self.0.finalize().into();
         let mut head = [0; 8];
@@ -1056,6 +1077,214 @@ impl Table for Skeletons {
                 vec![Cell::Name(&joint.name), parent]
             })
             .collect()
+    }
+}
+
+/// The joints an animation clip animates: each joint's hash, in stored order.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct JointList(pub Arc<[u32]>);
+
+impl Recorded for JointList {
+    fn digest(&self) -> u64 {
+        let mut d = Digester::new("joint-list");
+        for joint in self.0.iter() {
+            d.int(u64::from(*joint));
+        }
+        d.finish()
+    }
+}
+
+/// `joint_lists` and `list_joints`: each distinct list of joints a clip animates, held once.
+/// The clips of a skin animate the same joints, so 64,903 clips hold 15,563 lists
+/// (16.19.8207193).
+pub struct JointLists;
+
+impl Table for JointLists {
+    type Key = JointList;
+    type Facts = ();
+    const DEF: TableDef = TableDef {
+        name: "joint_lists",
+        family: Family::Rigs,
+        key: &[integer("record")],
+        facts: &[integer("count")],
+        shape: Shape::Keyed,
+        lookups: &[],
+        parts: Some(PartsDef {
+            name: "list_joints",
+            owner: "list",
+            columns: &[integer("joint")],
+        }),
+    };
+
+    fn cells<'a>(key: &'a JointList, (): &'a ()) -> impl Iterator<Item = Cell<'a>> {
+        [key.digest().into(), (key.0.len() as u64).into()].into_iter()
+    }
+
+    fn parts(key: &JointList) -> Vec<Vec<Cell<'_>>> {
+        key.0.iter().map(|joint| vec![(*joint).into()]).collect()
+    }
+}
+
+/// An animation clip's bytes at a path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Animation {
+    /// The path.
+    pub path: WadHash,
+    /// The key of the clip's bytes.
+    pub key: FileKey,
+}
+
+/// `animations`: every animation clip the game held at a path, with the record of its joint
+/// list in `joint_lists`. Indexed by file key too.
+pub struct Animations;
+
+impl Table for Animations {
+    type Key = Animation;
+    type Facts = u64;
+    const DEF: TableDef = TableDef {
+        name: "animations",
+        family: Family::Rigs,
+        key: &[integer("path"), key("key")],
+        facts: &[integer("joints")],
+        shape: Shape::Keyed,
+        lookups: &["key"],
+        parts: None,
+    };
+
+    fn cells<'a>(key: &'a Animation, joints: &'a u64) -> impl Iterator<Item = Cell<'a>> {
+        [key.path.into(), key.key.into(), (*joints).into()].into_iter()
+    }
+}
+
+impl Recorded for Object {
+    fn digest(&self) -> u64 {
+        let mut d = Digester::new("bank-object");
+        d.int(u64::from(self.kind));
+        d.int(u64::from(self.id));
+        d.bytes(&self.body);
+        d.finish()
+    }
+}
+
+/// `bank_objects`: each distinct object of an events bank's hierarchy, held once, by its
+/// record. A bank changes a few objects from one build to the next, and the voice banks of two
+/// languages share most: 4,862,673 objects in 18,689 banks are 2,360,592 distinct
+/// (16.19.8207193).
+pub struct BankObjects;
+
+impl Table for BankObjects {
+    type Key = u64;
+    type Facts = Arc<Object>;
+    const DEF: TableDef = TableDef {
+        name: "bank_objects",
+        family: Family::Clips,
+        key: &[integer("record")],
+        facts: &[integer("kind"), integer("id"), bytes("body")],
+        shape: Shape::Keyed,
+        lookups: &[],
+        parts: None,
+    };
+
+    fn cells<'a>(key: &'a u64, object: &'a Arc<Object>) -> impl Iterator<Item = Cell<'a>> {
+        [
+            (*key).into(),
+            u32::from(object.kind).into(),
+            object.id.into(),
+            Cell::Bytes(&object.body),
+        ]
+        .into_iter()
+    }
+}
+
+fn u32_at(bytes: &[u8], at: usize) -> u32 {
+    let four = bytes.get(at..).and_then(|rest| rest.first_chunk());
+    four.copied().map_or(0, u32::from_le_bytes)
+}
+
+/// An events bank at a path, by its record: the digest of its header and of its objects'
+/// records in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BankAt {
+    /// The path.
+    pub path: WadHash,
+    /// The bank's record.
+    pub record: u64,
+}
+
+/// What a row of `event_banks` keeps: the header, and the records of the bank's objects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BankFacts {
+    /// The body of the bank's `BKHD` section.
+    pub header: Arc<[u8]>,
+    /// The record of each object in `bank_objects`, in stored order, eight bytes each, little
+    /// endian.
+    pub objects: Arc<[u8]>,
+}
+
+/// The bytes one object's record takes in `event_banks.objects`.
+pub const RECORD_BYTES: usize = 8;
+
+impl BankFacts {
+    /// A bank's record and the facts of its row, from its header and the records of its
+    /// objects in order.
+    pub fn of(header: &[u8], records: &[u64]) -> (u64, Self) {
+        let mut d = Digester::new("events-bank");
+        d.bytes(header);
+        let mut objects = Vec::with_capacity(records.len() * RECORD_BYTES);
+        for record in records {
+            d.int(*record);
+            objects.extend_from_slice(&record.to_le_bytes());
+        }
+        let facts = Self {
+            header: header.into(),
+            objects: objects.into(),
+        };
+        (d.finish(), facts)
+    }
+
+    /// The records of the bank's objects, in stored order.
+    pub fn records(objects: &[u8]) -> impl Iterator<Item = u64> {
+        let (records, _) = objects.as_chunks::<RECORD_BYTES>();
+        records.iter().copied().map(u64::from_le_bytes)
+    }
+}
+
+/// `event_banks`: each distinct events bank the game held at a path: its version, its bank id,
+/// its header, and its objects as their records in `bank_objects`.
+///
+/// The objects are one value and not rows of a parts table: the 162,930 banks of the history
+/// list 49,000,478 objects (2026-10-05), and a parts row holds its owner and its ordinal beside
+/// the eight bytes of the record.
+pub struct EventBanks;
+
+impl Table for EventBanks {
+    type Key = BankAt;
+    type Facts = BankFacts;
+    const DEF: TableDef = TableDef {
+        name: "event_banks",
+        family: Family::Clips,
+        key: &[integer("path"), integer("record")],
+        facts: &[
+            integer("version"),
+            integer("bank_id"),
+            bytes("header"),
+            bytes("objects"),
+        ],
+        shape: Shape::Recorded,
+        lookups: &[],
+        parts: None,
+    };
+
+    fn cells<'a>(key: &'a BankAt, facts: &'a BankFacts) -> impl Iterator<Item = Cell<'a>> {
+        [
+            key.path.into(),
+            key.record.into(),
+            u32_at(&facts.header, 0).into(),
+            u32_at(&facts.header, 4).into(),
+            Cell::Bytes(&facts.header),
+            Cell::Bytes(&facts.objects),
+        ]
+        .into_iter()
     }
 }
 
@@ -1237,8 +1466,12 @@ pub const TABLES: &[TableDef] = &[
     Clips::DEF,
     Events::DEF,
     EventWems::DEF,
+    BankObjects::DEF,
+    EventBanks::DEF,
     Skeletons::DEF,
     Meshes::DEF,
+    JointLists::DEF,
+    Animations::DEF,
     Textures::DEF,
 ];
 
@@ -1286,6 +1519,40 @@ mod tests {
             Skeletons::DEF.index_sql(),
             "CREATE UNIQUE INDEX skeletons_key ON skeletons (path, record);\n"
         );
+        assert_eq!(
+            JointLists::DEF.create_sql(),
+            "CREATE TABLE joint_lists (record INTEGER PRIMARY KEY, count INTEGER NOT NULL, first \
+             INTEGER NOT NULL, last INTEGER NOT NULL, alive INTEGER NOT NULL);\nCREATE TABLE \
+             list_joints (list INTEGER NOT NULL, ordinal INTEGER NOT NULL, joint INTEGER NOT \
+             NULL, PRIMARY KEY (list, ordinal)) WITHOUT ROWID;\n"
+        );
+        assert_eq!(
+            BankObjects::DEF.create_sql(),
+            "CREATE TABLE bank_objects (record INTEGER PRIMARY KEY, kind INTEGER NOT NULL, id \
+             INTEGER NOT NULL, body BLOB NOT NULL, first INTEGER NOT NULL, last INTEGER NOT \
+             NULL, alive INTEGER NOT NULL);\n"
+        );
+    }
+
+    #[test]
+    fn a_banks_record_is_of_its_header_and_its_objects_in_order() {
+        let object = |id| Object {
+            kind: 2,
+            id,
+            body: vec![1, 2],
+        };
+        let records = [object(1).digest(), object(2).digest()];
+        assert_ne!(records[0], records[1]);
+        let (record, facts) = BankFacts::of(&[145, 0, 0, 0, 7, 0, 0, 0], &records);
+        let back: Vec<u64> = BankFacts::records(&facts.objects).collect();
+        assert_eq!(back, records);
+        let (reversed, _) = BankFacts::of(&[145, 0, 0, 0, 7, 0, 0, 0], &[records[1], records[0]]);
+        let (other_header, _) = BankFacts::of(&[145, 0, 0, 0, 8, 0, 0, 0], &records);
+        assert_ne!(record, reversed);
+        assert_ne!(record, other_header);
+        let bank = EventsBank::new(facts.header.to_vec(), vec![object(1)]).unwrap();
+        assert_eq!((bank.version(), bank.bank_id()), (145, 7));
+        assert_eq!(EventsBank::new(vec![145, 0, 0, 0], Vec::new()), None);
     }
 
     #[test]

@@ -14,12 +14,14 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 use reforge::history::tables::{
-    At, BankEvent, Clips, Contents, EventWem, EventWems, Events, FileFacts, Files, Held, Meshes,
-    Naming, ObjectFacts, Objects, Paths, Refs, Row, Skeletons, Table, Tag, Tags, Textures, Unit,
+    Animation, Animations, At, BankAt, BankEvent, BankFacts, BankObjects, Clips, Contents,
+    EventBanks, EventWem, EventWems, Events, FileFacts, Files, Held, JointLists, Meshes, Naming,
+    ObjectFacts, Objects, Paths, Recorded, Refs, Row, Skeletons, Table, Tag, Tags, Textures, Unit,
     UnitBank, UnitBanks, UnitEvent, UnitEvents, Units,
 };
-use reforge::history::{BuildRow, Families, Family, FileKind, Life, Position};
+use reforge::history::{BuildRow, EventsBank, Families, Family, FileKind, Life, Position};
 use reforge::model::{BinHash, WadHash};
+use reforge_wwise::Object;
 
 use crate::error::CensusError;
 use crate::format::{self, BuildFile, Entry, ObjectText};
@@ -221,10 +223,18 @@ pub struct Folds {
     pub events: Fold<Events>,
     /// Every wem an event plays.
     pub event_wems: Fold<EventWems>,
+    /// Every object of an events bank.
+    pub bank_objects: Fold<BankObjects>,
+    /// Every events bank at a path.
+    pub event_banks: Fold<EventBanks>,
     /// Every skeleton at a path.
     pub skeletons: Fold<Skeletons>,
     /// Every mesh at a path.
     pub meshes: Fold<Meshes>,
+    /// Every list of joints an animation clip animates.
+    pub joint_lists: Fold<JointLists>,
+    /// Every animation clip at a path.
+    pub animations: Fold<Animations>,
     /// Every texture at a path.
     pub textures: Fold<Textures>,
 }
@@ -244,8 +254,12 @@ impl Folds {
         visit.table(self.clips)?;
         visit.table(self.events)?;
         visit.table(self.event_wems)?;
+        visit.table(self.bank_objects)?;
+        visit.table(self.event_banks)?;
         visit.table(self.skeletons)?;
         visit.table(self.meshes)?;
+        visit.table(self.joint_lists)?;
+        visit.table(self.animations)?;
         visit.table(self.textures)
     }
 }
@@ -256,12 +270,40 @@ type TextFacts = Arc<Option<ObjectText>>;
 /// One side of a text change: the blob and what it names.
 type TextSide = Option<(BlobId, TextFacts)>;
 
+/// The rows an events bank makes: its own, and one per object. An object is shared with the
+/// fold that holds it, so a bank the walk has seen costs its records only.
+struct BankRows {
+    record: u64,
+    facts: BankFacts,
+    objects: Vec<(u64, Arc<Object>)>,
+}
+
+impl BankRows {
+    fn of(bank: EventsBank) -> Self {
+        let objects = bank.objects.into_iter();
+        let objects: Vec<(u64, Arc<Object>)> = objects.map(|o| (o.digest(), Arc::new(o))).collect();
+        let records: Vec<u64> = objects.iter().map(|(record, _)| *record).collect();
+        let (record, facts) = BankFacts::of(&bank.header, &records);
+        Self {
+            record,
+            facts,
+            objects,
+        }
+    }
+}
+
+/// One side of an entry's change: the file read, its events bank taken out as rows.
+struct EntrySide {
+    entry: Entry,
+    bank: Option<BankRows>,
+}
+
 /// A change read: an entry's file before and after, or a bin entry's text.
 enum Parsed {
     Entry {
         path: WadHash,
-        old: Option<Box<Entry>>,
-        new: Option<Box<Entry>>,
+        old: Option<Box<EntrySide>>,
+        new: Option<Box<EntrySide>>,
     },
     Text {
         bin: WadHash,
@@ -334,9 +376,15 @@ impl Walker {
             Ok(String::from_utf8_lossy(&source.read(id)?).into_owned())
         };
         if let Some(path) = format::entry_file(&change.path) {
-            let entry = |id: &Option<BlobId>| -> Result<Option<Box<Entry>>, CensusError> {
+            let banks = self.families.has(Family::Clips);
+            let entry = |id: &Option<BlobId>| -> Result<Option<Box<EntrySide>>, CensusError> {
                 let text = id.as_ref().map(read).transpose()?;
-                Ok(text.and_then(|t| format::parse_entry(&t)).map(Box::new))
+                let side = text.and_then(|t| format::parse_entry(&t)).map(|mut entry| {
+                    // Digested here, on every core, and not where the folds take the rows.
+                    let bank = entry.bank.take().filter(|_| banks).map(BankRows::of);
+                    Box::new(EntrySide { entry, bank })
+                });
+                Ok(side)
             };
             return Ok(Some(Parsed::Entry {
                 path,
@@ -411,8 +459,17 @@ impl Walker {
         }
     }
 
-    fn entry(&mut self, at: Position, path: WadHash, old: Option<&Entry>, new: Option<&Entry>) {
+    fn entry(
+        &mut self,
+        at: Position,
+        path: WadHash,
+        old: Option<&EntrySide>,
+        new: Option<&EntrySide>,
+    ) {
         let folds = &mut self.folds;
+        let old_bank = old.and_then(|side| side.bank.as_ref());
+        let new_bank = new.and_then(|side| side.bank.as_ref());
+        let (old, new) = (old.map(|side| &side.entry), new.map(|side| &side.entry));
         if self.families.has(Family::Files) {
             let kind = |e: &Entry| FileKind::of(&e.kind);
             folds.files.change(at, old, new, |e| {
@@ -460,6 +517,14 @@ impl Walker {
                     })
                 })
             });
+            folds.bank_objects.change(at, old_bank, new_bank, |b| {
+                let objects = b.objects.iter();
+                objects.map(|(record, object)| (*record, object.clone()))
+            });
+            folds.event_banks.change(at, old_bank, new_bank, |b| {
+                let record = b.record;
+                [(BankAt { path, record }, b.facts.clone())]
+            });
         }
         if self.families.has(Family::Rigs) {
             // A rig is keyed by its path and its whole record, so a changed rig is a new life.
@@ -470,6 +535,14 @@ impl Walker {
             folds.meshes.change_keys(at, old, new, |e| {
                 let record = e.mesh.clone();
                 record.map(|record| At { path, record })
+            });
+            folds
+                .joint_lists
+                .change_keys(at, old, new, |e| e.joints.clone());
+            folds.animations.change(at, old, new, |e| {
+                let key = e.content;
+                let joints = e.joints.as_ref();
+                joints.map(|joints| (Animation { path, key }, joints.digest()))
             });
         }
         if self.families.has(Family::Textures) {

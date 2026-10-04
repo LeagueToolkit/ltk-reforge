@@ -13,11 +13,13 @@ use indexmap::IndexMap;
 use ltk_meta::PropertyValueEnum as P;
 use ltk_meta::property::values::Struct;
 use reforge::game::Build;
-use reforge::history::{Joint, Mesh, Skeleton, Submesh, Texture};
+use reforge::history::tables::JointList;
+use reforge::history::{EventsBank, Joint, Mesh, Skeleton, Submesh, Texture};
 use reforge::model::value::{items, looks_like_path, walk};
 use reforge::model::{
     BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
 };
+use reforge_wwise::Object;
 
 /// The format this crate reads, as `census.yaml` states it.
 pub const FORMAT: u32 = 2;
@@ -83,6 +85,12 @@ pub struct Entry {
     pub mesh: Option<Mesh>,
     /// A texture's header and the hash of its top mip.
     pub texture: Option<Texture>,
+    /// The joints an animation clip animates (#ADR-0042).
+    pub joints: Option<JointList>,
+    /// An events bank's header and objects (#ADR-0042). None for a bank with no `HIRC`
+    /// section, and for one `reforge_wwise::Bank::read` refuses: a header too short for a
+    /// version and a bank id, an object too short for an id.
+    pub bank: Option<EventsBank>,
 }
 
 /// One object of a bin.
@@ -207,6 +215,19 @@ fn hex32(value: &str) -> Option<u32> {
     u32::from_str_radix(unquoted(value)?, 16).ok()
 }
 
+/// The bytes a quoted run of hex digits spells, two digits a byte.
+fn hex_bytes(value: &str) -> Option<Vec<u8>> {
+    let (pairs, rest) = unquoted(value)?.as_bytes().as_chunks::<2>();
+    let digit = |d: u8| {
+        char::from(d)
+            .to_digit(16)
+            .and_then(|d| u8::try_from(d).ok())
+    };
+    let byte = |[high, low]: &[u8; 2]| Some(digit(*high)? << 4 | digit(*low)?);
+    let bytes: Option<Vec<u8>> = pairs.iter().map(byte).collect();
+    bytes.filter(|_| rest.is_empty())
+}
+
 /// An object whose three keys have not all been read yet.
 struct PartialObject {
     entry: u32,
@@ -222,12 +243,43 @@ struct PartialClip {
     hash: Option<u64>,
 }
 
+/// An object of a bank's hierarchy whose three keys have not all been read yet.
+#[derive(Default)]
+struct PartialBankObject {
+    id: Option<u32>,
+    kind: Option<u8>,
+    body: Option<Vec<u8>>,
+}
+
+impl PartialBankObject {
+    fn read(&mut self, line: &Line<'_>) {
+        match line.key {
+            "id" => self.id = hex32(line.value),
+            "type" => self.kind = line.value.parse().ok(),
+            "body" => self.body = hex_bytes(line.value),
+            _ => {}
+        }
+    }
+
+    fn whole(self) -> Option<Object> {
+        Some(Object {
+            kind: self.kind?,
+            id: self.id?,
+            body: self.body?,
+        })
+    }
+}
+
 /// A WAD entry's file, `xx/<path hash>.yaml`. None when it has no `sha256`.
 pub fn parse_entry(text: &str) -> Option<Entry> {
     let mut entry = Entry::default();
     let mut content = None;
     let mut objects: Vec<PartialObject> = Vec::new();
     let mut media: Vec<PartialClip> = Vec::new();
+    let mut header: Option<Vec<u8>> = None;
+    let mut hierarchy: Vec<PartialBankObject> = Vec::new();
+    // None once a joint does not read: a list short of a joint is not the clip's.
+    let mut joints: Option<Vec<u32>> = None;
     let (mut section, mut list) = ("", "");
     for line in text.lines().filter_map(Line::of) {
         if line.indent == 0 {
@@ -264,8 +316,24 @@ pub fn parse_entry(text: &str) -> Option<Entry> {
                     _ => {}
                 }
             }
+            ("bank", 1) if line.key == "header" => header = hex_bytes(line.value),
             ("bank" | "skeleton" | "mesh", 1) if line.value.is_empty() || line.value == "[]" => {
                 list = line.key;
+            }
+            ("clip", 1) if line.key == "joints" => (list, joints) = (line.key, Some(Vec::new())),
+            ("clip", 2) if list == "joints" && line.item => {
+                joints = joints.zip(hex32(line.value)).map(|(mut joints, joint)| {
+                    joints.push(joint);
+                    joints
+                });
+            }
+            ("bank", 2 | 4) if list == "objects" => {
+                if line.item {
+                    hierarchy.push(PartialBankObject::default());
+                }
+                if let Some(object) = hierarchy.last_mut() {
+                    object.read(&line);
+                }
             }
             ("bank", 2) => match list {
                 "media" => media.extend(id().map(|id| PartialClip {
@@ -377,6 +445,11 @@ pub fn parse_entry(text: &str) -> Option<Entry> {
         })
     });
     entry.clips = whole_clips.collect();
+    entry.joints = joints.map(|joints| JointList(joints.into()));
+    let hierarchy: Option<Vec<Object>> = hierarchy.into_iter().map(|o| o.whole()).collect();
+    entry.bank = header
+        .zip(hierarchy)
+        .and_then(|(header, objects)| EventsBank::new(header, objects));
     Some(entry)
 }
 

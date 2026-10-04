@@ -23,7 +23,7 @@ pub use self::findings::{HistoryAbsent, IndexMissing, IndexStale, InstallNewer};
 pub use self::sqlite::SqliteHistory;
 pub use self::stamp::{BUILDS_FILE, BuildRow, DB_FILE, FORMAT, STAMP_FILE, Stamp, version_order};
 pub use self::tables::{
-    Families, Family, FileKind, Joint, Life, Mesh, Position, Skeleton, Submesh, Texture,
+    EventsBank, Families, Family, FileKind, Joint, Life, Mesh, Position, Skeleton, Submesh, Texture,
 };
 use crate::diag::{Code, Diag, Sink};
 use crate::game::Build;
@@ -93,6 +93,14 @@ pub enum HistoryError {
     /// A name that is no family.
     #[error("unknown family {0:?}: files, objects, clips, rigs, textures")]
     UnknownFamily(String),
+    /// An events bank of the index lists an object the index does not hold.
+    #[error("the events bank at {path:?} lists object {record:016x}, which the index lacks")]
+    BankObject {
+        /// The bank's path.
+        path: WadHash,
+        /// The record of the object.
+        record: u64,
+    },
 }
 
 /// A content the game shipped: its life, and the first file seen with it.
@@ -203,6 +211,26 @@ pub struct MeshHit {
     pub mesh: Mesh,
 }
 
+/// An animation clip the game held at a path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipJoints {
+    /// The builds the game held the clip there.
+    pub life: Life,
+    /// The key of the clip's bytes.
+    pub key: FileKey,
+    /// The hash of each joint the clip animates, in stored order.
+    pub joints: Vec<u32>,
+}
+
+/// An events bank the game held at a path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventsBankHit {
+    /// The builds the game held it there.
+    pub life: Life,
+    /// The bank's header and objects.
+    pub bank: EventsBank,
+}
+
 /// The build history, as the stages ask it. One method per question.
 ///
 /// A life is a hull: a key that left the game and came back is present, as far as the history
@@ -254,6 +282,18 @@ pub trait History: Send + Sync {
 
     /// Every mesh the game held at this path, oldest first.
     fn meshes(&self, path: WadHash) -> Result<Vec<MeshHit>, HistoryError>;
+
+    /// Every animation clip the game held at this path with the joints it animates, oldest
+    /// first.
+    fn clip_joints(&self, path: WadHash) -> Result<Vec<ClipJoints>, HistoryError>;
+
+    /// The joints the animation clip of these bytes animates, in stored order. None when the
+    /// game never shipped the bytes as a clip.
+    fn joints_of(&self, key: FileKey) -> Result<Option<Vec<u32>>, HistoryError>;
+
+    /// Every events bank the game held at this path, with its header and its objects as
+    /// stored, oldest first.
+    fn events_banks(&self, path: WadHash) -> Result<Vec<EventsBankHit>, HistoryError>;
 
     /// The head: the position of the build appended last, which every key still present lasts
     /// to. It is not always the newest build (`Stamp::newest_build`).
@@ -362,6 +402,18 @@ impl History for NoHistory {
     }
 
     fn meshes(&self, _: WadHash) -> Result<Vec<MeshHit>, HistoryError> {
+        Ok(Vec::new())
+    }
+
+    fn clip_joints(&self, _: WadHash) -> Result<Vec<ClipJoints>, HistoryError> {
+        Ok(Vec::new())
+    }
+
+    fn joints_of(&self, _: FileKey) -> Result<Option<Vec<u32>>, HistoryError> {
+        Ok(None)
+    }
+
+    fn events_banks(&self, _: WadHash) -> Result<Vec<EventsBankHit>, HistoryError> {
         Ok(Vec::new())
     }
 }

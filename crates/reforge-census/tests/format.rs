@@ -7,6 +7,7 @@
 )]
 mod common;
 
+use reforge::history::tables::JointList;
 use reforge::history::{Joint, Skeleton, Submesh, Texture};
 use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, path_hash};
 use reforge_census::format::{
@@ -94,6 +95,110 @@ fn a_banks_entry_gives_its_wems_and_events() {
         wems: wems.to_vec(),
     };
     assert_eq!(entry.events, [event(0xe1, &[1, 2]), event(0xe2, &[])]);
+}
+
+/// The events bank of two sounds' worth of a champion's bank, cut to an action and its event,
+/// as the census writes it at 16.19.8207193.
+fn events_bank_text() -> String {
+    format!(
+        "sha256: \"{A}\"\nchecksum: \"f78c45a5f3b0fe7c\"\nkind: \"bnk\"\nbank:\n version: 145\n \
+         bankId: \"76c106e7\"\n header: \
+         \"91000000e706c1763e5d701710000000fa000000000000005ff66d161cc3390eb13e2d936fd4b034\"\n \
+         events:\n  \"4cdaedcd\":\n   - \"1e421809\"\n\n  \"720db6a3\": []\n\n objects:\n  - id: \
+         \"1970540b\"\n    type: 3\n    body: \"03043a2a262700000004e706c17600000000\"\n  - id: \
+         \"4cdaedcd\"\n    type: 4\n    body: \"010b547019\"\n"
+    )
+}
+
+#[test]
+fn an_events_banks_entry_gives_its_header_and_objects_as_stored() {
+    let entry = parse_entry(&events_bank_text()).unwrap();
+    assert_eq!(entry.events.len(), 2);
+    let bank = entry.bank.unwrap();
+    assert_eq!((bank.version(), bank.bank_id()), (145, 0x76c1_06e7));
+    assert_eq!(bank.header.len(), 40);
+    assert_eq!(bank.header[36..], [0x6f, 0xd4, 0xb0, 0x34]);
+    let action = &bank.objects[0];
+    assert_eq!((action.kind, action.id), (3, 0x1970_540b));
+    assert_eq!(action.body.len(), 18);
+    assert_eq!(action.action().unwrap().target, 0x2726_2a3a);
+    let event = &bank.objects[1];
+    assert_eq!((event.kind, event.id), (4, 0x4cda_edcd));
+    assert_eq!(event.event_actions(145), Some(vec![0x1970_540b]));
+
+    // The header and the objects are what a bank is written from, and they read back.
+    let mut written = reforge_wwise::Bank::new_bnk(bank.header.clone(), true);
+    written.objects = bank.objects.clone();
+    let read = reforge_wwise::Bank::read(&written.write()).unwrap();
+    assert_eq!((read.header, read.objects), (bank.header, bank.objects));
+}
+
+#[test]
+fn a_bank_with_no_hierarchy_gives_no_events_bank() {
+    let media = format!(
+        "sha256: \"{A}\"\nkind: \"bnk\"\nbank:\n version: 145\n bankId: \"00000005\"\n media:\n  \
+         \"00000001\":\n   size: 10\n   hash: \"00000000000000c1\"\n\n"
+    );
+    let entry = parse_entry(&media).unwrap();
+    assert_eq!(entry.bank, None);
+    assert_eq!(entry.clips.len(), 1);
+}
+
+#[test]
+fn a_hierarchy_with_no_objects_is_an_events_bank() {
+    for objects in ["", " objects: []\n"] {
+        let text = format!(
+            "sha256: \"{A}\"\nkind: \"bnk\"\nbank:\n version: 145\n bankId: \"00000005\"\n \
+             header: \"9100000005000000\"\n{objects}"
+        );
+        let bank = parse_entry(&text).unwrap().bank.unwrap();
+        assert_eq!((bank.version(), bank.bank_id()), (145, 5));
+        assert!(bank.objects.is_empty());
+    }
+}
+
+#[test]
+fn a_bank_the_bank_reader_refuses_gives_no_events_bank() {
+    let bank = |header: &str, object: &str| {
+        let text = format!(
+            "sha256: \"{A}\"\nkind: \"bnk\"\nbank:\n version: 145\n bankId: \"00000005\"\n \
+             header: \"{header}\"\n objects:\n{object}"
+        );
+        parse_entry(&text).unwrap().bank
+    };
+    let whole = "  - id: \"000000e1\"\n    type: 4\n    body: \"00\"\n";
+    assert!(bank("9100000005000000", whole).is_some());
+    // A header too short for a version and a bank id.
+    assert_eq!(bank("91000000", whole), None);
+    // An object too short for an id.
+    assert_eq!(
+        bank("9100000005000000", "  - type: 4\n    body: \"00\"\n"),
+        None
+    );
+    // Bytes that are not whole.
+    let odd = "  - id: \"000000e1\"\n    type: 4\n    body: \"000\"\n";
+    assert_eq!(bank("9100000005000000", odd), None);
+}
+
+#[test]
+fn an_animation_clips_entry_gives_the_joints_it_animates() {
+    let entry = parse_entry(&common::animation('5')).unwrap();
+    assert_eq!(entry.kind, "anm");
+    assert_eq!(entry.joints, Some(JointList(common::JOINTS.into())));
+    assert_eq!(entry.skeleton, None);
+
+    let none = format!("sha256: \"{A}\"\nkind: \"anm\"\nclip:\n joints: []\n");
+    assert_eq!(
+        parse_entry(&none).unwrap().joints,
+        Some(JointList::default())
+    );
+    // An entry of a history without the key.
+    let before = format!("sha256: \"{A}\"\nkind: \"anm\"\n");
+    assert_eq!(parse_entry(&before).unwrap().joints, None);
+    // A list short of a joint is not the clip's.
+    let cut =
+        format!("sha256: \"{A}\"\nkind: \"anm\"\nclip:\n joints:\n  - \"0102a113\"\n  - \"06\n");
+    assert_eq!(parse_entry(&cut).unwrap().joints, None);
 }
 
 #[test]

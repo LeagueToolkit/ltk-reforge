@@ -136,12 +136,34 @@ pub fn skeleton(hip: bool) -> String {
     )
 }
 
-/// An events bank's entry file: wem 1 with this hash, and event 0xe1, which plays it.
+/// The header of the events bank: version 145, bank id 5.
+pub const HEADER: [u8; 8] = [0x91, 0, 0, 0, 5, 0, 0, 0];
+
+/// An events bank's entry file: wem 1 with this hash, and event 0xe1, which plays it. Its
+/// hierarchy is sound 1 (type 2), whose body is the clip's low byte, and the event (type 4).
 pub fn events_bank(bytes: char, clip: u64) -> String {
+    let header: String = HEADER.iter().map(|byte| format!("{byte:02x}")).collect();
     format!(
-        "sha256: \"{}\"\nkind: \"bnk\"\nbank:\n version: 145\n bankId: \"00000005\"\n media:\n  \
-         \"00000001\":\n   size: 10\n   hash: \"{clip:016x}\"\n\n events:\n  \"000000e1\":\n   - \
-         \"00000001\"\n\n",
+        "sha256: \"{}\"\nkind: \"bnk\"\nbank:\n version: 145\n bankId: \"00000005\"\n header: \
+         \"{header}\"\n media:\n  \"00000001\":\n   size: 10\n   hash: \"{clip:016x}\"\n\n \
+         events:\n  \"000000e1\":\n   - \"00000001\"\n\n objects:\n  - id: \"00000001\"\n    \
+         type: 2\n    body: \"{clip:02x}\"\n  - id: \"000000e1\"\n    type: 4\n    body: \
+         \"0101000000\"\n",
+        digest(bytes)
+    )
+}
+
+/// The joints the fixture's animation clip animates.
+pub const JOINTS: [u32; 2] = [0x0102_a113, 0xf604_ab91];
+
+/// An animation clip's entry file with these bytes, which animates `JOINTS`.
+pub fn animation(bytes: char) -> String {
+    let joints: String = JOINTS
+        .iter()
+        .map(|j| format!("  - \"{j:08x}\"\n"))
+        .collect();
+    format!(
+        "sha256: \"{}\"\nkind: \"anm\"\nclip:\n joints:\n{joints}",
         digest(bytes)
     )
 }
@@ -195,7 +217,9 @@ entries: map[hash,embed] = {{
 /// - path 2: a bin of one object throughout (key A, entry 1, class 2, norm 7), whose text names
 ///   path 1 and `NAMED` and has a voice unit loading `BANK`.
 /// - path 4: a skeleton that gains a joint in the last build.
-/// - `BANK`: wem 1 is clip 1 in the first build and clip 2 after; event 0xe1 plays it.
+/// - `BANK`: wem 1 is clip 1 in the first build and clip 2 after; event 0xe1 plays it. The
+///   bank's sound object changes with the clip, and its event object stays.
+/// - path 7: an animation clip whose bytes change in the last build and whose joints stay.
 pub fn memory() -> Memory {
     let tree = |i: usize| {
         let bin = format!(
@@ -215,6 +239,7 @@ pub fn memory() -> Memory {
             entry(2, bin),
             (text, object_text()),
             entry(4, skeleton(i == 2)),
+            entry(7, animation(if i == 2 { '6' } else { '5' })),
             entry(bank().0, events),
             (format!("{WAD}/_wad.yaml"), wad.to_string()),
         ]);

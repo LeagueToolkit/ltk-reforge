@@ -10,15 +10,15 @@ object, this clip, and when.
 The source is the census history in format 2 (#ADR-0035): one commit per live build on its
 `history-v2` branch, from 8.20, and one file per WAD entry. That branch is format 2 with two
 additions (#ADR-0042): the joints an animation clip animates (`clip.joints`), and an events
-bank's header and objects (`bank.header`, `bank.objects`). The data is in the history. The
-reader skips the new keys and the index does not hold them yet.
+bank's header and objects (`bank.header`, `bank.objects`). The branch has them from its first
+build. The reader takes them as optional keys.
 
 | file | holds |
 |---|---|
 | `census.yaml` | the format number; the walk stops at a commit of another format |
 | `build.yaml` | version, patch, manifest, date, realms |
 | `files/<manifest path>/_wad.yaml` | the WAD's version, file id and tags (not read) |
-| `files/<manifest path>/xx/<path hash>.yaml` | the entry's SHA-256 and kind, and what its bytes say: a bin's objects (class, object key, norm key), a skeleton (joints and parents), a mesh (submeshes), a texture (format, size, mips, the top mip's hash), a bank's clips (id, size, key) and an events bank's events |
+| `files/<manifest path>/xx/<path hash>.yaml` | the entry's SHA-256 and kind, and what its bytes say: a bin's objects (class, object key, norm key), a skeleton (joints and parents), a mesh (submeshes), a texture (format, size, mips, the top mip's hash), an animation clip (the hash of each joint it animates, in stored order), a bank's clips (id, size, key), and an events bank's events, its header (the body of its `BKHD` section, as hex) and its objects (each object of its `HIRC` section in stored order: type, id, and the bytes after the id as hex) |
 | `files/<manifest path>/xx/<path hash>.bin/yy/<entry>.rito` | one bin entry as ritobin text |
 
 Builds land in the order they arrive. A hotfix of a patch that ships after the next patch's
@@ -75,31 +75,43 @@ The index is three files:
 | `clips` | clip key | none |
 | `events` | bank path hash, event id | none: an events bank defined that event |
 | `event_wems` | bank path hash, event id, clip id | none: the event played that clip |
+| `bank_objects` | record | type, id, body: one object of an events bank's hierarchy |
+| `event_banks` | bank path hash, record | version, bank id, header, and its objects in order, each as its record in `bank_objects` |
 | `skeletons` | path hash, record | influences, and its joints in `joints` (name and parent) |
 | `meshes` | path hash, record | vertex type, vertex and index counts, and its submeshes in `submeshes` |
+| `joint_lists` | record | joint count, and its joints in `list_joints` (joint hash) |
+| `animations` | path hash, file key | the record of the clip's joint list |
 | `textures` | path hash, record | format, width, height, mips, the top mip's hash |
 | `names` | id | each joint, material, format, vertex-type, tag and unit name once |
 
 Every table of lives also has `first`, `last` and `alive`. `alive` is how many records hold the
 key at the head, none once it is gone; an append starts from it. A `record` is the head of a
-SHA-256 over the record's fields, by which an append finds the row of a rig or a texture at a
-path.
+SHA-256 over the record's fields, by which an append finds the row of a rig, a texture or an
+events bank at a path.
+
+A joint list and a bank object are found by their record alone and held once. The clips of a
+skin animate the same joints. A bank changes few objects from one build to the next, and the
+voice banks of two languages share most. `event_banks.objects` is one value, eight bytes for
+each object in stored order: the object's record, little endian. A bank's record is over its
+header and those records.
 
 A table is defined once, in `reforge::history::tables`: its name, family, key columns, fact
 columns and lookup indexes. The schema text, the writer's statements and the list of tables in
 the stamp come from that definition. The reader's queries are checked against it by a test.
 
 `--families` limits the index to some of: files (with `paths` and `contents`), objects (with
-`refs`, the tags and the units), clips (with the events), rigs, textures. Every table exists in
-every index; one of a family not built is empty.
+`refs`, the tags and the units), clips (with the events, the events banks and their objects),
+rigs (with the animation clips and their joint lists), textures. Every table exists in every
+index; one of a family not built is empty.
 
 The index is built beside its place and renamed into it.
 
 ## Keys
 
-#ADR-0037. Path hashes, clip keys and norm keys are SQLite integers, the 64 bits as a signed
-integer. File keys and object keys are 16-byte blobs. A lookup is one indexed query. Nothing is
-loaded whole, and a script reads the same file with `sqlite3`.
+#ADR-0037. Path hashes, clip keys, norm keys and records are SQLite integers, the 64 bits as
+a signed integer. File keys and object keys are 16-byte blobs. A lookup is one indexed query,
+and one more for each joint list and each object of an events bank. Nothing is loaded whole,
+and a script reads the same file with `sqlite3`.
 
 ## Rules
 
@@ -152,12 +164,21 @@ On Windows the rename fails while a process holds the index open.
 | which clips did this event play? | `event_wems` | `event_wems` |
 | which events played this clip? | `events_playing` | `event_wems` |
 | what skeleton and mesh did the game hold at this path, per build? | `skeletons`, `meshes` | `skeletons`, `meshes` |
+| which joints does the animation clip at this path animate, per build? | `clip_joints` | `animations`, `joint_lists` |
+| which joints does the animation clip of these bytes animate? | `joints_of` | `animations`, by file key |
+| what header and objects did the events bank at this path hold, per build? | `events_banks` | `event_banks`, `bank_objects` |
 | which version is the build at this position? | `version` | the builds |
 | which is the first build of this patch? | `first_of_patch` | the builds |
 | does this life reach the head? | `reaches_head` | the builds |
 
 An object found by its norm key is a copy only when its class is the same: the key leaves the
 class out.
+
+An events bank is answered as `reforge-wwise` holds one: the header's bytes and the objects, each
+with its type, its id and its body. `Bank::new_bnk` takes the header and the objects go in
+`Bank::objects`, so the bank is cut (`Bank::cut_to`) and written as one read from an install.
+A bank the bank reader refuses (a header too short for a version and a bank id, an object too
+short for an id) is not in the index.
 
 `GitRepo::entry_text` reads what an object looked like at a build: the bin entry's text at a
 commit, from the history itself.
@@ -168,7 +189,7 @@ commit, from the history itself.
 |---|---|
 | `reforge history index` | builds the index, or appends to it |
 | `reforge history status` | prints the stamp, and raises the stamp's diagnostics against a repository and an install |
-| `reforge history probe <path> --game <install>` | hashes a game file and looks it up, with a bin's objects or a bank's clips; `--strict` fails when a key is missing |
+| `reforge history probe <path> --game <install>` | hashes a game file and looks it up, with a bin's objects, a bank's clips, an events bank's header and objects, or an animation clip's joints; `--strict` fails when one is missing |
 | `reforge history show-entry <entry> --bin <path> --repo <clone>` | prints an entry's text at a build |
 
 ## Limits
@@ -177,4 +198,8 @@ commit, from the history itself.
   mod's own.
 - It carries no file bytes. What a file held at a build is known only by what the census
   recorded of it.
+- Of an events bank it holds the header and the objects. A bank that holds clips or another
+  section beside them is not rebuilt whole from the history.
+- A life is a hull. Two events banks, or two clips, whose lives at one path overlap are told
+  apart by which of them reaches the head, and not at a build between.
 - It starts at 8.20. A file the game dropped before then passes as the mod's own.

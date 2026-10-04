@@ -27,6 +27,7 @@ use crate::walk::{ChangeSource, Fold, Progress, Visit, Walked, Walker, build_row
 enum Bound {
     Integer(i64),
     Key([u8; 16]),
+    Bytes(Vec<u8>),
     Null,
 }
 
@@ -35,6 +36,7 @@ impl ToSql for Bound {
         Ok(match self {
             Bound::Integer(n) => ToSqlOutput::from(*n),
             Bound::Key(key) => ToSqlOutput::Borrowed(ValueRef::Blob(key)),
+            Bound::Bytes(bytes) => ToSqlOutput::Borrowed(ValueRef::Blob(bytes)),
             Bound::Null => ToSqlOutput::from(Null),
         })
     }
@@ -85,6 +87,7 @@ impl<'tx> Names<'tx> {
             Cell::Key(key) => Bound::Key(key),
             Cell::Name(name) => Bound::Integer(self.id(name)?),
             Cell::NoName => Bound::Null,
+            Cell::Bytes(bytes) => Bound::Bytes(bytes.to_vec()),
         })
     }
 }

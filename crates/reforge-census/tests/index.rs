@@ -7,14 +7,14 @@ use camino::{Utf8Path, Utf8PathBuf};
 use reforge::diag::{Diagnostics, Stage};
 use reforge::game::Build;
 use reforge::history::{
-    Families, FileKind, History, IndexStale, InstallNewer, Joint, Life, NamedBy, PlayedBy,
-    Position, SqliteHistory, UnitHit, WemPlayed,
+    ClipJoints, Families, FileKind, History, IndexStale, InstallNewer, Joint, Life, NamedBy,
+    PlayedBy, Position, SqliteHistory, UnitHit, WemPlayed,
 };
 use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 use reforge_census::Indexer;
 use tempfile::TempDir;
 
-use self::common::{A, B, bank, build, entry, memory};
+use self::common::{A, B, HEADER, JOINTS, bank, build, entry, memory};
 
 fn scratch() -> (TempDir, Utf8PathBuf) {
     let dir = TempDir::new().unwrap();
@@ -43,9 +43,14 @@ fn round_trip() {
         "skeletons",
         "joints",
         "textures",
+        "joint_lists",
+        "list_joints",
+        "animations",
+        "bank_objects",
+        "event_banks",
     ];
     let counts = tables.map(|table| stamp.rows_of(table));
-    assert_eq!(counts, [7, 5, 8, 1, 3, 2, 2, 3, 2]);
+    assert_eq!(counts, [9, 6, 10, 1, 3, 2, 2, 3, 2, 1, 2, 2, 3, 2]);
 
     let index = SqliteHistory::open(&out).unwrap();
     assert_eq!(index.stamp(), Some(&stamp));
@@ -153,6 +158,59 @@ fn round_trip() {
 }
 
 #[test]
+fn an_animation_clip_is_read_back_with_its_joints_by_path_and_by_key() {
+    let (_dir, out) = scratch();
+    Indexer::new(&memory(), "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let index = SqliteHistory::open(&out).unwrap();
+    let key = |bytes: char| FileKey::parse(&bytes.to_string().repeat(64)).unwrap();
+    // The clip's bytes change in the last build and its joints stay.
+    let clip = |bytes, life| ClipJoints {
+        life,
+        key: key(bytes),
+        joints: JOINTS.to_vec(),
+    };
+    let expected = [clip('5', Life::new(0, 1)), clip('6', Life::new(2, 2))];
+    assert_eq!(index.clip_joints(WadHash(7)).unwrap(), expected);
+    assert!(index.clip_joints(WadHash(4)).unwrap().is_empty());
+    assert_eq!(index.joints_of(key('6')).unwrap(), Some(JOINTS.to_vec()));
+    assert_eq!(index.joints_of(key('c')).unwrap(), None);
+}
+
+#[test]
+fn an_events_bank_is_read_back_with_its_header_and_its_objects_in_order() {
+    let (_dir, out) = scratch();
+    Indexer::new(&memory(), "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let index = SqliteHistory::open(&out).unwrap();
+    let banks = index.events_banks(bank()).unwrap();
+    let lives: Vec<Life> = banks.iter().map(|hit| hit.life).collect();
+    assert_eq!(lives, [Life::new(0, 0), Life::new(1, 2)]);
+    for (hit, sound) in banks.iter().zip([1u8, 2]) {
+        assert_eq!(hit.bank.header, HEADER);
+        assert_eq!((hit.bank.version(), hit.bank.bank_id()), (145, 5));
+        let objects: Vec<(u8, u32, &[u8])> = hit
+            .bank
+            .objects
+            .iter()
+            .map(|o| (o.kind, o.id, o.body.as_slice()))
+            .collect();
+        let expected: [(u8, u32, &[u8]); 2] = [(2, 1, &[sound]), (4, 0xe1, &[1, 1, 0, 0, 0])];
+        assert_eq!(objects, expected);
+    }
+    assert!(index.events_banks(WadHash(7)).unwrap().is_empty());
+
+    // A bank is written from what the index holds of it.
+    let held = &banks[1].bank;
+    let mut written = reforge_wwise::Bank::new_bnk(held.header.clone(), true);
+    written.objects = held.objects.clone();
+    let read = reforge_wwise::Bank::read(&written.write()).unwrap();
+    assert_eq!((read.id(), &read.objects), (5, &held.objects));
+}
+
+#[test]
 fn a_mesh_is_read_back_with_its_submeshes_in_order() {
     let (_dir, out) = scratch();
     let mut history = memory();
@@ -218,6 +276,8 @@ fn rebuild_replaces_whole() {
     let index = SqliteHistory::open(&out).unwrap();
     assert!(index.file(FileKey::parse(A).unwrap()).unwrap().is_none());
     assert!(index.clip(ClipKey(1)).unwrap().is_some());
+    assert_eq!(index.events_banks(bank()).unwrap().len(), 2);
+    assert!(index.clip_joints(WadHash(7)).unwrap().is_empty());
     assert!(!out.with_extension("tmp").exists());
 }
 

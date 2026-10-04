@@ -4,13 +4,16 @@
 use std::sync::{Mutex, PoisonError};
 
 use camino::{Utf8Path, Utf8PathBuf};
+use reforge_wwise::Object;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 
 use super::stamp::{BuildRow, DB_FILE, Stamp};
-use super::tables::{Joint, Life, Mesh, Position, Skeleton, Submesh, loaded, stored};
+use super::tables::{
+    BankFacts, EventsBank, Joint, Life, Mesh, Position, Skeleton, Submesh, loaded, stored,
+};
 use super::{
-    FileHit, FileKind, HeldAt, History, HistoryError, MeshHit, NamedBy, ObjectHit, PathHit,
-    PlayedBy, SkeletonHit, UnitHit, WemPlayed,
+    ClipJoints, EventsBankHit, FileHit, FileKind, HeldAt, History, HistoryError, MeshHit, NamedBy,
+    ObjectHit, PathHit, PlayedBy, SkeletonHit, UnitHit, WemPlayed,
 };
 use crate::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 
@@ -103,6 +106,15 @@ impl SqliteHistory {
         let mut statement = db.prepare_cached(sql)?;
         let rows = statement.query_map(key, row)?;
         Ok(rows.collect::<rusqlite::Result<Vec<T>>>()?)
+    }
+
+    /// The joints of the list of this record, in stored order.
+    fn joint_list(&self, record: i64) -> Result<Vec<u32>, HistoryError> {
+        self.all(
+            "SELECT joint FROM list_joints WHERE list = ?1 ORDER BY ordinal",
+            params![record],
+            |r| r.get(0),
+        )
     }
 }
 
@@ -309,6 +321,64 @@ impl History for SqliteHistory {
                 },
             )?;
             out.push(MeshHit { life, mesh });
+        }
+        Ok(out)
+    }
+
+    fn clip_joints(&self, path: WadHash) -> Result<Vec<ClipJoints>, HistoryError> {
+        let heads: Vec<(Life, [u8; 16], i64)> = self.all(
+            "SELECT first, last, key, joints FROM animations WHERE path = ?1 ORDER BY first, key",
+            params![stored(path.0)],
+            |r| Ok((life(r, 0)?, r.get(2)?, r.get(3)?)),
+        )?;
+        let mut out = Vec::with_capacity(heads.len());
+        for (life, key, list) in heads {
+            out.push(ClipJoints {
+                life,
+                key: FileKey(key),
+                joints: self.joint_list(list)?,
+            });
+        }
+        Ok(out)
+    }
+
+    fn joints_of(&self, key: FileKey) -> Result<Option<Vec<u32>>, HistoryError> {
+        // The joints are read off the bytes, so every row of the key names the same list.
+        let list: Option<i64> = self.one(
+            "SELECT joints FROM animations WHERE key = ?1 LIMIT 1",
+            params![&key.0[..]],
+            |r| r.get(0),
+        )?;
+        list.map(|list| self.joint_list(list)).transpose()
+    }
+
+    fn events_banks(&self, path: WadHash) -> Result<Vec<EventsBankHit>, HistoryError> {
+        let heads: Vec<(Life, Vec<u8>, Vec<u8>)> = self.all(
+            "SELECT first, last, header, objects FROM event_banks WHERE path = ?1 \
+             ORDER BY first, id",
+            params![stored(path.0)],
+            |r| Ok((life(r, 0)?, r.get(2)?, r.get(3)?)),
+        )?;
+        let mut out = Vec::with_capacity(heads.len());
+        for (life, header, records) in heads {
+            let mut objects = Vec::with_capacity(records.len() / 8);
+            for record in BankFacts::records(&records) {
+                let object = self.one(
+                    "SELECT kind, id, body FROM bank_objects WHERE record = ?1",
+                    params![stored(record)],
+                    |r| {
+                        Ok(Object {
+                            kind: r.get(0)?,
+                            id: r.get(1)?,
+                            body: r.get(2)?,
+                        })
+                    },
+                )?;
+                // A bank names only objects its own build wrote beside it.
+                objects.push(object.ok_or(HistoryError::BankObject { path, record })?);
+            }
+            let bank = EventsBank { header, objects };
+            out.push(EventsBankHit { life, bank });
         }
         Ok(out)
     }

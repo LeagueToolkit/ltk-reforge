@@ -9,8 +9,8 @@ use reforge::archive::file_kind;
 use reforge::diag::{Channel, Diag, Diagnostics, Render, Stage};
 use reforge::game::{NameBook, Names};
 use reforge::history::{
-    BuildRow, FileHit, HeldAt, History, HistoryError, Life, MeshHit, NamedBy, NoHistory, ObjectHit,
-    PathHit, PlayedBy, SkeletonHit, Stamp, UnitHit, WemPlayed,
+    BuildRow, ClipJoints, EventsBankHit, FileHit, HeldAt, History, HistoryError, Life, MeshHit,
+    NamedBy, NoHistory, ObjectHit, PathHit, PlayedBy, SkeletonHit, Stamp, UnitHit, WemPlayed,
 };
 use reforge::load::files::{FileFixCx, FileFixup, one_record};
 use reforge::load::legacy::{Conversion, ConvertError, LegacyFormats};
@@ -754,6 +754,15 @@ impl History for BrokenHistory {
     }
     fn meshes(&self, path: WadHash) -> Result<Vec<MeshHit>, HistoryError> {
         self.0.meshes(path)
+    }
+    fn clip_joints(&self, path: WadHash) -> Result<Vec<ClipJoints>, HistoryError> {
+        self.0.clip_joints(path)
+    }
+    fn joints_of(&self, key: FileKey) -> Result<Option<Vec<u32>>, HistoryError> {
+        self.0.joints_of(key)
+    }
+    fn events_banks(&self, path: WadHash) -> Result<Vec<EventsBankHit>, HistoryError> {
+        self.0.events_banks(path)
     }
 }
 

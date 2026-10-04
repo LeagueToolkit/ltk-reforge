@@ -83,6 +83,25 @@ fn dump(dir: &Utf8Path) -> Vec<(String, Vec<String>)> {
             "SELECT t.path, t.record, t.first, t.last, n.name, t.width, t.height, t.mips, t.top, \
              t.alive FROM textures t JOIN names n ON n.id = t.format",
         ),
+        (
+            "joint_lists",
+            "SELECT l.record, l.count, l.first, l.last, l.alive, \
+             (SELECT group_concat(j.joint, ',' ORDER BY j.ordinal) FROM list_joints j \
+              WHERE j.list = l.record) FROM joint_lists l",
+        ),
+        (
+            "animations",
+            "SELECT path, hex(key), joints, first, last, alive FROM animations",
+        ),
+        (
+            "bank_objects",
+            "SELECT record, kind, id, hex(body), first, last, alive FROM bank_objects",
+        ),
+        (
+            "event_banks",
+            "SELECT path, record, version, bank_id, hex(header), hex(objects), first, last, \
+             alive FROM event_banks",
+        ),
         ("names", "SELECT name FROM names"),
     ];
     let rows = |(table, sql): &(&str, &str)| {
@@ -101,7 +120,8 @@ fn dump(dir: &Utf8Path) -> Vec<(String, Vec<String>)> {
 }
 
 /// The fixture and two more builds: the fourth drops path 3, one of the two places holding
-/// bytes A, and a mesh appears at path 5; the fifth brings path 3 back.
+/// bytes A, a mesh appears at path 5, and the events bank and the animation clip are the first
+/// build's; the fifth is the third again.
 fn five_builds() -> Memory {
     let mut history = memory();
     let third = history.commits[2].1.clone();
@@ -112,6 +132,9 @@ fn five_builds() -> Memory {
                 submeshes:\n  - name: \"Body\"\n    vertices: 30\n    indices: 60\n    \
                 positions: \"00000000000000b1\"\n    rounded: \"00000000000000b2\"\n";
     fourth.extend([common::entry(5, mesh.to_string())]);
+    // The fourth build's bank is the first build's again, and its clip the first's.
+    fourth.extend([common::entry(common::bank().0, common::events_bank('e', 1))]);
+    fourth.extend([common::entry(7, common::animation('5'))]);
     history.commits.push((build("1.4.1"), fourth));
     history.commits.push((build("1.5.1"), third));
     history

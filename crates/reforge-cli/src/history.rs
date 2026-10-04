@@ -7,7 +7,7 @@ use camino::Utf8PathBuf;
 use clap::{Args, Subcommand};
 use reforge::diag::{Diagnostics, Render, Stage};
 use reforge::game::{Game, Install};
-use reforge::history::{Families, History, SqliteHistory, Stamp};
+use reforge::history::{EventsBankHit, Families, History, SqliteHistory, Stamp};
 use reforge::model::{
     BinHash, ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, bin, name_hash, path_hash,
 };
@@ -23,8 +23,9 @@ pub enum HistoryCommand {
     Index(Index),
     /// Print the index's stamp and whether it matches the repository and the install.
     Status(Status),
-    /// Hash a game file of the install and look it up in the index, with a bin's objects or a
-    /// bank's clips: a check of the keys against real data.
+    /// Hash a game file of the install and look it up in the index, with a bin's objects, a
+    /// bank's clips, an events bank's header and objects, or an animation clip's joints: a
+    /// check of the index against real data.
     Probe(Probe),
     /// Print a bin entry's text at a build.
     ShowEntry(ShowEntry),
@@ -199,7 +200,9 @@ impl Probe {
         );
 
         let mut missing = 0usize;
-        match history.file(FileKey::from_sha256(&content.0))? {
+        let key = FileKey::from_sha256(&content.0);
+        Self::joints(&history, key)?;
+        match history.file(key)? {
             Some(hit) => outln!(
                 "in the history: {} (first under {:016x}{})",
                 history.span(hit.life),
@@ -248,7 +251,41 @@ impl Probe {
         }
         let of = bank.media.len();
         outln!("clips in the history: {found} of {of}");
-        Ok(of - found)
+        let mut missing = of - found;
+        if bank.has_hirc() {
+            missing += self.events_bank(history, &bank)?;
+        }
+        Ok(missing)
+    }
+
+    /// Prints whether the history holds an events bank's header and objects at its path, and
+    /// returns one when it does not.
+    fn events_bank(&self, history: &dyn History, bank: &Bank) -> Result<usize> {
+        let held = history.events_banks(path_hash(&self.path))?;
+        let same = |hit: &&EventsBankHit| {
+            hit.bank.header == bank.header && hit.bank.objects == bank.objects
+        };
+        let of = bank.objects.len();
+        let found = held.iter().find(same);
+        match found {
+            Some(hit) => outln!(
+                "header and {of} objects in the history: {}",
+                history.span(hit.life)
+            ),
+            None => outln!(
+                "header and {of} objects not in the history ({} other banks at this path)",
+                held.len()
+            ),
+        }
+        Ok(usize::from(found.is_none()))
+    }
+
+    /// Prints the joints the history holds for an animation clip's bytes.
+    fn joints(history: &dyn History, key: FileKey) -> Result<()> {
+        if let Some(joints) = history.joints_of(key)? {
+            outln!("joints in the history: {}", joints.len());
+        }
+        Ok(())
     }
 }
 

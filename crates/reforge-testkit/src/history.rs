@@ -1,15 +1,15 @@
-//! A history in memory, for tests: built from facts (a path, a content, an object or a clip at
-//! builds a to b), with no SQLite file behind it. It answers the questions about files, objects
-//! and clips. The families no stage reads yet answer nothing.
+//! A history in memory, for tests: built from facts (a path, a content, an object, a clip, an
+//! animation clip's joints or an events bank at builds a to b), with no SQLite file behind it.
+//! It answers the questions about those. The families no stage reads yet answer nothing.
 
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
 use reforge::game::Build;
 use reforge::history::{
-    BuildRow, FORMAT, Families, FileHit, FileKind, HeldAt, History, HistoryError, Life, MeshHit,
-    NamedBy, ObjectHit, PathHit, PlayedBy, Position, SkeletonHit, Stamp, UnitHit, WemPlayed,
-    version_order,
+    BuildRow, ClipJoints, EventsBank, EventsBankHit, FORMAT, Families, FileHit, FileKind, HeldAt,
+    History, HistoryError, Life, MeshHit, NamedBy, ObjectHit, PathHit, PlayedBy, Position,
+    SkeletonHit, Stamp, UnitHit, WemPlayed, version_order,
 };
 use reforge::model::{
     ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
@@ -23,6 +23,8 @@ pub struct MemoryHistory {
     contents: BTreeMap<(WadHash, FileKey), Life>,
     objects: BTreeMap<ObjectKey, ObjectHit>,
     clips: BTreeMap<ClipKey, Life>,
+    animations: BTreeMap<(WadHash, FileKey), (Life, Vec<u32>)>,
+    banks: BTreeMap<WadHash, Vec<EventsBankHit>>,
 }
 
 fn life(builds: RangeInclusive<u16>) -> Life {
@@ -85,6 +87,8 @@ impl MemoryHistory {
             contents: BTreeMap::new(),
             objects: BTreeMap::new(),
             clips: BTreeMap::new(),
+            animations: BTreeMap::new(),
+            banks: BTreeMap::new(),
         }
     }
 
@@ -130,6 +134,39 @@ impl MemoryHistory {
     #[must_use]
     pub fn with_clip(mut self, key: ClipKey, builds: RangeInclusive<u16>) -> Self {
         widen(&mut self.clips, key, life(builds));
+        self
+    }
+
+    /// The game held the animation clip `bytes` at `path` at these builds, and it animates
+    /// `joints`.
+    #[must_use]
+    pub fn with_animation(
+        mut self,
+        path: &str,
+        bytes: &[u8],
+        joints: &[u32],
+        builds: RangeInclusive<u16>,
+    ) -> Self {
+        let (at, with) = ((path_hash(path), file_key(bytes)), life(builds.clone()));
+        let held = self.animations.entry(at).or_insert((with, joints.to_vec()));
+        held.0 = hull(held.0, with);
+        self.with_content(path, bytes, builds)
+    }
+
+    /// The game held this events bank at `path` at these builds.
+    #[must_use]
+    pub fn with_events_bank(
+        mut self,
+        path: &str,
+        bank: EventsBank,
+        builds: RangeInclusive<u16>,
+    ) -> Self {
+        let (held, with) = (self.banks.entry(path_hash(path)).or_default(), life(builds));
+        match held.iter_mut().find(|hit| hit.bank == bank) {
+            Some(hit) => hit.life = hull(hit.life, with),
+            None => held.push(EventsBankHit { life: with, bank }),
+        }
+        held.sort_by_key(|hit| hit.life.first);
         self
     }
 }
@@ -216,6 +253,27 @@ impl History for MemoryHistory {
     fn meshes(&self, _: WadHash) -> Result<Vec<MeshHit>, HistoryError> {
         Ok(Vec::new())
     }
+
+    fn clip_joints(&self, path: WadHash) -> Result<Vec<ClipJoints>, HistoryError> {
+        let at_path = self.animations.iter().filter(|((p, _), _)| *p == path);
+        let hits = at_path.map(|((_, key), (life, joints))| ClipJoints {
+            life: *life,
+            key: *key,
+            joints: joints.clone(),
+        });
+        let mut hits: Vec<ClipJoints> = hits.collect();
+        hits.sort_by_key(|hit| (hit.life.first, hit.key));
+        Ok(hits)
+    }
+
+    fn joints_of(&self, key: FileKey) -> Result<Option<Vec<u32>>, HistoryError> {
+        let mut of_key = self.animations.iter().filter(|((_, k), _)| *k == key);
+        Ok(of_key.next().map(|(_, (_, joints))| joints.clone()))
+    }
+
+    fn events_banks(&self, path: WadHash) -> Result<Vec<EventsBankHit>, HistoryError> {
+        Ok(self.banks.get(&path).cloned().unwrap_or_default())
+    }
 }
 
 /// A history whose index fails at every question: a fault of the machine, for the tests of how
@@ -288,6 +346,18 @@ impl History for BrokenHistory {
     }
 
     fn meshes(&self, _: WadHash) -> Result<Vec<MeshHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn clip_joints(&self, _: WadHash) -> Result<Vec<ClipJoints>, HistoryError> {
+        Self::fault()
+    }
+
+    fn joints_of(&self, _: FileKey) -> Result<Option<Vec<u32>>, HistoryError> {
+        Self::fault()
+    }
+
+    fn events_banks(&self, _: WadHash) -> Result<Vec<EventsBankHit>, HistoryError> {
         Self::fault()
     }
 }

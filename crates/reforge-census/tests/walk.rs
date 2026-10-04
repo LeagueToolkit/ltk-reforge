@@ -3,12 +3,14 @@
 
 mod common;
 
-use reforge::history::tables::{BankEvent, Naming, UnitEvent};
+use reforge::history::tables::{
+    Animation, BankEvent, BankFacts, JointList, Naming, Recorded, UnitEvent,
+};
 use reforge::history::{Families, Life};
 use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, path_hash};
 use reforge_census::{Walked, walk};
 
-use self::common::{A, B, NAMED, bank, memory};
+use self::common::{A, B, HEADER, JOINTS, NAMED, bank, memory};
 
 fn walked(families: Families) -> Walked {
     walk(&memory(), families, &mut |_| {}).unwrap()
@@ -121,12 +123,88 @@ fn an_entrys_file_gives_its_events_rig_and_texture() {
 }
 
 #[test]
+fn an_animation_clips_joints_are_one_list_for_every_clip_that_animates_them() {
+    let walked = walked(Families::ALL);
+    let head = walked.head();
+    let list = JointList(JOINTS.into());
+    // The clip's bytes change in the last build and its joints stay.
+    let lists = walked.folds.joint_lists.rows(head);
+    assert_eq!(lists.len(), 1);
+    assert_eq!((&lists[0].key, lists[0].life), (&list, Life::new(0, 2)));
+    assert_eq!(lists[0].alive, 1);
+    let animations = walked.folds.animations.rows(head);
+    let clip = |bytes: char| Animation {
+        path: WadHash(7),
+        key: FileKey::parse(&bytes.to_string().repeat(64)).unwrap(),
+    };
+    let rows: Vec<(Animation, Life, u64)> = animations
+        .iter()
+        .map(|row| (row.key, row.life, row.facts))
+        .collect();
+    let expected = [
+        (clip('5'), Life::new(0, 1), list.digest()),
+        (clip('6'), Life::new(2, 2), list.digest()),
+    ];
+    assert_eq!(rows, expected);
+}
+
+#[test]
+fn an_events_bank_is_its_header_and_the_records_of_its_objects() {
+    let walked = walked(Families::ALL);
+    let head = walked.head();
+    // The sound changes with the clip after the first build, and the event stays.
+    let objects = walked.folds.bank_objects.rows(head);
+    let mut held: Vec<(u8, u32, &[u8], Life)> = objects
+        .iter()
+        .map(|row| {
+            let object = &row.facts;
+            assert_eq!(row.key, object.digest());
+            (object.kind, object.id, object.body.as_slice(), row.life)
+        })
+        .collect();
+    held.sort_unstable_by_key(|(kind, id, body, _)| (*kind, *id, *body));
+    let expected: [(u8, u32, &[u8], Life); 3] = [
+        (2, 1, &[1], Life::new(0, 0)),
+        (2, 1, &[2], Life::new(1, 2)),
+        (4, 0xe1, &[1, 1, 0, 0, 0], Life::new(0, 2)),
+    ];
+    assert_eq!(held, expected);
+
+    let mut banks = walked.folds.event_banks.rows(head);
+    banks.sort_by_key(|row| row.life.first);
+    let lives: Vec<Life> = banks.iter().map(|row| row.life).collect();
+    assert_eq!(lives, [Life::new(0, 0), Life::new(1, 2)]);
+    let record = |kind, id, body: &[u8]| {
+        let found = objects.iter().find(|row| {
+            let object = &row.facts;
+            (object.kind, object.id, object.body.as_slice()) == (kind, id, body)
+        });
+        found.unwrap().key
+    };
+    for (row, sound) in banks.iter().zip([1u8, 2]) {
+        assert_eq!(row.key.path, bank());
+        assert_eq!(row.facts.header[..], HEADER);
+        let records: Vec<u64> = BankFacts::records(&row.facts.objects).collect();
+        let stored = [record(2, 1, &[sound]), record(4, 0xe1, &[1, 1, 0, 0, 0])];
+        assert_eq!(records, stored);
+    }
+    assert_ne!(banks[0].key.record, banks[1].key.record);
+}
+
+#[test]
 fn families_filter() {
     let walked = walked(Families::parse("clips").unwrap());
     let folds = &walked.folds;
     assert!(folds.files.is_empty() && folds.objects.is_empty() && folds.refs.is_empty());
     assert!(folds.skeletons.is_empty() && folds.textures.is_empty());
+    assert!(folds.joint_lists.is_empty() && folds.animations.is_empty());
     assert_eq!(folds.clips.len(), 2);
+    assert_eq!((folds.bank_objects.len(), folds.event_banks.len()), (3, 2));
+
+    let walked = self::walked(Families::parse("rigs").unwrap());
+    let folds = &walked.folds;
+    assert!(folds.bank_objects.is_empty() && folds.event_banks.is_empty());
+    assert_eq!((folds.joint_lists.len(), folds.animations.len()), (1, 2));
 }
 
 #[test]

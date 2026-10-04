@@ -2,7 +2,7 @@
 //! of no history: the version at a position, the first build of a patch, whether a life
 //! reaches the head.
 
-use reforge::history::{History, Life, NoHistory, Position};
+use reforge::history::{ClipJoints, EventsBank, History, Life, NoHistory, Position};
 use reforge::model::{ClipKey, NormKey, ObjectKey, name_hash, path_hash};
 
 use reforge_testkit::history::{MemoryHistory, file_key};
@@ -133,6 +133,47 @@ fn a_history_in_memory_answers_from_its_facts() {
 }
 
 #[test]
+fn a_history_in_memory_answers_a_clips_joints_and_an_events_bank() {
+    const CLIP: &str = "assets/characters/lux/skins/base/animations/lux_idle1.anm";
+    const BANK: &str =
+        "assets/sounds/wwise2016/sfx/characters/lux/skins/base/lux_base_sfx_events.bnk";
+    let bank = |id: u8| EventsBank::new(vec![145, 0, 0, 0, id, 0, 0, 0], Vec::new()).unwrap();
+    let history = builds()
+        .with_animation(CLIP, b"idle", &[1, 2], 0..=1)
+        .with_animation(CLIP, b"idle", &[1, 2], 3..=3)
+        .with_animation(CLIP, b"new idle", &[1, 2, 3], 4..=4)
+        .with_events_bank(BANK, bank(5), 0..=2)
+        .with_events_bank(BANK, bank(6), 3..=4)
+        .with_events_bank(BANK, bank(5), 4..=4);
+
+    let clip = |bytes: &[u8], life, joints: &[u32]| ClipJoints {
+        life,
+        key: file_key(bytes),
+        joints: joints.to_vec(),
+    };
+    let expected = [
+        clip(b"idle", Life::new(0, 3), &[1, 2]),
+        clip(b"new idle", Life::new(4, 4), &[1, 2, 3]),
+    ];
+    assert_eq!(history.clip_joints(path_hash(CLIP)).unwrap(), expected);
+    assert!(history.clip_joints(path_hash(SKIN)).unwrap().is_empty());
+    let joints = history.joints_of(file_key(b"new idle")).unwrap();
+    assert_eq!(joints, Some(vec![1, 2, 3]));
+    assert_eq!(history.joints_of(file_key(b"own")).unwrap(), None);
+    // The clip's bytes are a content of the history too.
+    let held = history.held(path_hash(CLIP), file_key(b"idle")).unwrap();
+    assert_eq!(held, Some(Life::new(0, 3)));
+
+    let banks = history.events_banks(path_hash(BANK)).unwrap();
+    let ids: Vec<(u32, Life)> = banks
+        .iter()
+        .map(|hit| (hit.bank.bank_id(), hit.life))
+        .collect();
+    assert_eq!(ids, [(5, Life::new(0, 4)), (6, Life::new(3, 4))]);
+    assert!(history.events_banks(path_hash(SKIN)).unwrap().is_empty());
+}
+
+#[test]
 fn no_history_answers_nothing() {
     let history = NoHistory;
     assert!(history.stamp().is_none());
@@ -148,6 +189,9 @@ fn no_history_answers_nothing() {
     );
     assert_eq!(history.object(ObjectKey([1; 16])).unwrap(), None);
     assert_eq!(history.clip(ClipKey(9)).unwrap(), None);
+    assert!(history.clip_joints(path_hash(SKIN)).unwrap().is_empty());
+    assert_eq!(history.joints_of(file_key(b"mesh")).unwrap(), None);
+    assert!(history.events_banks(path_hash(SKIN)).unwrap().is_empty());
     assert!(history.paths_of(file_key(b"mesh")).unwrap().is_empty());
     assert!(history.named_by(path_hash(SKIN)).unwrap().is_empty());
     assert!(history.skeletons(path_hash(SKIN)).unwrap().is_empty());
