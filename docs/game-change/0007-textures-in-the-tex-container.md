@@ -113,3 +113,8 @@ bins name `.dds` paths.
   378,714 files. ltk-forge copied 112,550 of them, in 1,870 mods, to the `.tex` path of the same
   stem: files at a path the game dropped, where the game holds the `.tex` and the mod ships no
   file there.
+- Of the `.tex` files made for those mods, 30 in 11 mods are made from a `.dds` at a path the
+  game never held (the history index, 2026-10-04). All 30 are one case: a champion's HUD icons
+  and loading-screen picture under a name with its variant tag dropped (#GAME-CHANGE-0009) and
+  the old extension, where the game held the tagged `.dds` and holds the untagged `.tex`. No mod
+  of the datasets ships a `.dds` of its own making beside a game `.tex` of the same stem.
