@@ -43,7 +43,7 @@ impl HistoryCommand {
 
 #[derive(Args)]
 pub struct Index {
-    /// The census history, a clone bare or not: its `history` branch.
+    /// The census history, a clone bare or not: its `history-v2` branch.
     #[arg(long)]
     repo: Utf8PathBuf,
     /// The last commit or build to index (default: the branch's tip).

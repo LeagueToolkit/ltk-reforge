@@ -1,5 +1,5 @@
-//! The history repository read through gix: the `history` branch's first-parent chain, tree
-//! diffs by object id, blobs, and an entry's text at a commit. Nothing here reads what a file
+//! The history repository read through gix: the builds' branch (`format::BRANCH`), its
+//! first-parent chain, tree diffs by object id, blobs, and an entry's text at a commit. Nothing here reads what a file
 //! holds beyond `census.yaml`'s format and `build.yaml`.
 //!
 //! A `gix::Repository` is not shared between threads, so each thread keeps its own handle on
@@ -59,7 +59,7 @@ fn commit_id(commit: &str) -> Result<ObjectId, CensusError> {
 }
 
 impl GitRepo {
-    /// Opens a clone of the history, bare or not. The builds are on the `history` branch, or
+    /// Opens a clone of the history, bare or not. The builds are on the branch `format::BRANCH`, or
     /// in a clone that never checked it out, on `origin/history`.
     pub fn open(path: &Utf8Path) -> Result<Self, CensusError> {
         let repo =
@@ -112,7 +112,7 @@ impl GitRepo {
         Ok(())
     }
 
-    /// The `history` branch's tip, or the commit `stop_at` set.
+    /// The tip of the builds' branch, or the commit `stop_at` set.
     pub fn head(&self) -> String {
         self.tip.to_string()
     }

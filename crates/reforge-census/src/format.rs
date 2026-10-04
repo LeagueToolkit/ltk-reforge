@@ -22,8 +22,9 @@ use reforge::model::{
 /// The format this crate reads, as `census.yaml` states it.
 pub const FORMAT: u32 = 2;
 
-/// The branch that holds the builds. `main` holds only a README and a license.
-pub const BRANCH: &str = "history";
+/// The branch that holds the builds: format 2 with a clip's joints and an events bank's header
+/// and objects. `main` holds only a README and a license.
+pub const BRANCH: &str = "history-v2";
 
 /// One build, from `build.yaml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
