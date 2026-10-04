@@ -2,6 +2,7 @@
 //! the target build (#ADR-0011). The stages in order: read, load, fix, build in place, check,
 //! write. The report holds what each found.
 
+use std::collections::BTreeSet;
 use std::io::{Cursor, Write as _};
 use std::process::ExitCode;
 
@@ -17,8 +18,8 @@ use reforge::game::{NameBook, Speller};
 use reforge::load::{Dating, LoadOptions, Loader};
 use reforge::model::{Dump, DumpCx, Mod};
 use reforge::package::{
-    CheckCx, CheckSelection, CheckSet, InPlaceBuilder, Modpkg, Package, PackageWriter, ProjectDir,
-    permit,
+    BuildError, CheckCx, CheckSelection, CheckSet, InPlaceBuilder, Modpkg, Package, PackageWriter,
+    ProjectDir, permit,
 };
 use reforge::report::{AgainRow, Report, ReportBuilder};
 use zip::CompressionMethod;
@@ -108,18 +109,37 @@ struct Stages<'a> {
 }
 
 impl Stages<'_> {
-    /// Loads an archive, dates the mod and applies the fixups.
-    fn fix(&self, archive: Archive, book: &mut NameBook, log: &mut Diagnostics) -> Result<Reached> {
-        let options = LoadOptions::new()
+    /// The options `load` runs under, and the package's textures are judged under.
+    fn options(&self) -> LoadOptions {
+        LoadOptions::new()
             .keep_stale(self.keep_stale)
-            .file_fixups(self.set.file_fixups());
-        let mut loader = Loader::new(self.env).options(options);
-        let loaded = run::load(&mut loader, archive, &mut log.at(Stage::Load))?;
+            .file_fixups(self.set.file_fixups())
+    }
+
+    /// Loads an archive, with the WADs an earlier run of the mod found to restore a model.
+    /// The run's names are the ones `load` learnt.
+    fn load(
+        &self,
+        archive: Archive,
+        restored: &BTreeSet<String>,
+        book: &mut NameBook,
+        log: &mut Diagnostics,
+    ) -> Result<run::Loaded> {
+        let mut loader = Loader::new(self.env).options(self.options());
+        let mut sink = log.at(Stage::Load);
+        let loaded = run::load(&mut loader, archive, restored, &mut sink)?;
         *book = loader.into_names();
-        if loaded.halted {
-            return Ok(Reached::Halted(Box::new(loaded.module)));
-        }
-        let dating = Dating::find(&loaded.module, self.env.history()).context("dating the mod")?;
+        Ok(loaded)
+    }
+
+    /// Applies the fixups to a loaded mod, judged at a dating.
+    fn fix(
+        &self,
+        module: Mod,
+        dating: Dating,
+        book: &mut NameBook,
+        log: &mut Diagnostics,
+    ) -> Result<Reached> {
         let mut inputs = FixInputs {
             env: self.env,
             dating: &dating,
@@ -128,7 +148,7 @@ impl Stages<'_> {
         let mut sink = log.at(Stage::Fix);
         let (module, changes) = self
             .set
-            .apply(loaded.module, &ObjectSet::every(), &mut inputs, &mut sink)
+            .apply(module, &ObjectSet::every(), &mut inputs, &mut sink)
             .context("an input of the run did not answer while the mod was fixed")?;
         Ok(Reached::Fixed(Box::new(Fixed {
             module,
@@ -137,35 +157,76 @@ impl Stages<'_> {
         })))
     }
 
+    /// Loads an archive, dates the mod and applies the fixups.
+    fn repair(
+        &self,
+        archive: Archive,
+        book: &mut NameBook,
+        log: &mut Diagnostics,
+    ) -> Result<Reached> {
+        let loaded = self.load(archive, &BTreeSet::new(), book, log)?;
+        if loaded.halted {
+            return Ok(Reached::Halted(Box::new(loaded.module)));
+        }
+        let dating = Dating::find(&loaded.module, self.env.history()).context("dating the mod")?;
+        self.fix(loaded.module, dating, book, log)
+    }
+
     /// The repair's package of a fixed mod. None where the run did not reach one, or it would
     /// hold nothing.
-    fn build(&self, reached: &Reached, book: &NameBook, log: &mut Diagnostics) -> Option<Package> {
+    fn build(
+        &self,
+        reached: &Reached,
+        book: &NameBook,
+        log: &mut Diagnostics,
+    ) -> Result<Option<Package>> {
         let Reached::Fixed(fixed) = reached else {
-            return None;
+            return Ok(None);
         };
-        let builder = InPlaceBuilder::new(&fixed.module, &fixed.changes);
-        let builder = builder.names(book, self.env.names());
-        builder.build(&mut log.at(Stage::Build)).ok()
+        let options = self.options();
+        let builder = InPlaceBuilder::new(&fixed.module, &fixed.changes)
+            .names(book, self.env.names())
+            .judged(self.env, &options);
+        match builder.build(&mut log.at(Stage::Build)) {
+            Ok(package) => Ok(Some(package)),
+            Err(BuildError::Halted(_)) => Ok(None),
+            Err(fault) => Err(fault).context("building the package"),
+        }
     }
 
     /// Takes a package through `read`, `load`, `fix` and the build again, with a log of its
     /// own, and says what the second run changed.
-    fn again(&self, first: &Package) -> Result<AgainRow> {
+    ///
+    /// The second run is given what the first established of the mod and its package does
+    /// not show again: the dating, and the WADs that restore a model from before its rework.
+    /// An object a fixup brought to the target build is the game's own object of that build,
+    /// so a repaired mod dates later by itself. A restoration is known by its files at paths
+    /// the rework dropped, which a package leaves out where nothing names them (#ADR-0039).
+    fn again(&self, first: &Package, fixed: &Fixed) -> Result<AgainRow> {
         let bytes = archive_of(first).context("the package as an archive in memory")?;
         let mut log = Diagnostics::new();
         let mut book = NameBook::new();
         let caps = Caps::default();
         let read = Archive::read(&bytes, "repaired.fantome", &caps, &mut log.at(Stage::Read));
-        let reached = match read {
-            Ok(archive) => self.fix(archive, &mut book, &mut log)?,
-            Err(_) => Reached::Nothing,
+        let Ok(archive) = read else {
+            return Ok(AgainRow::of(first, None, None));
         };
-        let second = self.build(&reached, &book, &mut log);
+        let restored = fixed.module.restorations.iter();
+        let restored: BTreeSet<String> = restored
+            .map(|&wad| fixed.module.wads[wad].name.lower().to_string())
+            .collect();
+        let loaded = self.load(archive, &restored, &mut book, &mut log)?;
+        if loaded.halted {
+            return Ok(AgainRow::of(first, None, None));
+        }
+        let own = Dating::find(&loaded.module, self.env.history()).context("dating the mod")?;
+        let reached = self.fix(loaded.module, fixed.dating.clone(), &mut book, &mut log)?;
+        let second = self.build(&reached, &book, &mut log)?;
         let changes = match &reached {
             Reached::Fixed(fixed) => Some(&fixed.changes),
             _ => None,
         };
-        Ok(AgainRow::of(first, second.as_ref(), changes))
+        Ok(AgainRow::of(first, second.as_ref(), changes).redated(&own))
     }
 }
 
@@ -200,10 +261,10 @@ impl Repair {
         let mut book = NameBook::new();
         let caps = Caps::default();
         let reached = match Archive::read_file(&self.archive, &caps, &mut log.at(Stage::Read)) {
-            Ok(archive) => stages.fix(archive, &mut book, &mut log)?,
+            Ok(archive) => stages.repair(archive, &mut book, &mut log)?,
             Err(_) => Reached::Nothing,
         };
-        let package = stages.build(&reached, &book, &mut log);
+        let package = stages.build(&reached, &book, &mut log)?;
         if let (Reached::Fixed(fixed), Some(package)) = (&reached, &package) {
             let types = TargetTypes::of(&fixed.module, &env)
                 .context("the game did not read while the package was checked")?;
@@ -220,8 +281,8 @@ impl Repair {
             module: reached.module(),
         };
         let mut report = Self::report(&env, &reached, package.as_ref(), &speller);
-        let again = match (&package, self.again) {
-            (Some(package), true) => Some(stages.again(package)?),
+        let again = match (&reached, &package, self.again) {
+            (Reached::Fixed(fixed), Some(package), true) => Some(stages.again(package, fixed)?),
             _ => None,
         };
         if let Some(again) = &again {

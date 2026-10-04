@@ -1,6 +1,8 @@
 //! What the commands that run a mod share: the inputs a run is judged against, the steps of
 //! `load`, and the diagnostics as a terminal shows them.
 
+use std::collections::BTreeSet;
+
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Args;
@@ -116,11 +118,26 @@ pub struct Loaded {
 }
 
 /// The steps of `load` in order. A halt keeps the mod as far as it went, for the report.
-pub fn load(loader: &mut Loader<'_>, archive: Archive, sink: &mut Sink<'_>) -> Result<Loaded> {
+///
+/// `restored` names, in lowercase, the WADs an earlier run of the same mod found to restore a
+/// model from before its rework: a package of that run does not hold the files that showed
+/// it.
+pub fn load(
+    loader: &mut Loader<'_>,
+    archive: Archive,
+    restored: &BTreeSet<String>,
+    sink: &mut Sink<'_>,
+) -> Result<Loaded> {
     let mut module = loader.open(archive);
     let fault = "an input of the run did not answer while the mod was loaded";
     loader.fix_files(&mut module, sink).context(fault)?;
     loader.take_game_bins(&mut module, sink).context(fault)?;
+    let known = module.wads.iter();
+    let known: Vec<_> = known
+        .filter(|(_, wad)| restored.contains(wad.name.lower()))
+        .map(|(id, _)| id)
+        .collect();
+    module.restorations.extend(known);
     let halted = match loader.survey(&mut module, sink) {
         Ok(()) => false,
         Err(LoadError::Halted(_)) => true,

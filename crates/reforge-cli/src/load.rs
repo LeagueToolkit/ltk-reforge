@@ -2,6 +2,7 @@
 //! With `--fix`, the fixups are applied to the loaded mod and the report holds what they
 //! changed.
 
+use std::collections::BTreeSet;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
@@ -95,7 +96,11 @@ impl Load {
             .file_fixups(set.file_fixups());
         let mut loader = Loader::new(&env).options(options);
         let loaded = match read {
-            Ok(archive) => Some(run::load(&mut loader, archive, &mut log.at(Stage::Load))?),
+            Ok(archive) => {
+                let restored = BTreeSet::new();
+                let mut sink = log.at(Stage::Load);
+                Some(run::load(&mut loader, archive, &restored, &mut sink)?)
+            }
             Err(_) => None,
         };
         let mut book = loader.into_names();
