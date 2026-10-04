@@ -8,6 +8,7 @@ use ltk_meta::PropertyKind as Kind;
 use serde::{Serialize, Serializer};
 
 use super::texture::TexRefusal;
+use super::wired::LeftBehind;
 use super::write::WriterKind;
 use crate::diag::{Channel, Code, Diag, DiagId, Message, Record, Severity, Subject};
 use crate::game::FieldType;
@@ -71,10 +72,9 @@ pub struct InPlace {
     pub whole: usize,
     /// Files shipped that a file fixup made.
     pub made: usize,
-    /// Files left behind that nothing loads.
-    pub unused: usize,
-    /// Files left behind that only values the fixups removed named.
-    pub orphaned: usize,
+    /// Files left out, which the client does not reach (#ADR-0039), by the reason.
+    #[serde(flatten)]
+    pub left: LeftBehind,
     /// Files shipped under their hash: no table spells their path.
     pub unnamed: usize,
 }
@@ -101,15 +101,13 @@ impl Diag for InPlace {
         if self.made > 0 {
             let _ = write!(f, ", {} made by a file fixup", self.made);
         }
-        if self.unused > 0 {
+        if self.left.total() > 0 {
             f.text("; ")
-                .count(self.unused, "file")
-                .text(" left behind that nothing loads");
-        }
-        if self.orphaned > 0 {
-            f.text("; ")
-                .count(self.orphaned, "file")
-                .text(" left behind that only removed values named");
+                .count(self.left.total(), "file")
+                .text(" left out: ");
+            f.list(&self.left.reasons(), |f, (n, reason)| {
+                let _ = write!(f, "{n} {reason}");
+            });
         }
         if self.unnamed > 0 {
             f.text("; ")

@@ -1,17 +1,19 @@
-//! A repair's package: the mod's files at their own paths, a bin written again where a fixup
-//! changed an object of it, every other file with the bytes it has. The game is
-//! `reforge_testkit::skins`.
+//! A repair's package: the files of the mod the client reaches, at their own paths, a bin
+//! written again where a fixup changed an object of it, every other file with the bytes it
+//! has. The game is `reforge_testkit::skins`.
 
 use ltk_meta::property::values;
 use reforge::diag::{Diagnostics, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixInputs, FixupSet, ObjectSet, Rule};
 use reforge::game::{NameBook, Schema};
-use reforge::load::Dating;
+use reforge::load::{Dating, LoadOptions};
 use reforge::model::entity::ModMeta;
 use reforge::model::{ContentId, Dump, DumpCx, Mod, NoNames, Spelled, bin, name_hash, path_hash};
+use reforge::package::dds_to_tex;
 use reforge::package::{
-    BinWrite, Empty, InPlace, InPlaceBuilder, Layer, Origin, TexRefusal, TextureContained,
+    BinWrite, BuildError, CheckSet, Empty, FieldUndeclared, InPlace, InPlaceBuilder, Layer,
+    LeftBehind, Origin, TexRefusal, TextureContained, TypeMismatch,
 };
 use reforge_testkit::bins::{
     Skin, bin as bin_of, blob, entry, float, linked_bin, object, particle, text,
@@ -21,7 +23,7 @@ use reforge_testkit::schema::{field, kind};
 use reforge_testkit::skins::{
     self, BASE_PARTICLE_TEX, BASE_TEX, S3_PARTICLE_TEX, S3_TEX, WAD, base_skin, skin_bin,
 };
-use reforge_testkit::{ModArchive, PackRun, SchemaRows};
+use reforge_testkit::{MemoryHistory, ModArchive, PackRun, SchemaRows};
 
 const ENTRY: &str = "Characters/Test/Skins/Skin0";
 const MESH: &str = "assets/mod/a/mesh.skn";
@@ -145,8 +147,11 @@ fn a_repair_ships_the_files_the_client_uses_at_their_own_paths() {
             rewritten: 1,
             whole: 0,
             made: 0,
-            unused: 1,
-            orphaned: 1,
+            left: LeftBehind {
+                unused: 1,
+                orphaned: 1,
+                ..LeftBehind::default()
+            },
             unnamed: 0,
         }
     );
@@ -155,8 +160,8 @@ fn a_repair_ships_the_files_the_client_uses_at_their_own_paths() {
     assert_eq!(package.config.champions, ["test"]);
     assert!(
         run.messages().contains(
-            &"package.in-place 5 files kept at their paths, 1 bin written again; 1 file left \
-              behind that nothing loads; 1 file left behind that only removed values named"
+            &"package.in-place 5 files kept at their paths, 1 bin written again; 2 files left \
+              out: 1 that nothing loads or names, 1 that only removed values named"
                 .to_string()
         ),
         "{:#?}",
@@ -229,10 +234,7 @@ fn a_repaired_mod_repaired_again_changes_nothing() {
             .all(|origin| matches!(origin, Origin::Kept(_)))
     );
     let found = second.only::<InPlace>();
-    assert_eq!(
-        (found.kept, found.rewritten, found.unused, found.orphaned),
-        (5, 0, 0, 0)
-    );
+    assert_eq!((found.kept, found.rewritten, found.left.total()), (5, 0, 0));
 }
 
 #[test]
@@ -332,7 +334,9 @@ fn a_package_that_would_hold_nothing_ends_the_run() {
         )
         .expect("the fixups apply");
     let built = InPlaceBuilder::new(&fixed, &changes).build(&mut log.at(Stage::Build));
-    let halted = built.expect_err("nothing to build");
+    let Err(BuildError::Halted(halted)) = built else {
+        panic!("nothing to build");
+    };
     assert_eq!(log.halted(), Some(halted));
     assert_eq!(log.of::<Empty>().next(), Some(&Empty { files: 0 }));
 }
@@ -385,4 +389,144 @@ fn a_mod_in_a_packed_wad_repaired_again_changes_nothing() {
         chunks
     };
     assert_eq!(chunks(&second), chunks(&first));
+}
+
+/// A texture at a path the game shipped once, which nothing names.
+const FORMER_TEX: &str = "assets/characters/test/skins/base/test_tx_cm.dds";
+/// A texture at a path the game shipped once, which the mod's skin bin names.
+const FORMER_NAMED: &str = "assets/characters/test/skins/base/test_glow.dds";
+/// A bin at a path the game shipped once, which nothing loads.
+const FORMER_BIN: &str = "data/characters/test/skins/test_shared.bin";
+/// The base texture as the game shipped it at the first build of the history.
+const STALE_BYTES: &[u8] = b"the base texture at 16.18";
+
+/// The same target with a past: at the build before it the game shipped three paths it
+/// does not ship, and other bytes at the base texture's path.
+fn env_with_a_past() -> Env {
+    let history = MemoryHistory::new(&["16.18.200", "16.19.300"])
+        .with_path(FORMER_TEX, 0..=0)
+        .with_path(FORMER_NAMED, 0..=0)
+        .with_path(FORMER_BIN, 0..=0)
+        .with_content(BASE_TEX, STALE_BYTES, 0..=0);
+    Env::builder()
+        .game(skins::game_at("16.19.300"))
+        .schema(schema())
+        .history(Box::new(history))
+        .build()
+        .expect("an environment")
+}
+
+/// The mod with a bin and a texture at former paths that nothing loads or names, a texture
+/// at a former path its skin bin names, and a stale copy of the base texture.
+fn the_mod_with_leftovers() -> ModArchive {
+    let objects = vec![
+        entry(ENTRY, &own_skin()),
+        material(),
+        particle("P", FORMER_NAMED),
+    ];
+    // A bin no fixup reads: its material holds what the target does not declare.
+    let unloaded = bin_of(vec![object("Old", "Material", vec![("junk", float(1.0))])]);
+    the_mod()
+        .file(WAD, &skin_bin("test", 1), linked_bin(objects, &[SHARED]))
+        .file(WAD, FORMER_NAMED, blob(FORMER_NAMED))
+        .file(WAD, FORMER_TEX, blob(FORMER_TEX))
+        .file(WAD, FORMER_BIN, unloaded)
+        .file(WAD, BASE_TEX, STALE_BYTES)
+}
+
+#[test]
+fn a_file_the_client_does_not_reach_is_left_out_and_counted_by_its_reason() {
+    let env = env_with_a_past();
+    let run = PackRun::of(&env, &set(), &the_mod_with_leftovers());
+    for left in [FORMER_TEX, FORMER_BIN, BASE_TEX, OLD_TEX, UNUSED_TEX] {
+        assert!(!run.ships(left), "{left} is shipped");
+    }
+    let found = run.only::<InPlace>();
+    assert_eq!(
+        found.left,
+        LeftBehind {
+            unused: 1,
+            former_path: 2,
+            stale: 1,
+            orphaned: 1,
+        }
+    );
+    assert_eq!(found.kept, run.package().len());
+    assert_eq!(
+        serde_json::to_value(found).expect("a finding is data"),
+        serde_json::json!({
+            "kept": 7, "rewritten": 2, "whole": 0, "made": 0,
+            "unused": 1, "former_path": 2, "stale": 1, "orphaned": 1,
+            "unnamed": 0,
+        })
+    );
+    assert!(
+        run.messages().contains(
+            &"package.in-place 7 files kept at their paths, 2 bins written again; 5 files left \
+              out: 1 that nothing loads or names, 2 at a former path that nothing names, 1 stale \
+              copies of the game's, 1 that only removed values named"
+                .to_string()
+        ),
+        "{:#?}",
+        run.messages()
+    );
+}
+
+#[test]
+fn a_file_a_loaded_bin_names_at_a_former_path_is_kept() {
+    let env = env_with_a_past();
+    let run = PackRun::of(&env, &set(), &the_mod_with_leftovers());
+    assert_eq!(
+        &*run.chunk(FORMER_NAMED).bytes,
+        blob(FORMER_NAMED).as_slice()
+    );
+}
+
+#[test]
+fn a_stale_copy_is_kept_where_the_caller_keeps_stale_copies() {
+    let env = env_with_a_past();
+    let options = LoadOptions::new().keep_stale(true);
+    let run = PackRun::under(&env, &set(), &the_mod_with_leftovers(), options);
+    assert_eq!(&*run.chunk(BASE_TEX).bytes, STALE_BYTES);
+    assert_eq!(run.only::<InPlace>().left.stale, 0);
+}
+
+#[test]
+fn a_bin_nothing_loads_is_not_in_the_package_for_the_type_check_to_read() {
+    let env = env_with_a_past();
+    let mut run = PackRun::of(&env, &set(), &the_mod_with_leftovers());
+    run.check(&CheckSet::standard());
+    // The one field the target does not declare is in the bin left out.
+    assert_eq!(run.fix.log.of::<FieldUndeclared>().count(), 0);
+    assert_eq!(run.fix.log.of::<TypeMismatch>().count(), 0);
+}
+
+#[test]
+fn a_texture_that_is_a_stale_copy_once_in_texs_container_is_left_out() {
+    // The base texture as a DDS, made of the TEX the game shipped at an earlier build: as a
+    // DDS it is no bytes the game held, and in TEX's container it is the game's older file.
+    let texture = dds(DdsPixels::Dxt1, (8, 8), 4);
+    let as_tex = dds_to_tex(&texture).expect("TEX holds it");
+    let history = MemoryHistory::new(&["16.18.200", "16.19.300"]);
+    let history = history.with_content(BASE_TEX, &as_tex, 0..=0);
+    let env = Env::builder()
+        .game(skins::game_at("16.19.300"))
+        .schema(schema())
+        .history(Box::new(history))
+        .build()
+        .expect("an environment");
+    let archive = the_mod().file(WAD, BASE_TEX, texture);
+    let run = PackRun::of(&env, &set(), &archive);
+    assert!(!run.ships(BASE_TEX));
+    assert_eq!(run.only::<InPlace>().left.stale, 1);
+    assert_eq!(run.fix.log.of::<TextureContained>().count(), 0);
+    // Repaired again, the package is the same: the second run finds no file to judge stale.
+    let second = PackRun::of(&env, &set(), &run.archive());
+    assert_eq!(second.package().len(), run.package().len());
+
+    // A caller that keeps stale copies gets it, in TEX's container.
+    let options = LoadOptions::new().keep_stale(true);
+    let kept = PackRun::under(&env, &set(), &archive, options);
+    assert_eq!(&*kept.chunk(BASE_TEX).bytes, as_tex.as_slice());
+    assert_eq!(kept.only::<TextureContained>().contained, 1);
 }

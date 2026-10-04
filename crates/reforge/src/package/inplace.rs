@@ -1,8 +1,8 @@
-//! A repair's package (#ADR-0011): the mod as it is, each file the client uses at its own WAD
-//! and path. A bin an object of which a fixup changed is written again, and every other file
-//! keeps its bytes.
+//! A repair's package (#ADR-0011): the mod as it is, each file the client reaches at its own
+//! WAD and path (#ADR-0039). A bin an object of which a fixup changed is written again, and
+//! every other file keeps its bytes.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
@@ -12,19 +12,35 @@ use ltk_meta::{Bin, BinDelta, BinObject, BinStream};
 use super::config::{Made, ProjectConfig};
 use super::findings::{Empty, InPlace};
 use super::texture::TexContainer;
+use super::wired::LeftOut;
+use super::wired::{LeftBehind, Wired};
 use super::{BinWrite, Chunk, ChunkKey, Layer, Origin, Package, WrittenBin};
 use crate::diag::{Halted, Sink};
+use crate::env::Env;
 use crate::fixups::{Changes, FixedMod};
 use crate::game::{NameBook, Names, Speller};
-use crate::model::entity::{BinId, FileId, FileKind, FileNode, FileSource, FileUse};
+use crate::load::{Fault, LoadOptions, Staleness};
+use crate::model::entity::{BinId, FileId, FileKind, FileNode, FileSource};
 use crate::model::value::{self, FileRef};
-use crate::model::{ChunkPath, Mod, Spell, WadHash, bin};
+use crate::model::{ChunkPath, Mod, Spell, bin};
+
+/// Why a build gives no package.
+#[derive(Debug, thiserror::Error)]
+pub enum BuildError {
+    /// A fatal diagnostic: the package would hold nothing.
+    #[error(transparent)]
+    Halted(#[from] Halted),
+    /// An input of the run did not answer: a fault of the machine, and no diagnostic.
+    #[error("an input of the run did not answer while the package was built")]
+    Fault(#[from] Fault),
+}
 
 /// Builds a repair's package from a fixed mod and what the fixups changed in it.
 pub struct InPlaceBuilder<'a> {
     fixed: &'a FixedMod,
     changes: &'a Changes,
     names: Option<(&'a NameBook, &'a Names)>,
+    stale: Option<Staleness<'a>>,
 }
 
 impl<'a> InPlaceBuilder<'a> {
@@ -35,7 +51,17 @@ impl<'a> InPlaceBuilder<'a> {
             fixed,
             changes,
             names: None,
+            stale: None,
         }
+    }
+
+    /// What the mod was loaded against, and under which options. A texture put in TEX's
+    /// container is judged there as `load` judged the file: one that is a stale copy in
+    /// that container is left out (#ADR-0023, #ADR-0039). Without it no texture is judged.
+    #[must_use]
+    pub fn judged(mut self, env: &'a Env, options: &LoadOptions) -> Self {
+        self.stale = Some(Staleness::new(env, options));
+        self
     }
 
     /// The names of the run: what it learnt, and the tables. They spell a path the archive
@@ -46,39 +72,38 @@ impl<'a> InPlaceBuilder<'a> {
         self
     }
 
-    /// The package: every file the client uses, at its own WAD and path, in the base layer.
-    /// A package that would hold nothing ends the run.
-    pub fn build(self, sink: &mut Sink<'_>) -> Result<Package, Halted> {
+    /// The package: every file the client reaches, at its own WAD and path, in the base
+    /// layer. A package that would hold nothing ends the run.
+    pub fn build(self, sink: &mut Sink<'_>) -> Result<Package, BuildError> {
         let m: &Mod = self.fixed;
         let _span = tracing::info_span!("build", files = m.files.len()).entered();
         let mut package = Package::new(ProjectConfig::of(m, Made::Repaired));
-        let named = self.named();
+        let wired = Wired::by(m.objects.values().map(|object| &object.value));
         let mut found = InPlace {
             kept: 0,
             rewritten: 0,
             whole: 0,
             made: 0,
-            unused: 0,
-            orphaned: 0,
+            left: LeftBehind::default(),
             unnamed: 0,
         };
+        let mut container = TexContainer::new();
         for (id, file) in m.files.iter() {
-            if file.used == FileUse::Unused {
-                found.unused += 1;
+            if let Err(reason) = wired.judge(file) {
+                found.left.count(reason);
                 continue;
             }
-            // A file only a value a fixup removed named: nothing loads it after the repair.
-            if file.used == FileUse::Referenced && !named.contains(&file.hash) {
-                found.orphaned += 1;
+            let named = self.path_of(file);
+            let path = named.clone().unwrap_or_else(|| hash_path(file));
+            let contained = container.contain(&path, &file.bytes);
+            if let Some(tex) = &contained
+                && let Some(stale) = &self.stale
+                && stale.of_bytes(m, id, tex)?
+            {
+                found.left.count(LeftOut::Stale);
                 continue;
             }
-            let path = match self.path_of(file) {
-                Some(path) => path,
-                None => {
-                    found.unnamed += 1;
-                    hash_path(file)
-                }
-            };
+            found.unnamed += usize::from(named.is_none());
             let chunk = match self.edited_bin(id, file) {
                 Some(bin) => {
                     let (bytes, written) = self.rewrite(bin, &file.bytes);
@@ -89,7 +114,16 @@ impl<'a> InPlaceBuilder<'a> {
                         origin: Origin::Rewritten { file: id, written },
                     }
                 }
-                None => Chunk::kept(id, Arc::clone(&file.bytes)),
+                None => match contained {
+                    Some(tex) => {
+                        container.shipped();
+                        Chunk {
+                            bytes: tex.into(),
+                            origin: Origin::Contained(id),
+                        }
+                    }
+                    None => Chunk::kept(id, Arc::clone(&file.bytes)),
+                },
             };
             found.kept += 1;
             found.made += usize::from(matches!(file.source, FileSource::Made { .. }));
@@ -97,21 +131,15 @@ impl<'a> InPlaceBuilder<'a> {
             package.insert(Layer::Base, key, chunk);
         }
         if package.is_empty() {
-            return Err(sink.halt(Empty {
+            let empty = Empty {
                 files: m.files.len(),
-            }));
+            };
+            return Err(sink.halt(empty).into());
         }
-        TexContainer.apply(&mut package, sink);
+        container.report(sink);
         self.fill_tables(&mut package);
         sink.raise(found);
         Ok(package)
-    }
-
-    /// The hash of every file an object names, as the fixups left the objects.
-    fn named(&self) -> HashSet<WadHash> {
-        let objects = self.fixed.objects.values();
-        let refs = objects.flat_map(|object| value::file_refs(&object.value));
-        refs.map(|file| file.hash()).collect()
     }
 
     /// A file's path: as the archive or `load` spells it, else as the run's names spell its

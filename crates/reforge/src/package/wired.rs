@@ -1,0 +1,101 @@
+//! What a package may hold (#ADR-0039): a file the client reaches. A bin the client loads, a
+//! file a loaded bin names, a file at a path the game's own bins read, and what a run made
+//! for one of those. A repair and a port ask the same judge.
+
+use std::collections::HashSet;
+
+use ltk_meta::BinObject;
+use serde::Serialize;
+
+use crate::model::WadHash;
+use crate::model::entity::{FileNode, FileUse};
+use crate::model::value;
+
+/// Why a file of the mod is left out of a package.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LeftOut {
+    /// Nothing loads it and nothing names it.
+    Unused,
+    /// At a path the game shipped at earlier builds and does not ship, where nothing loads
+    /// or names it: a bin of an older layout, a texture the game moved.
+    FormerPath,
+    /// A stale copy (#MOD-ARTIFACT-0004): the game's newer bytes stand.
+    Stale,
+    /// Only values the fixups removed named it.
+    Orphaned,
+}
+
+/// How many files a package leaves out, by the reason.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct LeftBehind {
+    /// Files nothing loads and nothing names.
+    pub unused: usize,
+    /// Files at a former path that nothing loads or names.
+    pub former_path: usize,
+    /// Stale copies.
+    pub stale: usize,
+    /// Files only values the fixups removed named.
+    pub orphaned: usize,
+}
+
+impl LeftBehind {
+    /// Counts one file left out.
+    pub fn count(&mut self, reason: LeftOut) {
+        match reason {
+            LeftOut::Unused => self.unused += 1,
+            LeftOut::FormerPath => self.former_path += 1,
+            LeftOut::Stale => self.stale += 1,
+            LeftOut::Orphaned => self.orphaned += 1,
+        }
+    }
+
+    /// How many files are left out, whatever the reason.
+    pub fn total(&self) -> usize {
+        self.unused + self.former_path + self.stale + self.orphaned
+    }
+
+    /// The counts that are not zero, each with its reason as a message says it.
+    pub fn reasons(&self) -> Vec<(usize, &'static str)> {
+        let all = [
+            (self.unused, "that nothing loads or names"),
+            (self.former_path, "at a former path that nothing names"),
+            (self.stale, "stale copies of the game's"),
+            (self.orphaned, "that only removed values named"),
+        ];
+        all.into_iter().filter(|(n, _)| *n > 0).collect()
+    }
+}
+
+/// Judges which files of a mod the client reaches through the objects a package ships.
+#[derive(Debug, Clone, Default)]
+pub struct Wired {
+    named: HashSet<WadHash>,
+}
+
+impl Wired {
+    /// A judge by the objects a package ships, as the fixups left them: a file one of them
+    /// names is reached.
+    pub fn by<'a>(objects: impl IntoIterator<Item = &'a BinObject>) -> Self {
+        let refs = objects.into_iter().flat_map(value::file_refs);
+        Self {
+            named: refs.map(|file| file.hash()).collect(),
+        }
+    }
+
+    /// Whether the client reaches a file, by the use `load` found for it, and why not.
+    ///
+    /// A file a fixup made is judged as any other: it is at the path its use was found at.
+    /// A stale copy kept on the caller's wish is no stale copy to `load`, which marks it an
+    /// override.
+    pub fn judge(&self, file: &FileNode) -> Result<(), LeftOut> {
+        match file.used {
+            FileUse::Loaded | FileUse::Override => Ok(()),
+            FileUse::Referenced if self.named.contains(&file.hash) => Ok(()),
+            FileUse::Referenced => Err(LeftOut::Orphaned),
+            FileUse::Unused => Err(LeftOut::Unused),
+            FileUse::FormerPath => Err(LeftOut::FormerPath),
+            FileUse::Stale => Err(LeftOut::Stale),
+        }
+    }
+}

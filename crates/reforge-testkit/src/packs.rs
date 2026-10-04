@@ -1,11 +1,12 @@
 //! One archive taken through `load`, `fix` and the build of a repair's package, for tests of
 //! the package, and DDS textures written by hand.
 
-use reforge::diag::{Diag, Halted, Stage};
+use reforge::diag::{Diag, Stage};
 use reforge::env::Env;
-use reforge::fixups::{FixupSet, TargetTypes};
+use reforge::fixups::{FixupSet, ObjectSet, TargetTypes};
+use reforge::load::LoadOptions;
 use reforge::model::path_hash;
-use reforge::package::{CheckCx, CheckSet, Chunk, InPlaceBuilder, Package};
+use reforge::package::{BuildError, CheckCx, CheckSet, Chunk, InPlaceBuilder, Package};
 
 use crate::fixes::FixRun;
 use crate::mods::ModArchive;
@@ -15,8 +16,8 @@ pub struct PackRun<'a> {
     env: &'a Env,
     /// The mod after the fixups, with the run's log and names.
     pub fix: FixRun<'a>,
-    /// The package, or the diagnostic that left nothing to build.
-    pub package: Result<Package, Halted>,
+    /// The package, or why there is none.
+    pub package: Result<Package, BuildError>,
 }
 
 impl<'a> PackRun<'a> {
@@ -26,8 +27,20 @@ impl<'a> PackRun<'a> {
     ///
     /// As [`FixRun::of`].
     pub fn of(env: &'a Env, set: &FixupSet, archive: &ModArchive) -> Self {
-        let mut fix = FixRun::of(env, set, archive);
-        let builder = InPlaceBuilder::new(&fix.fixed, &fix.changes).names(&fix.names, env.names());
+        Self::under(env, set, archive, LoadOptions::default())
+    }
+
+    /// As [`PackRun::of`], with `load` under options of the caller's.
+    ///
+    /// # Panics
+    ///
+    /// As [`FixRun::of`].
+    pub fn under(env: &'a Env, set: &FixupSet, archive: &ModArchive, options: LoadOptions) -> Self {
+        let judged = options.clone();
+        let mut fix = FixRun::under(env, set, archive, (options, &|_| ObjectSet::every()));
+        let builder = InPlaceBuilder::new(&fix.fixed, &fix.changes)
+            .names(&fix.names, env.names())
+            .judged(env, &judged);
         let package = builder.build(&mut fix.log.at(Stage::Build));
         Self { env, fix, package }
     }
@@ -40,7 +53,7 @@ impl<'a> PackRun<'a> {
     pub fn package(&self) -> &Package {
         match &self.package {
             Ok(package) => package,
-            Err(halted) => panic!("no package: {halted}\n{:#?}", self.messages()),
+            Err(error) => panic!("no package: {error}\n{:#?}", self.messages()),
         }
     }
 

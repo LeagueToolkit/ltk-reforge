@@ -12,6 +12,7 @@ mod config;
 mod findings;
 mod inplace;
 mod texture;
+mod wired;
 mod write;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -29,8 +30,9 @@ pub use self::findings::{
     Against, Blocked, Coverage, Done, Empty, FieldUndeclared, InPlace, Place, RoundTripFailed,
     RoundTripProblem, Shape, TextureContained, TypeMismatch, TypeRow, UndeclaredRow, Written,
 };
-pub use self::inplace::InPlaceBuilder;
+pub use self::inplace::{BuildError, InPlaceBuilder};
 pub use self::texture::{TexContainer, TexRefusal, dds_to_tex};
+pub use self::wired::{LeftBehind, LeftOut, Wired};
 pub use self::write::{
     MAX_NAME_BYTES, Modpkg, PackageWriter, ProjectDir, REPORT_FILE, Refused, WriteError,
     WriterKind, permit,

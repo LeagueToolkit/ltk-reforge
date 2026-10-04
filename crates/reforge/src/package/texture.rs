@@ -17,6 +17,7 @@ use serde::Serialize;
 use super::findings::TextureContained;
 use super::{Origin, Package};
 use crate::diag::Sink;
+use crate::model::ChunkPath;
 
 /// Why a DDS does not go into TEX's container as it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -183,31 +184,59 @@ pub fn dds_to_tex(bytes: &[u8]) -> Result<Vec<u8>, TexRefusal> {
     catch_unwind(AssertUnwindSafe(|| contain(bytes))).unwrap_or(Err(TexRefusal::Unreadable))
 }
 
-/// The step that puts every DDS at a `.tex` path of a package in TEX's container.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TexContainer;
+/// The step that puts each DDS at a `.tex` path in TEX's container, and counts what went in
+/// and what stays DDS.
+#[derive(Debug, Clone, Default)]
+pub struct TexContainer {
+    contained: usize,
+    kept: BTreeMap<TexRefusal, usize>,
+}
 
 impl TexContainer {
-    /// Replaces the bytes of each DDS at a `.tex` path that TEX's container holds as it is,
-    /// and raises how many went in and how many stay DDS.
-    pub fn apply(&self, package: &mut Package, sink: &mut Sink<'_>) {
-        let mut contained = 0;
-        let mut kept: BTreeMap<TexRefusal, usize> = BTreeMap::new();
-        for (_, key, chunk) in package.chunks_mut() {
-            if key.path.extension() != Some("tex") || !chunk.bytes.starts_with(b"DDS ") {
-                continue;
-            }
-            match dds_to_tex(&chunk.bytes) {
-                Ok(tex) => {
-                    chunk.bytes = tex.into();
-                    chunk.origin = Origin::Contained(chunk.origin.file());
-                    contained += 1;
-                }
-                Err(why) => *kept.entry(why).or_default() += 1,
+    /// A step that has seen no texture.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The bytes of a DDS at a `.tex` path in TEX's container. None for any other chunk, and
+    /// for a DDS TEX's container does not hold as it is, which is counted by the reason.
+    pub fn contain(&mut self, path: &ChunkPath, bytes: &[u8]) -> Option<Vec<u8>> {
+        if path.extension() != Some("tex") || !bytes.starts_with(b"DDS ") {
+            return None;
+        }
+        match dds_to_tex(bytes) {
+            Ok(tex) => Some(tex),
+            Err(why) => {
+                *self.kept.entry(why).or_default() += 1;
+                None
             }
         }
-        if contained > 0 || !kept.is_empty() {
-            sink.raise(TextureContained { contained, kept });
+    }
+
+    /// Counts a texture that ships in TEX's container.
+    pub fn shipped(&mut self) {
+        self.contained += 1;
+    }
+
+    /// Replaces the bytes of each DDS at a `.tex` path of a package that TEX's container
+    /// holds as it is.
+    pub fn apply(&mut self, package: &mut Package) {
+        for (_, key, chunk) in package.chunks_mut() {
+            if let Some(tex) = self.contain(&key.path, &chunk.bytes) {
+                chunk.bytes = tex.into();
+                chunk.origin = Origin::Contained(chunk.origin.file());
+                self.shipped();
+            }
+        }
+    }
+
+    /// Raises how many textures went in and how many stay DDS, when there was any.
+    pub fn report(self, sink: &mut Sink<'_>) {
+        if self.contained > 0 || !self.kept.is_empty() {
+            sink.raise(TextureContained {
+                contained: self.contained,
+                kept: self.kept,
+            });
         }
     }
 }

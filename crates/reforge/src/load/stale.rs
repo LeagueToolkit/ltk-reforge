@@ -6,7 +6,7 @@ use crate::env::Env;
 use crate::game::{Game, GameView};
 use crate::history::History;
 use crate::model::entity::FileId;
-use crate::model::{FileKey, Mod};
+use crate::model::{ContentId, FileKey, Mod};
 
 /// Judges whether a file is a stale copy.
 pub struct Staleness<'a> {
@@ -45,5 +45,23 @@ impl<'a> Staleness<'a> {
         let origin = &m.files[m.origin_of(file)];
         let key = FileKey::from_sha256(&origin.content.0);
         Ok(self.history.held(origin.hash, key)?.is_some())
+    }
+
+    /// Whether bytes a later stage writes at the path of a file are a stale copy there, as
+    /// [`Staleness::of`] judges a file. A texture is judged again in the container it ships
+    /// in: a DDS made of the game's older TEX is that TEX once it is back in TEX's container.
+    pub fn of_bytes(&self, m: &Mod, file: FileId, bytes: &[u8]) -> Result<bool, Fault> {
+        let node = &m.files[file];
+        if self.keep || m.restorations.contains(&node.wad) {
+            return Ok(false);
+        }
+        let content = ContentId::of(bytes);
+        if self.game.size(node.hash).is_none()
+            || self.game.holds(node.hash, bytes.len() as u64, content)?
+        {
+            return Ok(false);
+        }
+        let key = FileKey::from_sha256(&content.0);
+        Ok(self.history.held(node.hash, key)?.is_some())
     }
 }
