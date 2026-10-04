@@ -3,7 +3,7 @@
 - **Status:** Inferred
 - **Builds:** 16.19
 - **Affects:** `.tex`, `.dds`
-- **Related:** none
+- **Related:** #GAME-BEHAVIOR-0018
 
 ## Behaviour
 

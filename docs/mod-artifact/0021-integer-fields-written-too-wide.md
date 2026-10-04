@@ -1,10 +1,10 @@
 # MOD-ARTIFACT-0021: Integer fields written too wide
 
-- **Source:** the kinds the game itself held up to 9.21, 11.8, 12.23 and 13.3; which tool or
-  practice carries them into a later mod is not established
+- **Source:** the kinds the game itself held before it narrowed them (#GAME-CHANGE-0022);
+  which tool or practice carries them into a later mod is not established
 - **Affects:** integer fields of `VfxEmitterDefinitionData`, `VfxSystemDefinitionData`,
   `VfxTrailDefinitionData`, `VfxAlphaErosionDefinitionData` and `TrackData`
-- **Related:** #GAME-BEHAVIOR-0002, #GAME-CHANGE-0020, #MOD-ARTIFACT-0022
+- **Related:** #GAME-BEHAVIOR-0002, #GAME-CHANGE-0020, #GAME-CHANGE-0022, #MOD-ARTIFACT-0022
 
 ## What is found
 
@@ -29,16 +29,8 @@ The fields found so in mods:
 
 ## Why it is there
 
-Each wide kind is the kind the game's own bins held the field in at earlier builds:
-
-| field | the game's kind | up to | then |
-|---|---|---|---|
-| `blendMode`, `importance`, `colorLookUpTypeX`, `colorLookUpTypeY`, `texAddressModeBase`, `mMode` | `u32` | 9.21.2940813 | `u8` from 9.22.2961221 |
-| `meshRenderFlags`, `miscRenderFlags`, `colorRenderFlags` | `u16` | 9.21.2940813 | `u8` from 9.22.2961221 |
-| `VfxSystemDefinitionData.flags` | `u32` | 9.21.2940813 | `u8` from 9.22.2961221, `u16` from 13.1.4875491 |
-| `numFrames`, `startFrame` | `i32` | 9.22.2974763 | `u16` from 9.23.2983143 |
-| `TrackData.mPriority` | `u32` | 11.8.3704668 | `u8` from 11.9.3718146 |
-| `erosionDriveSource` | `u32` | 13.3.4916222 | `u8` from 13.4.4929018 |
+Each wide kind is the kind the game's own bins held the field in before the game narrowed it,
+at builds from 9.22 to 13.4 (#GAME-CHANGE-0022).
 
 A mod made before those builds holds the wide kind as the game did. The mods of the baseline
 run that hold one are dated at builds from 13.16 to 16.3, which read the narrow kind. How the
@@ -63,17 +55,8 @@ fit has no form in the narrower kind.
 
 ## Evidence
 
-- Counted in the census history's entry texts by each field's hash, whatever the class
-  (2026-10-04), at 18 builds from 8.20.2483196 to 16.19.8207193 and then at each build around
-  a change. `blendMode`: 173,817 `u32` and no `u8` at 9.21.2940813, 181,241 `u8` and no `u32`
-  at 9.22.2961221. `meshRenderFlags`: 25,605 `u16` at 9.21.2940813, 26,144 `u8` at
-  9.22.2961221. `numFrames`: 45,815 `i32` at 9.22.2961221 and none as `u16` at 9.22.2974763,
-  46,215 `u16` at 9.23.2983143. `flags`: 48,409 `u8` at 12.23.4875509, 49,691 `u16` at
-  13.1.4875491.
-- The same count: 16 lines hold `startFrame` as an `i32` at 12.23.4875509 and none at
-  13.1.4875491. 3 lines hold the hash of `mPriority` as a `u32` from 11.9.3718146 to
-  11.18.3955551. The class of those lines was not read.
-- The meta database (generation 2026-09-28, read 2026-10-04): each field of the first table has
+- The kind the game held each field in, build by build, is the evidence of #GAME-CHANGE-0022.
+- The meta database (generation 2026-09-28, read 2026-10-04): each field of the table above has
   the narrow kind at every build from 13.15 to 16.19. The database holds 17 properties whose
   integer kind changed in that span. Three are on a class a skin mod holds:
   `StaticMaterialDef.type` (#GAME-CHANGE-0020) and two fields of `SkinCharacterDataProperties`,
