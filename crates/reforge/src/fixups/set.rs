@@ -139,6 +139,22 @@ pub enum FixError {
     History(#[from] HistoryError),
 }
 
+/// A mod the stage `fix` ended on a fault. Its files, characters and units are as `load` left
+/// them. Its objects hold what the fixups changed before the fault, so it is no [`FixedMod`].
+pub struct Unfixed {
+    /// The mod.
+    pub module: Mod,
+    /// What ended the stage.
+    pub fault: FixError,
+}
+
+impl std::fmt::Debug for Unfixed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut shown = f.debug_struct("Unfixed");
+        shown.field("fault", &self.fault).finish_non_exhaustive()
+    }
+}
+
 /// What a set is applied against, beside the mod: the target, the build the mod was made at,
 /// and the run's own names, which learn what the fixups write.
 pub struct FixInputs<'a> {
@@ -267,13 +283,39 @@ impl FixupSet {
     /// ends the run: there is no fixed mod then.
     pub fn apply(
         &self,
-        mut m: Mod,
+        m: Mod,
         objects: &ObjectSet,
         inputs: &mut FixInputs<'_>,
         sink: &mut Sink<'_>,
     ) -> Result<(FixedMod, Changes), FixError> {
+        let applied = self.apply_or_keep(m, objects, inputs, sink);
+        applied.map_err(|unfixed| unfixed.fault)
+    }
+
+    /// [`FixupSet::apply`], giving the mod back with the fault where one ends the stage, for a
+    /// caller that reports the run as far as it went.
+    pub fn apply_or_keep(
+        &self,
+        mut m: Mod,
+        objects: &ObjectSet,
+        inputs: &mut FixInputs<'_>,
+        sink: &mut Sink<'_>,
+    ) -> Result<(FixedMod, Changes), Box<Unfixed>> {
+        match self.fix_in(&mut m, objects, inputs, sink) {
+            Ok(changes) => Ok((FixedMod(m), changes)),
+            Err(fault) => Err(Box::new(Unfixed { module: m, fault })),
+        }
+    }
+
+    fn fix_in(
+        &self,
+        m: &mut Mod,
+        objects: &ObjectSet,
+        inputs: &mut FixInputs<'_>,
+        sink: &mut Sink<'_>,
+    ) -> Result<Changes, FixError> {
         let _span = tracing::info_span!("fix", fixups = self.bins.len()).entered();
-        let types = TargetTypes::of(&m, inputs.env)?;
+        let types = TargetTypes::of(m, inputs.env)?;
         let ids: Vec<ObjectId> = m.objects.ids().filter(|&o| objects.contains(o)).collect();
         let mut changes = Changes::default();
         let mut fault = None;
@@ -309,7 +351,7 @@ impl FixupSet {
             }
         }
         tracing::debug!(objects = ids.len(), changes = changes.len(), "fixed");
-        Ok((FixedMod(m), changes))
+        Ok(changes)
     }
 }
 

@@ -33,7 +33,9 @@ pub use self::context::FixCx;
 pub use self::findings::{Changed, FieldCount, Lost, Removed, Tally, Unconvertible};
 pub use self::rule::Rule;
 pub use self::scope::ObjectSet;
-pub use self::set::{FixError, FixInputs, FixedMod, FixupSelection, FixupSet, SelectionError};
+pub use self::set::{
+    FixError, FixInputs, FixedMod, FixupSelection, FixupSet, SelectionError, Unfixed,
+};
 pub use self::types::{MAX_CHAIN, TargetTypes, TypeSource};
 use crate::diag::{Code, Diag};
 use crate::model::{BinHash, FixupInfo, StructMut, name_hash};
