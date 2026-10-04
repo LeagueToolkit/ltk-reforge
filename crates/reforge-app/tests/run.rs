@@ -4,6 +4,7 @@
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
+use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
 use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::model::BinHash;
@@ -23,6 +24,7 @@ use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{field, kind};
 use reforge_testkit::skins::{self, skin_bin};
 use reforge_testkit::{ModArchive, SchemaRows};
+use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use zip::CompressionMethod;
@@ -328,6 +330,42 @@ fn a_port_runs_the_stages_of_a_port_and_names_each_units_target() {
     assert!(!decision.candidates.is_empty());
     // The other three levels of animation reuse, compared.
     assert_eq!(decision.alternatives.len(), 3);
+}
+
+#[test]
+fn the_stages_of_a_kind_are_the_stages_its_run_shows() {
+    let bench = Bench::new();
+    for kind in [RunKind::Repair, RunKind::Port] {
+        let mut request = bench.request(&own_mod(), StageName::Check);
+        request.kind = kind;
+
+        let view = bench.run(&request);
+
+        let shown: Vec<StageName> = view.stages.iter().map(|stage| stage.stage).collect();
+        assert_eq!(run::stages_of(&bench.inputs, kind), shown, "{kind:?}");
+    }
+}
+
+#[test]
+fn a_mods_image_reaches_the_view_as_the_packages_webp_thumbnail() {
+    let bench = Bench::new();
+    let mut png = Vec::new();
+    let image = DynamicImage::ImageRgb8(RgbImage::from_pixel(3, 2, Rgb([200, 40, 60])));
+    image
+        .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+        .unwrap();
+    let with_image = own_mod().extra("META/image.png", png);
+
+    let view = bench.run(&bench.request(&with_image, StageName::Check));
+    let without = bench.run(&bench.request(&own_mod(), StageName::Check));
+
+    let thumbnail = view.package.and_then(|package| package.thumbnail);
+    let thumbnail = thumbnail.expect("a thumbnail");
+    assert!(
+        thumbnail.starts_with("data:image/webp;base64,"),
+        "{thumbnail:.40}"
+    );
+    assert_eq!(without.package.expect("a package").thumbnail, None);
 }
 
 #[test]

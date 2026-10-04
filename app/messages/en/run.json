@@ -1,11 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "run_details_action": "Details ({count} lines)",
-  "run_kind_label": "What to make",
-  "run_kind_port_description": "A port: the mod over the game's own skin at each unit's target",
   "run_kind_port_label": "Port",
-  "run_kind_repair_description": "A repair: the mod as it is, at its own skins and paths, its bins fixed for the game",
-  "run_kind_repair_label": "Repair",
   "run_live_title": "Running, {seconds} s",
   "run_page_title": "Run",
   "run_simple_port_description": "Ports the mod with the standard settings and the automatic policy, and writes a .modpkg",

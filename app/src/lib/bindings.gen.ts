@@ -22,6 +22,8 @@ export const commands = {
 	 *  choose. How it goes comes as `RunStage`, `RunFinding` and `RunLog` events.
 	 */
 	runMod: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_mod", { request }),
+	/**  The stages of a run of the kind, in order, as the library names them. */
+	runStages: (kind: RunKind) => __TAURI_INVOKE<({ ok: true; value: StageName[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_stages", { kind }),
 	/**  Saves a choice of fixups as a selection file the command reads with `--fixups`. */
 	saveSelection: (path: string, choice: FixupChoice) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("save_selection", { path, choice }),
 	/**  The choice of fixups a selection file holds. */
@@ -392,6 +394,11 @@ export type PackageView = {
 	chunks: number,
 	/**  How many patches it holds. */
 	patches: number,
+	/**
+	 *  Its thumbnail as a `data:` URL: the WebP the library encoded from the mod's image,
+	 *  never the archive's own bytes (#ADR-0051).
+	 */
+	thumbnail: string | null,
 };
 
 /**  A policy: how a target is chosen, and how much animation reuse is accepted. */
@@ -451,7 +458,7 @@ export type RunFinding = {
 	finding: Finding,
 };
 
-/**  What a run makes of a mod. */
+/**  What a run makes of a mod. A port unless the request says otherwise (#ADR-0052). */
 export type RunKind = 
 /**  The mod as it is, at its own slots and paths, its bins fixed (#ADR-0011). */
 "repair" | 

@@ -22,6 +22,7 @@ export function ModCard() {
   const archive = useRepairStore((state) => state.archive);
   const setArchive = useRepairStore((state) => state.setArchive);
   const meta = useRepairStore((state) => state.last?.meta);
+  const thumbnail = useRepairStore((state) => state.last?.package?.thumbnail);
   const settings = useSettings();
   const save = useSaveSettings();
   const out = useOutputFolder();
@@ -48,6 +49,13 @@ export function ModCard() {
   return (
     <SectionCard title={m.repair_mod_title()}>
       <div className="flex items-start justify-between gap-4" data-ui="ModCard:mod">
+        {thumbnail && (
+          <img
+            src={thumbnail}
+            alt={m.repair_mod_thumbnail_alt()}
+            className="h-16 w-16 shrink-0 rounded-md border border-surface-700 object-cover"
+          />
+        )}
         <div className="min-w-0 flex-1">
           {meta?.name && <p className="text-sm text-surface-50">{meta.name}</p>}
           {meta?.author && (

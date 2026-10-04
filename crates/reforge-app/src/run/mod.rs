@@ -9,11 +9,13 @@ mod views;
 
 use std::time::Instant;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use camino::Utf8PathBuf;
 use parking_lot::Mutex;
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
-use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter};
+use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter, Thumbnail};
 use reforge::port::{AnimReuse, Policy, TargetPolicy};
 use reforge::{Porter, Repairer, Run, RunError};
 use serde::{Deserialize, Serialize};
@@ -68,14 +70,14 @@ impl StageName {
     }
 }
 
-/// What a run makes of a mod.
+/// What a run makes of a mod. A port unless the request says otherwise (#ADR-0052).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum RunKind {
     /// The mod as it is, at its own slots and paths, its bins fixed (#ADR-0011).
-    #[default]
     Repair,
     /// The mod over the game's own skin at each unit's target.
+    #[default]
     Port,
 }
 
@@ -209,6 +211,24 @@ pub struct Unwatched;
 
 impl Watch for Unwatched {}
 
+/// The stages of a run of the kind, in order, as the library names them.
+pub fn stages_of(inputs: &Inputs, kind: RunKind) -> Vec<StageName> {
+    let env = inputs.env();
+    let stages = match kind {
+        RunKind::Repair => Repairer::new(env).run().stages(),
+        RunKind::Port => Porter::new(env).run().stages(),
+    };
+    stages.iter().map(|&stage| StageName::of(stage)).collect()
+}
+
+/// A thumbnail as a `data:` URL the window shows as an image.
+fn data_url(thumbnail: &Thumbnail) -> String {
+    format!(
+        "data:image/webp;base64,{}",
+        BASE64.encode(thumbnail.bytes())
+    )
+}
+
 fn millis_since(at: Instant) -> u64 {
     u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
@@ -318,6 +338,8 @@ pub fn run(
         .take()
         .or_else(|| run.archive().map(|archive| through_clean(&archive.meta)));
     let targets = parts.named_targets();
+    let thumbnail = run.package().and_then(|package| package.thumbnail.as_ref());
+    let thumbnail = thumbnail.map(data_url);
     let log = std::mem::take(&mut *lines.lock());
     Ok(RunView {
         stages: stage_views(&run, &timed),
@@ -331,6 +353,7 @@ pub fn run(
             version: row.version,
             chunks: row.chunks.len(),
             patches: row.patches.len(),
+            thumbnail,
         }),
         written,
         refused,

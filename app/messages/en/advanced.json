@@ -8,6 +8,8 @@
   "advanced_keep_stale_description": "Copies of game files from an older build, carried as the mod's own",
   "advanced_keep_stale_label": "Keep stale copies",
   "advanced_package_label": "{name} {version}: {chunks} chunks, {patches} patches",
+  "advanced_repair_preset_action": "Repair",
+  "advanced_repair_preset_note": "A repair: the mod at its own skins and paths, its bins fixed for the game. It ships whole bins, which cover Riot's own at every patch. Standard settings port again.",
   "advanced_reset_action": "Standard settings",
   "advanced_run_action": "Run",
   "advanced_settings_title": "Run settings",

@@ -14,7 +14,7 @@ use crate::state::IndexJob;
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::error::{AppError, IpcResult};
 use crate::inputs::{self, Choice, InputsView};
-use crate::run::{self, RunRequest, RunView, StageEvent, StageName, Watch};
+use crate::run::{self, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
 use crate::runlog::LogLine;
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
@@ -131,6 +131,19 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
     off_thread(move || {
         let inputs = open.get(&choice)?;
         run::run(&inputs, &request, &mut Window(app))
+    })
+    .await
+}
+
+/// The stages of a run of the kind, in order, as the library names them.
+#[tauri::command]
+#[specta::specta]
+pub async fn run_stages(app: AppHandle, kind: RunKind) -> IpcResult<Vec<StageName>> {
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let inputs = open.get(&choice)?;
+        Ok(run::stages_of(&inputs, kind))
     })
     .await
 }

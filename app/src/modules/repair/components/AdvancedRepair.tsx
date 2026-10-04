@@ -8,8 +8,8 @@ import { FindingList, worstFirst } from "@/modules/findings";
 import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
 import { useInputs, useInputsGate } from "@/modules/inputs";
 
-import { useRunMod } from "../api/run";
-import { runSettings, toggled, useRepairStore } from "../state/repairStore";
+import { useRunMod, useRunStages } from "../api/run";
+import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state/repairStore";
 import { ChangesList } from "./ChangesList";
 import { DecisionsView } from "./DecisionsView";
 import { LiveProgress } from "./LiveProgress";
@@ -18,7 +18,6 @@ import { PolicyCard } from "./PolicyCard";
 import { RulesCard } from "./RulesCard";
 import { RunDetails } from "./RunDetails";
 import { RunSummary } from "./RunSummary";
-import { PORT_STAGES, REPAIR_STAGES } from "./SimpleRepair";
 import { StageStrip, stageLabel } from "./StageStrip";
 import { type ToggleItem, ToggleList } from "./ToggleList";
 
@@ -34,7 +33,7 @@ function SettingsCard({
 }) {
   const advanced = useRepairStore((state) => state.advanced);
   const setAdvanced = useRepairStore((state) => state.setAdvanced);
-  const resetAdvanced = useRepairStore((state) => state.resetAdvanced);
+  const applyPreset = useRepairStore((state) => state.applyPreset);
   const archive = useRepairStore((state) => state.archive);
   const inputs = useInputs();
   const options = stages.map((stage) => ({ value: stage, label: stageLabel(stage) }));
@@ -44,11 +43,24 @@ function SettingsCard({
     <SectionCard
       title={m.advanced_settings_title()}
       action={
-        <Button size="xs" variant="ghost" onClick={resetAdvanced}>
-          {m.advanced_reset_action()}
-        </Button>
+        <div className="flex gap-1">
+          <Button size="xs" variant="ghost" onClick={() => applyPreset(STANDARD)}>
+            {m.advanced_reset_action()}
+          </Button>
+          <Button size="xs" variant="ghost" onClick={() => applyPreset(REPAIR)}>
+            {m.advanced_repair_preset_action()}
+          </Button>
+        </div>
       }
     >
+      {advanced.kind === "repair" && (
+        <p
+          className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-surface-200 select-none"
+          data-ui="SettingsCard:repair"
+        >
+          {m.advanced_repair_preset_note()}
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         <p className="text-sm text-surface-100 select-none">{m.advanced_through_label()}</p>
         <SegmentedControl
@@ -198,28 +210,26 @@ function Toggles() {
  */
 export function AdvancedRepair() {
   const archive = useRepairStore((state) => state.archive);
-  const kind = useRepairStore((state) => state.kind);
   const advanced = useRepairStore((state) => state.advanced);
   const setAdvanced = useRepairStore((state) => state.setAdvanced);
+  const kind = advanced.kind;
   const last = useRepairStore((state) => state.last);
   const live = useRepairStore((state) => state.live);
   const out = useOutputFolder();
   const run = useRunMod();
   const { gate, dialog } = useInputsGate();
   const [selected, setSelected] = useState<StageName | null>(null);
-  const stages = kind === "port" ? PORT_STAGES : REPAIR_STAGES;
+  const stages = useRunStages(kind);
 
   const start = (settings = advanced) => {
     if (!archive) {
       return;
     }
-    const through = (stages as readonly StageName[]).includes(settings.through)
-      ? settings.through
-      : "write";
+    const through = stages.includes(settings.through) ? settings.through : "write";
     setSelected(null);
     gate(() =>
       run.mutate({
-        kind,
+        kind: settings.kind,
         archive,
         through,
         settings: runSettings(settings),
@@ -239,7 +249,7 @@ export function AdvancedRepair() {
     <div className="flex flex-col gap-6" data-ui="AdvancedRepair">
       <SettingsCard stages={stages} onRun={() => start()} running={run.isPending} />
       {dialog}
-      {live && <LiveProgress live={live} stages={[...stages]} />}
+      {live && <LiveProgress live={live} stages={stages} />}
       {run.isError && <FailureNote failure={run.error} />}
       {last && !live && (
         <>

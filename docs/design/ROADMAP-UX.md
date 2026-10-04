@@ -3,8 +3,8 @@
 The plan for the first release of reforge as a desktop app, and what a person starting that
 work needs to know of the library. The decisions are #ADR-0046 (a standalone app on LTK
 Manager's stack), #ADR-0047 (the history index, distributed and grown on the user's machine),
-#ADR-0048 (the hash tables on the machine), #ADR-0049 (an AI agent as a caller, proposed) and
-#ADR-0050 (two views of one run).
+#ADR-0048 (the hash tables on the machine), #ADR-0049 (an AI agent as a caller, proposed),
+#ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
 
@@ -127,9 +127,10 @@ one bin entry's text is fetched with no clone.
 
 ## Two views of one run
 
-#ADR-0050. The simple view runs every stage with the standard settings and writes the
-`.modpkg`. The advanced view shows the stages in order, each with whether it ran, its result
-and its findings, and runs up to a stage the user chooses.
+#ADR-0050. The simple view ports the mod through every stage with the standard settings and
+writes the `.modpkg`. The advanced view shows the stages in order, each with whether it ran,
+its result and its findings, and runs up to a stage the user chooses. It ports too, and a
+repair is a preset of it beside the standard settings (#ADR-0052).
 
 The settings a run takes, each where the library keeps it, and nothing beside them:
 
@@ -157,6 +158,10 @@ user picks another policy and runs again.
 - Wanted, and a library change: a target per unit. The policy chooses for all units at once.
 - A port compares the policy with the other levels of animation reuse (`Porter::compare`),
   and the decide stage's view runs any of them with one button.
+- The stages a view lists are the library's, `Run::stages()` of a run of the kind
+  (`run_stages`); the front end keeps no list of its own.
+- The mod card shows the package's thumbnail: the WebP the library encoded from the mod's
+  image (#ADR-0051), never the archive's own bytes.
 - The app runs the stages one at a time, as `Run::through` does, and tells the window as each
   starts and ends, and each finding as it is raised. A run's details are the library's
   `tracing` spans, one per stage with its time, its debug events, and what other crates warn

@@ -219,6 +219,9 @@ pub struct PackageView {
     pub chunks: usize,
     /// How many patches it holds.
     pub patches: usize,
+    /// Its thumbnail as a `data:` URL: the WebP the library encoded from the mod's image,
+    /// never the archive's own bytes (#ADR-0051).
+    pub thumbnail: Option<String>,
 }
 
 /// A run as the views show it.

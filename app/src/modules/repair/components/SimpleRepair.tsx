@@ -5,7 +5,7 @@ import { m } from "@/i18n";
 import type { RunRequest } from "@/lib/bindings.gen";
 import { useInputs, useInputsGate } from "@/modules/inputs";
 
-import { useRunMod } from "../api/run";
+import { useRunMod, useRunStages } from "../api/run";
 import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
 import { ChangesList } from "./ChangesList";
 import { DecisionsView } from "./DecisionsView";
@@ -19,13 +19,14 @@ import { RunSummary } from "./RunSummary";
 const ERRORS_BLOCK = ["severity=error"];
 
 /**
- * The simple view (#ADR-0050): one button runs every stage with the standard settings and
- * writes the package. A run with an error is not written; the view shows the errors, and a
- * second button writes it anyway (`docs/design/ROADMAP-UX.md`, "Two views of one run").
+ * The simple view (#ADR-0050): one button ports the mod through every stage with the standard
+ * settings (#ADR-0052) and writes the package. A run with an error is not written; the view
+ * shows the errors, and a second button writes it anyway (`docs/design/ROADMAP-UX.md`, "Two
+ * views of one run").
  */
 export function SimpleRepair() {
   const archive = useRepairStore((state) => state.archive);
-  const kind = useRepairStore((state) => state.kind);
+  const kind = STANDARD.kind;
   const last = useRepairStore((state) => state.last);
   const live = useRepairStore((state) => state.live);
   const out = useOutputFolder();
@@ -46,14 +47,12 @@ export function SimpleRepair() {
     };
     gate(() => run.mutate(request));
   };
-  const stages = kind === "port" ? PORT_STAGES : REPAIR_STAGES;
+  const stages = useRunStages(kind);
 
   return (
     <div className="flex flex-col gap-6" data-ui="SimpleRepair">
       <div className="flex items-center justify-between gap-4">
-        <p className="text-sm text-surface-400 select-none">
-          {kind === "port" ? m.run_simple_port_description() : m.repair_run_description()}
-        </p>
+        <p className="text-sm text-surface-400 select-none">{m.run_simple_port_description()}</p>
         <Button
           variant="filled"
           left={<WrenchIcon weight="bold" />}
@@ -61,11 +60,11 @@ export function SimpleRepair() {
           disabled={!archive || !out || inputs.isPending}
           onClick={() => start(ERRORS_BLOCK)}
         >
-          {kind === "port" ? m.run_kind_port_label() : m.repair_run_action()}
+          {m.run_kind_port_label()}
         </Button>
       </div>
       {dialog}
-      {live && <LiveProgress live={live} stages={[...stages]} />}
+      {live && <LiveProgress live={live} stages={stages} />}
       {run.isError && <FailureNote failure={run.error} />}
       {last && !live && (
         <>
@@ -79,16 +78,3 @@ export function SimpleRepair() {
     </div>
   );
 }
-
-export const REPAIR_STAGES = ["read", "load", "fix", "build", "check", "write"] as const;
-export const PORT_STAGES = [
-  "read",
-  "load",
-  "fix",
-  "facts",
-  "decide",
-  "plan",
-  "build",
-  "check",
-  "write",
-] as const;

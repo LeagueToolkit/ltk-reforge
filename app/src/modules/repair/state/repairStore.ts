@@ -15,6 +15,7 @@ export type RepairMode = "simple" | "advanced";
 
 /** The settings of the advanced view, as the run request takes them. */
 export interface AdvancedSettings {
+  kind: RunKind;
   through: StageName;
   fixupsOff: string[];
   fixupsOn: string[];
@@ -27,8 +28,9 @@ export interface AdvancedSettings {
   gameEventsOnly: boolean;
 }
 
-/** The standard set and the default policy: what the simple view runs. */
+/** A port with the standard set and the default policy: what the simple view runs (#ADR-0052). */
 export const STANDARD: AdvancedSettings = {
+  kind: "port",
   through: "write",
   fixupsOff: [],
   fixupsOn: [],
@@ -40,6 +42,9 @@ export const STANDARD: AdvancedSettings = {
   animReuse: "own-rig",
   gameEventsOnly: false,
 };
+
+/** A repair with the standard set: the mod at its own slots and paths (#ADR-0011, #ADR-0052). */
+export const REPAIR: AdvancedSettings = { ...STANDARD, kind: "repair" };
 
 /** A list with an item added when absent and taken out when present. */
 export function toggled(list: string[], item: string): string[] {
@@ -76,8 +81,6 @@ export interface LiveRun {
 interface RepairState {
   /** The mod archive picked. */
   archive: string | null;
-  /** A repair or a port. */
-  kind: RunKind;
   /** The view shown. */
   mode: RepairMode;
   /** The last run of the archive, as the backend answered it. */
@@ -87,27 +90,25 @@ interface RepairState {
   /** The advanced view's settings. */
   advanced: AdvancedSettings;
   setArchive: (archive: string | null) => void;
-  setKind: (kind: RunKind) => void;
   setMode: (mode: RepairMode) => void;
   setLast: (last: RunView | null) => void;
   setLive: (change: (live: LiveRun | null) => LiveRun | null) => void;
   setAdvanced: (change: Partial<AdvancedSettings>) => void;
-  resetAdvanced: () => void;
+  /** Replaces the advanced settings with a preset: `STANDARD` or `REPAIR`. */
+  applyPreset: (preset: AdvancedSettings) => void;
 }
 
 /** The run page's state, kept while the user moves between pages. */
 export const useRepairStore = create<RepairState>()((set) => ({
   archive: null,
-  kind: "repair",
   mode: "simple",
   last: null,
   live: null,
   advanced: STANDARD,
   setArchive: (archive) => set({ archive, last: null }),
-  setKind: (kind) => set({ kind, last: null }),
   setMode: (mode) => set({ mode }),
   setLast: (last) => set({ last }),
   setLive: (change) => set((state) => ({ live: change(state.live) })),
   setAdvanced: (change) => set((state) => ({ advanced: { ...state.advanced, ...change } })),
-  resetAdvanced: () => set({ advanced: STANDARD }),
+  applyPreset: (preset) => set({ advanced: preset }),
 }));

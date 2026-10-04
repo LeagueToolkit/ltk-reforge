@@ -1,10 +1,29 @@
-import { useMutation } from "@tanstack/react-query";
+import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { commands, events, type RunRequest } from "@/lib/bindings.gen";
-import { unwrap } from "@/utils";
+import {
+  commands,
+  events,
+  type RunKind,
+  type RunRequest,
+  type StageName,
+} from "@/lib/bindings.gen";
+import { queryFn, unwrap } from "@/utils";
 
 import { useRepairStore } from "../state/repairStore";
+
+/** The stages of a run of the kind, as the library names them. They are built into the app. */
+export const runStagesQuery = (kind: RunKind) =>
+  queryOptions({
+    queryKey: ["run", "stages", kind] as const,
+    queryFn: queryFn(() => commands.runStages(kind)),
+    staleTime: Infinity,
+  });
+
+/** The stages of a run of the kind, in order. None while the inputs do not open. */
+export function useRunStages(kind: RunKind): StageName[] {
+  return useQuery(runStagesQuery(kind)).data ?? [];
+}
 
 /** Runs a mod as a request asks, and keeps its answer as the page's last run. */
 export function useRunMod() {

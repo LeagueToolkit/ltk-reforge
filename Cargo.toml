@@ -92,6 +92,8 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 reqwest = { version = "0.12", features = ["blocking"] }
 liblzma = "0.4"
 parking_lot = "0.12"
+# A package's thumbnail sent to the window as a `data:` URL.
+base64 = "0.22"
 
 # ltk_ritobin as census-sync reads and writes the census history's bin entries,
 # LeagueToolkit/league-toolkit#269 at 521a875, until it is released: the release before it reads
