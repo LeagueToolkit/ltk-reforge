@@ -1,0 +1,13 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "decide_alternatives_title": "What other levels of animation reuse choose",
+  "decide_checks_column": "Checks",
+  "decide_left_to_game_label": "left to the game",
+  "decide_policy_label": "Under the policy {policy}",
+  "decide_reason_label": "reason: {reason} · origin: {origin}",
+  "decide_skin_label": "skin {slot}",
+  "decide_slot_column": "Slot",
+  "decide_title": "Targets",
+  "decide_unit_title": "{character} {unit}: skin {source} to {chosen}",
+  "decide_use_policy_action": "Run with this"
+}

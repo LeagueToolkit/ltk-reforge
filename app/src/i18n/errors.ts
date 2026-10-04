@@ -45,6 +45,18 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.BAD_FILTER.title"]({ filter }),
       detail,
     }))
+    .with({ code: "BAD_RULE" }, ({ id, detail }) => ({
+      title: m["error.BAD_RULE.title"]({ id }),
+      detail,
+    }))
+    .with({ code: "SELECTION_UNREADABLE" }, ({ path, detail }) => ({
+      title: m["error.SELECTION_UNREADABLE.title"]({ path }),
+      detail,
+    }))
+    .with({ code: "BAD_POLICY" }, ({ detail }) => ({
+      title: m["error.BAD_POLICY.title"](),
+      detail,
+    }))
     .with({ code: "NO_OUTPUT" }, () => ({
       title: m["error.NO_OUTPUT.title"](),
     }))

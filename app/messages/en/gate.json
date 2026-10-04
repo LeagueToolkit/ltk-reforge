@@ -1,0 +1,14 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "gate_cancel_action": "Cancel",
+  "gate_game_text": "No game is chosen, or the one chosen does not open. A run needs the game it fixes the mod for.",
+  "gate_hashes_text": "No hash tables: paths and fields the mod hashes show as hex, and a file no table names ships under its hash. LTK Manager installs the tables.",
+  "gate_index_text": "No history index: the mod is judged against the game alone, so what earlier builds tell of its age and its origin is missing.",
+  "gate_inputs_link": "Choose the game under Inputs",
+  "gate_less_description": "A run can go on with less, and says so in its findings.",
+  "gate_less_title": "Some inputs are missing",
+  "gate_no_game_title": "No game to run against",
+  "gate_run_anyway_action": "Run anyway",
+  "gate_schema_text": "No schema database: a value's type comes from the game's own files alone. LTK Manager installs the database.",
+  "gate_skip_label": "Do not ask again"
+}

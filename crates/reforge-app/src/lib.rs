@@ -9,6 +9,8 @@ pub mod index;
 pub mod inputs;
 pub mod ipc;
 pub mod run;
+pub mod runlog;
+pub mod selection;
 pub mod settings;
 pub mod state;
 pub mod view;

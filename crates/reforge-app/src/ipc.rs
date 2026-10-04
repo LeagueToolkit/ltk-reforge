@@ -26,12 +26,19 @@ pub fn builder() -> Builder<Wry> {
             commands::check_catalog,
             commands::find_game,
             commands::open_inputs,
-            commands::run_repair,
+            commands::run_mod,
+            commands::save_selection,
+            commands::load_selection,
             commands::index_release,
             commands::install_index,
             commands::cancel_index,
         ])
-        .events(collect_events![InstallProgress])
+        .events(collect_events![
+            InstallProgress,
+            commands::RunStage,
+            commands::RunFinding,
+            commands::RunLog
+        ])
 }
 
 /// Writes the bindings to `path`.

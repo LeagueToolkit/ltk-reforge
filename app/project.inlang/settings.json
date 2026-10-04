@@ -6,11 +6,16 @@
   "plugin.inlang.messageFormat": {
     "pathPattern": [
       "./messages/{locale}/advanced.json",
+      "./messages/{locale}/decide.json",
       "./messages/{locale}/errors.json",
       "./messages/{locale}/findings.json",
       "./messages/{locale}/fixups.json",
+      "./messages/{locale}/gate.json",
       "./messages/{locale}/inputs.json",
+      "./messages/{locale}/policy.json",
       "./messages/{locale}/repair.json",
+      "./messages/{locale}/rules.json",
+      "./messages/{locale}/run.json",
       "./messages/{locale}/settings.json",
       "./messages/{locale}/shell.json",
       "./messages/{locale}/stages.json",

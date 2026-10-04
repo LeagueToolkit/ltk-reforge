@@ -38,6 +38,15 @@ pub enum AppError {
     /// A filter of the findings that block the write does not parse.
     #[error("the filter {filter} does not parse: {detail}")]
     BadFilter { filter: String, detail: String },
+    /// A rule does not read as the library's.
+    #[error("the rule {id} does not read: {detail}")]
+    BadRule { id: String, detail: String },
+    /// A selection file does not read or write.
+    #[error("the selection {path} does not read or write: {detail}")]
+    SelectionUnreadable { path: String, detail: String },
+    /// A target policy or a level of animation reuse the library does not have.
+    #[error("{detail}")]
+    BadPolicy { detail: String },
     /// A write was asked for with no folder to write in.
     #[error("no folder to write the package in")]
     NoOutput,

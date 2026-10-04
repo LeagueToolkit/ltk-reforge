@@ -1,0 +1,21 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "rules_add_action": "Add rule",
+  "rules_child_class_label": "Child's class",
+  "rules_child_field_label": "Field that holds the child",
+  "rules_class_label": "Class",
+  "rules_description": "Fixups that are data: remove, rename or move fields in one class. Saved with the fixups turned off and on, as the file reforge reads with --fixups.",
+  "rules_fields_remove_label": "Fields, one per line",
+  "rules_fields_rows_label": "Fields, one per line: from -> to",
+  "rules_id_label": "Id",
+  "rules_load_action": "Load selection",
+  "rules_op_label": "What the rule does",
+  "rules_op_move_label": "Move",
+  "rules_op_remove_label": "Remove",
+  "rules_op_rename_label": "Rename",
+  "rules_remove_action": "Remove the rule",
+  "rules_save_action": "Save selection",
+  "rules_selection_filter_label": "Selections of fixups",
+  "rules_title": "Rules and selections",
+  "rules_title_label": "Title (optional)"
+}

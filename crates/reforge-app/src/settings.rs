@@ -36,6 +36,9 @@ pub struct Settings {
     /// The folder a package is written in. None: the mod's own folder.
     #[serde(rename = "output.folder")]
     pub output: Option<String>,
+    /// Run with an input absent, the history index or the hash tables, without asking first.
+    #[serde(rename = "prompts.runWithLess")]
+    pub run_with_less: bool,
 }
 
 /// A colour scheme.

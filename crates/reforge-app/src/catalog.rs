@@ -5,7 +5,7 @@
 use reforge::fixups::FixupSet;
 use reforge::model::{FixupInfo, Phase};
 use reforge::package::{CheckInfo, CheckSet};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A fixup, as the list of fixups shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -23,7 +23,7 @@ pub struct FixupEntry {
 }
 
 /// Where a fixup runs, as `reforge`'s `Phase` serialises.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "name", rename_all = "kebab-case")]
 pub enum FixupPhase {
     /// On the file set, before characters and units are found.

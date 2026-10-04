@@ -14,9 +14,14 @@ use crate::state::IndexJob;
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::error::{AppError, IpcResult};
 use crate::inputs::{self, Choice, InputsView};
-use crate::run::{self, RunRequest, RunView};
+use crate::run::{self, RunRequest, RunView, StageEvent, StageName, Watch};
+use crate::runlog::LogLine;
+use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
 use crate::state::OpenInputs;
+use crate::view::Finding;
+use camino::Utf8Path;
+use serde::{Deserialize, Serialize};
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
 /// window. A panic in it answers as an internal error.
@@ -70,17 +75,78 @@ pub async fn find_game() -> IpcResult<Option<String>> {
     off_thread(|| Ok(inputs::find_game())).await
 }
 
-/// A repair of a mod, as far as the request asks, against the inputs the settings choose.
+/// A stage of the run under way starting or ending.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct RunStage {
+    /// The stage.
+    pub stage: StageName,
+    /// Whether it started or ended.
+    pub event: StageEvent,
+}
+
+/// A finding of the run under way, as it is raised.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct RunFinding {
+    /// The finding, its text as a run without names writes it.
+    pub finding: Finding,
+}
+
+/// A line of the details of the run under way.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+pub struct RunLog {
+    /// The line.
+    pub line: LogLine,
+}
+
+/// Sends what a run hears to the window as events.
+struct Window(AppHandle);
+
+impl Watch for Window {
+    fn stage(&mut self, stage: StageName, event: StageEvent) {
+        let _ = RunStage { stage, event }.emit(&self.0);
+    }
+
+    fn findings(&mut self) -> Option<Box<dyn FnMut(Finding) + Send>> {
+        let app = self.0.clone();
+        Some(Box::new(move |finding| {
+            let _ = RunFinding { finding }.emit(&app);
+        }))
+    }
+
+    fn log(&mut self) -> Option<Box<dyn Fn(LogLine) + Send + Sync>> {
+        let app = self.0.clone();
+        Some(Box::new(move |line| {
+            let _ = RunLog { line }.emit(&app);
+        }))
+    }
+}
+
+/// A repair or a port of a mod, as far as the request asks, against the inputs the settings
+/// choose. How it goes comes as `RunStage`, `RunFinding` and `RunLog` events.
 #[tauri::command]
 #[specta::specta]
-pub async fn run_repair(app: AppHandle, request: RunRequest) -> IpcResult<RunView> {
+pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> {
     let choice = Choice::from(&app.state::<SettingsStore>().get());
     let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
     off_thread(move || {
         let inputs = open.get(&choice)?;
-        run::repair(&inputs, &request)
+        run::run(&inputs, &request, &mut Window(app))
     })
     .await
+}
+
+/// Saves a choice of fixups as a selection file the command reads with `--fixups`.
+#[tauri::command]
+#[specta::specta]
+pub async fn save_selection(path: String, choice: FixupChoice) -> IpcResult<()> {
+    off_thread(move || choice.save(Utf8Path::new(&path))).await
+}
+
+/// The choice of fixups a selection file holds.
+#[tauri::command]
+#[specta::specta]
+pub async fn load_selection(path: String) -> IpcResult<FixupChoice> {
+    off_thread(move || FixupChoice::open(Utf8Path::new(&path))).await
 }
 
 /// The newest release of the census history that holds an index. None when none does.

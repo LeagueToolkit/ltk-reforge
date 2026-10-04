@@ -1,6 +1,6 @@
-//! A repair as the app drives it: a new run from the archive for each request, every stage's
-//! state, the report's parts as the views read them, and the write. The game is
-//! `reforge_testkit::skins`.
+//! A repair and a port as the app drives them: a new run from the archive for each request,
+//! every stage's state, the report's parts as the views read them, what a watch hears, and the
+//! write. The game is `reforge_testkit::skins`.
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
@@ -9,7 +9,13 @@ use reforge::history::NoHistory;
 use reforge::model::BinHash;
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
-use reforge_app::run::{self, AfterView, RunRequest, RunSettings, RunView, StageName, StageState};
+use reforge_app::run::{
+    self, AfterView, RunKind, RunRequest, RunSettings, RunView, StageEvent, StageName, StageState,
+    Unwatched, Watch,
+};
+use reforge_app::runlog::LogLine;
+use reforge_app::selection::{FixupChoice, RuleOp, RuleSpec};
+use reforge_app::view::Finding;
 use reforge_testkit::archive::zip;
 use reforge_testkit::bins::{bin, blob, entry, flag, object};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -17,6 +23,7 @@ use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{field, kind};
 use reforge_testkit::skins::{self, skin_bin};
 use reforge_testkit::{ModArchive, SchemaRows};
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 use zip::CompressionMethod;
 
@@ -62,6 +69,7 @@ impl Bench {
         let path = self.path("mod.fantome");
         fs::write(&path, archive.build()).unwrap();
         RunRequest {
+            kind: RunKind::Repair,
             archive: path.to_string(),
             through,
             settings: RunSettings::default(),
@@ -69,8 +77,12 @@ impl Bench {
         }
     }
 
+    fn try_run(&self, request: &RunRequest) -> Result<RunView, AppError> {
+        run::run(&self.inputs, request, &mut Unwatched)
+    }
+
     fn run(&self, request: &RunRequest) -> RunView {
-        run::repair(&self.inputs, request).unwrap()
+        self.try_run(request).unwrap()
     }
 }
 
@@ -185,19 +197,16 @@ fn a_write_with_no_folder_is_refused_before_the_run() {
     let mut request = bench.request(&own_mod(), StageName::Write);
     request.out = None;
 
-    assert!(matches!(
-        run::repair(&bench.inputs, &request),
-        Err(AppError::NoOutput)
-    ));
+    assert!(matches!(bench.try_run(&request), Err(AppError::NoOutput)));
 }
 
 #[test]
 fn a_fixup_the_library_does_not_have_is_refused() {
     let bench = Bench::new();
     let mut request = bench.request(&own_mod(), StageName::Fix);
-    request.settings.fixups_off = vec!["no-such-fixup".to_string()];
+    request.settings.fixups.off = vec!["no-such-fixup".to_string()];
 
-    let Err(AppError::UnknownFixup { id }) = run::repair(&bench.inputs, &request) else {
+    let Err(AppError::UnknownFixup { id }) = bench.try_run(&request) else {
         panic!("an unknown fixup was taken");
     };
     assert_eq!(id, "no-such-fixup");
@@ -258,4 +267,198 @@ fn a_mods_name_reaches_the_view_cleaned() {
     let meta = view.meta.expect("the mod's meta");
     assert_eq!(meta.name.as_deref(), Some(r"Evil\u{202e}Name"));
     assert_eq!(meta.author.as_deref(), Some(r"a\u{1b}[31m"));
+}
+
+/// What a watch heard of a run.
+#[derive(Default)]
+struct Heard {
+    stages: Vec<(StageName, &'static str)>,
+    findings: Arc<Mutex<Vec<Finding>>>,
+    lines: Arc<Mutex<Vec<LogLine>>>,
+}
+
+impl Watch for Heard {
+    fn stage(&mut self, stage: StageName, event: StageEvent) {
+        let event = match event {
+            StageEvent::Started => "started",
+            StageEvent::Ended { .. } => "ended",
+        };
+        self.stages.push((stage, event));
+    }
+
+    fn findings(&mut self) -> Option<Box<dyn FnMut(Finding) + Send>> {
+        let findings = Arc::clone(&self.findings);
+        Some(Box::new(move |finding| {
+            findings.lock().unwrap().push(finding)
+        }))
+    }
+
+    fn log(&mut self) -> Option<Box<dyn Fn(LogLine) + Send + Sync>> {
+        let lines = Arc::clone(&self.lines);
+        Some(Box::new(move |line| lines.lock().unwrap().push(line)))
+    }
+}
+
+#[test]
+fn a_port_runs_the_stages_of_a_port_and_names_each_units_target() {
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), StageName::Check);
+    request.kind = RunKind::Port;
+
+    let view = bench.run(&request);
+
+    let stages: Vec<StageName> = view.stages.iter().map(|stage| stage.stage).collect();
+    use StageName::*;
+    assert_eq!(
+        stages,
+        [Read, Load, Fix, Facts, Decide, Plan, Build, Check, Write]
+    );
+    assert!(
+        view.stages[..8]
+            .iter()
+            .all(|stage| stage.state == StageState::Ran),
+        "{:?}",
+        states(&view)
+    );
+    let targets = view.targets.expect("the decisions");
+    assert_eq!(targets.policy.target, "auto");
+    let decision = &targets.decisions[0];
+    assert_eq!(decision.chosen, Some(0));
+    assert_eq!(decision.character_name, "test");
+    assert!(!decision.candidates.is_empty());
+    // The other three levels of animation reuse, compared.
+    assert_eq!(decision.alternatives.len(), 3);
+}
+
+#[test]
+fn a_repair_has_no_decisions() {
+    let bench = Bench::new();
+
+    let view = bench.run(&bench.request(&own_mod(), StageName::Check));
+
+    assert_eq!(view.targets, None);
+}
+
+#[test]
+fn a_policy_the_library_does_not_have_is_refused_before_the_run() {
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), StageName::Check);
+    request.kind = RunKind::Port;
+    request.settings.target = "premium".to_string();
+
+    assert!(matches!(
+        bench.try_run(&request),
+        Err(AppError::BadPolicy { .. })
+    ));
+}
+
+#[test]
+fn a_watch_hears_each_stage_start_and_end_in_order_and_each_finding() {
+    let bench = Bench::new();
+    let mut heard = Heard::default();
+
+    let view = run::run(
+        &bench.inputs,
+        &bench.request(&own_mod(), StageName::Fix),
+        &mut heard,
+    )
+    .unwrap();
+
+    use StageName::*;
+    assert_eq!(
+        heard.stages,
+        [
+            (Read, "started"),
+            (Read, "ended"),
+            (Load, "started"),
+            (Load, "ended"),
+            (Fix, "started"),
+            (Fix, "ended")
+        ]
+    );
+    assert!(view.stages[..3].iter().all(|stage| stage.millis.is_some()));
+    // The inputs' findings are in the log before the run starts; the watch hears the run's.
+    let heard_codes: Vec<String> = heard
+        .findings
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|f| f.code.clone())
+        .collect();
+    let run_codes: Vec<String> = view
+        .findings
+        .iter()
+        .filter(|f| f.channel != "run")
+        .map(|f| f.code.clone())
+        .collect();
+    assert_eq!(heard_codes, run_codes);
+}
+
+fn remove_rule(field: &str) -> RuleSpec {
+    RuleSpec {
+        id: "remove-tool-field".to_string(),
+        title: Some("A tool's field, removed".to_string()),
+        records: Vec::new(),
+        phase: reforge_app::catalog::FixupPhase::Undo,
+        default: true,
+        class: "VfxEmitterDefinitionData".to_string(),
+        op: RuleOp::Remove {
+            fields: vec![field.to_string()],
+        },
+    }
+}
+
+#[test]
+fn a_rule_added_in_the_settings_runs_as_a_fixup() {
+    const EMITTER: &str = "VfxEmitterDefinitionData";
+    let schema = SchemaRows::new(300)
+        .class(EMITTER, &[field("isLocalSpace", kind("Bool"))])
+        .build();
+    let env = Env::builder()
+        .game(skins::game_at("16.19.300"))
+        .schema(schema)
+        .build()
+        .unwrap();
+    let emitter = object(
+        "Emitter",
+        EMITTER,
+        vec![("isLocalSpace", flag(false)), ("toolField", flag(true))],
+    );
+    let bench = Bench {
+        inputs: Inputs::of_env(env),
+        ..Bench::new()
+    };
+    let mut request = bench.request(&skin_archive(vec![emitter]), StageName::Fix);
+    request.settings.fixups.rules = vec![remove_rule("toolField")];
+
+    let view = bench.run(&request);
+
+    let fixup = view
+        .changes
+        .iter()
+        .find(|fixup| fixup.fixup == "remove-tool-field")
+        .unwrap_or_else(|| panic!("the rule changed nothing: {:?}", view.changes));
+    assert_eq!(fixup.removed, 1);
+    assert_eq!(fixup.changes[0].path, "toolField");
+}
+
+#[test]
+fn a_choice_saved_as_a_selection_file_reads_back_the_same() {
+    let bench = Bench::new();
+    let path = bench.path("selection.json");
+    let choice = FixupChoice {
+        off: vec!["bank-id".to_string()],
+        on: Vec::new(),
+        rules: vec![remove_rule("toolField")],
+    };
+
+    choice.save(&path).unwrap();
+
+    assert_eq!(FixupChoice::open(&path).unwrap(), choice);
+    // The library reads the file, as the command does with `--fixups`.
+    let text = fs::read_to_string(&path).unwrap();
+    assert!(
+        reforge::fixups::FixupSelection::from_json(&text).is_ok(),
+        "{text}"
+    );
 }

@@ -17,8 +17,15 @@ export const commands = {
 	findGame: () => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("find_game"),
 	/**  The inputs the settings choose, opened, and what opening them found. */
 	openInputs: () => __TAURI_INVOKE<({ ok: true; value: InputsView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("open_inputs"),
-	/**  A repair of a mod, as far as the request asks, against the inputs the settings choose. */
-	runRepair: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_repair", { request }),
+	/**
+	 *  A repair or a port of a mod, as far as the request asks, against the inputs the settings
+	 *  choose. How it goes comes as `RunStage`, `RunFinding` and `RunLog` events.
+	 */
+	runMod: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_mod", { request }),
+	/**  Saves a choice of fixups as a selection file the command reads with `--fixups`. */
+	saveSelection: (path: string, choice: FixupChoice) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("save_selection", { path, choice }),
+	/**  The choice of fixups a selection file holds. */
+	loadSelection: (path: string) => __TAURI_INVOKE<({ ok: true; value: FixupChoice }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("load_selection", { path }),
 	/**  The newest release of the census history that holds an index. None when none does. */
 	indexRelease: () => __TAURI_INVOKE<({ ok: true; value: IndexReleaseView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("index_release"),
 	/**
@@ -33,6 +40,9 @@ export const commands = {
 /** Events */
 export const events = {
 	installProgress: makeEvent<InstallProgress>("install-progress"),
+	runFinding: makeEvent<RunFinding>("run-finding"),
+	runLog: makeEvent<RunLog>("run-log"),
+	runStage: makeEvent<RunStage>("run-stage"),
 };
 
 /* Types */
@@ -57,6 +67,16 @@ to: string } |
 /**  The kind the target build reads there. */
 wants: string };
 
+/**  What another policy chooses for a unit. */
+export type AlternativeView = {
+	/**  The policy. */
+	policy: PolicyView,
+	/**  Its target. None: the unit is left to the game. */
+	chosen: number | null,
+	/**  Its reason. */
+	reason: string,
+};
+
 /**  What went wrong, as the fields the front end translates over. */
 export type AppError = 
 /**  The settings file did not write. */
@@ -75,6 +95,12 @@ export type AppError =
 { code: "UNKNOWN_CHECK"; id: string } | 
 /**  A filter of the findings that block the write does not parse. */
 { code: "BAD_FILTER"; filter: string; detail: string } | 
+/**  A rule does not read as the library's. */
+{ code: "BAD_RULE"; id: string; detail: string } | 
+/**  A selection file does not read or write. */
+{ code: "SELECTION_UNREADABLE"; path: string; detail: string } | 
+/**  A target policy or a level of animation reuse the library does not have. */
+{ code: "BAD_POLICY"; detail: string } | 
 /**  A write was asked for with no folder to write in. */
 { code: "NO_OUTPUT" } | 
 /**  The history index's release did not download. */
@@ -93,6 +119,18 @@ export type AppError =
 { code: "CANCELLED" } | 
 /**  A fault of the app's own, with no remedy a person can take. */
 { code: "INTERNAL"; detail: string };
+
+/**  A slot weighed for a unit. */
+export type CandidateView = {
+	/**  The slot. */
+	slot: number,
+	/**  Why it was weighed. */
+	why: string,
+	/**  The rig checks, then the clips. */
+	checks: CheckView[],
+	/**  Whether no check rules it out. */
+	feasible: boolean,
+};
 
 /**  What a fixup did at one place. */
 export type ChangeView = {
@@ -118,6 +156,54 @@ export type CheckEntry = {
 	record: string | null,
 	/**  Whether the standard set holds it. */
 	default: boolean,
+};
+
+/**  One check of a candidate slot. */
+export type CheckView = {
+	/**  What is checked: `mesh`, `submeshes`, `skeleton`, `clips`. */
+	aspect: string,
+	/**  How it fits: `fits`, or what rules the slot out. */
+	fit: string,
+	/**  One line for a person. */
+	detail: string,
+};
+
+/**  The child struct a rule moves fields into. */
+export type ChildSpec = {
+	/**  The field of the rule's class that holds the child. */
+	field: string,
+	/**  The child's class. */
+	class: string,
+};
+
+/**  The target chosen for one unit. */
+export type DecisionView = {
+	/**  The unit, by its id in the report: `%u0`. */
+	unit: string,
+	/**  Its character, by its id: `%c0`. */
+	character: string,
+	/**  The character's name, filled from the report's characters. */
+	character_name?: string,
+	/**  The slot its bin sits in. */
+	source: number,
+	/**  The target. None: the unit is left to the game. */
+	chosen: number | null,
+	/**  Why, as the library names it. */
+	reason: string,
+	/**  The unit's origin. */
+	origin: OriginView,
+	/**  The slots weighed, in the order weighed. */
+	candidates: CandidateView[],
+	/**  What the compared policies choose. */
+	alternatives: AlternativeView[],
+};
+
+/**  A field a rule renames or moves: its name before, and its name after. */
+export type FieldRow = {
+	/**  The field's name in the old layout, or its hash as `0x1e6ba0c4`. */
+	from: string,
+	/**  Its name in the layout the target build reads. */
+	to: string,
 };
 
 /**  One finding of a run. */
@@ -156,6 +242,19 @@ export type FixupChanges = {
 	unconvertible: number,
 	/**  Its changes, in the order made. */
 	changes: ChangeView[],
+};
+
+/**
+ *  The fixups a run takes: those turned off and on from the standard set, and the rules
+ *  added.
+ */
+export type FixupChoice = {
+	/**  Fixups turned off. */
+	off?: string[],
+	/**  Fixups turned on that the standard set leaves out. */
+	on?: string[],
+	/**  Rules added. */
+	rules?: RuleSpec[],
 };
 
 /**  A fixup, as the list of fixups shows it. */
@@ -249,6 +348,16 @@ export type InstallProgress = {
 	total: number,
 };
 
+/**  One line of a run's details. */
+export type LogLine = {
+	/**  Milliseconds since the run started. */
+	at: number,
+	/**  `error`, `warn`, `info`, `debug` or `trace`. */
+	level: string,
+	/**  The line, cleaned. */
+	text: string,
+};
+
 /**  The mod, as its archive and `META/info.json` name it. */
 export type ModView = {
 	/**  The archive's file name. */
@@ -265,6 +374,14 @@ export type ModView = {
 	description?: string | null,
 };
 
+/**  Where a unit's work comes from. */
+export type OriginView = {
+	/**  `base`, `premium`, `custom` or `unknown`. */
+	verdict: string,
+	/**  The premium skin, for a premium origin. */
+	slot?: number | null,
+};
+
 /**  The package a run built. */
 export type PackageView = {
 	/**  The project's name. */
@@ -277,8 +394,80 @@ export type PackageView = {
 	patches: number,
 };
 
+/**  A policy: how a target is chosen, and how much animation reuse is accepted. */
+export type PolicyView = {
+	/**  `auto`, `base`, `origin`, `slot` or a skin number. */
+	target: string,
+	/**  `block`, `same-joints`, `own-rig` or `allow`. */
+	anim_reuse: string,
+};
+
+/**  A record a rule rests on, as the library writes one. */
+export type RecordRef = {
+	/**  The series: `game-change`, `game-behavior`, `mod-artifact`. */
+	series: string,
+	/**  Its number in the series. */
+	number: number,
+};
+
+/**  What a rule does in the structs of its class. */
+export type RuleOp = 
+/**  Removes fields the target's class does not declare. */
+{ op: "remove"; 
+/**  The fields. */
+fields: string[] } | 
+/**  Renames fields, each from a name the target's class does not declare to one it does. */
+{ op: "rename"; 
+/**  The fields. */
+fields: FieldRow[] } | 
+/**  Moves fields into a child struct. */
+{ op: "move"; 
+/**  The child. */
+into: ChildSpec; 
+/**  The fields. */
+fields: FieldRow[] };
+
+/**  A rule: a fixup that is data. */
+export type RuleSpec = {
+	/**  The name it is turned on and off by. A rule with a built-in fixup's id takes its place. */
+	id: string,
+	/**  One line for a person. None: the library writes one from the class and the operation. */
+	title: string | null,
+	/**  The records it rests on. */
+	records: RecordRef[],
+	/**  Where it runs. */
+	phase: FixupPhase,
+	/**  Whether a run takes it unless it is turned off. */
+	default: boolean,
+	/**  The class whose structs it changes. */
+	class: string,
+	/**  What it does. */
+	op: RuleOp,
+};
+
+/**  A finding of the run under way, as it is raised. */
+export type RunFinding = {
+	/**  The finding, its text as a run without names writes it. */
+	finding: Finding,
+};
+
+/**  What a run makes of a mod. */
+export type RunKind = 
+/**  The mod as it is, at its own slots and paths, its bins fixed (#ADR-0011). */
+"repair" | 
+/**  The mod over the game's own skin at each unit's target. */
+"port";
+
+/**  A line of the details of the run under way. */
+export type RunLog = {
+	/**  The line. */
+	line: LogLine,
+};
+
 /**  What the front end asks a run to do. */
 export type RunRequest = {
+	/**  A repair or a port. */
+	kind?: RunKind,
 	/**  The mod archive: a `.fantome`, or a zip of the same layout. */
 	archive: string,
 	/**  The last stage to run. `write` runs every stage and writes the package. */
@@ -291,13 +480,11 @@ export type RunRequest = {
 
 /**
  *  The settings a run takes, each one the library's (`docs/design/ROADMAP-UX.md`, "Two views
- *  of one run"). The default is the standard set.
+ *  of one run"). The default is the standard set and the default policy.
  */
 export type RunSettings = {
-	/**  Fixups turned off. */
-	fixups_off?: string[],
-	/**  Fixups turned on that the standard set leaves out. */
-	fixups_on?: string[],
+	/**  The fixups turned off and on, and the rules added. */
+	fixups?: FixupChoice,
 	/**  Checks turned off. */
 	checks_off?: string[],
 	/**  Carry stale copies as the mod's own files. */
@@ -307,6 +494,23 @@ export type RunSettings = {
 	 *  None blocks by default (#ADR-0003).
 	 */
 	block?: string[],
+	/**
+	 *  How a port chooses each unit's target: `auto`, `base`, `origin`, `slot` or a skin
+	 *  number.
+	 */
+	target?: string,
+	/**  The animation reuse a port accepts: `block`, `same-joints`, `own-rig` or `allow`. */
+	anim_reuse?: string,
+	/**  Cut a port's events from the game's bank only. */
+	game_events_only?: boolean,
+};
+
+/**  A stage of the run under way starting or ending. */
+export type RunStage = {
+	/**  The stage. */
+	stage: StageName,
+	/**  Whether it started or ended. */
+	event: StageEvent,
 };
 
 /**  A run as the views show it. */
@@ -321,6 +525,8 @@ export type RunView = {
 	findings: Finding[],
 	/**  What each fixup did, in the order they ran. */
 	changes: FixupChanges[],
+	/**  The decisions, for a port that reached `decide`. */
+	targets: TargetsView | null,
 	/**  The package, once it was built. */
 	package: PackageView | null,
 	/**  The `.modpkg` written. */
@@ -331,6 +537,8 @@ export type RunView = {
 	fault: string | null,
 	/**  How long the run took, in milliseconds. Shown, never written to a report. */
 	millis: number,
+	/**  The run's details: the library's spans and events, as the window showed them. */
+	log: LogLine[],
 };
 
 /**  The schema database as read. */
@@ -365,6 +573,8 @@ export type Settings = {
 	"inputs.history"?: string | null,
 	/**  The folder a package is written in. None: the mod's own folder. */
 	"output.folder"?: string | null,
+	/**  Run with an input absent, the history index or the hash tables, without asking first. */
+	"prompts.runWithLess"?: boolean,
 };
 
 /**  How much a finding costs the output, as the report names it. */
@@ -377,6 +587,13 @@ export type Severity =
 "error" | 
 /**  There is no output. */
 "fatal";
+
+/**  A stage starting or ending, as a run tells its [`Watch`]. */
+export type StageEvent = 
+/**  The stage started. */
+{ event: "started" } | 
+/**  The stage ended, after this many milliseconds. */
+{ event: "ended"; millis: number };
 
 /**  A stage of a run, in the order they run. */
 export type StageName = 
@@ -414,6 +631,8 @@ export type StageView = {
 	stage: StageName,
 	/**  How far it got. */
 	state: StageState,
+	/**  How long it took, in milliseconds, when it ran. */
+	millis: number | null,
 };
 
 /**  What a finding is about. */
@@ -424,6 +643,14 @@ export type Subject = {
 	id: string,
 	/**  The name for a person. */
 	name: string,
+};
+
+/**  The decisions of a port. */
+export type TargetsView = {
+	/**  The policy the run decided under. */
+	policy: PolicyView,
+	/**  One decision per unit. */
+	decisions: DecisionView[],
 };
 
 /**  A colour scheme. */

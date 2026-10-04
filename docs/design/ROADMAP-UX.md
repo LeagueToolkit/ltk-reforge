@@ -155,6 +155,17 @@ user picks another policy and runs again.
   views of a run from `Report::to_json`, which writes every character a terminal acts on as an
   escape.
 - Wanted, and a library change: a target per unit. The policy chooses for all units at once.
+- A port compares the policy with the other levels of animation reuse (`Porter::compare`),
+  and the decide stage's view runs any of them with one button.
+- The app runs the stages one at a time, as `Run::through` does, and tells the window as each
+  starts and ends, and each finding as it is raised. A run's details are the library's
+  `tracing` spans, one per stage with its time, its debug events, and what other crates warn
+  of (`reforge_app::runlog`), shown folded. Progress inside a stage waits on the library.
+- A rule is edited as its JSON is written, and a choice of fixups is saved and loaded as the
+  selection file the command reads with `--fixups` (`reforge_app::selection`).
+- A run with an input absent asks first: with no game it does not start, and with no history
+  index, hash tables or schema it says what is judged with less and offers the index's
+  download, until the user tells it not to ask (`prompts.runWithLess`).
 
 ## The first version
 
@@ -168,7 +179,7 @@ user picks another policy and runs again.
 6. A selection of fixups saved and loaded, and a rule added in the app.
 7. A port in both views, with the decision, its candidates and the policy.
 
-Steps 1 to 5 are built.
+Steps 1 to 7 are built.
 
 Two faults of the crates reforge reads and packs with come before a release
 ([ROADMAP.md](ROADMAP.md), "Upstream"): a crafted archive can end the process, which a tool

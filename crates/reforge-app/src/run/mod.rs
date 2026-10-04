@@ -1,0 +1,435 @@
+//! A run of a mod, as both views drive it (#ADR-0050): a repair or a port, the archive, the
+//! last stage to run, the settings the library has, and where the package is written. Each
+//! request is a new `Run` from the archive, and no stage's result is kept between requests.
+//!
+//! The stages are run one at a time, as `Run::through` runs them, so a [`Watch`] hears each
+//! one start and end, and each finding as it is raised.
+
+mod views;
+
+use std::time::Instant;
+
+use camino::Utf8PathBuf;
+use parking_lot::Mutex;
+use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Stage};
+use reforge::fixups::FixupSet;
+use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter};
+use reforge::port::{AnimReuse, Policy, TargetPolicy};
+use reforge::{Porter, Repairer, Run, RunError};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+pub use self::views::*;
+use crate::error::{AppError, chain};
+use crate::inputs::Inputs;
+use crate::runlog::{Capture, LogLine};
+use crate::selection::FixupChoice;
+use crate::view::{Finding, read_clean, through_clean};
+
+/// A stage of a run, in the order they run.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, specta::Type,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum StageName {
+    /// The archive read under its caps.
+    Read,
+    /// The WADs, files, bins and units found.
+    Load,
+    /// The values brought to the target build.
+    Fix,
+    /// What is true of the mod. A port's alone.
+    Facts,
+    /// The target chosen. A port's alone.
+    Decide,
+    /// The units placed. A port's alone.
+    Plan,
+    /// The package built.
+    Build,
+    /// The package checked as the game would apply it.
+    Check,
+    /// The package written.
+    Write,
+}
+
+impl StageName {
+    fn of(stage: Stage) -> Self {
+        match stage {
+            Stage::Read => StageName::Read,
+            Stage::Load => StageName::Load,
+            Stage::Fix => StageName::Fix,
+            Stage::Facts => StageName::Facts,
+            Stage::Decide => StageName::Decide,
+            Stage::Plan => StageName::Plan,
+            Stage::Build => StageName::Build,
+            Stage::Check => StageName::Check,
+            Stage::Write => StageName::Write,
+        }
+    }
+}
+
+/// What a run makes of a mod.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum RunKind {
+    /// The mod as it is, at its own slots and paths, its bins fixed (#ADR-0011).
+    #[default]
+    Repair,
+    /// The mod over the game's own skin at each unit's target.
+    Port,
+}
+
+impl RunKind {
+    /// The stages of the kind, in order.
+    pub fn stages(self) -> &'static [StageName] {
+        use StageName::*;
+        match self {
+            RunKind::Repair => &[Read, Load, Fix, Build, Check, Write],
+            RunKind::Port => &[Read, Load, Fix, Facts, Decide, Plan, Build, Check, Write],
+        }
+    }
+}
+
+/// The settings a run takes, each one the library's (`docs/design/ROADMAP-UX.md`, "Two views
+/// of one run"). The default is the standard set and the default policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(default)]
+pub struct RunSettings {
+    /// The fixups turned off and on, and the rules added.
+    pub fixups: FixupChoice,
+    /// Checks turned off.
+    pub checks_off: Vec<String>,
+    /// Carry stale copies as the mod's own files.
+    pub keep_stale: bool,
+    /// Filters of the findings that refuse the write: codes or areas and `key=value` terms.
+    /// None blocks by default (#ADR-0003).
+    pub block: Vec<String>,
+    /// How a port chooses each unit's target: `auto`, `base`, `origin`, `slot` or a skin
+    /// number.
+    pub target: String,
+    /// The animation reuse a port accepts: `block`, `same-joints`, `own-rig` or `allow`.
+    pub anim_reuse: String,
+    /// Cut a port's events from the game's bank only.
+    pub game_events_only: bool,
+}
+
+impl Default for RunSettings {
+    fn default() -> Self {
+        let policy = Policy::default();
+        Self {
+            fixups: FixupChoice::default(),
+            checks_off: Vec::new(),
+            keep_stale: false,
+            block: Vec::new(),
+            target: policy.target.to_string(),
+            anim_reuse: policy.anim_reuse.as_str().to_string(),
+            game_events_only: false,
+        }
+    }
+}
+
+impl RunSettings {
+    fn fixups(&self) -> Result<FixupSet, AppError> {
+        let selection = self.fixups.selection()?;
+        if let Some(unknown) = selection.unknown().first() {
+            return Err(AppError::UnknownFixup {
+                id: unknown.to_string(),
+            });
+        }
+        Ok(FixupSet::from(&selection))
+    }
+
+    fn checks(&self) -> Result<CheckSet, AppError> {
+        let mut selection = CheckSelection::standard();
+        for id in &self.checks_off {
+            selection = selection.without(id.as_str());
+        }
+        if let Some(unknown) = selection.unknown().first() {
+            return Err(AppError::UnknownCheck {
+                id: unknown.to_string(),
+            });
+        }
+        Ok(CheckSet::from(&selection))
+    }
+
+    fn blocking(&self) -> Result<DiagnosticPolicy, AppError> {
+        let mut policy = DiagnosticPolicy::default();
+        for text in self.block.iter().filter(|text| !text.trim().is_empty()) {
+            let filter = Filter::parse(text).map_err(|error| AppError::BadFilter {
+                filter: text.clone(),
+                detail: error.to_string(),
+            })?;
+            policy = policy.with(filter, Action::Block);
+        }
+        Ok(policy)
+    }
+
+    fn policy(&self) -> Result<Policy, AppError> {
+        let bad = |detail: String| AppError::BadPolicy { detail };
+        Ok(Policy {
+            target: TargetPolicy::parse(&self.target).map_err(|e| bad(e.to_string()))?,
+            anim_reuse: AnimReuse::parse(&self.anim_reuse).map_err(|e| bad(e.to_string()))?,
+        })
+    }
+}
+
+/// What the front end asks a run to do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct RunRequest {
+    /// A repair or a port.
+    #[serde(default)]
+    pub kind: RunKind,
+    /// The mod archive: a `.fantome`, or a zip of the same layout.
+    pub archive: String,
+    /// The last stage to run. `write` runs every stage and writes the package.
+    pub through: StageName,
+    /// The settings.
+    pub settings: RunSettings,
+    /// The folder the `.modpkg` and its report are written in. Required to write.
+    pub out: Option<String>,
+}
+
+/// A stage starting or ending, as a run tells its [`Watch`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(tag = "event", rename_all = "kebab-case")]
+pub enum StageEvent {
+    /// The stage started.
+    Started,
+    /// The stage ended, after this many milliseconds.
+    Ended { millis: u64 },
+}
+
+/// What hears a run as it goes. Every method has a default that does nothing.
+pub trait Watch {
+    /// A stage started or ended.
+    fn stage(&mut self, _stage: StageName, _event: StageEvent) {}
+
+    /// Takes each finding as it is raised, its text as a run without names writes it.
+    fn findings(&mut self) -> Option<Box<dyn FnMut(Finding) + Send>> {
+        None
+    }
+
+    /// Takes each line of the run's details as it comes.
+    fn log(&mut self) -> Option<Box<dyn Fn(LogLine) + Send + Sync>> {
+        None
+    }
+}
+
+/// A watch that hears nothing.
+pub struct Unwatched;
+
+impl Watch for Unwatched {}
+
+fn millis_since(at: Instant) -> u64 {
+    u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// Runs a request against the inputs, telling `watch` how it goes.
+pub fn run(
+    inputs: &Inputs,
+    request: &RunRequest,
+    watch: &mut dyn Watch,
+) -> Result<RunView, AppError> {
+    let settings = &request.settings;
+    let fixups = settings.fixups()?;
+    let checks = settings.checks()?;
+    let blocking = settings.blocking()?;
+    let policy = settings.policy()?;
+    let out = match (request.through, &request.out) {
+        (StageName::Write, None) => return Err(AppError::NoOutput),
+        (StageName::Write, Some(out)) => Some(Utf8PathBuf::from(out)),
+        _ => None,
+    };
+
+    // The details are kept for the view and sent on to the watch.
+    let lines: Arc<Mutex<Vec<LogLine>>> = Arc::default();
+    let forward = watch.log();
+    let kept = Arc::clone(&lines);
+    let capture = Capture::start(move |line| {
+        if let Some(forward) = &forward {
+            forward(line.clone());
+        }
+        kept.lock().push(line);
+    });
+
+    let mut log = inputs.log();
+    if let Some(mut listener) = watch.findings() {
+        log.listen(move |diagnostic| listener(Finding::of(diagnostic, &Render::plain())));
+    }
+
+    let started = Instant::now();
+    let env = inputs.env();
+    let (repairer, porter);
+    let mut run = match request.kind {
+        RunKind::Repair => {
+            repairer = Repairer::new(env)
+                .fixups(fixups)
+                .checks(checks)
+                .keep_stale(settings.keep_stale);
+            repairer.run()
+        }
+        RunKind::Port => {
+            porter = Porter::new(env)
+                .policy(policy)
+                .compare(policy.other_levels())
+                .fixups(fixups)
+                .checks(checks)
+                .keep_stale(settings.keep_stale)
+                .game_events_only(settings.game_events_only);
+            porter.run()
+        }
+    }
+    .log_from(log);
+
+    let mut timed = Vec::new();
+    let mut fault = None;
+    let stages = request.kind.stages();
+    for &stage in stages
+        .iter()
+        .filter(|&&stage| stage <= request.through.min(StageName::Check))
+    {
+        watch.stage(stage, StageEvent::Started);
+        let at = Instant::now();
+        let ran = run_stage(&mut run, stage, &request.archive);
+        let millis = millis_since(at);
+        watch.stage(stage, StageEvent::Ended { millis });
+        timed.push((stage, millis));
+        match ran {
+            Ok(()) => {}
+            Err(RunError::Halted(_)) => break,
+            Err(error) => {
+                fault = Some(chain(&error));
+                break;
+            }
+        }
+    }
+
+    let mut written = None;
+    let mut refused = false;
+    if let (Some(out), Some(package), None) = (&out, run.package(), &fault) {
+        watch.stage(StageName::Write, StageEvent::Started);
+        let at = Instant::now();
+        let modpkg = Modpkg::new(out);
+        let path = modpkg.path_of(package);
+        let writers: [&dyn PackageWriter; 1] = [&modpkg];
+        match run.write(&writers, &blocking) {
+            Ok(()) => written = Some(path.to_string()),
+            Err(RunError::Refused(_)) => refused = true,
+            Err(error) => fault = Some(chain(&error)),
+        }
+        let millis = millis_since(at);
+        watch.stage(StageName::Write, StageEvent::Ended { millis });
+        timed.push((StageName::Write, millis));
+    }
+    let millis = millis_since(started);
+    drop(capture);
+
+    let mut parts: ReportParts = read_clean(&run.report().to_json());
+    // The report names the mod once `load` made it; a run stopped after `read` has the
+    // archive's word for it.
+    let meta = parts
+        .meta
+        .take()
+        .or_else(|| run.archive().map(|archive| through_clean(&archive.meta)));
+    let reached = Reached::of(&run, written.is_some(), &timed);
+    let targets = parts.named_targets();
+    let log = std::mem::take(&mut *lines.lock());
+    Ok(RunView {
+        stages: reached.views(stages, &timed),
+        meta,
+        halted: parts.halted,
+        findings: parts.diagnostics,
+        changes: parts.changes.unwrap_or_default(),
+        targets,
+        package: parts.package.map(|row| PackageView {
+            name: row.name,
+            version: row.version,
+            chunks: row.chunks.len(),
+            patches: row.patches.len(),
+        }),
+        written,
+        refused,
+        fault,
+        millis,
+        log,
+    })
+}
+
+/// Runs one stage. `read` reads the archive from its path.
+fn run_stage(run: &mut Run<'_>, stage: StageName, archive: &str) -> Result<(), RunError> {
+    match stage {
+        StageName::Read => run
+            .read_file(Utf8PathBuf::from(archive).as_path())
+            .map(drop),
+        StageName::Load => run.load().map(drop),
+        StageName::Fix => run.fix().map(drop),
+        StageName::Facts => run.gather().map(drop),
+        StageName::Decide => run.decide().map(drop),
+        StageName::Plan => run.plan().map(drop),
+        StageName::Build => run.build().map(drop),
+        StageName::Check => run.check(),
+        StageName::Write => Ok(()),
+    }
+}
+
+/// How far a run got: the stage a fatal finding ended it in, and the stages whose result it
+/// holds.
+struct Reached {
+    halted_at: Option<StageName>,
+    holds: Vec<StageName>,
+}
+
+impl Reached {
+    fn of(run: &Run<'_>, written: bool, timed: &[(StageName, u64)]) -> Self {
+        let halted_at = run
+            .halted()
+            .and_then(|halted| run.log().get(halted.0))
+            .map(|finding| StageName::of(finding.stage));
+        let ran = |stage| timed.iter().any(|(timed, _)| *timed == stage);
+        let mut holds = Vec::new();
+        // The run gives the archive up to `load`; that `read` ran is the loop's to say.
+        let checks = [
+            (StageName::Read, ran(StageName::Read)),
+            (StageName::Load, run.module().is_some()),
+            (StageName::Fix, run.fixed().is_some()),
+            (StageName::Facts, run.facts().is_some()),
+            (StageName::Decide, run.targets().is_some()),
+            (StageName::Plan, run.port().is_some()),
+            (StageName::Build, run.package().is_some()),
+            (
+                StageName::Check,
+                run.package().is_some() && ran(StageName::Check),
+            ),
+            (StageName::Write, written),
+        ];
+        for (stage, held) in checks {
+            if held {
+                holds.push(stage);
+            }
+        }
+        Self { halted_at, holds }
+    }
+
+    fn views(&self, stages: &[StageName], timed: &[(StageName, u64)]) -> Vec<StageView> {
+        stages
+            .iter()
+            .map(|&stage| {
+                let state = match self.halted_at {
+                    Some(at) if at == stage => StageState::Halted,
+                    _ if self.holds.contains(&stage) => StageState::Ran,
+                    _ => StageState::NotRun,
+                };
+                let millis = timed
+                    .iter()
+                    .find(|(timed, _)| *timed == stage)
+                    .map(|(_, millis)| *millis)
+                    .filter(|_| state != StageState::NotRun);
+                StageView {
+                    stage,
+                    state,
+                    millis,
+                }
+            })
+            .collect()
+    }
+}

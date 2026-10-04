@@ -3,29 +3,42 @@ import { useState } from "react";
 
 import { Button, FailureNote, SectionCard, SegmentedControl, Switch } from "@/components";
 import { m } from "@/i18n";
-import type { RunView, StageName } from "@/lib/bindings.gen";
+import type { PolicyView, RunView, StageName } from "@/lib/bindings.gen";
 import { FindingList, worstFirst } from "@/modules/findings";
 import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
-import { useInputs } from "@/modules/inputs";
+import { useInputs, useInputsGate } from "@/modules/inputs";
 
-import { useRunRepair } from "../api/run";
+import { useRunMod } from "../api/run";
 import { runSettings, toggled, useRepairStore } from "../state/repairStore";
 import { ChangesList } from "./ChangesList";
+import { DecisionsView } from "./DecisionsView";
+import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
+import { PolicyCard } from "./PolicyCard";
+import { RulesCard } from "./RulesCard";
+import { RunDetails } from "./RunDetails";
 import { RunSummary } from "./RunSummary";
+import { PORT_STAGES, REPAIR_STAGES } from "./SimpleRepair";
 import { StageStrip, stageLabel } from "./StageStrip";
 import { type ToggleItem, ToggleList } from "./ToggleList";
 
-const REPAIR_STAGES: StageName[] = ["read", "load", "fix", "build", "check", "write"];
-
 /** The run settings: the last stage, the stale copies, and what refuses the write. */
-function SettingsCard({ onRun, running }: { onRun: () => void; running: boolean }) {
+function SettingsCard({
+  stages,
+  onRun,
+  running,
+}: {
+  stages: readonly StageName[];
+  onRun: () => void;
+  running: boolean;
+}) {
   const advanced = useRepairStore((state) => state.advanced);
   const setAdvanced = useRepairStore((state) => state.setAdvanced);
   const resetAdvanced = useRepairStore((state) => state.resetAdvanced);
   const archive = useRepairStore((state) => state.archive);
   const inputs = useInputs();
-  const options = REPAIR_STAGES.map((stage) => ({ value: stage, label: stageLabel(stage) }));
+  const options = stages.map((stage) => ({ value: stage, label: stageLabel(stage) }));
+  const through = stages.includes(advanced.through) ? advanced.through : "write";
 
   return (
     <SectionCard
@@ -36,12 +49,12 @@ function SettingsCard({ onRun, running }: { onRun: () => void; running: boolean 
         </Button>
       }
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-2">
         <p className="text-sm text-surface-100 select-none">{m.advanced_through_label()}</p>
         <SegmentedControl
           options={options}
-          value={advanced.through}
-          onChange={(through) => setAdvanced({ through })}
+          value={through}
+          onChange={(next) => setAdvanced({ through: next })}
           aria-label={m.advanced_through_label()}
         />
       </div>
@@ -66,9 +79,7 @@ function SettingsCard({ onRun, running }: { onRun: () => void; running: boolean 
         <textarea
           rows={2}
           value={advanced.block.join("\n")}
-          onChange={(event) =>
-            setAdvanced({ block: event.target.value.split("\n").map((line) => line.trim()) })
-          }
+          onChange={(event) => setAdvanced({ block: event.target.value.split("\n") })}
           className="rounded-md border border-surface-600 bg-surface-950/40 p-2 font-mono text-xs text-surface-100 focus-visible:outline-2 focus-visible:outline-accent-500"
         />
       </label>
@@ -77,7 +88,7 @@ function SettingsCard({ onRun, running }: { onRun: () => void; running: boolean 
           variant="filled"
           left={<PlayIcon weight="bold" />}
           loading={running}
-          disabled={!archive || !inputs.isSuccess}
+          disabled={!archive || inputs.isPending}
           onClick={onRun}
         >
           {m.advanced_run_action()}
@@ -88,7 +99,15 @@ function SettingsCard({ onRun, running }: { onRun: () => void; running: boolean 
 }
 
 /** What one stage gave: its result where the views draw one, and the findings it raised. */
-function StageDetail({ view, stage }: { view: RunView; stage: StageName }) {
+function StageDetail({
+  view,
+  stage,
+  onPolicy,
+}: {
+  view: RunView;
+  stage: StageName;
+  onPolicy: (policy: PolicyView) => void;
+}) {
   const state = view.stages.find((s) => s.stage === stage)?.state;
   const findings = worstFirst(view.findings.filter((finding) => finding.stage === stage));
   return (
@@ -115,6 +134,9 @@ function StageDetail({ view, stage }: { view: RunView; stage: StageName }) {
         <FindingList findings={findings} empty={m.advanced_stage_findings_empty()} />
       </SectionCard>
       {stage === "fix" && state !== "not-run" && <ChangesList changes={view.changes} />}
+      {stage === "decide" && view.targets && (
+        <DecisionsView targets={view.targets} onPolicy={onPolicy} />
+      )}
     </div>
   );
 }
@@ -149,13 +171,7 @@ function Toggles() {
 
   const checkItems: ToggleItem[] = (checks.data ?? []).map((check) => {
     const on = !advanced.checksOff.includes(check.id);
-    return {
-      id: check.id,
-      title: check.title,
-      meta: check.record ?? "",
-      on,
-      changed: !on,
-    };
+    return { id: check.id, title: check.title, meta: check.record ?? "", on, changed: !on };
   });
 
   return (
@@ -182,43 +198,64 @@ function Toggles() {
  */
 export function AdvancedRepair() {
   const archive = useRepairStore((state) => state.archive);
+  const kind = useRepairStore((state) => state.kind);
   const advanced = useRepairStore((state) => state.advanced);
+  const setAdvanced = useRepairStore((state) => state.setAdvanced);
   const last = useRepairStore((state) => state.last);
+  const live = useRepairStore((state) => state.live);
   const out = useOutputFolder();
-  const run = useRunRepair();
+  const run = useRunMod();
+  const { gate, dialog } = useInputsGate();
   const [selected, setSelected] = useState<StageName | null>(null);
+  const stages = kind === "port" ? PORT_STAGES : REPAIR_STAGES;
 
-  const start = () => {
+  const start = (settings = advanced) => {
     if (!archive) {
       return;
     }
+    const through = (stages as readonly StageName[]).includes(settings.through)
+      ? settings.through
+      : "write";
     setSelected(null);
-    run.mutate({
-      archive,
-      through: advanced.through,
-      settings: runSettings({ ...advanced, block: advanced.block.filter(Boolean) }),
-      out: advanced.through === "write" ? out : null,
-    });
+    gate(() =>
+      run.mutate({
+        kind,
+        archive,
+        through,
+        settings: runSettings(settings),
+        out: through === "write" ? out : null,
+      }),
+    );
+  };
+  const runWithPolicy = (policy: PolicyView) => {
+    const next = { ...advanced, target: policy.target, animReuse: policy.anim_reuse };
+    setAdvanced({ target: policy.target, animReuse: policy.anim_reuse });
+    start(next);
   };
   const lastRan = last?.stages.filter((stage) => stage.state !== "not-run").at(-1)?.stage;
   const shown = selected ?? lastRan ?? "read";
 
   return (
     <div className="flex flex-col gap-6" data-ui="AdvancedRepair">
-      <SettingsCard onRun={start} running={run.isPending} />
+      <SettingsCard stages={stages} onRun={() => start()} running={run.isPending} />
+      {dialog}
+      {live && <LiveProgress live={live} stages={[...stages]} />}
       {run.isError && <FailureNote failure={run.error} />}
-      {last && (
+      {last && !live && (
         <>
           <RunSummary view={last} />
+          <RunDetails lines={last.log} />
           <StageStrip
             stages={last.stages}
             findings={last.findings}
             selected={shown}
             onSelect={setSelected}
           />
-          <StageDetail view={last} stage={shown} />
+          <StageDetail view={last} stage={shown} onPolicy={runWithPolicy} />
         </>
       )}
+      {kind === "port" && <PolicyCard />}
+      <RulesCard />
       <Toggles />
     </div>
   );

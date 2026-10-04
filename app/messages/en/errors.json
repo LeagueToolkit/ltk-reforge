@@ -1,6 +1,8 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "error.BAD_FILTER.title": "The filter {filter} does not read",
+  "error.BAD_POLICY.title": "The policy is none the library has",
+  "error.BAD_RULE.title": "The rule {id} does not read",
   "error.CANCELLED.title": "Stopped",
   "error.GAME_UNREADABLE.title": "The game at {path} does not open",
   "error.INDEX_BUSY.title": "The index is downloading already",
@@ -16,6 +18,7 @@
   "error.NO_GAME.title": "No game is chosen",
   "error.NO_INDEX_RELEASE.title": "No release of the census history holds an index",
   "error.NO_OUTPUT.title": "No folder to write the package in",
+  "error.SELECTION_UNREADABLE.title": "The selection {path} does not read or write",
   "error.SETTINGS_UNWRITABLE.title": "The settings did not save",
   "error.UNKNOWN_CHECK.title": "{id} is no check of this version",
   "error.UNKNOWN_FIXUP.title": "{id} is no fixup of this version",
