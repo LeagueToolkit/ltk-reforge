@@ -296,3 +296,358 @@ Every bank a port writes takes its header from a game events bank, the 5,017 uni
 under the game's own events included. That is read from forge's code, not measured.
 
 Not measured: whether a unit cut from the mod's own bank plays in game.
+
+## Facts and the decision (2026-10-04)
+
+`reforge inspect` over the 5,137 mods of the datasets, each compared with forge's baseline
+report of the same mod by `scripts/corpus/decide_compare.py` in forge. forge was not run again.
+A unit is named by its character and its source slot. Compared: each unit's role among the
+copies, the objects that are the game's, each origin with its evidence, each rig, the clips at
+each candidate slot, each candidate's checks with their text, each decision with its candidates
+under `auto/own-rig` and its target and reason under the three other levels of animation reuse,
+the reworks, and the diagnostics of the facts and the decision by code and subject.
+
+| run | mods | equal | accepted deviations only | other differences | time |
+|---|---:|---:|---:|---:|---:|
+| the reduced corpus | 27 | 25 | 2 | 0 | 7 s |
+| the datasets | 5,137 | 4,456 | 681 | 0 | 1,353 s |
+
+Twelve mods in parallel, about 3.2 s a mod. No mod failed. Three mods were run again after the
+full run, with the text of one piece of evidence corrected (below).
+
+Of the 11,256 units with a decision in either program, 11,254 have forge's origin, target and
+reason under every level of animation reuse. The other two are in mods under an accepted
+deviation: a sub-character whose origin is unknown where forge says the base, by one file made
+otherwise (#ADR-0038), with the same target; and the second representative forge keeps where
+reforge has one cluster (below), which forge supersedes.
+
+The accepted deviations:
+
+| deviation | mods | differences | reason |
+|---|---:|---:|---|
+| every object fixed | 604 | 76,797 | #ADR-0002. forge repairs only the objects of the bins a port writes, and says how many it left (`scope.outside`). Two copies whose objects a fixup changed alike share more objects in reforge: a copy is renamed where forge says near or same rig, or near with more objects shared. 55,783 kinds of copies in 603 mods, and the 21,014 notes of near copies that follow in 271. The clusters, representatives and spreads are forge's |
+| copies joined once fixed | 1 | 62 | #ADR-0002. Two bins share 55 of 59 objects once both are fixed, and under 80% in forge. reforge has one cluster of 23 units, forge two. forge's second representative ends superseded, so both port the same one unit |
+| the earlier reworks judged | 74 | 74 | Mordekaiser, Pantheon and Fiddlesticks are in the rework table (#GAME-CHANGE-0001): 74 mods of theirs are judged against the rework, and none is made before it without a model of its own. No decision differs |
+| a load deviation carried | 6 | 29 | the mod's load deviates ("The load stage"), and a tally of its game files or objects follows: the larger reduced copy (1 mod), own bytes before the game's (1), one chunk per path (4) |
+
+One fault of reforge found by the full run and fixed: the text of a file's evidence "a path
+under skin N's folder" named the skin the folder counts as, where forge names the folder's own
+slot (a chroma's). Three mods differed.
+
+What the decisions are, under `auto/own-rig`, over 11,255 representative units of 115,127
+units:
+
+| reason | units |
+|---|---:|
+| a mod for its own slot | 5,748 |
+| the base | 3,455 |
+| follows its champion | 865 |
+| fallback to the premium origin | 497 |
+| a paste cleaned onto the base | 464 |
+| a sub-character left to the game's base | 90 |
+| the skin whose clips it plays | 84 |
+| superseded | 29 |
+| made before a rework | 18 |
+| fits no slot | 3 |
+| unjudged | 2 |
+
+Origins: 7,284 premium, 3,667 base, 164 unknown, 140 custom. 4,227 submeshes in 475 mods are
+copied from a premium skin (#MOD-ARTIFACT-0024). 42,693 units in 614 mods are near copies.
+
+What forge does that the port keeps, found while porting (none changes a decision over the
+datasets):
+
+- The joints of a game skin's skeleton are known only for the slots a unit of the character
+  was compared with: its candidates and the skins its skeleton or clips match. At another slot
+  (a forced target) the check "the slot's joints" cannot hold.
+- Two units of one character on one slot are ranked by a key that ends with the source slot,
+  which differs between them. The ranks are never equal, so `target.conflict` is never raised.
+
+## Clip joints and events banks in the history index (2026-10-05)
+
+The census history's `history-v2` branch at commit `5b121f51ad75`: 755 builds, from
+8.20.2483196 to 16.19.8207193. The index was written to scratch directories. The index a run
+reads was not rebuilt.
+
+**The keys in the history.** The first build and the head both carry `clip.joints` on every
+animation clip's entry (94 of 94 in one champion's WAD at the first build) and `bank.header` and
+`bank.objects` on every bank with a `HIRC` section. At the head:
+
+| | count |
+|---|---:|
+| events banks | 18,689 |
+| their objects | 4,862,673 |
+| distinct objects (type, id, body) | 2,360,592 |
+| bytes of the distinct objects' bodies | 115,072,742 |
+| objects with no id | 0 |
+| animation clips | 64,903 |
+| joints they list | 6,949,858 |
+| distinct joint lists | 15,563 |
+
+**The census form rebuilds the bank.** A file written as `BKHD` with the entry's header, then
+`HIRC` with the entry's objects, has the entry's SHA-256 for 18,635 of the 18,689 events banks at
+the head, and for 5,864 of 5,869 at the first build (version 125). Of the 54 at the head that do
+not, 23 hold clips too. The other 31 hold a section the census does not record.
+
+**Eight builds**, 8.20.2483196 to 8.24.2558524, every family: written in 13 s, 251 MB.
+
+- Every events bank entry at that head is in the index with its header and its objects in
+  order: 6,056 banks, 1,354,041 objects. Every animation clip entry is there by path and by
+  file key with its joints: 15,614 clips, 1,250,869 joints, 2,188 lists.
+- The index of the first six builds with two appended equals the index of eight in
+  `joint_lists`, `list_joints`, `animations`, `bank_objects` and `event_banks`, row for row.
+
+**The whole history**, the clips and rigs families only: 390 s on 32 threads, 1.64 GB.
+
+| table | rows |
+|---|---:|
+| `bank_objects` | 7,830,002 |
+| `event_banks` | 162,930, at 16,291 paths |
+| `joint_lists`, `list_joints` | 16,773 and 2,079,289 |
+| `animations` | 125,169, at 122,348 paths, of 51,190 contents |
+
+- The same check against the head's entries: 18,689 banks and 4,862,673 objects, 64,903 clips
+  and 6,949,858 joints, none missing or different.
+- `event_banks` by version: 5,775 of 125, 43,471 of 132, 79,844 of 134, 33,840 of 145. They
+  list 49,000,478 objects.
+- **Size.** The bodies in `bank_objects` are 369 MB and the lists in `event_banks` 392 MB. The
+  file without the two tables is 554 MB, so they take 1.08 GB. Without the three tables of clip
+  joints it is 502 MB, so those take 52 MB. The index of every family was 1.61 GB before them
+  (2026-10-03).
+- `reforge history probe` against the 16.19.8207193 install copy: the base effects events bank
+  of one champion (256 objects) and its `en_us` voice events bank (320 objects) are in the index
+  with the header and objects `reforge-wwise` reads from the game's file. One animation clip of
+  the install is found by its file key with 211 joints.
+
+**The whole history, every family**: written in 2,263 s, 2.75 GB, 755 builds up to
+16.19.8207193. The tables the index held before have the row counts of the index built from the
+`history` branch (2026-10-03): `files` 1,893,046, `contents` 3,374,160, `clips` 4,694,013,
+`objects` 3,276,316. The five tables added have the row counts of the clips and rigs build
+above.
+
+Not measured: the memory the walk takes, and a clip's joints against the clip's own bytes.
+
+## The port, without audio (2026-10-04)
+
+`reforge port --no-write` over the reduced corpus of 27 mods, against the 16.19.8207193 install
+copy and the history index, each report compared with forge's port report of the same mod by
+`scripts/corpus/port_compare.py` in forge. forge was not run by the comparison: its reports,
+with what its port writes and each patch applied, were made beforehand. The audio of a port is
+not built in reforge, and every difference that follows from it is filed under one deviation.
+
+Compared: per unit whether it ships and why it left the port otherwise; per layer, WAD and
+path hash each chunk, a bin by the digest of each object as `ltk_meta` writes it and any other
+chunk by the digest of its bytes; per layer and patched game bin the links, the edits the
+overlay skips, and the digest of each object of the bin after the patch; the diagnostics of
+the plan, the build and the checks by code.
+
+| | |
+|---|---:|
+| mods run | 27, in 17 s at four in parallel |
+| faults | 0 |
+| runs ended by a fatal diagnostic | 2: one archive with no skin, one port that holds nothing (its one unit was made before a rework) |
+| mods compared | 27 |
+| equal | 8 |
+| under an accepted deviation only | 19 |
+| with a difference not accepted | 0 |
+| units | 321, none whose state differs |
+| chunks reforge ships | 2,050 |
+| patches reforge writes | 69 |
+
+Accepted deviations:
+
+| deviation | differences | mods | what differs |
+|---|---:|---:|---|
+| the audio is not built | 205 | 18 | 134 chunks of banks forge ships (80 in the base layer, 54 in voice layers), 16 voice-layer patches, 33 skin entries whose audio block forge's base patch sets, 2 objects of one graph whose literal sound names forge rewrote, 20 `audio` diagnostics |
+| an empty package halts | 3 | 1 | a port that holds nothing ends reforge's run at the build (`package.empty`); forge says so only where it writes |
+
+Outside the audio, every chunk reforge ships has forge's path and digest, every patched game
+bin has forge's objects after the patch, and every unit has forge's state.
+
+**The checks.** Over the 27 mods the checks raise two errors, and forge's checks raise the same
+two on the same mods:
+
+- `check.name-unresolved`, one mod: a sub-character follows its champion to a premium slot,
+  and 52 names the patched entry reaches there resolve in nothing its group loads. They are
+  particles of another skin of the champion.
+- `check.type-mismatch`, one mod: one carried value is a hash where the build reads a file
+  reference (`VfxAssetRemap.oldAsset`). No fixup converts it.
+
+**Two runs.** A second run of the 27 mods gives the same 27 reports, byte for byte: the digest
+of every chunk and of every patch among them.
+
+**Written.** One mod was written as a project directory and a `.modpkg`: one patch, its
+manifest, one bin and four files.
+
+Not measured: the port over the datasets, the time of the overlay and the checks apart, and
+any port in game.
+
+## The port (2026-10-04)
+
+`reforge port --no-write` over the 5,137 mods of the datasets, with the audio, against the
+16.19.8207193 install copy and the history index of 755 builds (the `history-v2` branch at
+`5b121f51ad75`), each report compared with forge's port report of the same mod by
+`scripts/corpus/port_compare.py` in forge. forge was not run by the comparison: its reports,
+with what its port writes and each patch applied, were made beforehand (2,222 s, no mod
+failed). What is compared is what "The port, without audio" lists. forge raises
+`audio.carried` and `audio.not-carried` once for each bank, layer and reason of a unit, and
+reforge once per unit, so those two codes are compared by how many units have one.
+
+| run | mods | equal | accepted deviations only | other differences | time |
+|---|---:|---:|---:|---:|---:|
+| the reduced corpus | 27 | 26 | 1 | 0 | 8 s at eight in parallel |
+| the datasets, first | 5,137 | 4,966 | 15 | 156 | 1,459 s at twelve in parallel |
+| the datasets, with 156 mods run again | 5,137 | 5,089 | 48 | 0 | 84 s for the 156 |
+
+No mod failed. The datasets were run once. The 156 mods with a difference were run again after
+the two faults below were fixed, and the 33 of them that still differed a second time, so that
+their reports hold the new name of each carried object. The other 4,981 reports are of the
+first run.
+
+**Nothing of the audio differs.** Of the 156 mods of the first run, none differs in a bank, a
+voice layer, the audio block of a patched entry, a rewritten sound name or an `audio`
+diagnostic. Two faults of reforge outside the audio, which the reduced corpus does not show,
+account for 125 of them:
+
+- **The first user of a file.** A file ships under the folder of the first object that names
+  it, in the order the entry reaches the objects (#ADR-0027). `links` and `file_refs` gave an
+  object's names struct by struct, an outer struct's before those of the structs it holds.
+  forge gives them in the pre-order of the values. 65 mods shipped 2,523 files at another
+  place than forge's. Both functions give the pre-order.
+- **A group's loose ends.** The `Apply` check took a name or a file as unresolved in the mod
+  already only when the plan had found it so for the unit walked. A sub-character's walk
+  enters the objects its champion ships, whose loose ends are the champion's.
+  `check.file-missing` was raised in 59 mods and `check.name-unresolved` in 2 where forge
+  raises none. The check takes the loose ends of every unit of the group, and follows the
+  patched entries and resolvers of all of them, as forge does.
+
+The load, repair and decide comparisons over the reduced corpus give what they gave before the
+change of order: 26, 4 and 25 mods equal of 27, none with a difference not accepted.
+
+The accepted deviations, each mod under one. All but the first are deviations of an earlier
+stage, in what a port carries of them:
+
+| deviation | mods | differences | what differs |
+|---|---:|---:|---|
+| an empty package halts | 15 | 45 | a port that holds nothing ends reforge's run at the build (`package.empty`); forge says so only where it writes |
+| the birth translation | 20 | 113 | carried emitters whose misplaced birth translation reforge moved or removed (#MOD-ARTIFACT-0019) |
+| the sampler state's name | 4 | 22 | carried materials whose sampler state's name the strip removes, where forge moved it (#GAME-CHANGE-0014) |
+| the larger reduced copy | 3 | 3 | a texture made of the `2x_` file, shipped by both at one place in other bytes (#ADR-0038) |
+| `retype` enters what it retags | 2 | 4 | a carried object, and the value of another type forge's check finds in it |
+| the earlier reworks | 2 | 9 | 2 animation files of a restoration that are the mod's own and ship, and the graphs that name them (#GAME-CHANGE-0001) |
+| the order of fields | 1 | 3 | carried emitters with `Linger` and `FlexShapeDefinition` in the other order (#ADR-0007). The reports hold one digest of an object, in the order of its fields: that the values are the same is the repair comparison's finding for this mod |
+| copies joined once fixed | 1 | 1 | a unit that is a copy in reforge and superseded in forge; neither ships it (#ADR-0002) |
+
+A difference in a carried object is filed under a deviation only when the report shows that
+the fixup of that deviation changed that object: the plan lists the name each carried object
+takes.
+
+**What the ports hold**, over the 5,137 mods. Each count is forge's own of its run but for the
+two files of the earlier reworks:
+
+| | |
+|---|---:|
+| runs ended by a fatal diagnostic | 16: one archive with no skin, 15 ports that hold nothing |
+| chunks | 430,840 |
+| files of the mod kept as they are | 184,759 |
+| textures put in TEX's container | 221,329 |
+| bins made | 10,911 |
+| banks made | 13,841 |
+| patches | 12,637: 8,583 in the base layer, 1,644 in `voice`, 970 in a locale's voice layer, 1,440 in `hud` |
+| mods with a `voice` layer, with a locale's | 1,079 and 541 |
+
+**The audio**, in 2,241 mods:
+
+| | |
+|---|---:|
+| bank units over the game's, whose clips the game's events play | 5,017, of 393,515 own clips |
+| bank units with events of their own | 568, of 20,285 own clips and 8,381 events kept |
+| of those, cut from the mod's own events bank (#ADR-0030) | 215 |
+| kept events that share an id with the game's bank at the path | 0 |
+| kept events no unit's list names, which keep their ids | 645 |
+| sounds under a kept event that play nothing, their clip being the game's | 390 |
+| units in the base layer, in `voice`, in a locale's voice layer | 2,624, 1,859 and 1,102 |
+| units that stand in for a game unit (#MOD-ARTIFACT-0028) | 40 |
+| locale copies of the champion WAD's voice carried once | 1 |
+| units whose literal sound names were rewritten | 153: 448 names to the mod's tag, 422 to the base's |
+| banks of the mod whose own clips ship in a bank made | 3,413 |
+
+forge's message names the mod's own events bank for 105 of the 215 units, the ones beside a
+game events bank none of whose events plays their clips. For the other 110 the game holds no
+events bank at the unit's events path.
+
+Not carried, in 159 units of 89 mods (`audio.not-carried`), as in forge:
+
+| why | banks | own clips |
+|---|---:|---:|
+| no event of its events bank plays the clips | 128 | 1,091 |
+| the game's skin at the target has no audio block with an events bank | 29 units | 383 |
+| a bank at a path the target's units do not load, with no events bank of the client's version | 17 | 527 |
+
+One mod holds a bank that does not read (`audio.bank-unreadable`), which forge does not report.
+
+**The checks.** Over the datasets the checks raise errors of two codes, in the mods forge's
+checks raise them in:
+
+- `check.type-mismatch`, 39 mods: a carried value of another type than the build reads. forge
+  finds 41: the two more are the mods where `retype` enters what it retags.
+- `check.name-unresolved`, 3 mods, 8 units.
+
+No patch fails to apply, no record is skipped, no link the port adds leads to nothing, no file
+a patched entry names is missing, and every bin and every bank the run wrote reads back, the
+banks at the client's version.
+
+**Two runs.** A second run of the 27 reduced mods gives the same 27 reports, byte for byte.
+
+**The in-game samples.** The 14 sample mods and the fix port with nothing written
+(`--no-write`): no check raises an error or a warning in any of them. 8 carry sounds, in 24
+banks. 4 have a voice layer, one of them a locale's. One was written as a project directory and
+a `.modpkg` of 21.8 MB: 214 chunks, the layers `base` and `voice`, the voice layer's manifest,
+its patch and its three banks under its own directory.
+
+**The datasets again, on one program.** After the two fixes every one of the 5,137 mods was
+run again with one binary, against the same forge reports: 5,089 equal, 48 under the accepted
+deviations above, none with another difference, no mod failed, 1,314 s at fourteen in
+parallel. 115,127 units, 430,840 chunks and 12,637 patches compared.
+
+Not measured: any port in game, whether a unit cut from the mod's own events bank plays, and
+the time of the overlay and the checks apart.
+
+## The commands on a run (2026-10-04)
+
+The four commands were rewritten on `Porter`, `Repairer` and `Run`. Two debug builds of the
+command, one from before the change and one from after it, were run on the same mods against
+the 16.19.8207193 install copy and the history index, and what each gave was compared byte
+for byte: the report, the standard output and the exit code.
+
+Eight mods of the reduced corpus, the one that halts and the seven forge ports quickest, each
+under nine invocations:
+
+| invocation | |
+|---|---|
+| `load --dump` | |
+| `load --fix --dump --every-file` | |
+| `inspect --dump` | |
+| `inspect --target base --anim-reuse allow` | |
+| `port --no-write --dump` | |
+| `port --no-write --block check,severity=error --no-check types --keep-stale --game-events-only` | |
+| `repair --no-write --again --dump` | |
+| `port --out <dir> --modpkg` | 7 mods written, one halted |
+| `repair --out <dir> --modpkg --block severity=error` | 5 mods written, 2 refused, one halted |
+
+- The 72 reports, the 72 outputs and the 72 exit codes (62 runs ended with 0, 8 halted with 2,
+  2 refused the write with 3) are equal.
+- The 12 project directories written are equal file for file, 489 files, the report beside
+  each package among them.
+- The 12 `.modpkg` files differ. They also differ between two runs of one build: the build
+  from before the change, run twice on one mod, wrote two files of the same length
+  (14,244,618 bytes) that differ in most of their bytes, into one directory as into two. The
+  project directories of the two builds, written from the same packages, are equal. What in
+  the packing differs was not looked into.
+
+The other 19 mods of the reduced corpus, each under `load --fix`, `inspect`,
+`port --no-write` and `repair --no-write --again`: the 76 reports, outputs and exit codes are
+equal.
+
+Not measured: the release build, the datasets, and a run that ends at a fault, whose error
+text on standard error names the stage and not the step inside it.

@@ -116,13 +116,19 @@ repair with every rewritten bin read back ([RUNS.md](RUNS.md), "The repair").
 
 ### 4. Facts and the decision
 
+- `model`: the readers of a rig's files. `game`: the typed questions of #ADR-0043 on
+  `GameView`.
 - `Facts`, `Policy`, `Targets`, the report.
 - `reforge inspect`: the report with no package.
 
-Records: the reworks; the copy and paste practices; the target ADRs.
+Records: a clip's track for a joint the skeleton lacks (#GAME-BEHAVIOR-0005); a premium skin's
+submeshes in an own mesh and another skin's clips on an own rig (#MOD-ARTIFACT-0024,
+#MOD-ARTIFACT-0025). The reworks, the copy and paste practices and the target ADRs were written
+in step 0.
 
-Exit: over the datasets, each unit's origin, target and reason compared with forge's under each
-animation-reuse level.
+Exit, met: over the datasets, of 11,256 units 11,254 have forge's origin, target and reason
+under each animation-reuse level, and every difference of the facts is under one of four listed
+deviations ([RUNS.md](RUNS.md), "Facts and the decision").
 
 ### 5. The port
 
@@ -131,17 +137,37 @@ animation-reuse level.
 - The apply check.
 - `reforge port`.
 
-Records: the audio and layout ADRs; the audio mod artifacts; the game behaviors.
+- The audio: the facts' `Sounds`, `OwnClips`, `AudioPlan` with the literal sound names, the
+  banks and the audio records of `PortBuilder`, the voice layers of #ADR-0028, and the game's
+  events bank and a bank's clips as typed questions of `GameView` (#ADR-0043).
 
-Exit: over the datasets, the package contents compared with forge's: chunk paths and bytes, and
-each patch applied to the game's bin. The 14 in-game sample mods are checked in game by a
-person.
+Records: a bin's links and names (#GAME-BEHAVIOR-0006), the WADs mounted with a champion
+(#GAME-BEHAVIOR-0007), a graph event's resolver (#GAME-BEHAVIOR-0008), the `.troybin` read for
+a `.troy` (#GAME-BEHAVIOR-0009), a PTCH record's path names (#GAME-BEHAVIOR-0010); repath tags
+(#MOD-ARTIFACT-0026); the client's rules for banks and events (#GAME-BEHAVIOR-0011 to
+#GAME-BEHAVIOR-0017); a voice stub of an older version and a unit that stands in for the
+game's (#MOD-ARTIFACT-0027, #MOD-ARTIFACT-0028).
+
+Exit, met but for the check in game: over the datasets, the package contents compared with
+forge's, chunk paths and bytes and each patch applied to the game's bin
+([RUNS.md](RUNS.md), "The port"). The 14 in-game sample mods port with no finding of a check,
+and are still to be checked in game by a person.
 
 ### 6. Closing
 
-- The remaining differences against forge, each fixed, noted or made an ADR.
-- Two runs of every reduced-corpus mod give equal bytes.
-- The design docs edited to what was built.
+- `Porter`, `Repairer` and `Run`, the objects a caller drives the stages through
+  ([ARCHITECTURE.md](ARCHITECTURE.md), "Shape"). Built: the four commands run on them, and
+  their reports, output and exit codes are those of the commands that called the stages
+  themselves ([RUNS.md](RUNS.md), "The commands on a run").
+- The remaining differences against forge, each fixed, noted or made an ADR. Over the datasets
+  no port differs from forge's outside the accepted deviations ([RUNS.md](RUNS.md), "The
+  port").
+- Two runs of every reduced-corpus mod give equal bytes. The reports of two runs are equal,
+  with the digest of every chunk and every patch in them ([RUNS.md](RUNS.md), "The port").
+  Still to do: the `.modpkg` two runs write of one mod differs in its bytes
+  ([RUNS.md](RUNS.md), "The commands on a run").
+- The design docs edited to what was built. Done with `Porter`: each doc of `docs/design/`
+  read against the code, every record code cited in `crates/` and `docs/` naming a file.
 
 ### 7. After parity
 
@@ -155,8 +181,8 @@ what forge held (event names without a list, the history's refs and entry texts,
 Titles as the records will carry them. Numbers are given when a record is written, in the step
 that cites it. Sources are forge's docs and the module that holds the evidence.
 
-Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0021; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004;
-#MOD-ARTIFACT-0001 to #MOD-ARTIFACT-0023.
+Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0021; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0017;
+#MOD-ARTIFACT-0001 to #MOD-ARTIFACT-0028.
 
 ### Game changes
 
@@ -182,7 +208,6 @@ Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0021; #GAME-BEHAVIOR-0001 to #GAME-BE
 | A block-compressed texture not in whole blocks is drawn | seen in the game's own files | `TRANSFORMS.md` |
 | A graph event finds its resolver by the skin's name, not by the entry's link | confirmed in game, 2026-09-30 | `WRITER.md` |
 | A graph event does not look in the additional resolvers | confirmed in game | `WRITER.md` |
-| A clip's track for a joint the skeleton lacks is skipped | inferred from mods that play in game | `TARGETS.md` |
 | A PTCH record's path names are hashed lowercased | to confirm in game | `WRITER.md` |
 | Spell and buff sound hooks are composed from the skin's tags | settled in game, 2026-09-23 to 2026-09-26 | `AUDIO.md` |
 | Of two banks defining one id the client keeps one, for voice the later unit's | settled in game | `AUDIO.md` |
@@ -190,6 +215,7 @@ Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0021; #GAME-BEHAVIOR-0001 to #GAME-BE
 | A play action finds its bank by the id in the header, not by the file name | confirmed in game, 2026-09-30 | `AUDIO.md` |
 | Events banks load at version 145 only, and an older stub blocks its package | confirmed in game, 2026-10-01 | `AUDIO.md` |
 | The game's event plays beside a mod's event of the same hook | seen in game, 2026-10-01 | `AUDIO.md` |
+| A sound plays only from a bank that holds the nodes above it | settled in game | `AUDIO.md` |
 | Which of two entries of one hash in a bin the client keeps | open | `DIAGNOSTICS.md` |
 
 ### Mod artifacts
@@ -224,14 +250,21 @@ and each is checked in game (the user, 2026-10-03). None is an ADR before that.
 ## Open
 
 - A run on the census history alone, with no install, and against the game at any build the
-  history holds. The history lacks two things a port reads from the game: the joints of an
-  animation clip, and an events bank's header and objects. Of the 568 sound units of a mod's
-  own that forge carried in the baseline, 322 can be cut from the mod's own events bank and 246,
-  in 217 of 383 mods, only from the game's (measured 2026-10-04). Every bank a port writes takes
-  its header from a game events bank. The census holds both since 2026-10-05, on its
-  `history-v2` branch, which the reader walks (#ADR-0042). Still to build: the reader's parsing
-  of the two, their tables in the index, the index rebuilt from that branch, and a game source
-  that answers from the history.
+  history holds. The index has the tables and the questions for the two things a port reads
+  from the game that the history gained on its `history-v2` branch (#ADR-0042): the joints of
+  an animation clip, and an events bank's header and objects ([HISTORY.md](HISTORY.md), "The
+  questions"). Still to do: a game source that answers from the history.
+- The history holds no vertex positions, so a source backed by it does not answer which
+  submeshes of an own mesh are copied from another skin (#ADR-0043). No digest of rounded
+  positions is asked of the census (the user, 2026-10-05): a rounding rule frozen into the
+  history serves one check, and stays in the data when the rule proves wrong, where an exact
+  hash keeps its use.
+- The 14 in-game sample mods ported by reforge are not checked in game. No unit cut from the
+  mod's own events bank was checked in game in a port of reforge's.
+- The two reasons the build has for not writing a unit's audio (the game's entry has no bank
+  unit to model one on; a skin bin written whole takes no layer) are carried over from forge
+  and met by no mod of the datasets: a unit with either has no audio block at its target, and
+  the plan carries none of its clips.
 - Sound units forge leaves out that a port could carry (measured 2026-10-04, for step 5): 64
   units in 18 mods have a second events bank of the client's version that plays their clips,
   and forge reads only the first; 84 units have an events bank of version 134 that plays their
@@ -255,8 +288,31 @@ and each is checked in game (the user, 2026-10-03). None is an ADR before that.
 - 40 game paths the hash cache spells hold an empty part (`//`). `ChunkPath` refuses them, so
   such a chunk stays unnamed.
 - The three earliest reworks of #GAME-CHANGE-0001 (Mordekaiser, Pantheon, Fiddlesticks) are
-  known by their joint names alone. Their submeshes and dropped paths are measured when the
-  rework facts are built (step 4).
+  known by their joint names alone. Their submeshes and dropped paths are not measured. Over
+  the datasets 74 mods of theirs are judged against the rework and none is left to the game
+  for it ([RUNS.md](RUNS.md), "Facts and the decision").
+- `unit.new-bin` is raised with the decision, as forge's `target.sub-no-slot-bin` is. The build
+  says in `unit.ported` that the bin is written whole, and raises `unit.new-bin-failed` where
+  a record does not apply to it.
+- The base an author's object is compared with is the game at the target build (`Base`). The
+  comparison with the game at the mod's own build, applied onto the target build (#ADR-0043),
+  is not built.
+- A repath tool's `.tft_set<N>` tag stays in a ported file's name (#MOD-ARTIFACT-0026): the
+  rule carried over from forge takes `.tftset<N>`, which no mod was seen to carry. Dropping
+  the tag changes the paths a port ships against forge's.
+- A name made to hash to a field no table names (#ADR-0031) is not built: a HUD edit on such a
+  path is left out, as in forge.
+- What a unit reaches is reported (`object.link-dangling`, `object.unreached`,
+  `object.game-carried`, `ref.dangling`, `ref.unmounted`) for every representative unit with
+  a target, the ones that then leave the port as the game's own skin or a folded chroma
+  included, as in forge.
+- A port that holds nothing ends the run at the build (`package.empty`). Whether a mod whose
+  every unit left the port is a fatal finding or a report with no package is not decided.
+- The joints of a game skin's skeleton are asked only for the slots a unit was compared with,
+  and two units on one slot never rank the same, both as in forge ([RUNS.md](RUNS.md), "Facts
+  and the decision"). Whether to ask the joints of any slot, and what a conflict is, is not
+  decided.
+- A game source that answers the typed questions from the history (#ADR-0043) is not built.
 - A text bin at a bin's path is left as it is (#MOD-ARTIFACT-0015). Whether to parse it and
   write the bin is a decision not taken.
 - Whether an old emitter's simple-particle fields are moved into `LegacySimple` or removed:

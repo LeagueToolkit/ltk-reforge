@@ -78,6 +78,7 @@ commit takes the term here, not a synonym.
 | term | means |
 |---|---|
 | run | reforge taking one archive through its stages |
+| evidence | what a run established of a mod that its package does not show again: its dating, its restorations |
 | port | a run that puts a mod over the game's own skin at T; also what it writes |
 | repair | a run that gives the mod as it is, at its own slots and paths, fixed for the target build |
 | stage | one step of a run, in order: read, load, fix, facts, decide, plan, build, check, write |

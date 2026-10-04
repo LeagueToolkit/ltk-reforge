@@ -124,19 +124,22 @@ The facts and the decision. `copies` is channel `input`, the rest `decision`.
 
 ## unit, object, ref
 
-The port's plan. Channel `output`, but `object.unreached`, which is `input`.
+The port's plan and each unit's part of the package. Channel `output`, but
+`object.unreached`, which is `input`. `unit.new-bin` is raised with the decision, where the
+target is known. `unit.left` is raised once per character, with each of its units that leaves.
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
-| `unit.left` | note | a unit that leaves the port, and why: a copy, no target, the game's own skin, a chroma folded into its parent | `drop-copies.dropped` |
+| `unit.left` | note | the units of a character that leave the port, and why: a copy, superseded, made before a rework, a sub-character left to the base or equal to the game's, no target, the game's own skin, a chroma folded into its parent | `drop-copies.dropped` |
 | `unit.retargeted` | note | the unit's names moved from its slot to its target | `retarget.renamed` |
 | `unit.new-bin` | note | a sub-character the game ships only at skin0 gets a skin bin at the target | `target.sub-no-slot-bin`, `lower.new-bin` as a note |
 | `unit.new-bin-failed` | error | a record did not apply to that new bin | `lower.new-bin` as an error |
 | `unit.not-written` | error | the game has no bin to patch at the target, or it does not read | `lower.no-game-bin` |
-| `unit.ported` | note | what the unit's port holds: objects carried, files shipped, records, whether the graph ships | `relocate.summary`, `lower.summary` |
+| `unit.ported` | note | what the unit's port holds: records, objects carried, whether the graph ships, whether its bin is written whole | `lower.summary` |
+| `object.carried` | note | what the port carries under its namespace: objects, files, references pointed at the game's files | `relocate.summary` |
 | `object.game-carried` | note | game objects carried because they name files the mod overrides | `reach.overrides` |
 | `object.link-dangling` | note | names the entry reaches that nothing loaded at the target holds | `reach.dangling` |
-| `object.unreached` | note | objects of the unit's load that no entry reaches; not carried | `reach.leftovers`, `scope.outside` |
+| `object.unreached` | note | objects of the unit's load that no entry reaches; not carried | `reach.leftovers` |
 | `ref.dangling` | note | files the port names that nothing holds | `file-refs.dangling` |
 | `ref.unmounted` | note | files only a WAD not mounted with the champion holds | `file-refs.unavailable` |
 
@@ -146,9 +149,9 @@ Channel `output`.
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
-| `audio.carried` | note | the mod's own clips carried, in units after the game's | `audio.carried` |
-| `audio.not-carried` | warning | own clips not carried, and why | `audio.not-carried` |
-| `audio.literals-renamed` | note | literal sound names that follow the mod's renamed events | `sound-literals.rewritten` |
+| `audio.carried` | note | a unit's own clips carried, in bank units after the game's: each bank with its unit, its layer, how its clips play and the game unit it stands in for | `audio.carried`, once for each bank, layer and stand-in |
+| `audio.not-carried` | warning | a unit's own clips not carried, each with why: no audio block at the target, a locale copy that differs, no events bank to cut, no event that plays them | `audio.not-carried` |
+| `audio.literals-renamed` | note | literal sound names rewritten for the target's audio: to the mod's renamed events, to the base's | `sound-literals.rewritten` |
 | `audio.bank-id-set` | note | a bank whose header id was zero, given its name's hash | `bank-id.set` |
 | `audio.bank-unnamed` | warning | a bank with header id zero whose path no table spells | `bank-id.unnamed` |
 | `audio.bank-unreadable` | warning | a bank that does not read; its clips are not judged | none |
@@ -165,6 +168,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `package.resolver-frozen` | note | the resolver's map is written whole; keys the game adds later are lost until a rebuild | `write.resolver-frozen` |
 | `package.texture-contained` | note | DDS textures put in TEX's container; those kept as DDS, and why | `tex-container.swapped` |
 | `package.in-place` | note | a repair's output: files kept, bins written again, and the files left out because the client does not reach them, by reason: nothing loads or names them, at a former path, a stale copy, named only by removed values | `inplace.summary` |
+| `package.ported` | note | a port's output: files shipped, bins made, patches, and the files left out because the client does not reach them through the port, by reason | none |
 | `package.empty` | fatal | the package holds nothing | `emit.empty` |
 | `check.manifest-unreadable` | error | the package's manifest does not load | `verify.manifest` |
 | `check.apply-failed` | error | a patch does not apply to the game's bin | `verify.apply` |
@@ -200,7 +204,7 @@ The run's other inputs. Channel `run`.
 
 | ltk-forge | why |
 |---|---|
-| `scope.unrepaired` | every loaded object is fixed (#ADR-0002) |
+| `scope.outside`, `scope.unrepaired` | every loaded object is fixed (#ADR-0002) |
 | `own-resolver.written` | not carried over (#ADR-0006) |
 | `pass.unimplemented` | no stub passes (#ADR-0006) |
 | `emit.skipped` | writing is the caller's call |

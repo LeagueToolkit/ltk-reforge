@@ -109,8 +109,10 @@ report's tables and a name for a person:
 { "kind": "unit", "id": "%u0", "name": "varus skin0" }
 ```
 
-The kinds: `run`, `input` (the install, the history, the names, the schema), `wad`, `file`,
-`bin`, `object`, `character`, `unit`, `layer`, `chunk` (a path of the output).
+The kinds: `run`, `input` (the install, the history, the names, the schema), `entry` (an entry
+of the archive, by the name the archive spells), `wad`, `file`, `bin`, `object`, `character`,
+`unit`, `chunk` (a path of the output). A layer is no subject: a finding about one holds it in
+`data`.
 
 A place inside an object is not a subject. It is an item of `data`: the object and the field
 path.
@@ -122,21 +124,26 @@ fixup that moves 400 fields in a unit raises one `fixup.changed` whose `data` li
 
 - The message gives the count and the first few items. One function writes "the first N and M
   more".
-- The report holds every item. A caller may cap the items per diagnostic for a corpus run. The
-  total stays.
+- The report holds every item. No cap on the items of a diagnostic is built.
 
 ## Through the run
 
-- **One log.** `Diagnostics` is an ordered, append-only log the run owns. The order is the order
-  raised, which is the same for the same inputs.
-- **A sink per stage.** A stage gets `diagnostics.at(Stage::Load)`. A fixup or a check gets a
-  sink that also fills `by` and `record`. A finding type whose every finding rests on one
-  record names it itself (`Diag::RECORD`), and the sink's record comes first.
+- **One log.** `Diagnostics` is an ordered, append-only log the run owns (`Run::log`). The
+  order is the order raised, which is the same for the same inputs. What the inputs raise
+  while the environment is built goes in the same log, before the archive is read
+  (`Run::log_from`).
+- **A sink per stage.** A stage gets `diagnostics.at(Stage::Load)`, from the `Run` method that
+  runs it. A fixup or a check gets a sink that also fills `by` and `record`. A finding type
+  whose every finding rests on one record names it itself (`Diag::RECORD`), and the sink's
+  record comes first.
 - **A stage returns its result.** Only a `fatal` diagnostic ends the run, as
-  `Err(Halted(id))`.
+  `Err(Halted(id))`. Every stage of a `Run` asked after it answers the same `Halted`, and the
+  report is built all the same.
 - **Results point at their reason.** Where a diagnostic explains a state, the state holds its
-  id: a unit left out of the port, a file not shipped, a bank not carried. A caller goes from
-  "this unit is not in the output" to why.
+  id: a unit left out of the port holds the id of its character's `unit.left`. A caller goes
+  from "this unit is not in the output" to why. The files not shipped are counted by reason
+  in the data of `package.ported` and `package.in-place`, and a unit's banks not carried are
+  listed with why in its `audio.not-carried`. Neither holds an id.
 - **Nothing raises into a sink that is thrown away.** The decision's diagnostics are made from
   the chosen decisions. The policies compared against make none.
 - **A listener hears each one as it is raised**, so a GUI shows a run as it goes.
@@ -154,9 +161,11 @@ A `DiagnosticPolicy` says what a caller does with what a filter selects:
 | `hide` | not printed; kept in the report |
 | `block` | `write` refuses while one is in the log |
 
-No code blocks by default (#ADR-0003). A policy is data and is saved beside the choice of fixups,
-so a GUI or a corpus run keeps its own: a corpus run blocks on every `check` error, a person
-porting one mod blocks on nothing.
+No code blocks by default (#ADR-0003). `Run::write` asks the policy before any writer runs,
+and raises `write.blocked` with the diagnostics that refuse it. A policy is data that
+serialises, as a choice of fixups does, so a GUI or a corpus run keeps its own: a corpus run
+blocks on every `check` error (`DiagnosticPolicy::strict`), a person porting one mod blocks on
+nothing. The command takes a filter as text: `--block check,severity=error`.
 
 ## Serialised
 
@@ -170,25 +179,31 @@ In the report, `diagnostics` is an array of:
   "channel": "input",
   "stage": "load",
   "subject": { "kind": "wad", "id": "%w0", "name": "Varus.wad.client" },
-  "message": "41 files hold the bytes the game shipped at their paths at earlier builds; not carried",
-  "data": { "files": ["%f3", "%f9"], "total": 41 }
+  "record": "#MOD-ARTIFACT-0004",
+  "message": "2 files (0.0 MiB) at the game's paths, holding the bytes the game shipped there at earlier builds; not carried",
+  "data": { "wad": "%w0", "files": ["%f11", "%f14"], "bytes": 15535 }
 }
 ```
 
 - `by` and `record` are present when set.
 - `data` is the code's type as serde writes it. Its fields are added, never renamed.
 - Text a mod controls is cleaned as everywhere: `clean` for a terminal, JSON escapes in a file.
-- The same objects, one per line, are the stream a listener gets.
-- `reforge diagnostics` lists every code with its area, channel, severity and one line of what it
-  means. [CODES.md](CODES.md) holds the same table, and a test compares the two.
+- A listener hears each `Diagnostic` as it is raised. `Diagnostic::to_json` writes the same
+  object, for a stream of one per line.
+- `reforge diagnostics` lists every code with its severity and its channel.
+  [CODES.md](CODES.md) holds each code with its severity, what it means and ltk-forge's code
+  for the same finding. A test holds that every declared code is in it with the severity it
+  is declared with.
 
 ## With the output
 
-`write` puts the report beside what it writes:
+`write` puts the report beside what it writes: `reforge-report.json` in a project directory,
+`<project>_<version>.reforge-report.json` beside a `.modpkg`. It is the whole report of the
+run as it stands before the write, every diagnostic in it. The report a command writes with
+`--report` is of the run after the write, so it also holds `write.written`.
 
-- `reforge-report.json`: the whole report, every diagnostic;
-- `reforge-report.md`: for a person. Each unit with where it went and why, then the errors, then
-  the warnings, then the notes counted by area.
+A summary for a person (each unit with where it went and why, then the errors, the warnings
+and the notes counted by area) is not built.
 
 Open: whether a `.modpkg` carries the summary inside it, where a mod manager can show it.
 
@@ -207,16 +222,20 @@ pub struct StaleFiles {
 
 impl Diag for StaleFiles {
     const CODE: Code = Code::new("file.stale", Channel::Input, Severity::Note);
+    const RECORD: Option<Record> = Some(Record::mod_artifact(4));
 
     fn subject(&self) -> Subject {
         Subject::Wad(self.wad)
     }
 
     fn message(&self, f: &mut Message<'_>) {
-        f.count(self.files.len(), "file").text("hold the bytes the game shipped at their paths at earlier builds; not carried");
+        f.count(self.files.len(), "file");
+        mib(f, self.bytes);
+        f.text(" at the game's paths, holding the bytes the game shipped there at earlier builds; not carried");
     }
 }
 ```
 
-`Message` spells ids through the `Speller`, so a message never holds a hash a table can name.
-Each module lists its codes in one table, which the catalogue and the test read.
+`Message` spells ids and hashes through the names it is rendered with (`Render`), so a message
+never holds a hash a table can name. Each module lists its codes in one table (`CODES`), which
+`reforge::codes()` joins for the catalogue and the test.

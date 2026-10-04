@@ -40,34 +40,64 @@ archive bytes
 The user's four parts map to them: fixups are `fix` and the file fixups inside `load`, analysis
 is `facts`, restructuring is `plan`, lowering and writing are `build`, `check` and `write`.
 
-A caller drives the stages through one object:
+A caller drives the stages through a `Porter` and its `Run` (`reforge::porter`):
 
 ```rust
 let env = Env::builder().install(install).history(history).names(names).schema(schema).build()?;
 let porter = Porter::new(&env).policy(policy).fixups(FixupSet::standard());
 
-let archive = porter.read(bytes, file_name)?;
-let mod_ = porter.load(archive)?;
-let fixed = porter.fix(mod_);
-let facts = porter.facts(&fixed);
-let targets = porter.decide(&facts);
-let port = porter.plan(&fixed, &facts, &targets);
-let package = porter.build(&port)?;
-porter.check(&package);
-package.write(&ProjectDir::new(out))?;
+let mut run = porter.run();
+run.read(&bytes, file_name)?; // &Archive
+run.load()?;                  // &Mod; the run holds the dating, the inventory, the file provenance
+run.fix()?;                   // &FixedMod; the run holds the Changes
+run.gather()?;                // &Facts, the stage `facts`
+run.decide()?;                // &Targets
+run.plan()?;                  // &Port
+run.build()?;                 // &Package
+run.check()?;                 // the checks' diagnostics; the run holds the Overlay
+run.write(&[&ProjectDir::new(out)], &DiagnosticPolicy::default())?;
+let report = run.report();
 ```
 
-`Porter::port(bytes)` runs them all. Stopping early is calling fewer methods. There is no pass
-registry, no `after` edge and no stub.
+- **A `Porter` holds what a caller chose**, built once and used for any number of runs: the
+  policy and the policies compared with it, the fixups, the checks, the caps, the reworks,
+  whether stale copies are carried, whether a bank's events are cut from the game's events
+  bank only. `Porter::new` takes the standard of each.
+- **A `Run` takes one archive through the stages and owns what passes between them**: the
+  log, the names learnt (`NameBook`), the mod, the dating, the inventory, the file
+  provenance, what the fixups changed, and every stage's result. A caller reads each by its
+  accessor (`module`, `fixed`, `dating`, `changes`, `facts`, `targets`, `port`, `package`,
+  `overlay`, `log`, `names`) after any stage. `Run::log_from` starts a run from a log of the
+  caller's: one that holds what the inputs raised when the environment was built, or one with
+  a listener.
+- **Each method hands its stage the stage's sink and options** and gives the stage's result.
+  `run.read` is `Archive::read(bytes, file_name, &caps, &mut sink)`: the archive's bytes are
+  borrowed, so the caller holds them once and drops them after the call. `run.read_file`
+  reads an archive file. `load` takes the archive out of the run.
+- **A stage runs once.** Its method asked again gives the result the run holds. The stage
+  types keep the order in their signatures. The run holds the results, so a method called
+  before the result it reads is held answers `RunError::NotReached` with both stages.
+- **Stopping early is calling fewer methods.** `run.through(stage)` runs every stage not run,
+  up to that one, and `Porter::port(bytes, file_name)` reads and runs them all but `write`.
+  There is no pass registry, no `after` edge and no stub.
+- **`run.report()` is the report of the run as far as it went**: a part for each result the
+  run holds, and every diagnostic, written with the names learnt up to then.
+- **`run.write(writers, policy)`** asks the caller's `DiagnosticPolicy` first (#ADR-0003),
+  then gives every writer the package and the report of the run as it stands before the
+  write.
 
-A stage ends early in two ways. A fatal diagnostic leaves nothing to write, and the stage
-returns `Halted` with its id. An input that does not answer (a game chunk that does not read,
-a history query that fails) is a fault, a typed error of the stage: a run judged against an
-input it could not read does not answer as if the input held nothing.
+`Repairer` is the same with no policy: its run has no `gather`, `decide` and `plan`
+(`RunError::NotInARepair`), `load` gathers the dating alone, and `build` builds in place
+(#ADR-0011). `run.again()` takes a repair's package through `read`, `load`, `fix` and `build`
+a second time, in memory, judged with the `Evidence` of the first run (its dating and its
+restorations, #ADR-0041), and holds what the second run changed.
 
-Each method hands its stage the stage's sink and options. `porter.read` is
-`Archive::read(bytes, file_name, &caps, &mut sink)`: the archive's bytes are borrowed, so the
-caller holds them once and drops them after the call.
+A stage ends early in two ways, both a `RunError`. A fatal diagnostic leaves nothing to
+write: the stage answers `Halted` with the diagnostic's id, as every stage asked after it
+does, and `through` and `port` end there with no error. An input that does not answer (a
+game chunk that does not read, a history query that fails) is a fault, with the stage's own
+typed error as its source: a run judged against an input it could not read does not answer as
+if the input held nothing.
 
 The stages are fixed. What a caller turns on and off is inside two of them: the fixups in `fix`
 and `load`, and the checks in `check`. Both are lists of objects that describe themselves
@@ -80,7 +110,9 @@ and `load`, and the checks in `check`. Both are lists of objects that describe t
 or off and add a rule, runs a stage at a time, and shows each stage's result. What that needs
 from the library:
 
-- every stage result prints (`Dump`) and serialises;
+- every stage result after `read` prints (`Dump`) and has its part of the report, which
+  serialises;
+- a run stops after any stage and holds every result up to it (`Run`);
 - fixups and checks are listed with an id, a title, the record they implement and their default
   state;
 - a choice of fixups is data that is saved and loaded, not code;
@@ -97,7 +129,7 @@ a crate.
 |---|---|
 | `reforge-magic` | what a file is by its first bytes and name |
 | `reforge-wwise` | Wwise banks and packages, read and written; a bank whose clips are larger than its data is refused |
-| `reforge` | the stages, `Porter`, `Repairer`, `Report` |
+| `reforge` | the stages, `Report`, `Porter`, `Repairer` |
 | `reforge-census` | the census history (format 2) read with gix; builds and appends the history index (#ADR-0005) |
 | `reforge-cli` | the `reforge` command |
 | `reforge-testkit` | builders for games, archives, bins, schemas and histories; a dev-dependency |
@@ -106,20 +138,23 @@ The modules of `reforge`, each using only the ones above it:
 
 | module | holds |
 |---|---|
-| `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access, text cleaning |
+| `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)) |
 | `archive` | `Archive`: the only reader of untrusted zips |
-| `game` | the target side: `Game` and `Install`, `GameView`, `Names`, `Schema` |
+| `game` | the target side: `Game` and `Install`, `GameView` and `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
 | `env` | `Env`: what a run is judged against, built once |
-| `load` | `Mod` from an `Archive`: file fixups, binless mods, characters, units, loads; and what is known of the files before any value is read: `Dating`, `Inventory`, `FileProvenance` |
+| `load` | `Mod` from an `Archive`: file fixups, binless mods, characters, units, loads; and what is known of the files before any value is read: `Dating`, `Inventory`, `FileProvenance`; the table of reworks |
 | `fixups` | the fixup engine and every rule |
-| `facts` | `Facts` |
-| `port` | `Policy`, `Targets`, `Port` |
-| `package` | `Package`, its builders for a port and for a repair, the checks, the writers |
-| `report` | `Report`, the dump |
+| `facts` | `Facts` and each result in it: copies, object provenance, origins, rigs, clips, reworks, sounds; `UnitJudge` |
+| `port` | `Policy`, `Targets`; `Port` and the steps of its plan: `Shipping`, `Reach`, `FileRefs`, `Layout`, `Renames`, `OwnClips`, `AudioPlan`, `HudPlan`; `Base` |
+| `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers |
+| `report` | `Report` and its rows |
+| `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)) |
 
-A test reads the crate's `use` lines and fails when a module uses one below it in this table.
+A test (`tests/layers.rs`) reads every `crate::` path of the sources and fails when a module
+uses one below it in this table. The same test fails when `facts` or `port` reads a game chunk
+(#ADR-0043).
 
 `reforge-census` keeps gix, `ltk_ritobin` and the patched `ltk_*` crates out of `reforge`: a run
 asks the history questions and never walks the census. It depends on `reforge` for the index's
@@ -133,21 +168,24 @@ tables (`history`) and the bin value helpers (`model`).
 - **A `Mod` is frozen after `fix`.** `FixedMod` is a newtype only `FixupSet::apply` makes.
   `Facts::gather` takes `&FixedMod`, so values are compared only at the target's types.
 - **No field belongs to a later stage.** A node holds what `load` found: a file's use, where it
-  came from (`FileSource::Archive`, `Made { from, by }`, `Game`), a unit's loads and entry.
-  A target, a destination and a dropped state are in `Targets` and `Port`.
+  came from (`FileSource::Archive`, `Made { from, by }`, `Rewritten { by }`, `Game`), a unit's
+  loads and entry. A target, a destination and a dropped state are in `Targets` and `Port`.
 - **One file per path in a WAD.** The WAD format holds one chunk per path hash, so a `Mod` holds
   at most one file per WAD and path hash. Adding a file where one exists adds nothing and says
   which file is there. A step that would add one (a file fixup, the game's bins for a mod with
   no skin bin) leaves the mod's own file in place.
 - **The port is new data.** `plan` clones the objects a unit carries and renames the clones.
   The mod's objects stay as the fixups left them.
-- **Closed sets are enums.** A layer is `Layer::Base | Voice(Option<Locale>) | Hud`. A unit that
-  leaves the port has a `Left` reason. A rig check has an `Aspect`.
+- **Closed sets are enums.** A layer is `Layer::Base`, `Voice` with its locale when it is one
+  locale's, or `Hud`. A unit that leaves the port has a `Left` reason. A rig check has an
+  `Aspect`.
 - **Paths are checked types.** `ChunkPath` is a path inside a WAD, lowercased, with no `..`, no
   root and no drive. `WadName` is one file name with its stem and locale parsed. Only these
   reach a writer. A name spelled by a mod is `Spelled` and is cleaned when printed.
-- **View types read a class once.** `SkinEntry`, `Resolver`, `Graph` and `AudioBlock` wrap a bin
-  object and give its fields by name. Class and field names are constants in one module.
+- **View types read a class once.** `SkinEntry` wraps a bin object and gives a skin entry's
+  fields by name, its `AudioBlock` among them. The keys of a resolver's map, an object's links
+  and the files it names are functions of `model::value`. Class and field names are constants
+  in one module (`model::known`).
 - **One walk.** A visitor over bin values gives each struct with its object, its path and its
   class, read-only or mutable. Links, file references, renames and fixups use it.
 
@@ -159,9 +197,31 @@ the schema. It is immutable and built once by `Env::builder()`.
 - **`Game`** is a trait for a chunk store: contains, size, read, the WADs holding a path, the
   build. `Install` implements it. `GameView` wraps a `Game` and caches what callers repeat: a
   path's content id, a parsed bin with the files it names, the bins of a character's skin at a
-  slot (`GameSkin`), the catalog of a character's skins. The caches live as long as the `Env`
-  and have no cap, so a caller that runs many mods builds an `Env` for each or a few. The chunks of one WAD by uncompressed size are a `SizeIndex`, a value
-  beside the `Game` and no method of it, so a fake game builds one from the same chunks.
+  slot (`GameSkin`). The caches live as long as the `Env` and have no cap, so a caller that
+  runs many mods builds an `Env` for each or a few. The chunks of one WAD by uncompressed size
+  are a `SizeIndex`, a value beside the `Game` and no method of it, so a fake game builds one
+  from the same chunks.
+- **The typed questions** (#ADR-0043) are what the stages after `load` ask of the game in place
+  of a chunk's bytes. `GameView` answers each from the install and keeps the answer:
+  - `catalog(character)`: a `SkinCatalog`, every skin the game has for the character with its
+    class, the slot it counts as (a chroma counts as its parent), its name, its mesh, skeleton
+    and texture, its resolver and graph, its audio block and its clips; the objects of the
+    skins' bins by entry, by the digest of their bytes and by the digest of their bytes after
+    the entry hash; the slots whose bins hold each entry; and the slots at which the game has a
+    skin bin. A skin's bins are its skin bin and what that links, breadth first, 16 at most;
+  - `bin(path)`: the game's bin at a path, parsed, with the files its objects name and each
+    object by its entry;
+  - `skeleton(path)`: the joints' names in order, and how many a vertex may bind to;
+  - `mesh_shape(path)`: the submeshes with their vertex positions rounded to 1/16 unit, every
+    position, and the highest joint index a vertex binds to;
+  - `clip_joints(path)`: the hashes of the joints a clip animates;
+  - `events_bank(path)`: an `EventsBank`, the header and the objects of the events bank at a
+    path. The history's `events_banks` answers with the same type, per build;
+  - `bank_clips(path)`: the clips of the bank or the package at a path, each by its id, its
+    size and the key of its bytes, which is what the census records of a bank's clips.
+
+  A file that is absent, and one that does not read as what is asked, answer `None`. A chunk
+  the game holds and does not give is a `GameError`.
 - **`History`** is a trait with one method per question in forge's query table. `SqliteHistory`
   reads the index, `NoHistory` answers nothing, and the testkit has one in memory.
 - **`Names`** holds the tables (Mimir, text tables) and does not change. Names a run learns
@@ -179,7 +239,8 @@ input's `report`. Its reason may name a path of the machine, which is the one pl
 differs between machines.
 
 Options are not in `Env`. Each stage takes its own: `Caps` and `LoadOptions` for read and load,
-`Policy` for decide, `PortOptions` for plan.
+`Policy` for decide, `PortOptions` for plan. A `Porter` holds a caller's choice of them and
+gives each stage its own ([Shape](#shape)).
 
 ## Fixups
 
@@ -274,54 +335,190 @@ idempotent.
 
 ## Facts
 
-`Facts` is a struct of typed results, gathered once in a fixed order.
+`Facts` is a struct of typed results, gathered once in a fixed order by `Facts::gather`.
 
 ```rust
 pub struct Facts {
+    pub roster: Roster,
+    pub catalogs: Catalogs,
     pub copies: Copies,
-    pub files: FileProvenance,
     pub objects: ObjectProvenance,
-    pub clips: ClipProvenance,
     pub origins: Origins,
     pub rigs: Rigs,
+    pub clips: Clips,
+    pub candidates: SideTable<SkinUnit, UnitCandidates>,
     pub reworks: Reworks,
-    // ...
+    pub sounds: Sounds,
 }
 ```
 
-- Each result has a constructor that takes what it needs:
-  `Origins::find(&fixed, &env, &copies, &files, &objects)`. The dependency graph is the
-  signatures.
+- Each result has a constructor that takes what it is found from:
+  `Clips::find(&fixed, &env, &catalogs, &copies, &origins, &rigs)`. The dependency graph is the
+  signatures. Where the inputs are more than four, they are the fields of an inputs type
+  (`OriginInputs`, `RigInputs`).
 - There is no cache and no invalidation. The mod is frozen, so a result stays true.
-- Evidence and verdict are two steps: `OriginEvidence` is gathered, `Origin::judge` reads it.
-- A per-slot question is a method. `UnitJudge::at(slot)` gives the rig checks and clip facts of
-  a unit at any slot, so the policy can ask for a slot no one listed.
+- The game is asked typed questions (#ADR-0043, [The environment](#the-environment)). No code of
+  `facts` reads a chunk.
+- **Copies.** Units of one character are related when their bins are the same bytes, equal once
+  each bin's own slot names are normalised, near (80% or more of the normalised objects shared,
+  and the same mesh, skeleton and texture) or of the same rig. Related units form clusters, and
+  each has one representative: slot 0, else a member that is no chroma and whose entry names
+  its own slot, else the lowest slot. A cluster that covers a skin other than the
+  representative's own is a spread. A sub-character whose bins are the game's has no role.
+- **Object provenance.** Each loaded object is the game's byte for byte, the game's under
+  another name, or the mod's own: asked of the catalog first, then of the history.
+- **Origin.** Evidence and verdict are two steps: `OriginEvidence` is gathered, `Origin::judge`
+  reads it. Evidence is typed: its aspect, the skin it points at, its weight and what it rests
+  on.
+- **Rigs.** For each representative with a skin entry: where its mesh, its skeleton and each
+  clip of its graph come from (the mod, the game, the game at the path Riot moved the file to,
+  nowhere), the game skins each matches, whether it is the mod's own bytes; the submeshes of an
+  own mesh against the base's and each candidate's mesh; the skeleton's joints.
+- **Clips.** `ClipsAt` sorts a unit's clips at one slot: the slot's own, the mod's own that
+  move a joint of the skeleton, the mod's own that move none, the ones only other skins play
+  (by skin, with how their tracks meet the unit's skeleton), the ones nothing judges.
+- **A per-slot question is a method.** `facts.judge(character, unit)` gives a `UnitJudge`, and
+  `UnitJudge::at(slot)` the rig checks and clip facts of the unit at any slot, so the policy
+  can ask for a slot no one listed. `candidates` holds the answers for the slots a unit is
+  likely to go to: the base, its own, its premium origin, and for a sub-character its
+  champion's.
+- **A check is typed.** A `RigCheck` is an `Aspect` and a `Fit`: an `Outcome` (fits, fits with
+  a fix, does not fit, unknown) and a `Why`, an enum with the data of each reason. The text of
+  a `Why` is ltk-forge's detail of the same check, so the two reports compare (#ADR-0004).
+- **Reworks.** Each reworked champion of the mod is judged made before or after its rework,
+  from `load`'s count of its files around the rework and from the dating.
+- **Sounds.** For each representative unit whose entry holds an audio block: its tags, its
+  bank units, and every copy the archive ships of a bank a unit names, WAD by WAD, with its
+  role (media, events, a header alone, a package), its version and its locale. Each clip of a
+  copy is the game's when the history holds its bytes at any build, else the mod's own.
+  Without a history a clip is the game's when the game's bank at the same path holds it
+  under the same id, and an older clip of the game then passes as the mod's own. A bank a
+  repath tool moved counts at the game's path.
+- **The roster** is the mod's groups, characters and units as far as a policy needs them: ids,
+  source slots, whether a unit has an entry. With it `Facts` holds everything `decide` reads.
+- **Faults.** A game chunk that does not read and a history that does not answer end
+  `gather` with a `FactsError`.
+- **Diagnostics** are raised by `Facts::report`, from the results: the copies, the origins
+  left open, the submeshes copied, the rig files that do not parse and the banks that do not
+  read.
 - Facts that do not read object values (`Dating`, `Inventory`, `FileProvenance`) are gathered on
   `&Mod` before `fix`, which needs the dating. They are in `load`, since `fixups` comes before
-  `facts` in the module order.
+  `facts` in the module order. `Facts::gather` takes the dating and the file provenance as
+  inputs.
 
 ## Decide
 
-`Policy::decide(&Facts) -> Targets` is a pure function. It returns one `Decision` per
-representative unit: the chosen slot, a `Reason`, and each candidate with its checks. The
-diagnostics are made from the decisions afterwards, so comparing other policies is calling
-`decide` again.
+`Policy::decide(&Facts) -> Targets` is a pure function. A `Policy` is how the target is chosen
+(`TargetPolicy`: by the facts, the base, the origin, the unit's own slot, a slot given) and the
+level of animation reuse (`AnimReuse`). It reads neither the mod nor the game.
+
+- `Targets` holds one `Decision` per representative unit: the chosen slot or none, a `Reason`,
+  the unit's origin, each `Candidate` weighed with its checks (the rig checks of the facts,
+  then the clips judged at the policy's level), whether the origin is on the base's rig, and
+  the chromas of the target.
+- **The order of the choice** under `TargetPolicy::Auto`: a unit made for a model before its
+  rework gets no target (#ADR-0019); a sub-character follows its champion (#ADR-0013,
+  #ADR-0017); a unit with no rig stays unjudged at its slot; a unit in a premium slot that is no
+  spread stays there (#ADR-0012); every other unit goes to skin0 where it fits, else to its
+  premium origin, else to the skin whose clips it mostly plays (#ADR-0015), else stays on skin0
+  for a person to decide (#ADR-0016).
+- **Two units on one slot.** One keeps it: a unit whose entry reads, then the unit written for
+  the slot, then a skin0 unit, then a spread, then the lower slot. The others get no target.
+- **The diagnostics are made from the decisions afterwards**, by `Targets::report`. A decision
+  keeps what they need: what it chose before another unit took the slot, the unit that took
+  it, whether a forced target does not fit, the slot at which the game has no bin of a
+  sub-character.
+- **Comparing policies is deciding again.** `Targets::compared(&facts, &policies)` adds what
+  each other policy chooses, as an `Alternative` per unit. `Policy::other_levels` gives the
+  same target policy at the other levels of animation reuse, which is what `reforge inspect`
+  reports.
 
 ## Plan
 
-`plan` turns the mod and its targets into a `Port`. Each step is a type with one job, and each
-prints.
+`Port::plan(&PortInputs, &mut sink)` turns the mod and its targets into a `Port`. Each step is
+a type with one job, each prints and serialises, and a step reads only the steps before it.
+The port is linked against the game as a linker links a program: the skin entry, the resolver
+and a graph equal to the game's keep the names the game finds them by, and every other carried
+object takes a name of its own, which every link to it follows.
 
-1. **`Shipping`**: the units that ship, and why each other unit leaves: a copy, no target, the
-   game's own skin, a chroma folded into its parent.
-2. **`Reach`** and **`FileRefs`**, per group at T: what each entry reaches, what is the game's,
-   what is carried, where each file is found.
-3. **`Layout`**: the one owner of every output name and path. It gives the namespace, a unit's
-   directory, a file's place by its first user, an object's name.
-4. **`Renames`**: S to T names and namespaced names, as a map.
-5. **`AudioPlan`**: the units and banks the port adds, the events renamed.
-6. **`Port`**: the carried objects cloned with the renames and file references applied, the
-   files with their places, the audio, the HUD edits.
+1. **`Shipping`**: the units that ship, and why each other unit leaves, as a `Left`: a copy,
+   superseded, made before a rework, a sub-character left to the base or equal to the game's,
+   no target, the game's own skin shipped again by a spread, a chroma folded into its parent
+   (#ADR-0018, #ADR-0020). A unit that leaves holds the id of the `unit.left` diagnostic of
+   its character. The last two are judged from what each unit reaches and names under the
+   mod's own names, so `Reach` and `FileRefs` are found once before `Shipping` and once after
+   the names moved.
+2. **`Renames`**, first part: each shipping unit's `Skin<S>` entry and resolver names become
+   `Skin<T>`'s, and its graph's when the mod defines one. A rename that only swaps one game
+   object for another is not taken by the objects of a unit whose rig does not fit its target.
+   `AudioPlan` is planned here, and the literal sound names are rewritten once step 3 is
+   found.
+3. **`Reach`**, per unit at T: the objects its entry reaches through its load, each with a
+   `Fate` (the entry, the resolver, the graph, the game's own byte for byte, carried), the
+   names that resolve to the game's bins at T or to the champion's unit, the names nothing
+   holds, the game bins the port keeps as links, and the objects nothing reaches
+   (#GAME-BEHAVIOR-0006). A game object naming a file the mod overrides is carried, with every
+   game object on the way to it.
+4. **`FileRefs`**, per unit: each file a ported object names, as a `FileVerdict`: the game's at
+   a path (in a WAD mounted with the champion, #GAME-BEHAVIOR-0007), the mod's own and
+   shipped, held only by a WAD that is not mounted, or dangling. A stale copy is the game's
+   (#ADR-0023). Of a skin entry only the fields a port carries count.
+5. **`Layout`**: the one owner of every output name and path (#ADR-0027). It gives the
+   namespace, a unit's directory, a file's place by its first user, an object's name, the
+   paths of the port's bins and patches, and keeps the names made for the hash tables.
+6. **`Renames`**, second part: the name each carried object takes under the namespace, by
+   group. A unit's objects follow the renames of its group only: a champion and its
+   sub-characters at one target. A resolver's keys stay.
+7. **`Port`**: the objects the port answers for, cloned, with the renames and the places
+   applied; the files with their places; the units; the HUD edits; the audio.
+
+- **The mod's objects are not changed.** `Objects` gives a step the clone an earlier step
+  changed, else the mod's own.
+- **`HudPlan`** (#ADR-0029): for each champion, the files of the mod that override what the
+  game's root bin names, each with its place, and the edits of the deepest fields that name
+  them. An edit on a path a table does not spell is left out (#ADR-0031 is not built).
+- **`OwnClips`** is the own clips of each unit's banks, from the facts' sounds. `Shipping`
+  reads it: a unit with an own clip no other unit carries is not the game's own skin, and a
+  chroma with an own clip its parent's unit lacks does not fold.
+- **`AudioPlan`** is planned after the first renames. The game's audio block at the target
+  stays, and each media bank or voice package of the mod with own clips becomes one bank
+  unit after the game's:
+  - a bank at a path the game's units at the target load holds clips under the game's ids,
+    which the game's events play (#GAME-BEHAVIOR-0012). Its unit is a media bank of the own
+    clips and an events bank with no object;
+  - a bank at any other path gets a unit with events of its own. The events that reach an
+    own clip are cut from the game's events bank at the unit's events path, else from the
+    mod's own events bank of the client's version (#ADR-0030). Every other object of the
+    source stays (#GAME-BEHAVIOR-0017). A kept event is renamed under the mod's tag,
+    `<base tag>Mod<id>`, token by token, and the tag goes after the game's
+    (#GAME-BEHAVIOR-0011);
+  - a unit of the mod with the name of a game unit and none of its banks takes that unit's
+    place in the block (#MOD-ARTIFACT-0028).
+
+  A bank made is a `reforge_wwise::Bank` the build writes. Its header is the header of an
+  events bank the game's units at the target load, so it is of the client's version
+  (#GAME-BEHAVIOR-0015). Its id is the hash of its unit's name (#GAME-BEHAVIOR-0014), and
+  its file is named by its role, `sfx_audio.bnk` and `sfx_events.bnk` (#GAME-BEHAVIOR-0013).
+  Voice goes to the layer `voice`, and a bank of a locale WAD to `voice-<xx-xx>` in that WAD
+  (#ADR-0028). A locale copy with the champion WAD's own clips is carried once, from the
+  champion's WAD. A clip the game shipped is never carried.
+- **Literal sound names.** Once `Reach` is found at the target, the event names the carried
+  objects and the graph of a unit spell out are rewritten token by token: a tag the target's
+  block does not hold becomes the mod's tag where the base layer's units kept that event
+  under it, else the base's tag where the game's units at the target list that event, else
+  it stays. A layer's renamed event is never named, so a literal name does not depend on a
+  layer being on.
+- **The base of a comparison is a question of its own.** `Base` answers "the game's object
+  under this entry" for every comparison of the plan and of the build: whether a reached
+  object is the game's, whether a graph is the game's, whether a carried field differs
+  (#ADR-0043). It answers from the target build. The code that compares does not say which
+  build.
+- **The game is asked typed questions** (#ADR-0043): a parsed bin at a path, the catalog, the
+  WADs holding a path. No code of `port` reads a chunk.
+- **Faults.** A game chunk that does not read and a history that does not answer end `plan`
+  with a `PlanError`.
+- `PortOptions` holds whether stale copies are carried, and whether a bank's events are cut
+  from the game's events bank only.
 
 ## Package
 
@@ -330,16 +527,41 @@ prints.
 - **`Package`** is layers of chunks and patches, the hash tables and the project's config. A
   chunk is keyed by `(WadName, ChunkPath)` and says where its bytes come from (`Origin`): a file
   of the mod kept as it is, a bin written again with what it was built to hold, a texture put
-  in TEX's container. A patch is a typed manifest entry and its PTCH. The manifest is
-  serialised once, by the writer.
+  in TEX's container, a bin a port made, a bank a port made. A `Patch` is a typed manifest entry and its PTCH: the
+  game bin it patches, the PTCH's place in its layer, the links to add, and what it is of (a
+  unit's skin bin, a champion's root bin). `Package::manifest(layer)` is the one place a
+  layer's `game_data.yaml` is written as text: a writer writes it, and the overlay loads it.
 - **Builders.** `PortBuilder` makes a package from a `Port`, `InPlaceBuilder` from a `FixedMod`.
-  `PtchBuilder` collects records by field path.
+  `PtchBuilder` collects whole objects and records by field path, and spells each field of a
+  path (#GAME-BEHAVIOR-0010). A path through a field no table names is refused.
+- **A port's package** (`PortBuilder`, #ADR-0026). Per unit: a PTCH on the game's `skin<T>.bin`
+  with one record per carried field of the skin entry that differs from the base (`Base`),
+  the icons and loading screens only when they name a file the port ships; the resolver's
+  map, the game's keys with the mod's laid over, written whole under the game's name
+  (#GAME-BEHAVIOR-0008, #ADR-0006); a bin of the carried objects and a bin of the graph when
+  it ships; the links the patched bin lacks. A sub-character the game ships no skin bin of at
+  the target gets a whole `skin<T>.bin` in place of a patch: the game's skin0 bin renamed,
+  the records applied, the links added (#ADR-0017). A unit whose target the game has no bin
+  for is not written. The files ship at their places, the spell icons and HUD textures in the
+  layer `hud` with a patch of the root bin (#ADR-0029). The hash tables hold the names the
+  plan made.
+- **A port's audio.** The unit's patch sets `skinAudioProperties.bankUnits` to the game's
+  units with the base layer's units after them, and `tagEventList` likewise when the plan
+  adds a tag. Each unit added is a copy of the game's first unit with its name, bank paths,
+  events and voice flag set, so its types are the build's. Each voice layer has a patch of
+  its own on the same bin, `overrides/<character>-skin<T>-<layer>.ptch`, that sets the whole
+  block: the game's units, the base layer's, then the layer's (#ADR-0028). The banks ship as
+  chunks of their layer and WAD.
 - **Only what is wired up** (#ADR-0039, `Wired`). Either builder ships a file only when the
   client reaches it: a bin the client loads, a file a loaded bin names, a file that overrides a
   path the game's own bins read, a file a run made for one of those. A bin at a former path
   that nothing loads, a file nothing names, a file that only a value a fixup removed named, and
   a stale copy stay behind, each counted by its reason in the package's finding. A caller that
-  asks to keep stale copies gets them.
+  asks to keep stale copies gets them. A port ships a file only when an object it answers for
+  names it with the mod's own bytes: a file the game holds where the champion plays is named
+  at the game's path, and a file no ported object names stays behind, both counted. A bank a
+  port made ships only with the record that names its unit. A bank of the mod whose own
+  clips ship in a bank made is counted apart.
 - **A repair's package** (`InPlaceBuilder`) holds those files at their own WAD and path. A bin
   an object of which a fixup changed is written again through `ltk_meta`'s delta writer, which
   copies every other object byte for byte, and whole where the delta writer refuses the bin's
@@ -352,8 +574,21 @@ prints.
   the restorations of the run that made it.
 - **`TexContainer`** puts a DDS at a `.tex` path in TEX's container where its blocks go in as
   they are (#ADR-0022), after either builder.
-- **Checks** implement `Check`: the patches applied as the overlay applies them, the types of
-  every value written (`Types`), a rewritten bin read back (`RoundTrip`). Each has a
+- **`Overlay`** is a package's patches applied as LTK Manager's overlay applies them: each
+  layer's manifest loaded with `ltk_game_data`, its edits applied to the game's bin, the base
+  layer first and each other layer over the base layer's result. It holds, per patch, the bin
+  after it with what the patch changed, the edits skipped, and for the base layer everything
+  the patched bin loads. The checks read it, and the report lists each patched bin object by
+  object.
+- **Checks** implement `Check`: the patches applied (`Apply`), the types of every value
+  written and of every field a patch changes (`Types`), a bin and a bank the run wrote read
+  back, the bank at the client's version (`RoundTrip`). `Apply` holds that every record
+  applies, that every link a patch adds leads to a bin, that every name and file a patched
+  entry reaches through the port's objects resolves in what its group loads, and that every
+  bank a voice layer's audio block names is the game's or ships in the layer or in the base
+  layer. Names and files unresolved in the mod already, and loose
+  ends of the game's own entry and resolver, are counted apart. A file the client finds by a
+  fallback of its own is there (#GAME-BEHAVIOR-0009). Each has a
   `CheckInfo` and is chosen as a fixup is: a `CheckSelection` is the choice as data, a
   `CheckSet` the checks of a run. Each says what it covered. What a check finds is a
   diagnostic and does not stop `write` (#ADR-0003): `permit` asks the caller's
@@ -362,7 +597,8 @@ prints.
   directory and renames it into place, with the report beside the package: `<out>/<project>/`
   with `reforge-report.json` in it, and `<out>/<project>_<version>.modpkg` with
   `<project>_<version>.reforge-report.json` beside it. A write that fails leaves nothing, and a
-  directory that is no mod project is not replaced. A chunk with a part of its path longer
+  directory that is no mod project is not replaced. A layer's patches go under
+  `content/<layer>/overrides/`, with its `game_data.yaml` beside them. A chunk with a part of its path longer
   than a file name may be is named by its hash in a project directory, and its path goes in
   the project's table of paths. The `.modpkg` is packed from a project directory by
   `ltk_mod_project`'s packer, with no ignore file read.
@@ -378,20 +614,31 @@ prints.
   a diagnostic that leaves nothing to write ends the run.
 - A result that a diagnostic explains holds the diagnostic's id: a unit left out, a file not
   shipped.
-- A caller filters by code, severity, channel, stage, subject and fixup, and may set a code to
-  block the write. None blocks by default.
-- The report is written beside the package, whole and as a summary for a person.
+- A caller filters by code, severity, channel, stage, subject, record and the fixup or check
+  that raised it, and may set a filter to block the write. None blocks by default.
+- The report is written beside the package.
 
 ## Report and dump
 
-- Every stage type implements `Dump`. `reforge load --dump` prints the mod as loaded.
+- Every stage result after `read` implements `Dump`: `Mod`, `Changes`, `Facts`, `Targets`,
+  `Port` with each step of the plan, `Package`. `reforge load --dump` prints the mod as loaded
+  and, with `--fix`, what the fixups changed, `reforge inspect --dump` the facts and the
+  decisions, `reforge port --dump` the plan and the package, `reforge repair --dump` the
+  package.
 - `Report` is a serialisable struct with a schema version (`reforge.report/1`). It is built from
-  parts, each optional, so a run that stops early reports what it has: the mod, the inputs, the
+  parts, each optional, so a run that stops early reports what it has. `Run::report` builds it
+  from what the run holds ([Shape](#shape)). The parts: the mod, the inputs, the
   WADs, files, characters and units, the dating, the inventory, the file provenance, and every
-  diagnostic with its data. A later stage adds its part: `fix` what each fixup changed, the
-  build the package with every chunk's digest and, for a bin, the digest of each object as
-  `ltk_meta` writes it. `reforge repair --again` adds what repairing the package a second time,
-  in memory, changed.
+  diagnostic with its data. A later stage adds its part: `fix` what each fixup changed, `facts`
+  the copies, the objects that are the game's, the origins with their evidence, the rigs, the
+  clips at each candidate slot, the candidates, the reworks and the sounds, `decide` the policy
+  with each decision and what the other policies choose, `plan` the port as serde writes it
+  (the units that ship and why the others left, the reach, the file verdicts, the renames, each
+  unit and each file's place, the audio, the HUD edits), `build` and `check` the package with
+  every chunk's digest and, for a bin, the digest of each object as
+  `ltk_meta` writes it, and every patch with the game bin it patches and the digest of each
+  object of that bin after the patch. `reforge repair --again` adds what repairing the package
+  a second time, in memory, changed.
 - The corpus tooling in forge compares a report with forge's report of the same mod, section by
   section, and keeps the list of accepted deviations with the reason for each.
 
@@ -426,21 +673,30 @@ prints.
 
 ## Tests
 
-- `reforge-testkit` builds a game, an archive, bins, a schema from rows and a history from facts,
-  with no file on disk.
-- A test calls the stage it tests and asserts on typed results and diagnostics by type.
-- Each stage has golden dumps for the fixtures.
-- Two runs of one input give the same package bytes and the same report.
-- The corpus compares reforge with forge (#ADR-0004).
+- `reforge-testkit` builds a game with its skins, an archive, bins, rig files, banks, a schema
+  from rows and a history from facts, with no file on disk. It has one run type per stage a
+  test starts from (`LoadRun`, `FixRun`, `FactRun`, `PortRun`, `PackRun`), each taking an
+  archive up to that stage.
+- A test calls the stage it tests and asserts on typed results and diagnostics by type. A
+  failed assertion on a run prints the run's dump and its diagnostics. No dump is compared
+  with a stored one.
+- A test of a crate with fixtures is in the crate's `tests/` directory, one file per stage or
+  step.
+- `tests/porter.rs` holds `Porter`, `Repairer` and `Run`: a port and a repair, a run a stage
+  at a time, a run stopped after each stage, a halted run's report, and that two runs of one
+  archive give the same report, which holds the digest of every chunk.
+- `tests/layers.rs` holds the modules to their order, and `tests/catalogue.rs` holds
+  [CODES.md](CODES.md) to the codes declared.
+- The corpus compares reforge with forge (#ADR-0004). [RUNS.md](RUNS.md) holds each run.
 
 ## What forge has and this does not
 
 | forge | here |
 |---|---|
-| the pass registry, `after` edges, `--passes` | stage methods; `--stop-after <stage>`; a `FixupSelection` to choose fixups |
+| the pass registry, `after` edges, `--passes` | the stage methods of a `Run`, and `Run::through(stage)`; a command per place to stop: `load`, `inspect`, `port`, `repair`; a `FixupSelection` to choose fixups |
 | stub passes and milestones | the roadmap |
 | `AnalysisManager`, `Preserved` | `Facts`, gathered once on a frozen mod |
-| `scope`, `scope.unrepaired` | every loaded object fixed; the report filtered by what ships |
+| `scope`, `scope.unrepaired` | every loaded object fixed; each change in the report says whether a unit's entry reaches its object |
 | a diagnostic as a sentence with counts in it | a typed value, one per code and subject |
 | `Module.output`, marks on input nodes | `Targets`, `Port`, `Package` |
 | `own-resolver` | not built: the resolver keeps the game's name (#ADR-0006) |
