@@ -103,11 +103,12 @@ listed deviations ([RUNS.md](RUNS.md), "The load stage").
   the report beside the output.
 - `reforge repair`.
 
-Records: every schema game change; the tool-artifact mod artifacts.
+Records: the schema game changes (#GAME-CHANGE-0013 to #GAME-CHANGE-0021); the tool-artifact
+mod artifacts (#MOD-ARTIFACT-0017 to #MOD-ARTIFACT-0023).
 
-Exit: over the datasets, a repaired mod's bins compared with forge's, value for value. A
-repaired mod repaired again changes nothing. The 14 in-game sample mods repair with every bin
-verified.
+Exit, met: over the datasets a repaired mod's bins are forge's, value for value, but for six
+listed deviations; a repaired mod repaired again changes nothing; the 15 in-game sample mods
+repair with every rewritten bin read back ([RUNS.md](RUNS.md), "The repair").
 
 ### 4. Facts and the decision
 
@@ -150,8 +151,8 @@ what forge held (event names without a list, the history's refs and entry texts,
 Titles as the records will carry them. Numbers are given when a record is written, in the step
 that cites it. Sources are forge's docs and the module that holds the evidence.
 
-Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0012; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004;
-#MOD-ARTIFACT-0001 to #MOD-ARTIFACT-0016.
+Written: #GAME-CHANGE-0001 to #GAME-CHANGE-0021; #GAME-BEHAVIOR-0001 to #GAME-BEHAVIOR-0004;
+#MOD-ARTIFACT-0001 to #MOD-ARTIFACT-0023.
 
 ### Game changes
 
@@ -218,17 +219,32 @@ and each is checked in game (the user, 2026-10-03). None is an ADR before that.
 
 ## Open
 
-- Legacy formats makes the twin of any `.dds` or `.sco` beside a file the game ships, without
-  asking whether the old path was ever the game's. An author's own new `.dds` then overrides a
-  game texture it never replaced. To ask the history first, as moved assets does.
+- A repair ships bins at a former path that the client does not load, unfixed: 98 of the 144
+  mods with a value of another type after a repair, and 50 of the 271 with an undeclared field.
+  Whether a repair leaves such bins behind is not decided.
+- An object of a class the build dropped is left as it is (`ItemRecommendationContextList`,
+  gone at 16.6, in 227 mods' root bins).
+- A list of floats where the build reads a list of vectors, and the reverse, has no conversion
+  (46 mods). Forge has none either.
+- A repair ships stale files, as forge does.
+- Fixups that follow forge where the census shows forge wrong. Each is changed after the repair
+  comparison is clean, as a counted deviation:
+  - the bound-object rule moves four fields; Riot moved eight at 12.6 and 12.21
+    (#GAME-CHANGE-0016);
+  - the sampler's slot name moved at 15.4, not 16.13, and from 15.21 to 16.12 `samplerName`
+    holds a sampler state, which the fixup would write over the slot name (#GAME-CHANGE-0014);
+  - a misplaced birth translation is mended only in a mod with no date or one before 13.15, and
+    is stripped in the 21 baseline mods dated 13.15 to 13.24 (#MOD-ARTIFACT-0019);
+  - a float where the build reads an option is wrapped as a present option, which is not what
+    Riot's own data did at 15.20 (#GAME-CHANGE-0021).
+- The integer kinds a mod holds too wide are the game's own earlier kinds, narrowed from 9.22 on
+  (#MOD-ARTIFACT-0021). They are game changes with no record of their own.
 - A copy of a game file under another path is looked for among the first 64 chunks of its size
   in the champion's WAD. How often the cap is reached is not measured.
 - A `ChunkPath` may be longer than a file name on disk: 1,264 game paths are over 512 bytes. A
   writer of a project directory names such a chunk by its hash.
 - 40 game paths the hash cache spells hold an empty part (`//`). `ChunkPath` refuses them, so
   such a chunk stays unnamed.
-- The `_base` rename is tried for every file directly in a base skin's folder. The game made it
-  for the mesh and the skeleton only (#GAME-CHANGE-0011).
 - The three earliest reworks of #GAME-CHANGE-0001 (Mordekaiser, Pantheon, Fiddlesticks) are
   known by their joint names alone. Their submeshes and dropped paths are measured when the
   rework facts are built (step 4).

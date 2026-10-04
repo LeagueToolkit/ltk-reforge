@@ -184,12 +184,12 @@ Options are not in `Env`. Each stage takes its own: `Caps` and `LoadOptions` for
 ## Fixups
 
 A fixup brings old or tool-damaged data to what the target build reads. Each is an object that
-names the record it implements.
+names the records it implements. `reforge fixups` lists them.
 
 ```rust
 pub trait BinFixup {
     fn info(&self) -> &FixupInfo;
-    fn applies(&self, schema: &Schema) -> bool;        // the target build has the new shape
+    fn applies(&self, types: &TargetTypes) -> bool;    // the target build has the new shape
     fn classes(&self) -> Classes;                      // the structs it is called for
     fn fix(&self, cx: &mut FixCx<'_>, s: StructMut<'_>);
 }
@@ -198,18 +198,24 @@ pub trait BinFixup {
 pub struct FixupInfo {
     pub id: FixupId,            // "vfx-filtering"
     pub title: String,
-    pub record: Option<Record>, // a game change or a mod artifact, by its code
-    pub phase: Phase,           // where it runs: Undo, Layout { build }, Conform, Strip
+    pub records: Vec<Record>,   // game changes and mod artifacts, by their codes
+    pub phase: Phase,           // where it runs: Files, Undo, Layout { build }, Conform, Strip
     pub default: bool,          // in the standard set
 }
 ```
 
 - **The engine owns the frame.** `FixupSet::apply` walks every loaded object once per fixup, in
-  the set's order. `FixCx` gives the schema (`declares`), whether the mod's build read a field
-  (`read_at_source`, from the mod's dating), and `change`, which records what moved.
-- **A change is a record.** `Change { fixup, object, path, before, after }`. A fixup writes no
-  sentence and sets no flag. The object's edited state and the report's counts come from the
-  changes, grouped by fixup.
+  the set's order. `FixCx` gives the target build's types (`declares`, `type_of`), whether the
+  mod's build read a field (`read_at_source`, from the mod's dating), the names, and the calls
+  that record what a fixup did.
+- **The target's types** are `TargetTypes`: the meta schema, else what the install's own bins
+  hold for a class and field.
+- **A change is a record.** `Change { fixup, object, path, before, after }`, where `after` is a
+  value, a move to another path, removed, lost or unconvertible. A fixup writes no sentence and
+  sets no flag. The object's edited state, the report's rows and the four `fixup.*` findings
+  (changed, removed, lost, unconvertible, each raised once per fixup) come from the changes.
+- **A fault is not a change.** A fixup that cannot ask its inputs (a name table that does not
+  read) hands the fault to the context, and `apply` returns it as an error.
 - **Table rules are data.** A `Rule` is a serialisable value: remove a field, rename fields, or
   move fields into a child struct, in one class, with its record. The engine runs a `Rule` as a
   `BinFixup`. The built-in rules are written with builders that make the same values:
@@ -218,21 +224,32 @@ pub struct FixupInfo {
   Rule::move_fields("VfxEmitterDefinitionData")
       .into_field("Filtering", "VfxEmitterFiltering")
       .keep(["keywordsExcluded", "keywordsRequired", "spectatorPolicy", "censorPolicy"])
-      .at_build("12.17")
+      .at_build(Version::new(12, 17))
       .record(game_change)
   ```
 
+  A rule acts only on a field the target does not read where it is, so no rule a caller writes
+  can change a value twice.
+
 - **The rest is Rust.** A fixup that combines values, chooses a class from the schema, recurses
   or conforms a whole object to the schema implements the trait in code: mesh alignment, the
-  spawn shape, the emission surface, the texture-mult strays, reshape, retype, strip. A `Rule`
-  grows a new shape only when a second fixup needs it. Both kinds are listed, ordered and
+  spawn shape, the emission surface, the sampler's fields, the default technique, the
+  texture-mult strays, the hoist and the wrap, retype, strip. Retype's conversions are a
+  catalogue of named items, one function each. A `Rule` grows a new shape only when a second
+  fixup needs it. Both kinds are listed, ordered and
   turned on and off the same way.
 - **One record, one fixup.** Where forge put a game change and a tool artifact in one pass, they
-  are two fixups.
+  are two fixups: the spawn shape and the misplaced birth translation, the wrap and the hoist.
+  Retype is the exception: one fixup that follows every type change, with a record per
+  conversion.
 - **The order comes from each fixup's phase** (#ADR-0007). `Undo` takes tool damage out before the layouts
   it would confuse. `Layout` follows Riot's changes, the oldest build first. `Conform` brings
   values to the schema. `Strip` removes what the build does not declare. A fixup added later
   takes its place by its phase and build, with no list to edit. A test pins the standard order.
+  Two fixups for a tool's damage run later than `Undo`, each because an earlier place would
+  change the result: the misplaced birth translation runs after the spawn shape, whose value
+  the mod's build read, and the hoist runs after the texture-mult rule, which joins fields to
+  the outer struct.
 - **A set is chosen, not hard-wired.** `FixupSet::standard()` holds every built-in fixup whose
   `default` is true. `FixupSelection` is the choice as data: the ids turned off, the ids turned
   on, the rules added. `FixupSet::from(&selection)` builds the set, and a selection is saved and
@@ -243,7 +260,10 @@ pub struct FixupInfo {
   `FixupInfo` and are chosen the same way. They work on the file set: each adds files and
   changes none, so the file it starts from stays for what the mod's own bins name. The first two
   run inside `load`, before characters and units are found, legacy formats first: moved assets
-  skips a file a twin was made of. A file fixup names the records it implements, one for each
+  skips a file a twin was made of. A chunk of a packed WAD has no path of its own: for the
+  fixups it takes the path a bin of the mod spells for its hash, and gives it back after them,
+  so a repair makes the twin the same archive with spelled paths would get. A file fixup names
+  the records it implements, one for each
   rename or format, and answers where it would put a file at a path (`destinations`), which is
   how the step for mods with no skin bin knows a file is covered.
 
@@ -308,15 +328,35 @@ prints.
 `package` holds the output and everything after it.
 
 - **`Package`** is layers of chunks and patches, the hash tables and the project's config. A
-  chunk is keyed by `(WadName, ChunkPath)`. A patch is a typed manifest entry and its PTCH.
-  The manifest is serialised once, by the writer.
+  chunk is keyed by `(WadName, ChunkPath)` and says where its bytes come from (`Origin`): a file
+  of the mod kept as it is, a bin written again with what it was built to hold, a texture put
+  in TEX's container. A patch is a typed manifest entry and its PTCH. The manifest is
+  serialised once, by the writer.
 - **Builders.** `PortBuilder` makes a package from a `Port`, `InPlaceBuilder` from a `FixedMod`.
   `PtchBuilder` collects records by field path.
+- **A repair's package** (`InPlaceBuilder`) holds every file the client uses at its own WAD and
+  path. A bin an object of which a fixup changed is written again through `ltk_meta`'s delta
+  writer, which copies every other object byte for byte, and whole where the delta writer
+  refuses the bin's numbering. Every other file keeps its bytes. A file nothing loads stays
+  behind, and so does one that only a value a fixup removed named. A file no table names goes
+  under its hash at its WAD's root (#MOD-ARTIFACT-0007). A package that would hold nothing ends
+  the run.
+- **`TexContainer`** puts a DDS at a `.tex` path in TEX's container where its blocks go in as
+  they are (#ADR-0022), after either builder.
 - **Checks** implement `Check`: the patches applied as the overlay applies them, the types of
-  every value written, a rewritten bin read back. Each has a `CheckInfo` and is chosen as a
-  fixup is. What a check finds is a diagnostic and does not stop `write` (#ADR-0003).
+  every value written (`Types`), a rewritten bin read back (`RoundTrip`). Each has a
+  `CheckInfo` and is chosen as a fixup is: a `CheckSelection` is the choice as data, a
+  `CheckSet` the checks of a run. Each says what it covered. What a check finds is a
+  diagnostic and does not stop `write` (#ADR-0003): `permit` asks the caller's
+  `DiagnosticPolicy`, and raises `write.blocked` where it refuses.
 - **Writers** implement `PackageWriter`: `ProjectDir`, `Modpkg`. A writer writes into a new
-  directory and renames it into place, with the report beside the package.
+  directory and renames it into place, with the report beside the package: `<out>/<project>/`
+  with `reforge-report.json` in it, and `<out>/<project>_<version>.modpkg` with
+  `<project>_<version>.reforge-report.json` beside it. A write that fails leaves nothing, and a
+  directory that is no mod project is not replaced. A chunk with a part of its path longer
+  than a file name may be is named by its hash in a project directory, and its path goes in
+  the project's table of paths. The `.modpkg` is packed from a project directory by
+  `ltk_mod_project`'s packer, with no ignore file read.
 
 ## Diagnostics
 
@@ -339,7 +379,10 @@ prints.
 - `Report` is a serialisable struct with a schema version (`reforge.report/1`). It is built from
   parts, each optional, so a run that stops early reports what it has: the mod, the inputs, the
   WADs, files, characters and units, the dating, the inventory, the file provenance, and every
-  diagnostic with its data. A later stage adds its part.
+  diagnostic with its data. A later stage adds its part: `fix` what each fixup changed, the
+  build the package with every chunk's digest and, for a bin, the digest of each object as
+  `ltk_meta` writes it. `reforge repair --again` adds what repairing the package a second time,
+  in memory, changed.
 - The corpus tooling in forge compares a report with forge's report of the same mod, section by
   section, and keeps the list of accepted deviations with the reason for each.
 

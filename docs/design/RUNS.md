@@ -132,3 +132,83 @@ Two faults of reforge found by the comparison and fixed:
   reads them off the archive's own spelling. 17 of the 27 reduced mods differed.
 - A path longer than 512 bytes was refused. The hash cache spells 1,264 game paths longer than
   that, the longest 2,454 bytes. The cap is 4,096.
+
+Two rules checked against the same datasets afterwards (2026-10-04):
+
+- **The `_base` rename for the mesh and the skeleton only** (#GAME-CHANGE-0011). It changes no
+  mod: the 74 files the rename makes over the datasets are 37 meshes and 37 skeletons. The full
+  comparison after it gives the same 5,020 equal mods and the same differences.
+- **A legacy format's twin only at a path the game once held.** Not made. It would stop 30
+  twins in 11 mods, and every one is an asset the mod means to replace (#GAME-CHANGE-0007,
+  evidence). A `.dds` gets its `.tex` twin wherever the game ships the `.tex` and the mod ships
+  no file there, as forge has it.
+
+## The repair (2026-10-04)
+
+`reforge repair --no-write --again` over the 5,137 mods of the datasets, each compared with
+forge's `repair` pipeline run with no output directory, by `scripts/corpus/repair_compare.py` in
+forge. Neither program writes a file of a mod: each report holds what the repair would write,
+every chunk with the digest of its bytes and, for a bin, the digest of each object as `ltk_meta`
+writes it. Compared: the halt, the chunks shipped per WAD and path hash, the bytes of each chunk
+that is no bin, each bin's entries and each object's digest, and the codes of the package and
+its checks.
+
+| run | mods | equal | accepted deviations only | other differences |
+|---|---:|---:|---:|---:|
+| the full datasets | 5,137 | 5,028 | 109 | 0 |
+| the same, with the 15 mods below run again after the fix | 5,137 | 5,021 | 116 | 0 |
+
+forge took 3,663 s with eight mods in parallel, beside reforge's run. No mod failed in either
+program. The reduced corpus of 27 mods takes 11 s in reforge: 23 equal, 4 under an accepted
+deviation.
+
+The accepted deviations, each mod under one:
+
+| deviation | mods | reason |
+|---|---:|---|
+| the larger reduced copy | 90 | #ADR-0038: the texture made of the `2x_` file is shipped by both, in other bytes |
+| one chunk per WAD and path | 11 | forge keeps what a repair writes by path alone, so of two WADs that hold a file at one path it writes one; reforge writes both |
+| the twin of a file a bin names | 7 | in a packed WAD a file at a path the game dropped is named by the mod's bins alone. reforge gives the file fixups that path and makes the file the game reads; forge makes it when the repaired mod is repaired again |
+| one chunk per path | 4 | the load stage's deviation: where forge holds the mod's own bin and the game's bin it took at one path, it writes the game's; reforge writes the mod's own, repaired |
+| `retype` enters what it retags | 2 | forge retags a struct and leaves the values under it for a second run. reforge's object is forge's after two runs, checked on one of the two mods |
+| the order of fields | 2 | the fixups run by phase, then by build (#ADR-0007), and forge's passes in another order: an emitter gets `Linger` and `FlexShapeDefinition` in the other order. The values are the same |
+
+The last row needs each object's digest with its fields in one order, which forge's report of
+the full run does not hold: forge's report of those two mods was made again.
+
+What reforge's own checks say of its repairs, over the 5,137 mods:
+
+- **Round trip.** No bin written again fails to read back.
+- **Repaired again.** In 7 mods the package, repaired again, gained files: the twins above,
+  which the first repair did not make. `load` gives the file fixups the paths the mod's bins
+  spell. The 7 mods run again change nothing.
+- **Types.** 144 mods hold a value of another type than the build reads, and 271 a field its
+  class does not declare, after the repair. forge's type check finds the same in the same mods,
+  but the two mods where `retype` enters what it retags. Three kinds:
+  - *A bin at a former path, which the client does not load.* It is shipped as it is, and no
+    fixup reads it. 98 of the 144 mods hold their values of another type in such bins alone,
+    and 50 of the 271 hold undeclared fields there: `VfxAssetRemap.oldAsset` a hash where the
+    build reads a file (41 mods), `VfxMaterialOverrideDefinitionData.baseTexture` and
+    `StaticMaterialShaderSamplerDef.texturePath` strings where it reads files (34 and 28),
+    `StaticMaterialShaderSamplerDef.samplerName` (15), an emitter's fields of an older layout.
+  - *A class the target build does not have.* `ItemRecommendationContextList`, in a champion's
+    root bin, left the game at 16.6: 227 mods hold one, with its three fields. `strip-undeclared`
+    leaves an object of a class the build lacks.
+  - *A value with no conversion*, in a bin the client loads (46 mods). A float animation where
+    the build reads a vector's: `VfxAnimatedVector3fVariableData.values` a list of floats (26
+    mods, which `retype` reports as unconvertible), `ValueVector3.dynamics` a pointer to
+    `VfxAnimatedFloatVariableData` (23), an emitter's `scale0` a `ValueFloat` where the build
+    reads a `ValueVector3` (10).
+
+One mod of the reduced corpus was written: a project directory of 407 chunks and a `.modpkg`
+of 9.6 MB. The `.modpkg` read back through `ltk_modpkg` holds 410 chunks, the 407 and three of
+its own, and every chunk inflates, to 57.9 MB.
+
+`ltk_modpkg` 0.12.5 writes its chunks in the order of a hashed map: two packages of one project
+hold the same chunks in another order, so a `.modpkg` is not the same bytes on two runs.
+
+The 15 mods of forge's in-game sample set (14 skin mods and a fix), repaired in memory with
+`--again` (2026-10-04): each repairs. 39 bins are written again and every one reads back. No
+value is of another type than the build reads. A second repair changes nothing in any of them.
+One finding in the fix: two `ValueColor` fields under a hash no class declares, in a bin that is
+not written again.
