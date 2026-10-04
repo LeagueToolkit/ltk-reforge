@@ -127,7 +127,12 @@ pub fn pet_bin() -> Vec<u8> {
 
 /// The game, at build 16.19.1.
 pub fn game() -> MemoryGame {
-    let mut game = MemoryGame::new(WAD, "16.19.1");
+    game_at("16.19.1")
+}
+
+/// The game, at a build.
+pub fn game_at(build: &str) -> MemoryGame {
+    let mut game = MemoryGame::new(WAD, build);
     game.insert(
         &skin_bin("test", 0),
         bin(vec![

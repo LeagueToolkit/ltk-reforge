@@ -38,12 +38,46 @@ pub fn link(name: &str) -> PropertyValueEnum {
     PropertyValueEnum::ObjectLink(values::ObjectLink::new(name_hash(name)))
 }
 
-fn embed(class: &str, fields: Vec<(&str, PropertyValueEnum)>) -> PropertyValueEnum {
+/// A boolean value.
+pub fn flag(value: bool) -> PropertyValueEnum {
+    PropertyValueEnum::Bool(values::Bool::new(value))
+}
+
+/// A float value.
+pub fn float(value: f32) -> PropertyValueEnum {
+    PropertyValueEnum::F32(values::F32::new(value))
+}
+
+fn strukt(class: &str, fields: Vec<(&str, PropertyValueEnum)>) -> values::Struct {
     let properties = fields.into_iter().map(|(k, v)| (name_hash(k), v));
-    PropertyValueEnum::Embedded(values::Embedded(values::Struct {
+    values::Struct {
         class_hash: name_hash(class),
         properties: properties.collect(),
-    }))
+    }
+}
+
+/// An embedded struct of a class with these fields.
+pub fn embedded(class: &str, fields: Vec<(&str, PropertyValueEnum)>) -> PropertyValueEnum {
+    PropertyValueEnum::Embedded(values::Embedded(strukt(class, fields)))
+}
+
+/// A pointer to a struct of a class with these fields.
+pub fn pointer(class: &str, fields: Vec<(&str, PropertyValueEnum)>) -> PropertyValueEnum {
+    PropertyValueEnum::Struct(strukt(class, fields))
+}
+
+/// An object of a class with these fields, under an entry name.
+pub fn object(entry_name: &str, class: &str, fields: Vec<(&str, PropertyValueEnum)>) -> BinObject {
+    let mut object = BinObject::builder(name_hash(entry_name), name_hash(class));
+    for (field, value) in fields {
+        object = object.property(name_hash(field), value);
+    }
+    object.build()
+}
+
+/// The value of a field of a struct value, by the field's name.
+pub fn field_of<'a>(value: &'a PropertyValueEnum, field: &str) -> Option<&'a PropertyValueEnum> {
+    reforge::model::value::field_of(value, field)
 }
 
 /// A skin entry under an entry name.
@@ -60,11 +94,11 @@ pub fn entry(entry_name: &str, skin: &Skin) -> BinObject {
     )
     .property(
         name_hash(field::SKIN_MESH_PROPERTIES),
-        embed("SkinMeshDataProperties", mesh),
+        embedded("SkinMeshDataProperties", mesh),
     )
     .property(
         name_hash(field::SKIN_ANIMATION_PROPERTIES),
-        embed("SkinAnimationProperties", animation),
+        embedded("SkinAnimationProperties", animation),
     )
     .property(name_hash(field::RESOURCE_RESOLVER), link(&skin.resolver))
     .property(name_hash(field::CHAMPION_SKIN_NAME), text(&skin.name));
