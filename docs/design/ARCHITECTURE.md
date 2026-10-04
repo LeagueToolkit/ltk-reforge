@@ -469,7 +469,8 @@ object takes a name of its own, which every link to it follows.
    (#ADR-0023). Of a skin entry only the fields a port carries count.
 5. **`Layout`**: the one owner of every output name and path (#ADR-0027). It gives the
    namespace, a unit's directory, a file's place by its first user, an object's name, the
-   paths of the port's bins and patches, and keeps the names made for the hash tables.
+   paths of the port's bins and patches, and keeps the names made for the hash tables. No path
+   it makes has a file stem of sixteen hex digits (#ADR-0054).
 6. **`Renames`**, second part: the name each carried object takes under the namespace, by
    group. A unit's objects follow the renames of its group only: a champion and its
    sub-characters at one target. A resolver's keys stay.
@@ -611,8 +612,7 @@ object takes a name of its own, which every link to it follows.
   bytes.
 - **`TexContainer`** puts a DDS at a `.tex` path in TEX's container where its blocks go in as
   they are (#ADR-0022), after either builder. A texture TEX does not hold as it is stays the
-  DDS it is (#GAME-BEHAVIOR-0003), one not in whole blocks among them (#GAME-BEHAVIOR-0018).
-- **`Overlay`** is a package's patches applied as LTK Manager's overlay applies them: each
+  DDS it is (#GAME-BEHAVIOR-0003), one not in whole blocks among them (#GAME-BEHAVIOR-0018).- **`Overlay`** is a package's patches applied as LTK Manager's overlay applies them: each
   layer's manifest loaded with `ltk_game_data`, its edits applied to the game's bin, the base
   layer first and each other layer over the base layer's result. It holds, per patch, the bin
   after it with what the patch changed, the edits skipped, and for the base layer everything

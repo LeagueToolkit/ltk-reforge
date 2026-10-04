@@ -2,15 +2,17 @@
 //! each file is found, the names moved to the target and the names and places under the
 //! namespace. The game is `reforge_testkit::skins`.
 
+use ltk_meta::property::values;
+use ltk_meta::{BinObject, PropertyValueEnum};
 use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::model::entity::ObjectId;
-use reforge::model::{Slot, name_hash, path_hash, value};
+use reforge::model::{Slot, WadHash, name_hash, path_hash, value};
 use reforge::port::{
     Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, PlanError, Policy, PortOptions,
     RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached,
 };
-use reforge_testkit::bins::{Skin, bin, blob, entry, graph, particle, resolver, with_link};
+use reforge_testkit::bins::{Skin, bin, blob, entry, graph, particle, resolver, text, with_link};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
 use reforge_testkit::plans::{
     champion_and_unbound_pet, old_model_and_pet, paste_and_own_skin3, reworked,
@@ -309,6 +311,52 @@ fn a_repath_tools_tag_is_dropped_from_the_name_a_file_ships_under() {
     let place = shipped.find(|(file, _)| m.files[**file].hash == path_hash(tagged));
     let place = place.map(|(_, place)| place.as_str());
     let expected = format!("mods/{NS}/characters/test/skin0/vfx/own/glow.tex");
+    assert_eq!(place, Some(expected.as_str()), "{}", run.dump());
+}
+
+#[test]
+fn a_file_no_table_names_ships_under_a_name_that_is_not_its_hash() {
+    // #MOD-ARTIFACT-0007: a manager reads sixteen hex digits as the chunk's hash.
+    let nameless = WadHash(0x0123_4567_89ab_cdef);
+    let fx = BinObject::builder(
+        name_hash(OWN_PARTICLE),
+        name_hash("VfxSystemDefinitionData"),
+    )
+    .property(name_hash("particleName"), text(OWN_PARTICLE))
+    .property(
+        name_hash("texture"),
+        PropertyValueEnum::WadChunkLink(values::WadChunkLink::new(nameless)),
+    )
+    .build();
+    let mut files = own_mod(&[("fx", OWN_PARTICLE)], vec![fx]);
+    files.push((
+        format!("{:016x}.tex", nameless.0),
+        b"TEX\0nameless".to_vec(),
+    ));
+    let env = env(skins::game(), NoHistory);
+    let run = PlanRun::of(&env, &archive(&files));
+
+    let m = &run.facts.fix.fixed;
+    let mut shipped = run.port().files.iter();
+    let place = shipped.find(|(file, _)| m.files[**file].hash == nameless);
+    let place = place.map(|(_, place)| place.as_str());
+    let expected = format!("mods/{NS}/characters/test/skin0/vfx/own/unnamed-0123456789abcdef.tex");
+    assert_eq!(place, Some(expected.as_str()), "{}", run.dump());
+}
+
+#[test]
+fn a_file_named_by_sixteen_hex_digits_in_a_folder_ships_under_another_name() {
+    let hexed = "assets/mod/a/0123456789abcdef.tex";
+    let mut files = own_mod(&[("fx", OWN_PARTICLE)], vec![particle(OWN_PARTICLE, hexed)]);
+    files.push((hexed.into(), blob(hexed)));
+    let env = env(skins::game(), NoHistory);
+    let run = PlanRun::of(&env, &archive(&files));
+
+    let m = &run.facts.fix.fixed;
+    let mut shipped = run.port().files.iter();
+    let place = shipped.find(|(file, _)| m.files[**file].hash == path_hash(hexed));
+    let place = place.map(|(_, place)| place.as_str());
+    let expected = format!("mods/{NS}/characters/test/skin0/vfx/own/0123456789abcdef-2.tex");
     assert_eq!(place, Some(expected.as_str()), "{}", run.dump());
 }
 

@@ -1,6 +1,6 @@
 # ADR-0027: A port's files sit by unit and by use under a namespace
 
-- **Status:** Accepted (2026-09-29)
+- **Status:** Accepted (2026-09-29); the name of a file no table names superseded by #ADR-0054
 - **Related:** #ADR-0026, #ADR-0028, #ADR-0029
 
 ## Context

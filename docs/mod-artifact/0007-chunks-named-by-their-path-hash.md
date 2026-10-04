@@ -21,14 +21,21 @@ The extension is no part of the hash. An extension that is a number marks a repa
 ## Why it is there
 
 A WAD holds each chunk under the hash of its path and holds no path. A path comes from a name
-table, and a table does not spell every hash. Which tools write the hash as the entry's name,
-and for which chunks, is not established.
+table, and a table does not spell every hash. `ltk_wad`'s extractor writes a chunk no table
+names under its hash as sixteen hex digits. Which tool wrote the entries of the mods that carry
+them is not established.
 
 ## What reads it, and how
 
 The client finds a chunk by its path hash and reads no name, so a chunk loads without a known
 path. A reader of the archive has to take the digits as the hash: the name hashed as a path
-gives a hash nothing looks for. How each mod manager reads such a name is not established.
+gives a hash nothing looks for.
+
+LTK Manager reads the stem of every file under a WAD's folder, at any depth: a stem of sixteen
+hex digits is the chunk's hash, and any other name is hashed as a path. The stem is the name up
+to its last dot. It reads a mod project's files and a `.fantome`'s entries so. A file of that
+shape inside a folder, whose path its bins name, lands at the hash its stem spells, where those
+bins do not look.
 
 ## The repair
 
@@ -45,3 +52,9 @@ the first in archive order stays and the second is skipped (`archive.chunk-dupli
 - The run's name tables spell 3,167 of the 5,037 hashes. 1,870, in 16 mods, have no known path.
 - The count covers WADs shipped as folders. A report does not tell these chunks apart in a WAD
   that the archive also packs whole.
+- LTK Manager's reading, from the source of `ltk_overlay` 0.14.2 and `ltk_wad` 0.5.8 (read
+  2026-10-05): `resolve_chunk_hash` and the `.fantome` reader take the hash from
+  `hex_chunk_hash`, which tests the path's file stem only.
+- Seen in game (2026-10-05, build 16.19): a port that shipped four textures as
+  `textures/<16 hex>.tex` under its namespace, installed with LTK Manager, showed no texture on
+  the model, no loading screen picture and no icons. Its mesh and skeleton, under names, loaded.

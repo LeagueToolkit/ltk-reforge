@@ -60,6 +60,14 @@ fn digits(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// Whether a path's file stem is sixteen hex digits, which a manager reads as the chunk's hash
+/// wherever the file sits (#MOD-ARTIFACT-0007).
+fn reads_as_hash(path: &ChunkPath) -> bool {
+    let name = path.parts().last().unwrap_or_default();
+    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
+    stem.len() == 16 && stem.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// Whether a part between a stem and its extension is a tag a repath tool left
 /// (#MOD-ARTIFACT-0026): `skins_katarina_skin59`, `pie_c_12_19`.
 fn is_repath_tag(part: &str) -> bool {
@@ -274,10 +282,12 @@ impl Layout {
         }
     }
 
-    /// The first path of `candidates` that is a path a writer may use and is not taken.
+    /// The first path of `candidates` that is a path a writer may use, that a manager reads as
+    /// a path and that is not taken.
     fn take(&mut self, mut candidates: impl Iterator<Item = String>) -> Option<ChunkPath> {
         let path = candidates.find_map(|candidate| {
-            let path = ChunkPath::parse(&candidate).ok()?;
+            let path = ChunkPath::parse(&candidate).ok();
+            let path = path.filter(|path| !reads_as_hash(path))?;
             self.taken_paths
                 .insert(path.as_str().to_string())
                 .then_some(path)
@@ -287,12 +297,13 @@ impl Layout {
     }
 
     /// Where an own file ships: under its user's folder when it has one, else by its kind,
-    /// with its name tidied and its extension from its bytes. A file no table names keeps its
-    /// hash as its name. A texture ships as `.tex`, as the game's do (#GAME-CHANGE-0007).
+    /// with its name tidied and its extension from its bytes. A file no table names is named
+    /// `unnamed-<hash>` (#ADR-0054). A texture ships as `.tex`, as the game's do
+    /// (#GAME-CHANGE-0007).
     ///
     /// # Panics
     ///
-    /// When sixteen hex digits make no path under the unit's directory, which they do.
+    /// When `unnamed-<hash>` makes no path under the unit's directory, which it does.
     pub fn place_file(
         &mut self,
         file: &FileNode,
@@ -304,7 +315,7 @@ impl Layout {
         let spelled = spelled.or_else(|| names.path(file.hash));
         let leaf = spelled.as_deref().and_then(|path| path.rsplit('/').next());
         let leaf = leaf.map(str::to_ascii_lowercase);
-        let hashed = format!("{:016x}", file.hash.0);
+        let hashed = format!("unnamed-{:016x}", file.hash.0);
         let (stem, spelled_ext) = match leaf.as_deref().and_then(|leaf| leaf.rsplit_once('.')) {
             Some((stem, ext)) => (tidy_stem(&plain(stem), &self.characters), Some(plain(ext))),
             None => (hashed.clone(), None),
@@ -330,7 +341,7 @@ impl Layout {
         let by_name = numbered(base(&stem), extension.clone()).take(4096);
         let by_hash = numbered(base(&hashed), "dat".to_string());
         let place = self.take(by_name.chain(by_hash));
-        place.unwrap_or_else(|| panic!("no path under {dir} for the file {hashed}"))
+        place.unwrap_or_else(|| panic!("no path under {dir} for the file {:016x}", file.hash.0))
     }
 
     /// The path of the bin of a unit's carried objects, in the unit's directory.
