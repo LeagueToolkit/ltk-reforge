@@ -114,8 +114,16 @@ report of that run is the command's, byte for byte, with the same inputs.
 4. **The census history cloned by the app** at the user's choice, some 5 GB. A user with a
    clone builds and appends from it and needs no download.
 
-Not settled: who builds and publishes the prebuilt index, how the commits after an index's
-head are fetched with no full clone, and how one bin entry's text is fetched with no clone.
+The census history is public, `https://github.com/LeagueToolkit/ltk-census-history`, and the
+index is published as a release of it: `stamp.json`, `builds.tsv` and `history.sqlite.xz`,
+the release tag naming the branch (`history-v2-index-<build>`). The stamp names the public
+repository. The app takes the newest release that holds the three files, checks each against
+the SHA-256 GitHub lists for it, unpacks the database as it downloads, opens the index, and
+installs it in its data folder, a folder per release (`reforge_app::index`). The settings
+then name it, and a folder they no longer name is removed at the next start.
+
+Not settled: how the commits after an index's head are fetched with no full clone, and how
+one bin entry's text is fetched with no clone.
 
 ## Two views of one run
 
@@ -160,7 +168,7 @@ user picks another policy and runs again.
 6. A selection of fixups saved and loaded, and a rule added in the app.
 7. A port in both views, with the decision, its candidates and the policy.
 
-Steps 1 to 4 are built. Step 5 waits on who publishes the prebuilt index.
+Steps 1 to 5 are built.
 
 Two faults of the crates reforge reads and packs with come before a release
 ([ROADMAP.md](ROADMAP.md), "Upstream"): a crafted archive can end the process, which a tool

@@ -8,6 +8,7 @@ import { useSaveSettings, useSettings } from "@/modules/settings";
 
 import { useFindGame, useInputs } from "../api/inputs";
 import { pickFile, pickFolder } from "../api/pick";
+import { IndexDownload } from "./IndexDownload";
 
 type InputKey = "inputs.game" | "inputs.hashes" | "inputs.schema" | "inputs.history";
 
@@ -164,15 +165,17 @@ function Rows({ view }: { view: InputsView | undefined }) {
         path={view?.history.dir}
         none={m.inputs_history_none()}
         facts={
-          view?.history.builds != null &&
-          view.history.newest_build && (
-            <p>
-              {m.inputs_history_builds_label({
-                builds: view.history.builds,
-                build: view.history.newest_build,
-              })}
-            </p>
-          )
+          <>
+            {view?.history.builds != null && view.history.newest_build && (
+              <p>
+                {m.inputs_history_builds_label({
+                  builds: view.history.builds,
+                  build: view.history.newest_build,
+                })}
+              </p>
+            )}
+            <IndexDownload installed={view?.history} />
+          </>
         }
         actions={
           <>

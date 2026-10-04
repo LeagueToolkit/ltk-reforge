@@ -41,6 +41,27 @@ pub enum AppError {
     /// A write was asked for with no folder to write in.
     #[error("no folder to write the package in")]
     NoOutput,
+    /// The history index's release did not download.
+    #[error("the history index did not download: {detail}")]
+    IndexFetch { detail: String },
+    /// A file of the release downloaded with other bytes than the release lists.
+    #[error("{file} is not the file the release lists")]
+    IndexDigest { file: String },
+    /// The index downloaded does not open.
+    #[error("the index downloaded does not open: {detail}")]
+    IndexUnreadable { detail: String },
+    /// The index could not be written to disk.
+    #[error("the index could not be written: {detail}")]
+    IndexUnwritable { detail: String },
+    /// A download of the index is under way already.
+    #[error("the index is downloading already")]
+    IndexBusy,
+    /// No release of the census history holds an index.
+    #[error("no release holds an index")]
+    NoIndexRelease,
+    /// The user stopped the work.
+    #[error("cancelled")]
+    Cancelled,
     /// A fault of the app's own, with no remedy a person can take.
     #[error("{detail}")]
     Internal { detail: String },

@@ -2,12 +2,45 @@
 //! as they stand.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::Utf8PathBuf;
 use parking_lot::Mutex;
 
 use crate::error::AppError;
 use crate::inputs::{Choice, Inputs};
+
+/// The download of the history index: where indexes are installed, and the flag that stops
+/// one.
+pub struct IndexJob {
+    /// The folder each release's index is installed in, one folder per release.
+    pub root: Utf8PathBuf,
+    /// Set to stop the download under way.
+    pub cancel: AtomicBool,
+    running: AtomicBool,
+}
+
+impl IndexJob {
+    /// No download under way.
+    pub fn new(root: Utf8PathBuf) -> Self {
+        Self {
+            root,
+            cancel: AtomicBool::new(false),
+            running: AtomicBool::new(false),
+        }
+    }
+
+    /// Marks a download started, unless one is under way.
+    pub fn start(&self) -> bool {
+        self.cancel.store(false, Ordering::Relaxed);
+        !self.running.swap(true, Ordering::AcqRel)
+    }
+
+    /// Marks the download ended.
+    pub fn end(&self) {
+        self.running.store(false, Ordering::Release);
+    }
+}
 
 /// The inputs opened for one choice, opened again when the choice changes.
 pub struct OpenInputs {

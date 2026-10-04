@@ -83,7 +83,11 @@ tauri-plugin-dialog = "2"
 ltk_mod_core = "0.1.1"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "0.0.12"
-tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+# The prebuilt history index fetched from its release (#ADR-0047): the HTTP client LTK Manager
+# uses, and the decoder of the `.xz` it is published as.
+reqwest = { version = "0.12", features = ["blocking"] }
+liblzma = "0.4"
 parking_lot = "0.12"
 
 # ltk_ritobin as census-sync reads and writes the census history's bin entries,

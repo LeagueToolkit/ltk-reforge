@@ -3,8 +3,13 @@
 //! runs through [`off_thread`].
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use tauri::{AppHandle, Manager, State};
+use tauri_specta::Event;
+
+use crate::index::{IndexReleaseView, InstallProgress, Installer, Web};
+use crate::state::IndexJob;
 
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::error::{AppError, IpcResult};
@@ -76,6 +81,65 @@ pub async fn run_repair(app: AppHandle, request: RunRequest) -> IpcResult<RunVie
         run::repair(&inputs, &request)
     })
     .await
+}
+
+/// The newest release of the census history that holds an index. None when none does.
+#[tauri::command]
+#[specta::specta]
+pub async fn index_release() -> IpcResult<Option<IndexReleaseView>> {
+    off_thread(|| {
+        let web = Web::new()?;
+        match web.latest()? {
+            Some(release) => Ok(Some(release.view(&web)?)),
+            None => Ok(None),
+        }
+    })
+    .await
+}
+
+/// Downloads the newest index, installs it, and makes it the history the runs read. Answers
+/// the settings as saved. Progress comes as `InstallProgress` events.
+#[tauri::command]
+#[specta::specta]
+pub async fn install_index(app: AppHandle) -> IpcResult<Settings> {
+    off_thread(move || {
+        let job = app.state::<Arc<IndexJob>>();
+        if !job.start() {
+            return Err(AppError::IndexBusy);
+        }
+        let installed = download_index(&app, &job);
+        job.end();
+        let store = app.state::<SettingsStore>();
+        let settings = Settings {
+            history: Some(installed?.to_string()),
+            ..store.get()
+        };
+        store.save(settings)
+    })
+    .await
+}
+
+fn download_index(app: &AppHandle, job: &IndexJob) -> Result<camino::Utf8PathBuf, AppError> {
+    let web = Web::new()?;
+    let release = web.latest()?.ok_or(AppError::NoIndexRelease)?;
+    // An event per percent: a download of 900 MB reads some hundred thousand chunks.
+    let mut shown = u64::MAX;
+    let mut progress = |seen: InstallProgress| {
+        let percent = seen.done * 100 / seen.total.max(1);
+        if percent != shown {
+            shown = percent;
+            let _ = seen.emit(app);
+        }
+    };
+    Installer::new(&web, &job.cancel, &mut progress).install(&release, &job.root)
+}
+
+/// Stops the download of the index under way.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_index(job: State<'_, Arc<IndexJob>>) -> IpcResult<()> {
+    job.cancel.store(true, Ordering::Relaxed);
+    IpcResult::ok(())
 }
 
 /// The inputs the settings choose, opened, and what opening them found.

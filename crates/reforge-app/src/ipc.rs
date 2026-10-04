@@ -5,9 +5,10 @@ use std::path::Path;
 
 use specta_typescript::Typescript;
 use tauri::Wry;
-use tauri_specta::{Builder, collect_commands};
+use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::commands;
+use crate::index::InstallProgress;
 
 /// Where the bindings are kept, relative to this crate.
 pub const BINDINGS: &str = "../../app/src/lib/bindings.gen.ts";
@@ -17,15 +18,20 @@ pub fn builder() -> Builder<Wry> {
     // A count or a size as a TypeScript `number`, as LTK Manager writes them: none comes near
     // 2^53.
     let builder = Builder::<Wry>::new().dangerously_cast_bigints_to_number();
-    builder.commands(collect_commands![
-        commands::get_settings,
-        commands::save_settings,
-        commands::fixup_catalog,
-        commands::check_catalog,
-        commands::find_game,
-        commands::open_inputs,
-        commands::run_repair,
-    ])
+    builder
+        .commands(collect_commands![
+            commands::get_settings,
+            commands::save_settings,
+            commands::fixup_catalog,
+            commands::check_catalog,
+            commands::find_game,
+            commands::open_inputs,
+            commands::run_repair,
+            commands::index_release,
+            commands::install_index,
+            commands::cancel_index,
+        ])
+        .events(collect_events![InstallProgress])
 }
 
 /// Writes the bindings to `path`.

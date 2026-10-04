@@ -48,6 +48,25 @@ export function describeError(error: AppError): ErrorCopy {
     .with({ code: "NO_OUTPUT" }, () => ({
       title: m["error.NO_OUTPUT.title"](),
     }))
+    .with({ code: "INDEX_FETCH" }, ({ detail }) => ({
+      title: m["error.INDEX_FETCH.title"](),
+      detail,
+    }))
+    .with({ code: "INDEX_DIGEST" }, ({ file }) => ({
+      title: m["error.INDEX_DIGEST.title"]({ file }),
+      description: m["error.INDEX_DIGEST.description"](),
+    }))
+    .with({ code: "INDEX_UNREADABLE" }, ({ detail }) => ({
+      title: m["error.INDEX_UNREADABLE.title"](),
+      detail,
+    }))
+    .with({ code: "INDEX_UNWRITABLE" }, ({ detail }) => ({
+      title: m["error.INDEX_UNWRITABLE.title"](),
+      detail,
+    }))
+    .with({ code: "INDEX_BUSY" }, () => ({ title: m["error.INDEX_BUSY.title"]() }))
+    .with({ code: "NO_INDEX_RELEASE" }, () => ({ title: m["error.NO_INDEX_RELEASE.title"]() }))
+    .with({ code: "CANCELLED" }, () => ({ title: m["error.CANCELLED.title"]() }))
     .with({ code: "INTERNAL" }, ({ detail }) => ({
       title: m["error.INTERNAL.title"](),
       detail,

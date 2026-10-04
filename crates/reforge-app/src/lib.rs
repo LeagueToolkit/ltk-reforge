@@ -5,6 +5,7 @@
 pub mod catalog;
 pub mod commands;
 pub mod error;
+pub mod index;
 pub mod inputs;
 pub mod ipc;
 pub mod run;
@@ -18,7 +19,7 @@ use camino::Utf8PathBuf;
 use tauri::Manager;
 
 use crate::settings::SettingsStore;
-use crate::state::OpenInputs;
+use crate::state::{IndexJob, OpenInputs};
 
 /// Starts the app and returns when its window closes.
 pub fn run() -> tauri::Result<()> {
@@ -35,6 +36,22 @@ pub fn run() -> tauri::Result<()> {
                 format!("the app's cache folder is not UTF-8: {}", path.display())
             })?;
             app.manage(Arc::new(OpenInputs::new(cache)));
+
+            let indexes = app.path().app_data_dir()?.join("history-indexes");
+            let indexes = Utf8PathBuf::from_path_buf(indexes).map_err(|path| {
+                format!("the app's data folder is not UTF-8: {}", path.display())
+            })?;
+            // Before any run opens one: an index the settings no longer name is an older
+            // release's, and nothing holds it open yet.
+            let current = app
+                .state::<SettingsStore>()
+                .get()
+                .history
+                .map(Utf8PathBuf::from);
+            if let Some(current) = current.filter(|path| path.starts_with(&indexes)) {
+                index::remove_others(&indexes, &current);
+            }
+            app.manage(Arc::new(IndexJob::new(indexes)));
             Ok(())
         })
         .run(tauri::generate_context!())
