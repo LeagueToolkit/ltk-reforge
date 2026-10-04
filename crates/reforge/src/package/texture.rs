@@ -1,6 +1,7 @@
 //! A DDS at a `.tex` path, put in TEX's container with its blocks as they are
 //! (#GAME-CHANGE-0007, #ADR-0022). The client reads either container by its magic
-//! (#GAME-BEHAVIOR-0003), so a texture TEX does not hold as it is stays the DDS it is.
+//! (#GAME-BEHAVIOR-0003), so a texture TEX does not hold as it is stays the DDS it is, and
+//! so does every one when the run keeps DDS (#ADR-0055).
 //!
 //! TEX holds, as they are: BC1 (DXT1), BC3 (DXT5), BC7 (sRGB), BC5 (signed), and 32-bit pixels
 //! with alpha as BGRA8, any other channel order swapped into it byte for byte. One 2D surface,
@@ -39,6 +40,8 @@ pub enum TexRefusal {
     Truncated,
     /// The TEX made does not read back with every mip.
     NotReadBack,
+    /// The run keeps each DDS as it is (#ADR-0055).
+    Asked,
 }
 
 impl TexRefusal {
@@ -53,6 +56,7 @@ impl TexRefusal {
             TexRefusal::PartialMips => "a partial mip chain",
             TexRefusal::Truncated => "fewer bytes than its mips need",
             TexRefusal::NotReadBack => "TEX does not read back with every mip",
+            TexRefusal::Asked => "under the option to keep DDS",
         }
     }
 }
@@ -188,6 +192,7 @@ pub fn dds_to_tex(bytes: &[u8]) -> Result<Vec<u8>, TexRefusal> {
 /// and what stays DDS.
 #[derive(Debug, Clone, Default)]
 pub struct TexContainer {
+    keep_dds: bool,
     contained: usize,
     kept: BTreeMap<TexRefusal, usize>,
 }
@@ -198,13 +203,25 @@ impl TexContainer {
         Self::default()
     }
 
+    /// Keeps each DDS as it is, and counts it (#ADR-0055).
+    #[must_use]
+    pub fn keep_dds(mut self, keep: bool) -> Self {
+        self.keep_dds = keep;
+        self
+    }
+
     /// The bytes of a DDS at a `.tex` path in TEX's container. None for any other chunk, and
     /// for a DDS TEX's container does not hold as it is, which is counted by the reason.
     pub fn contain(&mut self, path: &ChunkPath, bytes: &[u8]) -> Option<Vec<u8>> {
         if path.extension() != Some("tex") || !bytes.starts_with(b"DDS ") {
             return None;
         }
-        match dds_to_tex(bytes) {
+        let contained = if self.keep_dds {
+            Err(TexRefusal::Asked)
+        } else {
+            dds_to_tex(bytes)
+        };
+        match contained {
             Ok(tex) => Some(tex),
             Err(why) => {
                 *self.kept.entry(why).or_default() += 1;

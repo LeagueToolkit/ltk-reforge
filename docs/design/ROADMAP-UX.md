@@ -143,6 +143,7 @@ The settings a run takes, each where the library keeps it, and nothing beside th
 | a check on or off | `CheckSet` | yes | yes |
 | the target policy (auto, base, origin, slot, a skin) and the level of animation reuse | `Policy` | | yes |
 | keep stale copies | `Repairer`, `Porter` | yes | yes |
+| keep each DDS as it is, out of TEX's container (#ADR-0055) | `Repairer`, `Porter` | yes | yes |
 | cut events from the game's bank only | `Porter` | | yes |
 | which findings block the write | `DiagnosticPolicy` | yes | yes |
 

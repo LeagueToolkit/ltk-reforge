@@ -5,6 +5,8 @@
   "advanced_checks_description": "What the built package is held to",
   "advanced_checks_title": "Checks",
   "advanced_fixups_description": "The repairs a run makes, in the order they run",
+  "advanced_keep_dds_description": "Each DDS texture ships as it is, not moved into the TEX container",
+  "advanced_keep_dds_label": "Keep DDS textures",
   "advanced_keep_stale_description": "Copies of game files from an older build, carried as the mod's own",
   "advanced_keep_stale_label": "Keep stale copies",
   "advanced_package_label": "{name} {version}: {chunks} chunks, {patches} patches",

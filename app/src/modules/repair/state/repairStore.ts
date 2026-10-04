@@ -28,6 +28,7 @@ export interface AdvancedSettings {
   rules: RuleSpec[];
   checksOff: string[];
   keepStale: boolean;
+  keepDds: boolean;
   block: string[];
   target: string;
   animReuse: string;
@@ -43,6 +44,7 @@ export const STANDARD: AdvancedSettings = {
   rules: [],
   checksOff: [],
   keepStale: false,
+  keepDds: false,
   block: [],
   target: "auto",
   animReuse: "own-rig",
@@ -63,6 +65,7 @@ export function runSettings(settings: AdvancedSettings): RunSettings {
     fixups: { off: settings.fixupsOff, on: settings.fixupsOn, rules: settings.rules },
     checks_off: settings.checksOff,
     keep_stale: settings.keepStale,
+    keep_dds: settings.keepDds,
     block: settings.block.filter((line) => line.trim() !== ""),
     target: settings.target,
     anim_reuse: settings.animReuse,

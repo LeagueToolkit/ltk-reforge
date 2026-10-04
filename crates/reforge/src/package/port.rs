@@ -50,6 +50,7 @@ pub struct PortBuilder<'a> {
     port: &'a Port,
     env: &'a Env,
     names: &'a dyn Spell,
+    keep_dds: bool,
 }
 
 /// The objects of a bin and the bins it links.
@@ -166,7 +167,15 @@ impl<'a> PortBuilder<'a> {
             port,
             env,
             names,
+            keep_dds: false,
         }
+    }
+
+    /// Ships each DDS as it is (#ADR-0055).
+    #[must_use]
+    pub fn keep_dds(mut self, keep: bool) -> Self {
+        self.keep_dds = keep;
+        self
     }
 
     /// The package. A port that would hold nothing ends the run.
@@ -222,7 +231,7 @@ impl<'a> PortBuilder<'a> {
             package.insert(bank.layer.clone(), key, chunk);
         }
 
-        let mut container = TexContainer::new();
+        let mut container = TexContainer::new().keep_dds(self.keep_dds);
         let mut ship = |package: &mut Package, layer: Layer, file: FileId, place: &ChunkPath| {
             let node = &m.files[file];
             let chunk = match container.contain(place, &node.bytes) {

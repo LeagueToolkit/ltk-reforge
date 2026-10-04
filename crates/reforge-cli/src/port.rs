@@ -51,6 +51,9 @@ pub struct PortCommand {
     /// events of its own is reported and not carried.
     #[arg(long)]
     game_events_only: bool,
+    /// Ship each DDS as it is, put in TEX's container nowhere.
+    #[arg(long)]
+    keep_dds: bool,
     /// The meta schema database the fixups and the checks read the target build's types from
     /// (default: the one LTK Manager keeps on this machine).
     #[arg(long)]
@@ -84,7 +87,8 @@ impl PortCommand {
             .fixups(set)
             .checks(checks)
             .keep_stale(self.keep_stale)
-            .game_events_only(self.game_events_only);
+            .game_events_only(self.game_events_only)
+            .keep_dds(self.keep_dds);
         let mut run = porter.run().log_from(log);
         run::through(&mut run, &self.archive, Stage::Check)?;
 

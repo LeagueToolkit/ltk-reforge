@@ -44,6 +44,9 @@ pub struct Repair {
     /// Carry stale copies as the mod's own files.
     #[arg(long)]
     keep_stale: bool,
+    /// Ship each DDS as it is, put in TEX's container nowhere.
+    #[arg(long)]
+    keep_dds: bool,
     /// The meta schema database the fixups and the checks read the target build's types from
     /// (default: the one LTK Manager keeps on this machine).
     #[arg(long)]
@@ -71,7 +74,8 @@ impl Repair {
         let repairer = Repairer::new(&env)
             .fixups(set)
             .checks(checks)
-            .keep_stale(self.keep_stale);
+            .keep_stale(self.keep_stale)
+            .keep_dds(self.keep_dds);
         let mut run = repairer.run().log_from(log);
         run::through(&mut run, &self.archive, Stage::Check)?;
         // Before the write: the report beside the package holds the second run.

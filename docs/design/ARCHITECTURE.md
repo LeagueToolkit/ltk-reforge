@@ -612,7 +612,8 @@ object takes a name of its own, which every link to it follows.
   bytes.
 - **`TexContainer`** puts a DDS at a `.tex` path in TEX's container where its blocks go in as
   they are (#ADR-0022), after either builder. A texture TEX does not hold as it is stays the
-  DDS it is (#GAME-BEHAVIOR-0003), one not in whole blocks among them (#GAME-BEHAVIOR-0018).- **`Overlay`** is a package's patches applied as LTK Manager's overlay applies them: each
+  DDS it is (#GAME-BEHAVIOR-0003), one not in whole blocks among them (#GAME-BEHAVIOR-0018).
+  A run that keeps DDS puts none in TEX's container (#ADR-0055).- **`Overlay`** is a package's patches applied as LTK Manager's overlay applies them: each
   layer's manifest loaded with `ltk_game_data`, its edits applied to the game's bin, the base
   layer first and each other layer over the base layer's result. It holds, per patch, the bin
   after it with what the patch changed, the edits skipped, and for the base layer everything

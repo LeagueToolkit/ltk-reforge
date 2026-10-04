@@ -1,8 +1,15 @@
 //! A DDS put in TEX's container: the blocks as they are, the mips in TEX's order, and
-//! everything TEX does not hold as it is refused (#ADR-0022).
+//! everything TEX does not hold as it is refused (#ADR-0022). A run that keeps DDS puts none
+//! in (#ADR-0055).
 
-use reforge::package::{TexRefusal, dds_to_tex};
+use reforge::history::NoHistory;
+use reforge::package::{TexRefusal, TextureContained, dds_to_tex};
+use reforge::{Porter, Repairer, Run};
+use reforge_testkit::bins::{bin, entry, particle, resolver_with};
+use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
+use reforge_testkit::mods::FILE_NAME;
 use reforge_testkit::packs::{DdsPixels, dds};
+use reforge_testkit::skins::{self, skin_bin};
 
 /// The bytes of a DDS after its header.
 fn data(dds: &[u8]) -> &[u8] {
@@ -112,4 +119,74 @@ fn a_side_longer_than_sixteen_bits_count_is_too_large() {
     assert_eq!(dds_to_tex(&wide), Err(TexRefusal::TooLarge));
     let tall = dds(DdsPixels::Dxt1, (4, 65_536), 1);
     assert_eq!(dds_to_tex(&tall), Err(TexRefusal::TooLarge));
+}
+
+/// A mod of its own rig at skin0 whose particle names a texture at a `.tex` path, held as
+/// these bytes.
+fn mod_with_texture(texture: Vec<u8>) -> Vec<u8> {
+    let skin = "Characters/Test/Skins/Skin0";
+    let graph = "Characters/Test/Animations/Skin0";
+    let resources = "Characters/Test/Skins/Skin0/Resources";
+    let fx = "Characters/Test/Skins/Skin0/Particles/Test_Own";
+    let path = "assets/mod/a/own.tex";
+    let objects = vec![
+        entry(skin, &own_skin("a", graph, resources)),
+        own_graph("a", graph),
+        resolver_with(resources, &[("Test_Q_Cast", fx)]),
+        particle(fx, path),
+    ];
+    let mut files = own_files("a");
+    files.push((path.into(), texture));
+    files.push((skin_bin("test", 0), bin(objects)));
+    archive(&files).build()
+}
+
+/// The chunks of a run's package that start with these bytes.
+fn chunks_starting(run: &Run<'_>, magic: &[u8]) -> usize {
+    let package = run.package().expect("a package");
+    let chunks = package
+        .chunks()
+        .filter(|(_, _, chunk)| chunk.bytes.starts_with(magic));
+    chunks.count()
+}
+
+#[test]
+fn a_run_that_keeps_dds_ships_a_dds_at_a_tex_path_as_it_is() {
+    // #ADR-0055
+    let env = env(skins::game(), NoHistory);
+    let texture = dds(DdsPixels::Dxt1, (8, 8), 4);
+    let bytes = mod_with_texture(texture.clone());
+    let porter = Porter::new(&env);
+    let repairer = Repairer::new(&env);
+    let runs = [
+        porter.port(&bytes, FILE_NAME).expect("no fault"),
+        repairer.repair(&bytes, FILE_NAME).expect("no fault"),
+    ];
+    for run in &runs {
+        let shipped = (
+            chunks_starting(run, b"TEX\0"),
+            chunks_starting(run, b"DDS "),
+        );
+        assert_eq!(shipped, (1, 0));
+    }
+
+    let porter = Porter::new(&env).keep_dds(true);
+    let repairer = Repairer::new(&env).keep_dds(true);
+    let runs = [
+        porter.port(&bytes, FILE_NAME).expect("no fault"),
+        repairer.repair(&bytes, FILE_NAME).expect("no fault"),
+    ];
+    for run in &runs {
+        let package = run.package().expect("a package");
+        let shipped = package
+            .chunks()
+            .filter(|(_, _, chunk)| *chunk.bytes == *texture);
+        assert_eq!(shipped.count(), 1);
+        assert_eq!(chunks_starting(run, b"TEX\0"), 0);
+        let found: Vec<_> = run.log().of::<TextureContained>().collect();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].contained, 0);
+        let kept: Vec<_> = found[0].kept.iter().collect();
+        assert_eq!(kept, [(&TexRefusal::Asked, &1)]);
+    }
 }

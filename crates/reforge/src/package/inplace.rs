@@ -41,6 +41,7 @@ pub struct InPlaceBuilder<'a> {
     changes: &'a Changes,
     names: Option<(&'a NameBook, &'a Names)>,
     stale: Option<Staleness<'a>>,
+    keep_dds: bool,
 }
 
 impl<'a> InPlaceBuilder<'a> {
@@ -52,7 +53,15 @@ impl<'a> InPlaceBuilder<'a> {
             changes,
             names: None,
             stale: None,
+            keep_dds: false,
         }
+    }
+
+    /// Ships each DDS as it is (#ADR-0055).
+    #[must_use]
+    pub fn keep_dds(mut self, keep: bool) -> Self {
+        self.keep_dds = keep;
+        self
     }
 
     /// What the mod was loaded against, and under which options. A texture put in TEX's
@@ -87,7 +96,7 @@ impl<'a> InPlaceBuilder<'a> {
             left: LeftBehind::default(),
             unnamed: 0,
         };
-        let mut container = TexContainer::new();
+        let mut container = TexContainer::new().keep_dds(self.keep_dds);
         for (id, file) in m.files.iter() {
             if let Err(reason) = wired.judge(file) {
                 found.left.count(reason);

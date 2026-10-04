@@ -102,6 +102,8 @@ pub struct RunSettings {
     pub anim_reuse: String,
     /// Cut a port's events from the game's bank only.
     pub game_events_only: bool,
+    /// Ship each DDS as it is, put in TEX's container nowhere.
+    pub keep_dds: bool,
 }
 
 impl Default for RunSettings {
@@ -115,6 +117,7 @@ impl Default for RunSettings {
             target: policy.target.to_string(),
             anim_reuse: policy.anim_reuse.as_str().to_string(),
             game_events_only: false,
+            keep_dds: false,
         }
     }
 }
@@ -275,7 +278,8 @@ pub fn run(
             repairer = Repairer::new(env)
                 .fixups(fixups)
                 .checks(checks)
-                .keep_stale(settings.keep_stale);
+                .keep_stale(settings.keep_stale)
+                .keep_dds(settings.keep_dds);
             repairer.run()
         }
         RunKind::Port => {
@@ -285,7 +289,8 @@ pub fn run(
                 .fixups(fixups)
                 .checks(checks)
                 .keep_stale(settings.keep_stale)
-                .game_events_only(settings.game_events_only);
+                .game_events_only(settings.game_events_only)
+                .keep_dds(settings.keep_dds);
             porter.run()
         }
     }

@@ -128,6 +128,7 @@ struct Settings {
     policy: Policy,
     compared: Vec<Policy>,
     game_events_only: bool,
+    keep_dds: bool,
 }
 
 impl Settings {
@@ -266,6 +267,13 @@ impl<'a> Porter<'a> {
         self
     }
 
+    /// Ships each DDS as it is, put in TEX's container nowhere (#ADR-0055).
+    #[must_use]
+    pub fn keep_dds(mut self, keep: bool) -> Self {
+        self.settings.keep_dds = keep;
+        self
+    }
+
     /// A run of one archive, with nothing read.
     pub fn run(&self) -> Run<'_> {
         Run::new(self.env, &self.settings, Mode::Port)
@@ -324,6 +332,13 @@ impl<'a> Repairer<'a> {
     #[must_use]
     pub fn keep_stale(mut self, keep: bool) -> Self {
         self.settings.keep_stale = keep;
+        self
+    }
+
+    /// Ships each DDS as it is, put in TEX's container nowhere (#ADR-0055).
+    #[must_use]
+    pub fn keep_dds(mut self, keep: bool) -> Self {
+        self.settings.keep_dds = keep;
         self
     }
 
@@ -688,7 +703,9 @@ impl<'a> Run<'a> {
                     Mode::Port => {
                         let port = held(self.plan.as_ref(), Stage::Build, Stage::Plan)?;
                         let speller = Speller::new(&self.book, self.env.names());
-                        PortBuilder::new(fixed, port, self.env, &speller).build(&mut sink)
+                        PortBuilder::new(fixed, port, self.env, &speller)
+                            .keep_dds(self.settings.keep_dds)
+                            .build(&mut sink)
                     }
                     Mode::InPlace => {
                         let changes = held(self.changes.as_ref(), Stage::Build, Stage::Fix)?;
@@ -696,6 +713,7 @@ impl<'a> Run<'a> {
                         InPlaceBuilder::new(fixed, changes)
                             .names(&self.book, self.env.names())
                             .judged(self.env, &options)
+                            .keep_dds(self.settings.keep_dds)
                             .build(&mut sink)
                     }
                 }

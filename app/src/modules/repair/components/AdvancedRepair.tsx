@@ -85,6 +85,19 @@ function SettingsCard({
           aria-label={m.advanced_keep_stale_label()}
         />
       </div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm text-surface-100 select-none">{m.advanced_keep_dds_label()}</p>
+          <p className="text-xs text-surface-400 select-none">
+            {m.advanced_keep_dds_description()}
+          </p>
+        </div>
+        <Switch
+          checked={advanced.keepDds}
+          onCheckedChange={(keepDds) => setAdvanced({ keepDds })}
+          aria-label={m.advanced_keep_dds_label()}
+        />
+      </div>
       <label className="flex flex-col gap-1">
         <span className="text-sm text-surface-100 select-none">{m.advanced_block_label()}</span>
         <span className="text-xs text-surface-400 select-none">

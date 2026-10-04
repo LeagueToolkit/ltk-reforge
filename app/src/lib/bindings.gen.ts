@@ -572,6 +572,8 @@ export type RunSettings = {
 	anim_reuse?: string,
 	/**  Cut a port's events from the game's bank only. */
 	game_events_only?: boolean,
+	/**  Ship each DDS as it is, put in TEX's container nowhere. */
+	keep_dds?: boolean,
 };
 
 /**  A stage of the run under way starting or ending. */
