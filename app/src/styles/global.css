@@ -1,0 +1,876 @@
+/* ============================================
+   LTK Design Tokens
+   ============================================ */
+
+/* ============================================
+   Brand Palette
+   ============================================ */
+
+/* The logo colors. */
+:root {
+  --ltk-blue: #4b7dfa;
+  --ltk-violet: #7d4bfa;
+  --ltk-on-brand: #ffffff;
+}
+
+/* Riot's own mark color. */
+:root {
+  --ltk-riot-red: #ff2345;
+}
+
+/* ============================================
+   Status Palette
+   ============================================ */
+
+/* State colors, for components that derive their look from state. */
+:root {
+  --ltk-success: #22c55e;
+  --ltk-warning: #f59e0b;
+  --ltk-danger: #ef4444;
+  --ltk-info: var(--ltk-blue);
+
+  --ltk-success-text: var(--ltk-success);
+  --ltk-warning-text: var(--ltk-warning);
+  --ltk-danger-text: var(--ltk-danger);
+  --ltk-info-text: var(--ltk-info);
+
+  --ltk-danger-strong: #dc2626;
+  --ltk-required: #f193a9;
+
+  /* Colors for mod category pills. */
+  --ltk-cat-champion: #34d399;
+  --ltk-cat-map: #38bdf8;
+  --ltk-cat-champion-text: var(--ltk-cat-champion);
+  --ltk-cat-map-text: var(--ltk-cat-map);
+
+  /* Colors for the kinds of document an editor tab can hold. */
+  --ltk-doc-details: #a78bfa;
+  --ltk-doc-base: #fbbf24;
+  --ltk-doc-layer: #38bdf8;
+  --ltk-doc-strings: #34d399;
+  --ltk-doc-game: #fb7185;
+  --ltk-doc-problems: #f97316;
+  --ltk-doc-ignore: #94a3b8;
+  --ltk-doc-readme: #e879f9;
+  --ltk-doc-license: #a3e635;
+  --ltk-doc-declarations: #2dd4bf;
+  --ltk-doc-details-text: var(--ltk-doc-details);
+  --ltk-doc-base-text: var(--ltk-doc-base);
+  --ltk-doc-layer-text: var(--ltk-doc-layer);
+  --ltk-doc-strings-text: var(--ltk-doc-strings);
+  --ltk-doc-game-text: var(--ltk-doc-game);
+  --ltk-doc-problems-text: var(--ltk-doc-problems);
+  --ltk-doc-ignore-text: var(--ltk-doc-ignore);
+  --ltk-doc-readme-text: var(--ltk-doc-readme);
+  --ltk-doc-license-text: var(--ltk-doc-license);
+  --ltk-doc-declarations-text: var(--ltk-doc-declarations);
+
+  /* The folder of a tree row. */
+  --ltk-folder: #dcb67a;
+  --ltk-folder-text: var(--ltk-folder);
+
+  /* The type vocabulary of a bin: a class, and a kind in ritobin's words. */
+  --ltk-bin-class: #45e3bd;
+  --ltk-bin-kind: #569cd6;
+  --ltk-bin-class-text: var(--ltk-bin-class);
+  --ltk-bin-kind-text: var(--ltk-bin-kind);
+
+  /* The Geometry node of the particle graph. */
+  --ltk-graph-geometry: #f472b6;
+  --ltk-graph-geometry-text: var(--ltk-graph-geometry);
+
+  /* Colors for the channels of one curve, in the order a value holds them. */
+  --ltk-channel-1: #f87171;
+  --ltk-channel-2: #4ade80;
+  --ltk-channel-3: #60a5fa;
+  --ltk-channel-4: #cbd5e1;
+  --ltk-channel-1-text: var(--ltk-channel-1);
+  --ltk-channel-2-text: var(--ltk-channel-2);
+  --ltk-channel-3-text: var(--ltk-channel-3);
+  --ltk-channel-4-text: var(--ltk-channel-4);
+
+  /* Colors for the value kinds a driver graph's sockets and edges carry. */
+  --ltk-socket-float: #2dd4bf;
+  --ltk-socket-vec2: #a3e635;
+  --ltk-socket-vec3: #a78bfa;
+  --ltk-socket-vec4: #fbbf24;
+  --ltk-socket-float-text: var(--ltk-socket-float);
+  --ltk-socket-vec2-text: var(--ltk-socket-vec2);
+  --ltk-socket-vec3-text: var(--ltk-socket-vec3);
+  --ltk-socket-vec4-text: var(--ltk-socket-vec4);
+
+  /* Void hue for skinhack detection. */
+  --ltk-void: #c084fc;
+  --ltk-void-text: var(--ltk-void);
+}
+
+[data-theme="light"] {
+  --ltk-success-text: color-mix(in srgb, var(--ltk-success) 60%, black);
+  --ltk-warning-text: color-mix(in srgb, var(--ltk-warning) 60%, black);
+  --ltk-danger-text: color-mix(in srgb, var(--ltk-danger) 60%, black);
+  --ltk-info-text: color-mix(in srgb, var(--ltk-info) 60%, black);
+  --ltk-required: #ad3a58;
+  --ltk-cat-champion-text: color-mix(in srgb, var(--ltk-cat-champion) 50%, black);
+  --ltk-cat-map-text: color-mix(in srgb, var(--ltk-cat-map) 50%, black);
+  --ltk-doc-details-text: color-mix(in srgb, var(--ltk-doc-details) 50%, black);
+  --ltk-doc-base-text: color-mix(in srgb, var(--ltk-doc-base) 50%, black);
+  --ltk-doc-layer-text: color-mix(in srgb, var(--ltk-doc-layer) 50%, black);
+  --ltk-doc-strings-text: color-mix(in srgb, var(--ltk-doc-strings) 50%, black);
+  --ltk-doc-game-text: color-mix(in srgb, var(--ltk-doc-game) 50%, black);
+  --ltk-doc-problems-text: color-mix(in srgb, var(--ltk-doc-problems) 50%, black);
+  --ltk-doc-ignore-text: color-mix(in srgb, var(--ltk-doc-ignore) 50%, black);
+  --ltk-doc-readme-text: color-mix(in srgb, var(--ltk-doc-readme) 50%, black);
+  --ltk-doc-license-text: color-mix(in srgb, var(--ltk-doc-license) 50%, black);
+  --ltk-doc-declarations-text: color-mix(in srgb, var(--ltk-doc-declarations) 50%, black);
+  --ltk-folder-text: color-mix(in srgb, var(--ltk-folder) 60%, black);
+  --ltk-bin-class-text: color-mix(in srgb, var(--ltk-bin-class) 55%, black);
+  --ltk-bin-kind-text: color-mix(in srgb, var(--ltk-bin-kind) 55%, black);
+  --ltk-graph-geometry-text: color-mix(in srgb, var(--ltk-graph-geometry) 55%, black);
+  --ltk-void-text: color-mix(in srgb, var(--ltk-void) 50%, black);
+  --ltk-channel-1-text: color-mix(in srgb, var(--ltk-channel-1) 55%, black);
+  --ltk-channel-2-text: color-mix(in srgb, var(--ltk-channel-2) 55%, black);
+  --ltk-channel-3-text: color-mix(in srgb, var(--ltk-channel-3) 55%, black);
+  --ltk-channel-4-text: color-mix(in srgb, var(--ltk-channel-4) 55%, black);
+  --ltk-socket-float-text: color-mix(in srgb, var(--ltk-socket-float) 55%, black);
+  --ltk-socket-vec2-text: color-mix(in srgb, var(--ltk-socket-vec2) 55%, black);
+  --ltk-socket-vec3-text: color-mix(in srgb, var(--ltk-socket-vec3) 55%, black);
+  --ltk-socket-vec4-text: color-mix(in srgb, var(--ltk-socket-vec4) 55%, black);
+}
+
+/* ============================================
+   Accent Presets
+   ============================================ */
+
+/* One ramp, two sources: the literal "ltk" block below wins when
+   [data-accent="ltk"] is set, otherwise the ramp is generated from
+   --accent-hue. */
+:root {
+  --accent-hue: 223;
+  --accent-saturation: 100%;
+
+  /* Accent picker hues */
+  --hue-blue: 207;
+  --hue-purple: 271;
+  --hue-green: 122;
+  --hue-orange: 36;
+  --hue-pink: 340;
+  --hue-red: 4;
+  --hue-teal: 174;
+
+  --accent-l-50: 95%;
+  --accent-l-100: 90%;
+  --accent-l-200: 80%;
+  --accent-l-300: 70%;
+  --accent-l-400: 60%;
+  --accent-l-500: 50%;
+  --accent-l-600: 40%;
+  --accent-l-700: 30%;
+  --accent-l-800: 20%;
+  --accent-l-900: 10%;
+}
+
+[data-theme="light"] {
+  --accent-l-50: 12%;
+  --accent-l-100: 16%;
+  --accent-l-200: 22%;
+  --accent-l-300: 28%;
+  --accent-l-400: 34%;
+  --accent-l-500: 46%;
+  --accent-l-600: 40%;
+  --accent-l-700: 65%;
+  --accent-l-800: 82%;
+  --accent-l-900: 92%;
+}
+
+:root {
+  --accent-50: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-50));
+  --accent-100: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-100));
+  --accent-200: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-200));
+  --accent-300: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-300));
+  --accent-400: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-400));
+  --accent-500: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-500));
+  --accent-600: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-600));
+  --accent-700: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-700));
+  --accent-800: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-800));
+  --accent-900: hsl(var(--accent-hue), var(--accent-saturation), var(--accent-l-900));
+}
+
+:root[data-accent="ltk"] {
+  --accent-50: #eef4ff;
+  --accent-100: #d9e8ff;
+  --accent-200: #b9e5fb;
+  --accent-300: #a5c3ff;
+  --accent-400: #86a9ff;
+  --accent-500: #4b7dfa;
+  --accent-600: #3a5ec4;
+  --accent-700: #2b4593;
+  --accent-800: #21306b;
+  --accent-900: #1a1640;
+}
+
+:root[data-accent="ltk"][data-theme="light"] {
+  --accent-50: #0e0b26;
+  --accent-100: #1a1640;
+  --accent-200: #21306b;
+  --accent-300: #2b4593;
+  --accent-400: #33529e;
+  --accent-500: #3a5ec4;
+  --accent-600: #2f4ca0;
+  --accent-700: #93b0ff;
+  --accent-800: #c9d9ff;
+  --accent-900: #e8f0ff;
+}
+
+/* The accent, dimmed toward the border rung. Resolves against whichever
+   ramp and theme won above. */
+:root {
+  --accent-hover: color-mix(in srgb, var(--accent-500) 55%, var(--surface-600));
+}
+
+/* The ink an accent fill carries, aliased per accent by `useTheme`. */
+:root {
+  --ltk-on-accent-light: #ffffff;
+  --ltk-on-accent-dark: #0d1117;
+  --ltk-on-accent: var(--ltk-on-accent-light);
+}
+
+/* ============================================
+   Surfaces
+   ============================================ */
+
+/* Neutrals. 950 is the page ground, and every other surface layers up from it.
+   Lightness is fixed per rung. Two axes move, both written by the app: the hue
+   the accent hands down, and a scale over every rung's authored chroma at once.
+   At 0 the ramp is grey and no accent bleeds into the neutrals.
+
+   The chroma written on each rung is the brand ramp's own, measured off a
+   blue-violet hue where OKLCH under-reports how colorful a surface looks.
+   Rotated onto a warm hue it reads as a tinted panel rather than a neutral, so
+   the default scale pulls every rung back inside one JND of grey. Keep this in
+   step with the store's default or the first paint flashes the wrong ramp. */
+:root {
+  --surface-hue: 276;
+  --surface-tint: 0.3;
+
+  --surface-950: oklch(16.4% calc(0.023 * var(--surface-tint)) var(--surface-hue));
+  --surface-900: oklch(20.7% calc(0.041 * var(--surface-tint)) var(--surface-hue));
+  --surface-800: oklch(25.2% calc(0.04 * var(--surface-tint)) var(--surface-hue));
+  --surface-700: oklch(28.3% calc(0.037 * var(--surface-tint)) var(--surface-hue));
+  --surface-600: oklch(32.9% calc(0.055 * var(--surface-tint)) var(--surface-hue));
+  --surface-500: oklch(43.1% calc(0.058 * var(--surface-tint)) var(--surface-hue));
+  --surface-400: oklch(63.4% calc(0.045 * var(--surface-tint)) var(--surface-hue));
+  --surface-300: oklch(77.2% calc(0.032 * var(--surface-tint)) var(--surface-hue));
+  --surface-200: oklch(88% calc(0.018 * var(--surface-tint)) var(--surface-hue));
+  --surface-100: oklch(96.1% calc(0.008 * var(--surface-tint)) var(--surface-hue));
+  --surface-50: oklch(100% 0 var(--surface-hue));
+}
+
+/* What a control with no surface of its own draws: its edge, and its hover and
+   press fill. */
+:root {
+  --surface-veil-soft: color-mix(in srgb, var(--surface-100) 6%, transparent);
+  --surface-veil: color-mix(in srgb, var(--surface-100) 12%, transparent);
+  --surface-veil-strong: color-mix(in srgb, var(--surface-100) 20%, transparent);
+}
+
+[data-theme="light"] {
+  --surface-950: oklch(98.8% calc(0.002 * var(--surface-tint)) var(--surface-hue));
+  --surface-900: oklch(96% calc(0.005 * var(--surface-tint)) var(--surface-hue));
+  --surface-800: oklch(91.6% calc(0.01 * var(--surface-tint)) var(--surface-hue));
+  --surface-700: oklch(87.6% calc(0.014 * var(--surface-tint)) var(--surface-hue));
+  --surface-600: oklch(82.8% calc(0.024 * var(--surface-tint)) var(--surface-hue));
+  --surface-500: oklch(64.5% calc(0.041 * var(--surface-tint)) var(--surface-hue));
+  --surface-400: oklch(53.2% calc(0.033 * var(--surface-tint)) var(--surface-hue));
+  --surface-300: oklch(44.6% calc(0.032 * var(--surface-tint)) var(--surface-hue));
+  --surface-200: oklch(33.9% calc(0.035 * var(--surface-tint)) var(--surface-hue));
+  --surface-100: oklch(23.4% calc(0.035 * var(--surface-tint)) var(--surface-hue));
+  --surface-50: oklch(16.4% calc(0.023 * var(--surface-tint)) var(--surface-hue));
+}
+
+/* ============================================
+   Scales
+   ============================================ */
+
+:root {
+  /* Zoom scale (set via JS, default 1 = 100%) */
+  --zoom-scale: 1;
+
+  --space-001: calc(1 * 4.5px * var(--zoom-scale));
+  --space-002: calc(2 * 4.5px * var(--zoom-scale));
+  --space-003: calc(3 * 4.5px * var(--zoom-scale));
+  --space-004: calc(4 * 4.5px * var(--zoom-scale));
+  --space-005: calc(5 * 4.5px * var(--zoom-scale));
+  --space-006: calc(6 * 4.5px * var(--zoom-scale));
+  --space-007: calc(7 * 4.5px * var(--zoom-scale));
+  --space-008: calc(8 * 4.5px * var(--zoom-scale));
+  --space-009: calc(9 * 4.5px * var(--zoom-scale));
+  --space-010: calc(10 * 4.5px * var(--zoom-scale));
+  --space-011: calc(11 * 4.5px * var(--zoom-scale));
+  --space-012: calc(12 * 4.5px * var(--zoom-scale));
+
+  /* Corner radius. 006 is a pill, not a rung on the scale. */
+  --radius-001: 2px;
+  --radius-002: 4px;
+  --radius-003: 6px;
+  --radius-004: 8px;
+  --radius-005: 12px;
+  --radius-006: 9999px;
+
+  /* Scrollbar thumb thickness, the density scale over it, and the gutter it
+     floats inside. */
+  --scrollbar-thumb-size: 8px;
+  --scrollbar-scale: 1;
+  --scrollbar-inset-base: 2px;
+  --scrollbar-inset: var(--scrollbar-inset-base);
+
+  /* Icon sizes */
+  --icon-001: calc(9px * var(--zoom-scale));
+  --icon-002: calc(10.5px * var(--zoom-scale));
+  --icon-003: calc(12px * var(--zoom-scale));
+  --icon-004: calc(15px * var(--zoom-scale));
+  --icon-005: calc(18px * var(--zoom-scale));
+  --icon-006: calc(21px * var(--zoom-scale));
+  --icon-007: calc(24px * var(--zoom-scale));
+
+  /* The faces the app falls back to. A chosen face replaces the sans and the
+     mono on the root element, from the table in lib/fonts. Fontsource registers
+     the "* Variable" family names. */
+  --face-sans: "Geist Variable", system-ui, sans-serif;
+  --face-display: "Bricolage Grotesque Variable", "Geist Variable", system-ui, sans-serif;
+  --face-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  /* The weight scale, in plain CSS weights. It belongs to no face: one that
+     reads wrong at a plain number brings its own - see DS-WEIGHT-TIER. */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Dense row type: the tier a row names itself in, and the tiers around it. */
+  --type-row: 0.75rem;
+  --type-row-leading: 1rem;
+  --type-meta: 0.6875rem;
+  --type-meta-leading: 0.875rem;
+  --type-meta-tracking: 0.01em;
+  --type-fine: 0.625rem;
+  --type-fine-leading: 0.8125rem;
+  --type-fine-tracking: 0.01em;
+
+  /* The tier a row set entirely in mono names itself in. */
+  --type-mono-row: 0.8125rem;
+  --type-mono-row-leading: 1.125rem;
+
+  /* Mono needs no size correction: font-size-adjust has already given it the
+     same x-height as the sans it sits beside. */
+  --type-code: 1em;
+
+  /* Elevation, dark-first. Light mode softens it below. */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.4), 0 1px 6px -2px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 3px 8px -2px rgb(0 0 0 / 0.4), 0 1px 12px -4px rgb(0 0 0 / 0.4);
+  --shadow-xl: 0 4px 12px -3px rgb(0 0 0 / 0.5), 0 2px 20px -6px rgb(0 0 0 / 0.5);
+  --shadow-2xl: 0 8px 28px -8px rgb(0 0 0 / 0.6);
+  --shadow-glass: 0 8px 32px rgb(0 0 0 / 0.3);
+
+  /* Z-index layers */
+  --z-dropdown: 100;
+  --z-modal: 200;
+  --z-toast: 300;
+  --z-notification: 400;
+
+  /* Duration */
+  --duration-001: 50ms;
+  --duration-002: 100ms;
+  --duration-003: 150ms;
+  --duration-004: 200ms;
+  --duration-005: 300ms;
+  --duration-006: 500ms;
+
+  /* Easing */
+  --ease-linear: linear;
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.18, 0.64, 1);
+}
+
+/* The one axis a user may bend the radius scale on. 006 stays a pill either way. */
+[data-corners="sharp"] {
+  --radius-001: 0px;
+  --radius-002: 0px;
+  --radius-003: 0px;
+  --radius-004: 0px;
+  --radius-005: 0px;
+}
+
+[data-corners="round"] {
+  --radius-001: 5px;
+  --radius-002: 10px;
+  --radius-003: 15px;
+  --radius-004: 20px;
+  --radius-005: 28px;
+}
+
+[data-scrollbars="thin"] {
+  --scrollbar-thumb-size: 6px;
+  --scrollbar-inset-base: 2px;
+}
+
+[data-scrollbars="wide"] {
+  --scrollbar-thumb-size: 12px;
+  --scrollbar-inset-base: 3px;
+}
+
+[data-theme="light"] {
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.1), 0 1px 6px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 3px 8px -2px rgb(0 0 0 / 0.1), 0 1px 12px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 4px 12px -3px rgb(0 0 0 / 0.1), 0 2px 20px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 8px 28px -8px rgb(0 0 0 / 0.25);
+  --shadow-glass: 0 8px 32px rgb(0 0 0 / 0.12);
+}
+
+/* ============================================
+   Glass Surfaces
+   ============================================ */
+
+/* Frosted surface tiers. Take the fill and the blur from the same tier. */
+:root {
+  --ltk-glass-chrome-fill: color-mix(in srgb, var(--surface-950) 97%, transparent);
+  --ltk-glass-chrome-blur: blur(24px) saturate(140%);
+  --ltk-glass-panel-fill: color-mix(in srgb, var(--surface-800) 70%, transparent);
+  --ltk-glass-panel-blur: blur(10px);
+  --ltk-glass-scrim-fill: rgb(0 0 0 / 0.6);
+  --ltk-glass-scrim-blur: blur(4px);
+}
+
+/* With blur available the chrome fill can be thinner. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  :root {
+    --ltk-glass-chrome-fill: color-mix(in srgb, var(--surface-950) 65%, transparent);
+  }
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+/* Zoom reaches type through the root font size, which is what every rem in the
+   app is measured against. --space-* and --icon-* carry the scale themselves
+   because they are authored in px, and --radius-* is left out on purpose. */
+html {
+  font-size: calc(100% * var(--zoom-scale));
+  font-family: var(--font-sans);
+  font-weight: var(--weight-normal);
+  /* Every face renders at this x-height whatever its own metrics say. It is why
+     switching face does not change how big the app reads, why mono sits level
+     with the sans beside it, and why a face needs no measurement to be added.
+     0.53 is the ratio the app was drawn at rather than any one face's. */
+  font-size-adjust: 0.53;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The sans tiers are that face's numbers and mean nothing to the mono, which
+   reaches the same tiers at the plain ones. Layered as `base` so the weight
+   utilities, which Tailwind emits into `utilities`, still win on an element
+   that asks for one. */
+@layer base {
+  .font-mono {
+    --weight-normal: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --weight-bold: 700;
+    font-weight: var(--weight-normal);
+  }
+
+  /* Levelling the x-height is for the faces a user swaps between. The display
+     face is fixed and was sized against its own metrics, so it keeps them. */
+  .font-display {
+    font-size-adjust: none;
+  }
+}
+
+body {
+  background-color: var(--surface-950);
+  color: var(--surface-200);
+  min-height: 100vh;
+}
+
+.root {
+  isolation: isolate;
+}
+
+/* Browsers give buttons the arrow cursor, and Tailwind's preflight does not override it. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+label:has(> input[type="checkbox"]),
+summary {
+  cursor: pointer;
+}
+
+/* Ligatures off: readers copy what they see. */
+code,
+pre,
+kbd,
+samp {
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
+}
+
+:root {
+  --scrollbar-thumb: var(--surface-veil);
+  --scrollbar-thumb-hover: var(--surface-veil-strong);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--surface-100) 30%, transparent);
+  --scrollbar-track: transparent;
+}
+
+::-webkit-scrollbar {
+  width: calc(var(--scrollbar-thumb-size) * var(--scrollbar-scale) + 2 * var(--scrollbar-inset));
+  height: calc(var(--scrollbar-thumb-size) * var(--scrollbar-scale) + 2 * var(--scrollbar-inset));
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* The border is the gutter, unpainted because the fill clips to the content box. */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-thumb {
+  background-clip: content-box;
+  border: var(--scrollbar-inset) solid transparent;
+  border-radius: var(--radius-001);
+}
+
+::-webkit-scrollbar-track {
+  background-color: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  transition: background-color var(--duration-003) var(--ease-out);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+}
+
+::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+/* A strip only as tall as one row of content has no height to lend a track, so
+   this one keeps its own size whatever the setting asks of the rest. */
+@utility scrollbar-sm {
+  --scrollbar-thumb-size: 4px;
+  --scrollbar-inset: 1px;
+}
+
+/* A dense pane cannot spare the default gutter. Scaling rather than fixing the
+   thumb is what keeps the size setting reaching in here. */
+@utility scrollbar-md {
+  --scrollbar-scale: 0.75;
+  --scrollbar-inset: 1px;
+}
+
+/* The default, restated so a subtree inside a denser one can opt back out. The
+   thumb size and the inset base stay untouched, because those belong to the
+   reader's setting - re-reading the base here is what recovers it. */
+@utility scrollbar-lg {
+  --scrollbar-scale: 1;
+  --scrollbar-inset: var(--scrollbar-inset-base);
+}
+
+/* The channel a thumb wants where it floats over rows busy enough to lose it. */
+@utility scrollbar-track {
+  --scrollbar-track: var(--surface-veil-soft);
+}
+
+@utility scrollbar-track-none {
+  --scrollbar-track: transparent;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent-500) 62%, transparent);
+  color: var(--surface-50);
+}
+
+/* Inherited, so every field and editable surface takes it from here. */
+html {
+  caret-color: var(--accent-400);
+}
+
+/* ============================================
+   Lit Placeholder
+   ============================================ */
+:root {
+  /* The letter on a card with no art, while its mod is on. */
+  --placeholder-lit: color-mix(in oklab, var(--accent-400) 35%, var(--surface-400));
+}
+
+/* ============================================
+   Zoom-Scaled Card Widths
+   ============================================ */
+:root {
+  --card-min-w: calc(180px * var(--zoom-scale, 1) * var(--card-scale, 1));
+  --card-max-w: calc(240px * var(--zoom-scale, 1) * var(--card-scale, 1));
+}
+
+/* ============================================
+   Reduce Motion
+   Applied via [data-reduce-motion] attribute on <html>
+   ============================================ */
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after,
+[data-reduce-motion="true"] ::-webkit-scrollbar-thumb {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  animation-delay: 0ms !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* ============================================
+   Scroll Behaviour
+   Applied via [data-scroll-mode] attribute on <html>
+   ============================================ */
+[data-scroll-mode] * {
+  scroll-behavior: smooth;
+}
+
+/* ============================================
+   Scroll Fade Utility
+   ============================================ */
+.scroll-fade {
+  position: relative;
+}
+
+.scroll-fade::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2rem;
+  background: linear-gradient(to top, var(--surface-950), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ============================================
+   Sculpted Surfaces
+   ============================================ */
+
+:root {
+  --surface-edge-light: color-mix(in srgb, var(--ltk-on-brand) 4%, transparent);
+  --surface-depth-shade: color-mix(in srgb, var(--ltk-glass-scrim-fill) 70%, transparent);
+  --surface-face-shade: color-mix(in srgb, var(--surface-depth-shade) 70%, transparent);
+  --shadow-concave: 0 -3px 8px -2px var(--surface-depth-shade);
+  --shadow-pressed:
+    inset 0 5px 12px -2px var(--surface-depth-shade),
+    inset 2px 0 6px -3px var(--surface-depth-shade),
+    inset -2px 0 6px -3px var(--surface-depth-shade), inset 0 -1px 0 var(--surface-edge-light);
+}
+
+[data-theme="light"] {
+  --surface-edge-light: color-mix(in srgb, var(--ltk-on-brand) 35%, transparent);
+  --surface-depth-shade: color-mix(in srgb, var(--ltk-glass-scrim-fill) 32%, transparent);
+}
+
+@layer components {
+  .sculpted-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background-image: linear-gradient(to top, var(--surface-face-shade), transparent 75%);
+  }
+
+  .sculpted-card-details {
+    position: relative;
+    isolation: isolate;
+    z-index: 1;
+  }
+
+  .sculpted-card-details:has(.sculpted-card-art)::before {
+    content: "";
+    position: absolute;
+    top: 1px;
+    inset-inline: 0.625rem;
+    height: 1px;
+    pointer-events: none;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--surface-edge-light) 20% 80%,
+      transparent
+    );
+  }
+
+  .sculpted-card-art {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    opacity: 0.3;
+    mask-image: linear-gradient(to bottom, var(--ltk-on-brand), transparent);
+  }
+
+  .sculpted-card-art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(22px) saturate(1.35);
+    transform: scale(1.3);
+  }
+}
+
+/* ============================================
+   Lit Edge Utility
+   ============================================ */
+
+/* Registered so it can be transitioned, which a bare custom property cannot be.
+   The edge's own two are deliberately not, and so land in one frame. */
+@property --edge-lit-fill {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+/* Layered, because the three defaults below are meant to be answered by a
+   utility, and an unlayered rule outranks every layer Tailwind emits. */
+@layer components {
+  .edge-lit {
+    --edge-lit-color: var(--accent-500);
+    --edge-lit-fill: var(--surface-900);
+    --edge-lit-reach: 0%;
+    border-color: transparent;
+    background-image:
+      linear-gradient(var(--edge-lit-fill), var(--edge-lit-fill)),
+      linear-gradient(to bottom, var(--edge-lit-color), transparent var(--edge-lit-reach)),
+      linear-gradient(var(--surface-600), var(--surface-600));
+    /* Only the first layer is clipped to the padding box, so the two under it
+       are left showing in the border alone. */
+    background-origin: border-box;
+    background-clip: padding-box, border-box, border-box;
+  }
+}
+
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+
+[data-tauri-drag-region] [data-no-drag],
+[data-tauri-drag-region] button,
+[data-tauri-drag-region] a,
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] textarea {
+  -webkit-app-region: no-drag;
+}
+
+[data-toast-viewport] {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 9999;
+  max-width: 420px;
+  width: 100%;
+  pointer-events: none;
+}
+
+[data-toast-viewport] > * {
+  pointer-events: auto;
+}
+
+/* ============================================
+   Backdrop / Glassmorphism Mode
+   ============================================ */
+
+/* -webkit-backdrop-filter stays BEFORE the standard property: the minifier keeps
+   only the last of the pair, and WebView2 reads the standard spelling while the
+   macOS WKWebView reads the prefixed one. */
+
+.backdrop-active body {
+  background-color: transparent;
+}
+
+.backdrop-active .root {
+  background-color: transparent;
+}
+
+.backdrop-active .root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--backdrop-image);
+  background-size: cover;
+  background-position: center;
+}
+
+/* --backdrop-blur is user-set, standing in for each tier's own blur radius. */
+.backdrop-active .title-bar {
+  background-color: var(--ltk-glass-chrome-fill);
+  -webkit-backdrop-filter: blur(var(--backdrop-blur, 40px)) saturate(140%);
+  backdrop-filter: blur(var(--backdrop-blur, 40px)) saturate(140%);
+}
+
+.backdrop-active main {
+  background-color: color-mix(in srgb, var(--surface-950) 75%, transparent);
+  -webkit-backdrop-filter: blur(var(--backdrop-blur, 40px)) saturate(140%);
+  backdrop-filter: blur(var(--backdrop-blur, 40px)) saturate(140%);
+}
+
+.backdrop-active main > * > [class*="border-b"] {
+  background-color: color-mix(in srgb, var(--surface-950) 40%, transparent);
+}
+
+.backdrop-active main .settings-container {
+  background-color: color-mix(in srgb, var(--surface-900) 50%, transparent);
+  border-radius: var(--radius-004);
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.backdrop-active main * {
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.6);
+}
+
+/* Wallpaper costs the muted rungs contrast, so lift them. */
+.backdrop-active:not([data-theme="light"]) {
+  --surface-400: oklch(71.5% calc(0.037 * var(--surface-tint)) var(--surface-hue));
+  --surface-500: oklch(55.2% calc(0.038 * var(--surface-tint)) var(--surface-hue));
+}
+
+.backdrop-active[data-theme="light"] main {
+  background-color: color-mix(in srgb, var(--surface-950) 88%, transparent);
+}
+
+.backdrop-active[data-theme="light"] main > * > [class*="border-b"] {
+  background-color: color-mix(in srgb, var(--surface-950) 50%, transparent);
+}
+
+.backdrop-active[data-theme="light"] main .settings-container {
+  background-color: color-mix(in srgb, var(--surface-900) 70%, transparent);
+}
+
+.backdrop-active[data-theme="light"] main * {
+  text-shadow: 0 1px 2px rgb(255 255 255 / 0.5);
+}
+
+.backdrop-active ::-webkit-scrollbar-track {
+  background-color: transparent;
+}

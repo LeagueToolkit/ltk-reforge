@@ -1,0 +1,38 @@
+/* reforge's own palette over LTK Manager's theme: a dark red in place of its blue. The other
+   stylesheets here are LTK Manager's, unchanged. The reds are taken from Ornn's base splash art:
+   the lava (#6f0f1d) is rung 700 and the deepest shadow (#290710) rung 900, each at OKLCH hue
+   18. The lighter rungs extend the same hue up to the glow of the anvil. */
+
+/* The surfaces lean to the wine of the shadows, OKLCH hue 8, and more strongly than LTK
+   Manager's near-grey, so the red reaches the panels as well as the controls. */
+:root {
+  --surface-hue: 8;
+  --surface-tint: 0.9;
+}
+
+:root[data-accent="reforge"] {
+  --accent-50: #fff2f1;
+  --accent-100: #ffdfdf;
+  --accent-200: #ffbebe;
+  --accent-300: #fc9095;
+  --accent-400: #ef5d6a;
+  --accent-500: #cf2845;
+  --accent-600: #9c1730;
+  --accent-700: #6f0e20;
+  --accent-800: #460913;
+  --accent-900: #29070b;
+}
+
+/* The ramp turned over, as LTK Manager turns its own for the light theme. */
+:root[data-accent="reforge"][data-theme="light"] {
+  --accent-50: #1a0407;
+  --accent-100: #29070b;
+  --accent-200: #460913;
+  --accent-300: #6f0e20;
+  --accent-400: #861228;
+  --accent-500: #9c1730;
+  --accent-600: #841327;
+  --accent-700: #f7a3a8;
+  --accent-800: #ffd3d4;
+  --accent-900: #fff0ef;
+}

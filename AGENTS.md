@@ -7,7 +7,9 @@ covers the area you change before changing it, and update it in the same change.
 ## Working here
 
 - **Checks.** `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`
-  and `cargo test --workspace` come back clean.
+  and `cargo test --workspace` come back clean. A change to the app's front end also passes
+  `pnpm check` in `app/`, with no error. The app follows LTK Manager's conventions
+  (#ADR-0046, [docs/design/ROADMAP-UX.md](docs/design/ROADMAP-UX.md)).
 - **Format with `cargo fmt`.** Run `cargo fmt --all` before a commit. The layout is rustfmt's,
   not a hand's.
 - **Tests.** A small check of a private helper may sit inline. Anything with fixtures, fake games
@@ -132,7 +134,8 @@ Good  // A borrowed dance does not make the unit that skin's.
 
 One conventional-commit subject line. No body, no trailers, no `Co-Authored-By`. The scope is
 a module of `reforge` (`model`, `diag`, `load`, `fixups`, `facts`, `port`, `package`,
-`porter`), a crate without its prefix (`census`, `magic`, `wwise`, `cli`, `testkit`) or,
+`porter`), a crate without its prefix (`census`, `magic`, `wwise`, `cli`, `testkit`, `app`,
+which takes in its front end too) or,
 outside one, the area (`docs`, `scripts`, `ci`, `workspace`).
 
 **A subject names the change, it does not describe it.** A plain verb and a domain noun phrase,

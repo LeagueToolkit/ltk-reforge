@@ -1,0 +1,6 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "common_app_name": "reforge",
+  "common_loading_label": "Loading",
+  "common_retry_action": "Try again"
+}

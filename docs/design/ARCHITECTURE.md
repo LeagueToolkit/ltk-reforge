@@ -132,6 +132,7 @@ a crate.
 | `reforge` | the stages, `Report`, `Porter`, `Repairer` |
 | `reforge-census` | the census history (format 2) read with gix; builds and appends the history index (#ADR-0005) |
 | `reforge-cli` | the `reforge` command |
+| `reforge-app` | the desktop app's Tauri side: its commands, settings and generated bindings; its front end is `app/` ([ROADMAP-UX.md](ROADMAP-UX.md)) |
 | `reforge-testkit` | builders for games, archives, bins, schemas and histories; a dev-dependency |
 
 The modules of `reforge`, each using only the ones above it:

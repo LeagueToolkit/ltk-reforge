@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-accent="reforge">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>reforge</title>
+    <style>
+      /* The ground before the bundle's CSS loads, so the webview shows no white frame. It is
+         --surface-950 of the dark theme. */
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background-color: #160a0c;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

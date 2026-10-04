@@ -12,8 +12,21 @@ The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the 
 A caller of `reforge`, as the command is (#ADR-0046). It holds no rule of its own about a mod:
 it finds the inputs, drives a run, shows each stage's result, and writes the package.
 
-- It lives in this repository: a crate of the workspace beside `reforge-cli`, with its front
-  end beside it. `reforge` stays free of Tauri and of anything a UI needs alone.
+- It lives in this repository: the crate `crates/reforge-app`, beside `reforge-cli`, and its
+  front end in `app/`. `reforge` stays free of Tauri and of anything a UI needs alone, so a
+  library type the front end shows is mirrored in the crate with `specta::Type`
+  (`reforge_app::catalog`).
+- `pnpm tauri dev` in `app/` runs it. `app/scripts/tauri.mjs` points the Tauri CLI at the
+  crate, which it does not find from `app/` by itself.
+- A command answers `IpcResult`, `{ ok, value }` or `{ ok, error }`, and an error is a code
+  with fields and no sentence, as LTK Manager's are: the front end owns every sentence, in
+  `app/messages/`. The TypeScript bindings, `app/src/lib/bindings.gen.ts`, are generated from
+  the commands (`pnpm generate:types`) and committed; a test of the crate fails when they
+  differ from the commands.
+- The settings are one JSON file in the app's data directory, a key per setting id
+  (`appearance.theme`).
+- The theme (`app/src/styles/`) and the components are LTK Manager's, copied. Its lint
+  rules apply as its own, so the warnings it gives on its components are given here too.
 - The stack is LTK Manager's: Tauri 2, React and TypeScript, Vite, Tailwind, Base UI
   components, TanStack router, query, form and table, zustand, zod, paraglide for messages,
   and `tauri-specta` for typed commands. Where a choice of library or convention comes up,

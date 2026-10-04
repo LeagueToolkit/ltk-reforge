@@ -1,0 +1,6 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "shell_nav_label": "Pages",
+  "shell_nav_repair_label": "Repair",
+  "shell_nav_settings_label": "Settings"
+}

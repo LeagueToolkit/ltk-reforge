@@ -1,0 +1,197 @@
+/* Self-hosted: a packaged build has no network, and system-ui is not
+   metric-compatible with these faces. Only the two defaults and the display
+   face are here, because every other face carries a `load` in `lib/fonts`. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/geist-mono";
+@import "tailwindcss";
+@import "./animations.css";
+@import "./global.css";
+@import "./reforge.css";
+
+@theme {
+  /* Surfaces */
+  --color-surface-50: var(--surface-50);
+  --color-surface-100: var(--surface-100);
+  --color-surface-200: var(--surface-200);
+  --color-surface-300: var(--surface-300);
+  --color-surface-400: var(--surface-400);
+  --color-surface-500: var(--surface-500);
+  --color-surface-600: var(--surface-600);
+  --color-surface-700: var(--surface-700);
+  --color-surface-800: var(--surface-800);
+  --color-surface-900: var(--surface-900);
+  --color-surface-950: var(--surface-950);
+  --color-surface-veil-soft: var(--surface-veil-soft);
+  --color-surface-veil: var(--surface-veil);
+  --color-surface-veil-strong: var(--surface-veil-strong);
+
+  /* Accent */
+  --color-accent-50: var(--accent-50);
+  --color-accent-100: var(--accent-100);
+  --color-accent-200: var(--accent-200);
+  --color-accent-300: var(--accent-300);
+  --color-accent-400: var(--accent-400);
+  --color-accent-500: var(--accent-500);
+  --color-accent-600: var(--accent-600);
+  --color-accent-700: var(--accent-700);
+  --color-accent-800: var(--accent-800);
+  --color-accent-900: var(--accent-900);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--ltk-on-accent);
+
+  /* Brand */
+  --color-brand-blue: var(--ltk-blue);
+  --color-brand-violet: var(--ltk-violet);
+  --color-brand-on: var(--ltk-on-brand);
+  --color-riot-red: var(--ltk-riot-red);
+
+  /* State */
+  --color-success: var(--ltk-success);
+  --color-success-text: var(--ltk-success-text);
+  --color-warning: var(--ltk-warning);
+  --color-warning-text: var(--ltk-warning-text);
+  --color-danger: var(--ltk-danger);
+  --color-danger-text: var(--ltk-danger-text);
+  --color-danger-strong: var(--ltk-danger-strong);
+  --color-info: var(--ltk-info);
+  --color-info-text: var(--ltk-info-text);
+  --color-required: var(--ltk-required);
+
+  --color-placeholder-lit: var(--placeholder-lit);
+
+  /* Mod category pills */
+  --color-cat-champion: var(--ltk-cat-champion);
+  --color-cat-champion-text: var(--ltk-cat-champion-text);
+  --color-cat-map: var(--ltk-cat-map);
+  --color-cat-map-text: var(--ltk-cat-map-text);
+
+  /* Document colors */
+  --color-doc-details: var(--ltk-doc-details);
+  --color-doc-details-text: var(--ltk-doc-details-text);
+  --color-doc-base: var(--ltk-doc-base);
+  --color-doc-base-text: var(--ltk-doc-base-text);
+  --color-doc-layer: var(--ltk-doc-layer);
+  --color-doc-layer-text: var(--ltk-doc-layer-text);
+  --color-doc-strings: var(--ltk-doc-strings);
+  --color-doc-strings-text: var(--ltk-doc-strings-text);
+  --color-doc-game: var(--ltk-doc-game);
+  --color-doc-game-text: var(--ltk-doc-game-text);
+  --color-doc-problems: var(--ltk-doc-problems);
+  --color-doc-problems-text: var(--ltk-doc-problems-text);
+  --color-doc-ignore: var(--ltk-doc-ignore);
+  --color-doc-ignore-text: var(--ltk-doc-ignore-text);
+  --color-doc-readme: var(--ltk-doc-readme);
+  --color-doc-readme-text: var(--ltk-doc-readme-text);
+  --color-doc-license: var(--ltk-doc-license);
+  --color-doc-license-text: var(--ltk-doc-license-text);
+  --color-doc-declarations: var(--ltk-doc-declarations);
+  --color-doc-declarations-text: var(--ltk-doc-declarations-text);
+  --color-channel-1: var(--ltk-channel-1);
+  --color-channel-1-text: var(--ltk-channel-1-text);
+  --color-channel-2: var(--ltk-channel-2);
+  --color-channel-2-text: var(--ltk-channel-2-text);
+  --color-channel-3: var(--ltk-channel-3);
+  --color-channel-3-text: var(--ltk-channel-3-text);
+  --color-channel-4: var(--ltk-channel-4);
+  --color-channel-4-text: var(--ltk-channel-4-text);
+  --color-socket-float: var(--ltk-socket-float);
+  --color-socket-float-text: var(--ltk-socket-float-text);
+  --color-socket-vec2: var(--ltk-socket-vec2);
+  --color-socket-vec2-text: var(--ltk-socket-vec2-text);
+  --color-socket-vec3: var(--ltk-socket-vec3);
+  --color-socket-vec3-text: var(--ltk-socket-vec3-text);
+  --color-socket-vec4: var(--ltk-socket-vec4);
+  --color-socket-vec4-text: var(--ltk-socket-vec4-text);
+
+  /* Folder */
+  --color-folder: var(--ltk-folder);
+  --color-folder-text: var(--ltk-folder-text);
+  --color-bin-class: var(--ltk-bin-class);
+  --color-bin-class-text: var(--ltk-bin-class-text);
+  --color-bin-kind: var(--ltk-bin-kind);
+  --color-bin-kind-text: var(--ltk-bin-kind-text);
+  --color-graph-geometry: var(--ltk-graph-geometry);
+  --color-graph-geometry-text: var(--ltk-graph-geometry-text);
+
+  /* Void */
+  --color-void: var(--ltk-void);
+  --color-void-text: var(--ltk-void-text);
+
+  --color-scrim: var(--ltk-glass-scrim-fill);
+
+  /* Spacing */
+  --spacing-1: var(--space-001);
+  --spacing-2: var(--space-002);
+  --spacing-3: var(--space-003);
+  --spacing-4: var(--space-004);
+  --spacing-5: var(--space-005);
+  --spacing-6: var(--space-006);
+  --spacing-7: var(--space-007);
+  --spacing-8: var(--space-008);
+  --spacing-9: var(--space-009);
+  --spacing-10: var(--space-010);
+  --spacing-11: var(--space-011);
+  --spacing-12: var(--space-012);
+
+  /* Radius */
+  --radius-sm: var(--radius-001);
+  --radius-md: var(--radius-002);
+  --radius-lg: var(--radius-003);
+  --radius-xl: var(--radius-004);
+  --radius-2xl: var(--radius-005);
+  --radius-full: var(--radius-006);
+
+  /* Elevation */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-2xl: var(--shadow-2xl);
+  --shadow-glass: var(--shadow-glass);
+  --shadow-concave: var(--shadow-concave);
+  --shadow-pressed: var(--shadow-pressed);
+
+  /* Z-index */
+  --z-index-dropdown: var(--z-dropdown);
+  --z-index-modal: var(--z-modal);
+  --z-index-toast: var(--z-toast);
+  --z-index-notification: var(--z-notification);
+
+  /* Type */
+  --text-row: var(--type-row);
+  --text-row--line-height: var(--type-row-leading);
+  --text-meta: var(--type-meta);
+  --text-meta--line-height: var(--type-meta-leading);
+  --text-meta--letter-spacing: var(--type-meta-tracking);
+  --text-fine: var(--type-fine);
+  --text-fine--line-height: var(--type-fine-leading);
+  --text-fine--letter-spacing: var(--type-fine-tracking);
+  --text-code: var(--type-code);
+  --text-mono-row: var(--type-mono-row);
+  --text-mono-row--line-height: var(--type-mono-row-leading);
+
+  /* Weights */
+  --font-weight-normal: var(--weight-normal);
+  --font-weight-medium: var(--weight-medium);
+  --font-weight-semibold: var(--weight-semibold);
+  --font-weight-bold: var(--weight-bold);
+
+  /* Fonts */
+  --font-sans: var(--face-sans);
+  --font-display: var(--face-display);
+  --font-mono: var(--face-mono);
+
+  /* Animations */
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-fade-out: fade-out 0.6s ease-out forwards;
+  --animate-slide-up: slide-up 0.3s ease-out;
+  --animate-slide-down: slide-down 0.3s ease-out;
+  --animate-toast-slide-in: toast-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-toast-slide-out: toast-slide-out 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  --animate-shimmer: shimmer 1.5s ease-in-out infinite;
+  /* Reuses the shimmer keyframe. Its resting frame is off-screen right, so
+     reduce-motion leaves a plain border. */
+  --animate-border-shimmer: shimmer 1.2s linear infinite;
+}

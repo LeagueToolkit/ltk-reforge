@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "reforge",
+  "identifier": "dev.leaguetoolkit.reforge",
+  "build": {
+    "beforeDevCommand": { "script": "pnpm dev", "cwd": "../../app" },
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": { "script": "pnpm build", "cwd": "../../app" },
+    "frontendDist": "../../app/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "reforge",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "visible": false,
+        "backgroundColor": "#160a0c"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; font-src 'self' data:",
+      "dangerousDisableAssetCspModification": ["style-src"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

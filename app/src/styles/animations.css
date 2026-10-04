@@ -1,0 +1,164 @@
+/* ============================================
+   Keyframe Animations & Transition Utilities
+   ============================================ */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toast-slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dialog-exit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes spinner {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   Stagger Enter System
+   ============================================ */
+.stagger-enter > * {
+  opacity: 0;
+  animation: fade-in var(--duration-004) var(--ease-out) forwards;
+  animation-delay: calc(var(--stagger-index, 0) * 60ms);
+}
+
+.stagger-enter > :nth-child(1) {
+  --stagger-index: 0;
+}
+.stagger-enter > :nth-child(2) {
+  --stagger-index: 1;
+}
+.stagger-enter > :nth-child(3) {
+  --stagger-index: 2;
+}
+.stagger-enter > :nth-child(4) {
+  --stagger-index: 3;
+}
+.stagger-enter > :nth-child(5) {
+  --stagger-index: 4;
+}
+.stagger-enter > :nth-child(6) {
+  --stagger-index: 5;
+}
+.stagger-enter > :nth-child(7) {
+  --stagger-index: 6;
+}
+.stagger-enter > :nth-child(n + 8) {
+  --stagger-index: 7;
+}
+
+.animate-fade-in {
+  animation: fade-in var(--duration-004) var(--ease-out);
+}
+
+.animate-slide-down {
+  animation: slide-down var(--duration-005) var(--ease-out);
+}
+
+.animate-slide-up {
+  animation: slide-up var(--duration-005) var(--ease-out);
+}
+
+.animate-drawer-in {
+  animation: drawer-in var(--duration-004) var(--ease-out);
+}

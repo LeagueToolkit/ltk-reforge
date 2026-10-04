@@ -1,0 +1,10 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "setting.appearance.theme.description": "The colour scheme of the app",
+  "setting.appearance.theme.label": "Theme",
+  "settings_appearance_title": "Appearance",
+  "settings_page_title": "Settings",
+  "theme.dark.label": "Dark",
+  "theme.light.label": "Light",
+  "theme.system.label": "System"
+}

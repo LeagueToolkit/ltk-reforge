@@ -1,0 +1,6 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "error.NO_DATA_DIR.title": "The app has no folder for its data",
+  "error.SETTINGS_UNWRITABLE.title": "The settings did not save",
+  "error_unknown_title": "Something went wrong"
+}

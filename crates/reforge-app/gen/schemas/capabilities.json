@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"What the app's one window may call","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-show"]}}

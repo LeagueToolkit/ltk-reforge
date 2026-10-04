@@ -74,6 +74,15 @@ regex = "1"
 # A rendered file against the history's blob, as a line diff when they differ.
 pretty_assertions = "1"
 
+# The app, on LTK Manager's stack (#ADR-0046). The three specta crates move together, at the
+# versions LTK Manager pins.
+tauri = "2"
+tauri-build = "2"
+specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+specta-typescript = "0.0.12"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+parking_lot = "0.12"
+
 # ltk_ritobin as census-sync reads and writes the census history's bin entries,
 # LeagueToolkit/league-toolkit#269 at 521a875, until it is released: the release before it reads
 # 2.3% of the entries at 16.19.8207193 wrong (exponent floats in an `mtx44`, a null pointer before

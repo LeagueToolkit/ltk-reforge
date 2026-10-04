@@ -1,0 +1,6 @@
+node_modules/
+dist/
+
+# The message catalog compiled from messages/, as LTK Manager keeps it out of git.
+src/paraglide/
+.tanstack/
