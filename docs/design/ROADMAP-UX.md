@@ -3,9 +3,9 @@
 The plan for the first release of reforge as a desktop app, and what a person starting that
 work needs to know of the library. The decisions are #ADR-0046 (a standalone app on LTK
 Manager's stack), #ADR-0047 (the history index, distributed and grown on the user's machine),
-#ADR-0057 (the census history fetched as far as an append reads it), #ADR-0059 (the League
-Toolkit caches updated when asked and marked when behind), #ADR-0049 (an AI agent as a caller,
-proposed),
+#ADR-0057 (the census history fetched as far as an append reads it), #ADR-0060 (the census
+history bootstrapped from a released archive), #ADR-0059 (the League Toolkit caches updated
+when asked and marked when behind), #ADR-0049 (an AI agent as a caller, proposed),
 #ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
@@ -111,29 +111,46 @@ report of that run is the command's, byte for byte, with the same inputs.
 
 1. **A run with no index**, with what is judged with less shown to the user.
 2. **A prebuilt index fetched and unpacked**: the SQLite file compressed, as a file of a GitHub
-   release, with a stamp that names the published repository. The file is 2.75 GB and some
-   880 MB compressed.
+   release, with a stamp that names the published repository. The file is 2.75 GB: 891 MB
+   with xz up to 16.19.8207193, 767 MB with zstd at `--ultra -22 --long=31` up to
+   16.19.8230722 (2026-10-05).
 3. **The builds after the index's head added** on the user's machine, from the census history
    fetched as far as the append reads it (#ADR-0057).
-4. **The census history cloned whole by the app** at the user's choice, some 5 GB, to build an
-   index with no download.
+4. **The census history cloned whole by the app** at the user's choice, bootstrapped from a
+   release's archive (#ADR-0060), to read an entry's text at any build and to build an index
+   with no download.
 
 The census history is public, `https://github.com/LeagueToolkit/ltk-census-history`, and the
-index is published as a release of it: `stamp.json`, `builds.tsv` and `history.sqlite.xz`,
-the release tag naming the branch (`history-v2-index-<build>`). The stamp names the public
-repository. The app takes the newest release that holds the three files, checks each against
-the SHA-256 GitHub lists for it, unpacks the database as it downloads, opens the index, and
-installs it in its data folder, a folder per release (`reforge_app::index`). The settings
-then name it, and a folder they no longer name is removed at the next start.
+index is published as a release of it: `stamp.json`, `builds.tsv` and `history.sqlite.zst`,
+and beside them the census history as an archive, `ltk-census-history.git.tar.zst`, at the
+index's head (`history-v2-snapshot-<n>`). The stamp names the public repository. The app takes
+the newest release that holds the index's three files and checks each against the SHA-256
+GitHub lists for it. The database downloads into `downloads` in the app's data folder, where a
+download that stops is kept and the next one resumes it while GitHub sends the same file
+(`reforge_app::download`); it is unpacked once it is whole, with a window of up to 2 GiB of
+memory as `--long=31` writes it. The app opens the index and installs it in its data folder, a
+folder per release (`reforge_app::index`). The settings then name it, and a folder they no
+longer name is removed at the next start. The published database of 767 MB downloaded and
+unpacked in 42 s on this machine (2026-10-05).
+
+The history row offers the archive as a download of its own, which makes the app's whole clone,
+`census-history` in its data folder, or makes it again (`reforge_app::archive`). The archive
+downloads as the database does, and is read as a stream: its pack's four files go into a new
+bare clone, under names built from the pack's hash, the commit of `history-v2` in its
+`packed-refs` becomes the clone's branch, and nothing else of the archive is written. The new
+clone takes the place of the whole clone held, and the update below fetches into it from then
+on. From the published release it took 191 s (2026-10-05).
 
 The inputs page asks the census history's server for the branch's tip and offers the update
 when it is not the index's head (`reforge_app::census`). The update fetches into the app's
-clone, `census-history` in its data folder, appends the new builds to a copy of the index in a
+whole clone when there is one, else into a clone of its own, `census-partial` in its data
+folder, which a bootstrap removes. It appends the new builds to a copy of the index in a
 folder named for the new head, `head-<commit>`, and moves the settings to it. A download of a
 release older than the index is not offered. For the two builds after 16.19.8207193, the fetch
 read 616 KB and the append took 4 to 7 s, most of it the copy of the database (2026-10-05).
 
-Not settled: how one bin entry's text at a build before the head is fetched with no full clone.
+Not settled: how one bin entry's text at a build before the head is fetched with no whole
+clone. A whole clone holds it (`GitRepo::entry_text`), and no view asks for it yet.
 
 ## The hash tables and the schema database
 
@@ -218,7 +235,7 @@ user picks another policy and runs again.
    every finding, write the `.modpkg`.
 4. The advanced view of a repair: the stages, a run up to one of them, the fixups and checks
    turned on and off, the findings that block the write.
-5. The history index, as far as step 3 of the list above, and the hash tables and the schema
+5. The history index, as far as step 4 of the list above, and the hash tables and the schema
    database downloaded.
 6. A selection of fixups saved and loaded, and a rule added in the app.
 7. A port in both views, with the decision, its candidates and the policy.

@@ -80,6 +80,18 @@ pub enum AppError {
     /// The builds after the index's head did not append.
     #[error("the builds did not append to the index: {detail}")]
     IndexAppend { detail: String },
+    /// The newest release holds no archive of the census history.
+    #[error("no release holds the census history")]
+    NoArchive,
+    /// The census history's archive did not download.
+    #[error("the census history did not download: {detail}")]
+    CensusDownload { detail: String },
+    /// The census history's archive does not read as a repository.
+    #[error("the census history's archive does not read: {detail}")]
+    ArchiveUnreadable { detail: String },
+    /// The clone of the census history could not be written to disk.
+    #[error("the census history could not be written: {detail}")]
+    CensusUnwritable { detail: String },
     /// The hash tables did not download.
     #[error("the hash tables did not download: {detail}")]
     HashesFetch { detail: String },

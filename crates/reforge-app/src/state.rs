@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use camino::Utf8PathBuf;
 use parking_lot::Mutex;
 
+use crate::archive::Clones;
 use crate::error::AppError;
 use crate::inputs::{Choice, Inputs};
 
@@ -44,22 +45,26 @@ impl Default for Job {
     }
 }
 
-/// The history index's download and its update from the census history.
+/// The history index's download, its update from the census history, and the census history's
+/// bootstrap: one at a time, since each writes the clone or the indexes.
 pub struct IndexJob {
     /// The folder each index is installed in, one folder per index.
     pub root: Utf8PathBuf,
-    /// The app's clone of the census history, which an update fetches into.
-    pub census: Utf8PathBuf,
-    /// The download or the update under way.
+    /// The app's clones of the census history.
+    pub clones: Clones,
+    /// The folder a release's files download into, kept there while a download stops.
+    pub downloads: Utf8PathBuf,
+    /// The work under way.
     pub run: Job,
 }
 
 impl IndexJob {
-    /// No download under way.
-    pub fn new(root: Utf8PathBuf, census: Utf8PathBuf) -> Self {
+    /// No work under way.
+    pub fn new(root: Utf8PathBuf, clones: Clones, downloads: Utf8PathBuf) -> Self {
         Self {
             root,
-            census,
+            clones,
+            downloads,
             run: Job::new(),
         }
     }

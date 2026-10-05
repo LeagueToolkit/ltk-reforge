@@ -91,6 +91,20 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.INDEX_APPEND.title"](),
       detail,
     }))
+    .with({ code: "NO_ARCHIVE" }, () => ({ title: m["error.NO_ARCHIVE.title"]() }))
+    .with({ code: "CENSUS_DOWNLOAD" }, ({ detail }) => ({
+      title: m["error.CENSUS_DOWNLOAD.title"](),
+      description: m["error.CENSUS_DOWNLOAD.description"](),
+      detail,
+    }))
+    .with({ code: "ARCHIVE_UNREADABLE" }, ({ detail }) => ({
+      title: m["error.ARCHIVE_UNREADABLE.title"](),
+      detail,
+    }))
+    .with({ code: "CENSUS_UNWRITABLE" }, ({ detail }) => ({
+      title: m["error.CENSUS_UNWRITABLE.title"](),
+      detail,
+    }))
     .with({ code: "HASHES_FETCH" }, ({ detail }) => ({
       title: m["error.HASHES_FETCH.title"](),
       detail,

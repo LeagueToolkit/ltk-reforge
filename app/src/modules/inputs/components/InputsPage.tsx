@@ -9,6 +9,7 @@ import { useSaveSettings, useSettings } from "@/modules/settings";
 import { useFindGame, useInputs } from "../api/inputs";
 import { pickFile, pickFolder } from "../api/pick";
 import { useStaleInputs } from "../api/stale";
+import { CensusDownload } from "./CensusDownload";
 import { HashesDownload } from "./HashesDownload";
 import { IndexDownload } from "./IndexDownload";
 import { IndexUpdate } from "./IndexUpdate";
@@ -193,6 +194,7 @@ function Rows({ view }: { view: InputsView | undefined }) {
             )}
             <IndexDownload installed={view?.history} />
             {view?.history.dir && <IndexUpdate />}
+            <CensusDownload />
           </>
         }
         actions={

@@ -7,6 +7,7 @@ use specta_typescript::Typescript;
 use tauri::Wry;
 use tauri_specta::{Builder, collect_commands, collect_events};
 
+use crate::archive::ArchiveProgress;
 use crate::census::IndexUpdateProgress;
 use crate::commands;
 use crate::hashes::HashesProgress;
@@ -37,6 +38,8 @@ pub fn builder() -> Builder<Wry> {
             commands::cancel_index,
             commands::index_behind,
             commands::update_index,
+            commands::census_clone,
+            commands::bootstrap_census,
             commands::hashes_check,
             commands::update_hashes,
             commands::cancel_hashes,
@@ -45,6 +48,7 @@ pub fn builder() -> Builder<Wry> {
         ])
         .events(collect_events![
             InstallProgress,
+            ArchiveProgress,
             IndexUpdateProgress,
             HashesProgress,
             commands::RunStage,

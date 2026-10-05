@@ -12,11 +12,12 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
+use crate::archive::{ArchiveNote, ArchiveProgress, Bootstrap, CloneView};
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
 use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
-use crate::index::{IndexReleaseView, InstallProgress, Installer, Web};
+use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{self, Choice, InputsView};
 use crate::run::{self, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
 use crate::runlog::LogLine;
@@ -219,16 +220,61 @@ pub async fn install_index(app: AppHandle) -> IpcResult<Settings> {
 fn download_index(app: &AppHandle, job: &IndexJob) -> Result<camino::Utf8PathBuf, AppError> {
     let web = Web::new()?;
     let release = web.latest()?.ok_or(AppError::NoIndexRelease)?;
-    // An event per percent: a download of 900 MB reads some hundred thousand chunks.
-    let mut shown = u64::MAX;
+    // An event per percent of each step: a download of 800 MB reads some hundred thousand chunks.
+    let mut shown = (InstallStep::Download, u64::MAX);
     let mut progress = |seen: InstallProgress| {
         let percent = seen.done * 100 / seen.total.max(1);
-        if percent != shown {
-            shown = percent;
+        if (seen.step, percent) != shown {
+            shown = (seen.step, percent);
             let _ = seen.emit(app);
         }
     };
-    Installer::new(&web, &job.run.cancel, &mut progress).install(&release, &job.root)
+    Installer::new(&web, &job.run.cancel, &mut progress).install(
+        &release,
+        &job.root,
+        &job.downloads,
+    )
+}
+
+/// The app's clone of the census history: none, fetched as far as appends read it, or whole.
+#[tauri::command]
+#[specta::specta]
+pub fn census_clone(job: State<'_, Arc<IndexJob>>) -> IpcResult<CloneView> {
+    IpcResult::ok(job.clones.view())
+}
+
+/// Downloads the newest release's archive of the census history and makes the app's clone of
+/// it, in place of the clone held (#ADR-0060). Answers the clone as made. Progress comes as
+/// `ArchiveProgress` events.
+#[tauri::command]
+#[specta::specta]
+pub async fn bootstrap_census(app: AppHandle) -> IpcResult<CloneView> {
+    off_thread(move || {
+        let job = app.state::<Arc<IndexJob>>();
+        if !job.run.start() {
+            return Err(AppError::IndexBusy);
+        }
+        let made = bootstrap(&app, &job);
+        job.run.end();
+        made?;
+        Ok(job.clones.view())
+    })
+    .await
+}
+
+fn bootstrap(app: &AppHandle, job: &IndexJob) -> Result<ArchiveNote, AppError> {
+    let web = Web::new()?;
+    let release = web.latest()?.ok_or(AppError::NoIndexRelease)?;
+    // An event per percent of each step: a download of 1.8 GB reads some hundred thousand chunks.
+    let mut shown = (InstallStep::Download, u64::MAX);
+    let mut progress = |seen: ArchiveProgress| {
+        let percent = seen.done * 100 / seen.total.max(1);
+        if (seen.step, percent) != shown {
+            shown = (seen.step, percent);
+            let _ = seen.emit(app);
+        }
+    };
+    Bootstrap::new(&web, &job.run.cancel, &mut progress).run(&release, &job.clones, &job.downloads)
 }
 
 /// Stops the download or the update of the index under way.
@@ -248,7 +294,8 @@ pub async fn index_behind(app: AppHandle) -> IpcResult<bool> {
     off_thread(move || {
         let index = history.ok_or(AppError::NoIndex)?;
         let never = AtomicBool::new(false);
-        Updater::new(CENSUS, &job.census, &job.root, &never).behind(Utf8Path::new(&index))
+        Updater::new(CENSUS, job.clones.for_updates(), &job.root, &never)
+            .behind(Utf8Path::new(&index))
     })
     .await
 }
@@ -297,7 +344,7 @@ fn update_from_census(
         }
         let _ = IndexUpdateProgress { step }.emit(&app);
     };
-    Updater::new(CENSUS, &job.census, &job.root, &job.run.cancel)
+    Updater::new(CENSUS, job.clones.for_updates(), &job.root, &job.run.cancel)
         .on_progress(heard)
         .update(index)
 }

@@ -1,5 +1,10 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
+  "inputs_census_again_action": "Download it again, {size} MB",
+  "inputs_census_download_action": "Download the whole census history, {size} MB",
+  "inputs_census_none_label": "Census history: none on this machine; an update fetches what it reads",
+  "inputs_census_partial_label": "Census history: fetched as far as updates read it",
+  "inputs_census_whole_label": "Census history: whole, from {tag}",
   "inputs_choose_file_action": "Choose file",
   "inputs_choose_folder_action": "Choose folder",
   "inputs_download_progress_label": "{done} of {total} MB",
@@ -53,5 +58,6 @@
   "inputs_shared_label": "Shared by the League Toolkit programs",
   "inputs_stale_action": "Update the inputs",
   "inputs_stop_action": "Stop",
+  "inputs_unpack_progress_label": "Unpacking: {done} of {total} MB",
   "inputs_use_shared_action": "Use the shared one"
 }

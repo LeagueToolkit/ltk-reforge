@@ -2,10 +2,11 @@
 //! the user's machine (#ADR-0047; `docs/design/ROADMAP-UX.md`, "The history index").
 //!
 //! A release that holds an index holds its three files: `stamp.json`, `builds.tsv` and
-//! `history.sqlite.xz`, each with the SHA-256 GitHub lists for it. Every byte is checked
-//! against it: the database is unpacked as it downloads, and the copy is thrown away when its
-//! digest is not the release's. An index is installed in a folder named for its release, and
-//! opened before the settings point at it, so an index the app holds open is never replaced.
+//! `history.sqlite.zst`, each with the SHA-256 GitHub lists for it, and may hold the census
+//! history as an archive (#ADR-0060). Every byte is checked against its digest: the database
+//! downloads into a file that a later download resumes, and is unpacked once it is whole. An
+//! index is installed in a folder named for its release, and opened before the settings point
+//! at it, so an index the app holds open is never replaced.
 
 use std::io::{self, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,18 +14,26 @@ use std::time::Duration;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use liblzma::read::XzDecoder;
 use reforge::history::{BUILDS_FILE, DB_FILE, STAMP_FILE, SqliteHistory};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use zstd::stream::read::Decoder;
 
+use crate::download::Download;
 use crate::error::{AppError, chain};
 
 /// The releases of the census history, newest first.
 pub const RELEASES: &str = "https://api.github.com/repos/LeagueToolkit/ltk-census-history/releases";
 
 /// The database as a release holds it.
-pub const DB_XZ_FILE: &str = "history.sqlite.xz";
+pub const DB_ZST_FILE: &str = "history.sqlite.zst";
+
+/// The census history as a release holds it: a bare repository, in tar, in zstd.
+pub const ARCHIVE_FILE: &str = "ltk-census-history.git.tar.zst";
+
+/// The largest window, as a power of two, a frame of the database may ask for: 2 GiB, as
+/// `zstd --long=31` writes it. Unpacking holds a window of memory.
+const WINDOW_LOG_MAX: u32 = 31;
 
 /// One file of a release.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +59,8 @@ pub struct IndexRelease {
     pub builds: Asset,
     /// Its database, compressed.
     pub db: Asset,
+    /// The census history at the index's head, when the release holds it.
+    pub archive: Option<Asset>,
 }
 
 #[derive(Deserialize)]
@@ -89,7 +100,8 @@ impl ApiRelease {
             tag: self.tag_name.clone(),
             stamp: self.asset(STAMP_FILE)?,
             builds: self.asset(BUILDS_FILE)?,
-            db: self.asset(DB_XZ_FILE)?,
+            db: self.asset(DB_ZST_FILE)?,
+            archive: self.asset(ARCHIVE_FILE),
         })
     }
 }
@@ -108,6 +120,27 @@ pub fn pick(releases_json: &str) -> Result<Option<IndexRelease>, AppError> {
 pub trait Source {
     /// The bytes at a URL.
     fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, AppError>;
+
+    /// The bytes at a URL from `from` on, and what names this version of them. A source that
+    /// cannot start there sends them from the start.
+    fn open_from(&self, url: &str, from: u64) -> Result<Ranged, AppError> {
+        let _ = from;
+        Ok(Ranged {
+            reader: self.open(url)?,
+            start: 0,
+            etag: None,
+        })
+    }
+}
+
+/// The bytes of a file from a place in it.
+pub struct Ranged {
+    /// The bytes.
+    pub reader: Box<dyn Read + Send>,
+    /// Where in the file they start: the place asked for, or 0 when the whole file was sent.
+    pub start: u64,
+    /// The entity tag of this version of the file, when the source names one.
+    pub etag: Option<String>,
 }
 
 /// How long a connection may take to open, as LTK Manager allows.
@@ -165,13 +198,41 @@ impl Web {
 
 impl Source for Web {
     fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, AppError> {
+        Ok(self.open_from(url, 0)?.reader)
+    }
+
+    fn open_from(&self, url: &str, from: u64) -> Result<Ranged, AppError> {
         let fetch = |error: reqwest::Error| AppError::IndexFetch {
             detail: chain(&error),
         };
-        let response = self.client.get(url).send().map_err(fetch)?;
+        let mut request = self.client.get(url);
+        if from > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={from}-"));
+        }
+        let response = request.send().map_err(fetch)?;
         let response = response.error_for_status().map_err(fetch)?;
-        Ok(Box::new(response))
+        let partial = response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        let etag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|etag| etag.to_str().ok())
+            .map(str::to_owned);
+        Ok(Ranged {
+            reader: Box::new(response),
+            start: if partial { from } else { 0 },
+            etag,
+        })
     }
+}
+
+/// What a download of a release is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum InstallStep {
+    /// Its files are downloading.
+    Download,
+    /// What was downloaded is unpacking.
+    Unpack,
 }
 
 /// How far an install has got, for the window to show.
@@ -179,10 +240,43 @@ impl Source for Web {
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type, tauri_specta::Event,
 )]
 pub struct InstallProgress {
-    /// The bytes of the release downloaded.
+    /// What the install is doing.
+    pub step: InstallStep,
+    /// The bytes done: of the release downloaded, or of the download unpacked.
     pub done: u64,
-    /// The bytes of the release in all.
+    /// The bytes to do.
     pub total: u64,
+}
+
+/// A reader that counts what passes through it, reports the count, and stops when asked.
+pub(crate) struct Counted<'a, R> {
+    inner: R,
+    read: u64,
+    cancel: &'a AtomicBool,
+    report: &'a mut dyn FnMut(u64),
+}
+
+impl<'a, R> Counted<'a, R> {
+    pub(crate) fn new(inner: R, cancel: &'a AtomicBool, report: &'a mut dyn FnMut(u64)) -> Self {
+        Self {
+            inner,
+            read: 0,
+            cancel,
+            report,
+        }
+    }
+}
+
+impl<R: Read> Read for Counted<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(io::Error::other(Cancelled));
+        }
+        let n = self.inner.read(buf)?;
+        self.read += n as u64;
+        (self.report)(self.read);
+        Ok(n)
+    }
 }
 
 /// A reader that hashes and counts what passes through it, reports the count, and stops when
@@ -246,13 +340,15 @@ impl<'a> Installer<'a> {
         }
     }
 
-    /// Installs a release's index in `root/<tag>` and answers that folder. The folder is
-    /// written beside as `<tag>.partial` and renamed once the index opens, so a folder of that
-    /// name is a whole index.
+    /// Installs a release's index in `root/<tag>` and answers that folder. The database
+    /// downloads into `downloads` first, where a download that stops is kept for the next
+    /// (#ADR-0060). The folder is written beside as `<tag>.partial` and renamed once the index
+    /// opens, so a folder of that name is a whole index.
     pub fn install(
         &mut self,
         release: &IndexRelease,
         root: &Utf8Path,
+        downloads: &Utf8Path,
     ) -> Result<Utf8PathBuf, AppError> {
         let io = |error: io::Error| AppError::IndexUnwritable {
             detail: error.to_string(),
@@ -262,14 +358,30 @@ impl<'a> Installer<'a> {
         if target.join(STAMP_FILE).is_file() && SqliteHistory::open(&target).is_ok() {
             return Ok(target);
         }
+
+        self.total = release.stamp.size + release.builds.size + release.db.size;
+        let db = downloads.join(format!("{name}-{}", release.db.name));
+        let (cancel, total) = (self.cancel, self.total);
+        let progress = &mut *self.progress;
+        let mut heard = |done: u64| {
+            progress(InstallProgress {
+                step: InstallStep::Download,
+                done,
+                total,
+            })
+        };
+        Download::new(self.source, cancel, &mut heard, |detail| {
+            AppError::IndexFetch { detail }
+        })
+        .fetch(&release.db, &db)?;
+        self.done = release.db.size;
+
         let partial = root.join(format!("{name}.partial"));
         if partial.exists() {
             fs::remove_dir_all(&partial).map_err(io)?;
         }
         fs::create_dir_all(&partial).map_err(io)?;
-
-        self.total = release.stamp.size + release.builds.size + release.db.size;
-        let written = self.write_all(release, &partial);
+        let written = self.write_all(release, &partial, &db);
         if let Err(error) = written {
             // A partial index is no index; nothing of it is kept.
             let _ = fs::remove_dir_all(&partial);
@@ -283,18 +395,51 @@ impl<'a> Installer<'a> {
             fs::remove_dir_all(&target).map_err(io)?;
         }
         fs::rename(&partial, &target).map_err(io)?;
+        let _ = fs::remove_file(&db);
         Ok(target)
     }
 
-    fn write_all(&mut self, release: &IndexRelease, dir: &Utf8Path) -> Result<(), AppError> {
-        self.copy(&release.stamp, &dir.join(STAMP_FILE), false)?;
-        self.copy(&release.builds, &dir.join(BUILDS_FILE), false)?;
-        self.copy(&release.db, &dir.join(DB_FILE), true)
+    fn write_all(
+        &mut self,
+        release: &IndexRelease,
+        dir: &Utf8Path,
+        db: &Utf8Path,
+    ) -> Result<(), AppError> {
+        self.copy(&release.stamp, &dir.join(STAMP_FILE))?;
+        self.copy(&release.builds, &dir.join(BUILDS_FILE))?;
+        self.unpack(db, &dir.join(DB_FILE))
     }
 
-    /// Downloads an asset to `path`, unpacking it as `.xz` when `unpack`, and checks its
-    /// digest.
-    fn copy(&mut self, asset: &Asset, path: &Utf8Path, unpack: bool) -> Result<(), AppError> {
+    /// Unpacks the database downloaded at `from` into `to`.
+    fn unpack(&mut self, from: &Utf8Path, to: &Utf8Path) -> Result<(), AppError> {
+        let unwritable = |error: io::Error| AppError::IndexUnwritable {
+            detail: error.to_string(),
+        };
+        let file = fs::File::open(from).map_err(unwritable)?;
+        let total = file.metadata().map_err(unwritable)?.len();
+        let mut out = fs::File::create(to).map_err(unwritable)?;
+        let progress = &mut *self.progress;
+        let mut report = |done: u64| {
+            progress(InstallProgress {
+                step: InstallStep::Unpack,
+                done,
+                total,
+            })
+        };
+        let mut counted = Counted::new(file, self.cancel, &mut report);
+        if let Err(error) = unpack_zst(&mut counted, &mut out) {
+            if self.cancel.load(Ordering::Relaxed) {
+                return Err(AppError::Cancelled);
+            }
+            return Err(AppError::IndexUnreadable {
+                detail: error.to_string(),
+            });
+        }
+        out.flush().map_err(unwritable)
+    }
+
+    /// Downloads an asset to `path` and checks its digest.
+    fn copy(&mut self, asset: &Asset, path: &Utf8Path) -> Result<(), AppError> {
         let reader = self.source.open(&asset.url)?;
         let mut out = fs::File::create(path).map_err(|error| AppError::IndexUnwritable {
             detail: error.to_string(),
@@ -303,6 +448,7 @@ impl<'a> Installer<'a> {
         let progress = &mut *self.progress;
         let mut report = |read: u64| {
             progress(InstallProgress {
+                step: InstallStep::Download,
                 done: start + read,
                 total,
             })
@@ -315,16 +461,7 @@ impl<'a> Installer<'a> {
             report: &mut report,
         };
 
-        let result = if unpack {
-            let mut decoder = XzDecoder::new(&mut checked);
-            io::copy(&mut decoder, &mut out).and_then(|_| {
-                // The stream may end before the file does; the digest is of the whole file.
-                io::copy(decoder.get_mut(), &mut io::sink()).map(drop)
-            })
-        } else {
-            io::copy(&mut checked, &mut out).map(drop)
-        };
-        if let Err(error) = result {
+        if let Err(error) = io::copy(&mut checked, &mut out) {
             if self.cancel.load(Ordering::Relaxed) {
                 return Err(AppError::Cancelled);
             }
@@ -348,6 +485,18 @@ impl<'a> Installer<'a> {
     }
 }
 
+/// The zstd frames read from `from`, unpacked, with a window of up to 2 GiB.
+pub(crate) fn zst_reader<R: Read>(from: R) -> io::Result<Decoder<'static, io::BufReader<R>>> {
+    let mut decoder = Decoder::new(from)?;
+    decoder.window_log_max(WINDOW_LOG_MAX)?;
+    Ok(decoder)
+}
+
+/// Unpacks the zstd frames read from `from` into `to`.
+fn unpack_zst(from: &mut impl Read, to: &mut impl Write) -> io::Result<()> {
+    io::copy(&mut zst_reader(from)?, to).map(drop)
+}
+
 /// A release that holds an index, as the inputs page offers it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct IndexReleaseView {
@@ -361,6 +510,8 @@ pub struct IndexReleaseView {
     pub newest_build: String,
     /// How many builds it holds.
     pub builds: usize,
+    /// The bytes of the census history's archive, when the release holds it.
+    pub archive_size: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -396,6 +547,7 @@ impl IndexRelease {
             head: stamp.head,
             newest_build: stamp.newest_build,
             builds: stamp.builds,
+            archive_size: self.archive.as_ref().map(|archive| archive.size),
         })
     }
 }

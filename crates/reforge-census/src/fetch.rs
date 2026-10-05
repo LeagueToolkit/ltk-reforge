@@ -22,6 +22,7 @@ use reforge::history::{Families, Family};
 use crate::error::CensusError;
 use crate::format;
 use crate::git::{GitRepo, Gx, TreeEntry, commit_id, differs, entries, tree_of};
+use crate::seed::branch_ref;
 
 /// What the server is asked to leave out: everything a named object reaches.
 const FILTER: &str = "tree:0";
@@ -93,7 +94,7 @@ impl<'a> Fetcher<'a> {
         let repo = self.repository()?;
         let mut session = Session::open(&self.url)?;
         let tip = session.tip(&self.url)?;
-        let branch = format!("refs/remotes/origin/{}", format::BRANCH);
+        let branch = branch_ref();
         let held = repo
             .try_find_reference(branch.as_str())
             .gx("reading the clone's branch")?

@@ -165,6 +165,11 @@ comparison of two trees, so the clone holds every object the append reads. It ho
 commit, so an append from it checks each build of the index as one from a full clone does. A
 whole build from it stops at the first object it lacks.
 
+A clone can instead start whole (#ADR-0060): `Seed` makes a bare clone, the caller writes whole
+packs into it, and the builds' branch is set where `Fetcher` keeps it, at a commit the packs
+hold. A fetch into it then asks only for the commits after that one and for what the append
+reads that the packs lack.
+
 ## The questions
 
 `History` is a trait with one method per question. `SqliteHistory` reads the index,

@@ -10,6 +10,7 @@ mod error;
 mod fetch;
 pub mod format;
 mod git;
+mod seed;
 mod walk;
 mod write;
 
@@ -20,6 +21,7 @@ pub use self::error::CensusError;
 #[cfg(feature = "fetch")]
 pub use self::fetch::{Fetcher, Received};
 pub use self::git::GitRepo;
+pub use self::seed::Seed;
 pub use self::walk::{BlobId, Change, ChangeSource, Fold, Folds, Progress, Walked, walk};
 
 /// The published census history. Its builds are on the branch `format::BRANCH`.

@@ -758,3 +758,56 @@ run with the change and compared with the baselines by `compare.py`:
 
 No other section differs: no unit, decision, chunk, patch, fixup or diagnostic. The baselines
 of the datasets were not made again, so they hold no `evidence` part.
+
+## Packing the census history (2026-10-05)
+
+The 10,986,063 objects of a mirror clone of the census history (`history-v2` at
+16.19.8230722, `main`, and the tag `history-v2-index-16.9`), packed again by git 2.52 into one
+pack: every delta found anew (`--no-reuse-object`), a depth of 50, objects stored without zlib
+(`pack.compression=0`), 1 GiB of window memory per thread, 32 threads. As GitHub served it, the
+clone held one pack of 10.06 GiB, compressed with zlib.
+
+| order of the delta search | window | `.pack` bytes | time |
+|---|---:|---:|---|
+| git's name hash | 250 | 5,749,231,628 | 16 min 16 s, with a bitmap |
+| git's name hash, version 2 | 250 | 5,887,049,441 | 12 min 16 s |
+| `--path-walk` | 125 | 5,598,482,071 | 9 min 41 s |
+| `--path-walk` | 250 | 5,413,698,374 | 10 min 9 s |
+| `--path-walk` | 500 | 5,210,341,216 | 13 min 12 s |
+| `--path-walk` | 1000 | 5,010,708,741 | 15 min 36 s |
+| names of class and kind, keys from the tip | 1000 | 4,718,214,551 | 26 min 44 s |
+| ranks, class first, keys from the tip | 1000 | 4,704,005,667 | 27 min |
+| ranks, entry first, keys from the tip | 1000 | 5,158,264,169 | 23 min 27 s |
+| ranks, class first, keys from every version | 1000 | 4,565,296,836 | 37 min 41 s |
+
+- **The orders.** Git sorts the objects for the search by a hash of their path's last 16
+  characters, then by size. An entry's text and a WAD entry's file are named for a hash, so
+  that hash scatters similar files. The last four rows give each object a name of their own on
+  `pack-objects`'s input: a bin entry's text named for its class, a WAD entry's file for its
+  kind; or a name whose 16 characters spell a rank under git's hash, the ranks sorting a bin
+  entry's text by class, entry, bin and WAD, or by entry, WAD and class. The class is read from
+  the bin's WAD entry file, the kind from the file itself: at the tip, 88% of the entry texts'
+  versions and 58% of the entry files' have one; in every version, all of the texts' and 92%
+  of the files'.
+- **The window.** Under `--path-walk`, each doubling saved 185 to 203 MB.
+- **The chains.** The longest is 44 to 46 in every pack, the mean of the deltas 4.6 to 5.7.
+- **The bytes, by file**, in the `--path-walk` pack of window 500:
+
+| files | objects | in the pack | unpacked |
+|---|---:|---:|---:|
+| bin entries' texts (`.rito`) | 3,165,814 | 2,532,068,173 (48.6%) | 100,964,906,588 |
+| WAD entries' files | 2,143,251 | 2,000,922,815 (38.4%) | 11,739,758,900 |
+| trees | 5,530,566 | 666,593,355 (12.8%) | 2,947,027,864 |
+| WADs' files (`_wad.yaml`) | 144,901 | 10,361,542 (0.2%) | 8,607,630 |
+| commits and the rest | 1,531 | 395,299 | 456,436 |
+
+- **After zstd.** The bare repository in a tar, then `zstd --ultra -22 --long=31 -T1`:
+
+| pack in the tar | `.tar` bytes | `.tar.zst` bytes |
+|---|---:|---:|
+| git's name hash, window 250, with its bitmap | 6,186,762,240 | 1,778,546,057 |
+| `--path-walk`, window 1000 | 5,390,540,800 | 1,771,541,306 |
+| ranks, class first, keys from the tip | 5,082,685,440 | 1,749,813,288 |
+
+The release `history-v2-snapshot-0` holds the `--path-walk` pack of window 1000, its frame
+taking a `.keep` for the pack afterwards: 1,771,553,727 bytes.

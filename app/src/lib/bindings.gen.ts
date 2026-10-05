@@ -45,6 +45,14 @@ export const commands = {
 	 *  the settings as saved. Progress comes as `IndexUpdateProgress` events.
 	 */
 	updateIndex: () => __TAURI_INVOKE<({ ok: true; value: Settings }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("update_index"),
+	/**  The app's clone of the census history: none, fetched as far as appends read it, or whole. */
+	censusClone: () => __TAURI_INVOKE<({ ok: true; value: CloneView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("census_clone"),
+	/**
+	 *  Downloads the newest release's archive of the census history and makes the app's clone of
+	 *  it, in place of the clone held (#ADR-0060). Answers the clone as made. Progress comes as
+	 *  `ArchiveProgress` events.
+	 */
+	bootstrapCensus: () => __TAURI_INVOKE<({ ok: true; value: CloneView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("bootstrap_census"),
 	/**  What an update of the hash tables the settings choose would download. */
 	hashesCheck: () => __TAURI_INVOKE<({ ok: true; value: HashesCheck }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("hashes_check"),
 	/**
@@ -65,6 +73,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	archiveProgress: makeEvent<ArchiveProgress>("archive-progress"),
 	hashesProgress: makeEvent<HashesProgress>("hashes-progress"),
 	indexUpdateProgress: makeEvent<IndexUpdateProgress>("index-update-progress"),
 	installProgress: makeEvent<InstallProgress>("install-progress"),
@@ -152,6 +161,14 @@ export type AppError =
 { code: "INDEX_FOREIGN"; head: string } | 
 /**  The builds after the index's head did not append. */
 { code: "INDEX_APPEND"; detail: string } | 
+/**  The newest release holds no archive of the census history. */
+{ code: "NO_ARCHIVE" } | 
+/**  The census history's archive did not download. */
+{ code: "CENSUS_DOWNLOAD"; detail: string } | 
+/**  The census history's archive does not read as a repository. */
+{ code: "ARCHIVE_UNREADABLE"; detail: string } | 
+/**  The clone of the census history could not be written to disk. */
+{ code: "CENSUS_UNWRITABLE"; detail: string } | 
 /**  The hash tables did not download. */
 { code: "HASHES_FETCH"; detail: string } | 
 /**  Another program, or this one, is updating the hash tables. */
@@ -166,6 +183,16 @@ export type AppError =
 { code: "CANCELLED" } | 
 /**  A fault of the app's own, with no remedy a person can take. */
 { code: "INTERNAL"; detail: string };
+
+/**  How far a bootstrap has got, for the window to show. */
+export type ArchiveProgress = {
+	/**  What the bootstrap is doing. */
+	step: InstallStep,
+	/**  The bytes done: of the archive downloaded, or of the download unpacked. */
+	done: number,
+	/**  The bytes to do. */
+	total: number,
+};
 
 /**  A slot weighed for a unit. */
 export type CandidateView = {
@@ -232,6 +259,17 @@ export type ChildSpec = {
 	/**  The child's class. */
 	class: string,
 };
+
+/**  The app's clone of the census history, as the inputs page shows it. */
+export type CloneView = 
+/**  No clone. */
+{ kind: "none" } | 
+/**  A clone fetched as far as appends read it (#ADR-0057). */
+{ kind: "partial" } | 
+/**  A clone of the whole history, bootstrapped from a release's archive. */
+{ kind: "whole"; 
+/**  The release the archive was of. */
+tag: string };
 
 /**  The target chosen for one unit. */
 export type DecisionView = {
@@ -402,6 +440,8 @@ export type IndexReleaseView = {
 	newest_build: string,
 	/**  How many builds it holds. */
 	builds: number,
+	/**  The bytes of the census history's archive, when the release holds it. */
+	archive_size: number | null,
 };
 
 /**  An update of the index, as it goes. */
@@ -426,11 +466,20 @@ export type InputsView = {
 
 /**  How far an install has got, for the window to show. */
 export type InstallProgress = {
-	/**  The bytes of the release downloaded. */
+	/**  What the install is doing. */
+	step: InstallStep,
+	/**  The bytes done: of the release downloaded, or of the download unpacked. */
 	done: number,
-	/**  The bytes of the release in all. */
+	/**  The bytes to do. */
 	total: number,
 };
+
+/**  What a download of a release is doing. */
+export type InstallStep = 
+/**  Its files are downloading. */
+"download" | 
+/**  What was downloaded is unpacking. */
+"unpack";
 
 /**  One line of a run's details. */
 export type LogLine = {

@@ -1,5 +1,6 @@
 import { Button } from "@/components";
 import { m } from "@/i18n";
+import type { InstallProgress } from "@/lib/bindings.gen";
 
 interface ProgressRowProps {
   /** How much is done, from 0 to 1. Null when the whole is not known: no bar is drawn. */
@@ -29,6 +30,28 @@ export function ProgressRow({ fraction, label, onStop }: ProgressRowProps) {
         </Button>
       )}
     </div>
+  );
+}
+
+/** A download of a release's file, or its unpacking after, as a progress row. */
+export function StepProgress({
+  progress,
+  onStop,
+}: {
+  progress: InstallProgress;
+  onStop: () => void;
+}) {
+  const sizes = { done: megabytes(progress.done), total: megabytes(progress.total) };
+  return (
+    <ProgressRow
+      fraction={progress.done / Math.max(progress.total, 1)}
+      label={
+        progress.step === "unpack"
+          ? m.inputs_unpack_progress_label(sizes)
+          : m.inputs_download_progress_label(sizes)
+      }
+      onStop={onStop}
+    />
   );
 }
 

@@ -2,9 +2,11 @@
 //! inputs, drives a run and shows each stage's result, and holds no rule of its own about a
 //! mod. `docs/design/ROADMAP-UX.md` holds the plan.
 
+pub mod archive;
 pub mod catalog;
 pub mod census;
 pub mod commands;
+pub mod download;
 pub mod error;
 pub mod hashes;
 pub mod index;
@@ -23,6 +25,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use tauri::Manager;
 
+use crate::archive::Clones;
 use crate::settings::SettingsStore;
 use crate::state::{HashesJob, IndexJob, OpenInputs};
 
@@ -57,9 +60,14 @@ pub fn run() -> tauri::Result<()> {
             if let Some(current) = current.filter(|path| path.starts_with(&indexes)) {
                 index::remove_others(&indexes, &current);
             }
+            let clones = Clones {
+                whole: data.join("census-history"),
+                partial: data.join("census-partial"),
+            };
             app.manage(Arc::new(IndexJob::new(
                 indexes,
-                data.join("census-history"),
+                clones,
+                data.join("downloads"),
             )));
             app.manage(Arc::new(HashesJob::default()));
             Ok(())

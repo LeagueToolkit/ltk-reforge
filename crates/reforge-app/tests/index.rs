@@ -2,15 +2,17 @@
 //! checked against their digests, the database unpacked, and the index installed only whole.
 //! The files are read from a test's folder through the same `Source` the web is.
 
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use liblzma::write::XzEncoder;
 use reforge::history::{History, SqliteHistory};
 use reforge_app::error::AppError;
-use reforge_app::index::{self, Asset, IndexRelease, InstallProgress, Installer, Source};
+use reforge_app::index::{
+    self, Asset, IndexRelease, InstallProgress, InstallStep, Installer, Ranged, Source,
+};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
@@ -36,30 +38,44 @@ fn builds() -> String {
     format!("0\t{COMMIT}\t16.19.8207193\te39c38647162cf28\t2026-09-30\n")
 }
 
-/// An empty database, as `.xz`: SQLite reads an empty file as a database of no tables.
-fn db_xz() -> Vec<u8> {
-    let mut encoder = XzEncoder::new(Vec::new(), 6);
-    encoder.write_all(b"").unwrap();
-    encoder.finish().unwrap()
+/// An empty database, as `.zst`: SQLite reads an empty file as a database of no tables.
+fn db_zst() -> Vec<u8> {
+    zstd::encode_all(&b""[..], 19).unwrap()
+}
+
+/// The empty database followed by a skippable frame of `len` bytes, which zstd reads past: a
+/// file a download takes many reads of.
+fn long_db_zst(len: u32) -> Vec<u8> {
+    let mut bytes = db_zst();
+    bytes.extend_from_slice(&0x184D_2A50_u32.to_le_bytes());
+    bytes.extend_from_slice(&len.to_le_bytes());
+    bytes.extend(std::iter::repeat_n(0x5a, len as usize));
+    bytes
 }
 
 fn sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-/// The files of a release in a folder, served by their URLs, which are their names.
+/// The files of a release in a folder, served by their URLs, which are their names, from any
+/// place, under one entity tag.
 struct Folder {
     dir: TempDir,
+    etag: Mutex<String>,
+    /// Where each ranged read started.
+    asked: Mutex<Vec<u64>>,
 }
 
 impl Folder {
     fn new() -> Self {
         let folder = Self {
             dir: tempfile::tempdir().unwrap(),
+            etag: Mutex::new("\"one\"".to_string()),
+            asked: Mutex::new(Vec::new()),
         };
         folder.put("stamp.json", stamp().as_bytes());
         folder.put("builds.tsv", builds().as_bytes());
-        folder.put("history.sqlite.xz", &db_xz());
+        folder.put("history.sqlite.zst", &db_zst());
         folder
     }
 
@@ -86,18 +102,34 @@ impl Folder {
             tag: "history-v2-index-16.19".to_string(),
             stamp: self.asset("stamp.json"),
             builds: self.asset("builds.tsv"),
-            db: self.asset("history.sqlite.xz"),
+            db: self.asset("history.sqlite.zst"),
+            archive: None,
         }
     }
 
     fn root(&self) -> Utf8PathBuf {
         self.path("indexes")
     }
+
+    fn downloads(&self) -> Utf8PathBuf {
+        self.path("downloads")
+    }
 }
 
 impl Source for Folder {
     fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, AppError> {
         Ok(Box::new(fs::File::open(self.path(url)).unwrap()))
+    }
+
+    fn open_from(&self, url: &str, from: u64) -> Result<Ranged, AppError> {
+        self.asked.lock().unwrap().push(from);
+        let mut file = fs::File::open(self.path(url)).unwrap();
+        file.seek(SeekFrom::Start(from)).unwrap();
+        Ok(Ranged {
+            reader: Box::new(file),
+            start: from,
+            etag: Some(self.etag.lock().unwrap().clone()),
+        })
     }
 }
 
@@ -106,12 +138,31 @@ fn install(
     release: &IndexRelease,
     cancel: &AtomicBool,
 ) -> Result<Utf8PathBuf, AppError> {
+    install_stopping(folder, release, cancel, None)
+}
+
+/// Installs, and sets `cancel` once the database's download holds `stop_after` bytes.
+fn install_stopping(
+    folder: &Folder,
+    release: &IndexRelease,
+    cancel: &AtomicBool,
+    stop_after: Option<u64>,
+) -> Result<Utf8PathBuf, AppError> {
     let mut last = None;
-    let mut progress = |seen: InstallProgress| last = Some(seen);
-    let result = Installer::new(folder, cancel, &mut progress).install(release, &folder.root());
-    // An install that downloaded reports the whole release read at its end.
+    let mut progress = |seen: InstallProgress| {
+        if seen.step == InstallStep::Download && stop_after.is_some_and(|at| seen.done >= at) {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        last = Some(seen);
+    };
+    let result = Installer::new(folder, cancel, &mut progress).install(
+        release,
+        &folder.root(),
+        &folder.downloads(),
+    );
+    // An install that downloaded reports the whole of its last step done at its end.
     if let (Ok(_), Some(last)) = (&result, last) {
-        assert_eq!(last.done, last.total, "the whole release was read");
+        assert_eq!(last.done, last.total, "the last step was done whole");
     }
     result
 }
@@ -147,7 +198,7 @@ fn api_release(tag: &str, draft: bool, files: &[(&str, Option<&str>)]) -> serde_
 const WHOLE: [(&str, Option<&str>); 3] = [
     ("stamp.json", Some("sha256:AA")),
     ("builds.tsv", Some("sha256:bb")),
-    ("history.sqlite.xz", Some("sha256:cc")),
+    ("history.sqlite.zst", Some("sha256:cc")),
 ];
 
 #[test]
@@ -158,7 +209,7 @@ fn the_newest_release_holding_a_whole_index_is_picked() {
         api_release(
             "no-digest",
             false,
-            &[WHOLE[0], WHOLE[1], ("history.sqlite.xz", None)]
+            &[WHOLE[0], WHOLE[1], ("history.sqlite.zst", None)]
         ),
         api_release("whole", false, &WHOLE),
         api_release("older", false, &WHOLE),
@@ -173,7 +224,7 @@ fn the_newest_release_holding_a_whole_index_is_picked() {
         picked.stamp.sha256, "aa",
         "a digest is kept as lower-case hex"
     );
-    assert_eq!(picked.db.url, "https://example.invalid/history.sqlite.xz");
+    assert_eq!(picked.db.url, "https://example.invalid/history.sqlite.zst");
 }
 
 #[test]
@@ -247,7 +298,7 @@ fn an_index_installed_already_is_not_downloaded_again() {
     let release = folder.release();
     install(&folder, &release, &AtomicBool::new(false)).unwrap();
     // The files are gone from the source: a second download would fail.
-    fs::remove_file(folder.path("history.sqlite.xz")).unwrap();
+    fs::remove_file(folder.path("history.sqlite.zst")).unwrap();
 
     let installed = install(&folder, &release, &AtomicBool::new(false));
 
@@ -255,6 +306,86 @@ fn an_index_installed_already_is_not_downloaded_again() {
         installed.unwrap(),
         folder.root().join("history-v2-index-16.19")
     );
+}
+
+#[test]
+fn a_database_download_that_stopped_resumes_from_where_it_stopped() {
+    let folder = Folder::new();
+    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+    let release = folder.release();
+    let stopped = install_stopping(&folder, &release, &AtomicBool::new(false), Some(100_000));
+    assert!(matches!(stopped, Err(AppError::Cancelled)), "{stopped:?}");
+
+    let installed = install(&folder, &release, &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(installed, folder.root().join("history-v2-index-16.19"));
+    let asked = folder.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    assert!(
+        asked[1] >= 100_000,
+        "the second download resumed: {asked:?}"
+    );
+    assert!(
+        entries(&folder.downloads()).is_empty(),
+        "the download is removed"
+    );
+}
+
+#[test]
+fn a_database_download_of_another_version_starts_again() {
+    let folder = Folder::new();
+    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+    let release = folder.release();
+    install_stopping(&folder, &release, &AtomicBool::new(false), Some(100_000)).unwrap_err();
+    *folder.etag.lock().unwrap() = "\"two\"".to_string();
+
+    install(&folder, &release, &AtomicBool::new(false)).unwrap();
+
+    let asked = folder.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 3, "{asked:?}");
+    assert_eq!(asked[2], 0, "the download started again: {asked:?}");
+}
+
+#[test]
+fn a_database_of_other_bytes_than_the_release_lists_is_not_kept() {
+    let folder = Folder::new();
+    let release = folder.release();
+    let mut other = db_zst();
+    *other.last_mut().unwrap() ^= 0xff;
+    folder.put("history.sqlite.zst", &other);
+
+    let Err(AppError::IndexDigest { file }) = install(&folder, &release, &AtomicBool::new(false))
+    else {
+        panic!("a database of other bytes was taken");
+    };
+
+    assert_eq!(file, "history.sqlite.zst");
+    assert!(entries(&folder.root()).is_empty());
+    assert!(
+        entries(&folder.downloads()).is_empty(),
+        "{:?}",
+        entries(&folder.downloads())
+    );
+}
+
+/// The newest published index installed in a scratch folder and opened. Its database is
+/// compressed with a window of 2 GiB, which the unpacking takes.
+#[test]
+#[ignore = "downloads the published index, some 770 MB, and unpacks it, 2.75 GB"]
+fn the_published_index_installs() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().join("indexes")).unwrap();
+    let web = reforge_app::index::Web::new().unwrap();
+    let release = web.latest().unwrap().expect("a release holds an index");
+    let mut progress = |_| {};
+    let started = std::time::Instant::now();
+    let installed = Installer::new(&web, &AtomicBool::new(false), &mut progress)
+        .install(&release, &root, &root.join("downloads"))
+        .unwrap();
+    eprintln!("{} installed in {:.0?}", release.tag, started.elapsed());
+    let history = SqliteHistory::open(&installed).unwrap();
+    let stamp = history.stamp().expect("a stamp");
+    eprintln!("{} builds, up to {}", stamp.builds, stamp.newest_build);
 }
 
 #[test]

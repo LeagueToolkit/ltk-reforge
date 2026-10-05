@@ -89,9 +89,11 @@ specta-typescript = "0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 # The prebuilt history index, the hash tables and the schema database fetched from where they
 # are published (#ADR-0047, #ADR-0059): the HTTP client LTK Manager uses, and the decoder of the
-# `.xz` the index is published as.
+# `.zst` the index is published as, the zstd the ltk crates link already.
 reqwest = { version = "0.12", features = ["blocking"] }
-liblzma = "0.4"
+zstd = "0.13"
+# The census history's archive read as a stream, its pack's files taken (#ADR-0060).
+tar = "0.4"
 parking_lot = "0.12"
 # A package's thumbnail sent to the window as a `data:` URL.
 base64 = "0.22"

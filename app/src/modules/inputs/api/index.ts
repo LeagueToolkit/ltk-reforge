@@ -1,7 +1,13 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { commands, events, type InstallProgress, type UpdateStep } from "@/lib/bindings.gen";
+import {
+  type ArchiveProgress,
+  commands,
+  events,
+  type InstallProgress,
+  type UpdateStep,
+} from "@/lib/bindings.gen";
 import { settingsKeys, useSettings } from "@/modules/settings";
 import { queryFn, unwrap } from "@/utils";
 
@@ -66,13 +72,52 @@ export function useIndexBehind() {
   return useQuery(indexBehindQuery(settings.data?.["inputs.history"] ?? null));
 }
 
+/** The app's clone of the census history: none, fetched as far as updates read it, or whole. */
+export const censusCloneQuery = () =>
+  queryOptions({
+    queryKey: ["census", "clone"] as const,
+    queryFn: queryFn(commands.censusClone),
+    // Only the app changes it, and each change answers it anew.
+    staleTime: Infinity,
+  });
+
 /** Fetches the builds after the index's head and appends them; the settings come back pointing at the new index. */
 export function useUpdateIndex() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => unwrap(await commands.updateIndex()),
-    onSuccess: (settings) => queryClient.setQueryData(settingsKeys.current(), settings),
+    onSuccess: (settings) => {
+      queryClient.setQueryData(settingsKeys.current(), settings);
+      // A first update makes the app's clone.
+      void queryClient.invalidateQueries({ queryKey: censusCloneQuery().queryKey });
+    },
   });
+}
+
+/** The app's clone of the census history. */
+export function useCensusClone() {
+  return useQuery(censusCloneQuery());
+}
+
+/** Downloads the newest release's archive of the census history and makes the clone of it. */
+export function useBootstrapCensus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => unwrap(await commands.bootstrapCensus()),
+    onSuccess: (clone) => queryClient.setQueryData(censusCloneQuery().queryKey, clone),
+  });
+}
+
+/** How far the bootstrap under way has got, from the backend's events. */
+export function useArchiveProgress(): ArchiveProgress | null {
+  const [progress, setProgress] = useState<ArchiveProgress | null>(null);
+  useEffect(() => {
+    const unlisten = events.archiveProgress.listen((event) => setProgress(event.payload));
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
+  return progress;
 }
 
 /** The step of the update under way, from the backend's events. */

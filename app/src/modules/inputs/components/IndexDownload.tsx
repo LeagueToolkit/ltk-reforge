@@ -5,7 +5,7 @@ import { m } from "@/i18n";
 import type { HistoryView } from "@/lib/bindings.gen";
 
 import { cancelIndex, useIndexProgress, useIndexRelease, useInstallIndex } from "../api/index";
-import { megabytes, ProgressRow } from "./ProgressRow";
+import { megabytes, StepProgress } from "./ProgressRow";
 
 /**
  * The prebuilt history index (#ADR-0047): the newest release's build, and a download when the
@@ -41,16 +41,7 @@ export function IndexDownload({ installed }: { installed: HistoryView | undefine
               size: megabytes(offered.size),
             })}
       </p>
-      {install.isPending && progress && (
-        <ProgressRow
-          fraction={progress.done / Math.max(progress.total, 1)}
-          label={m.inputs_download_progress_label({
-            done: megabytes(progress.done),
-            total: megabytes(progress.total),
-          })}
-          onStop={cancelIndex}
-        />
-      )}
+      {install.isPending && progress && <StepProgress progress={progress} onStop={cancelIndex} />}
       {!current && !install.isPending && (
         <div>
           <Button
