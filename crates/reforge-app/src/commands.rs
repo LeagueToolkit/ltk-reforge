@@ -19,12 +19,14 @@ use crate::error::{AppError, IpcResult};
 use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{self, Choice, InputsView};
+use crate::reveal::{self, Place};
 use crate::run::{self, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
 use crate::runlog::LogLine;
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{HashesJob, IndexJob, OpenInputs};
+use crate::storage::StorageView;
 use crate::view::Finding;
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
@@ -442,6 +444,109 @@ pub async fn update_schema(app: AppHandle) -> IpcResult<()> {
             app.state::<Arc<OpenInputs>>().forget();
         }
         Ok(())
+    })
+    .await
+}
+
+/// What the app keeps on disk for the history: the index, the clones and the downloads kept.
+#[tauri::command]
+#[specta::specta]
+pub async fn storage(app: AppHandle) -> IpcResult<StorageView> {
+    let history = app.state::<SettingsStore>().get().history;
+    let job = Arc::clone(&app.state::<Arc<IndexJob>>());
+    off_thread(move || Ok(job.storage().view(history.as_deref().map(Utf8Path::new)))).await
+}
+
+/// Removes every index the app installed (#ADR-0061). The settings choose none after when
+/// the index they chose was one of them, and are answered as saved.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_index(app: AppHandle) -> IpcResult<Settings> {
+    off_thread(move || {
+        let job = app.state::<Arc<IndexJob>>();
+        if !job.run.start() {
+            return Err(AppError::IndexBusy);
+        }
+        let removed = remove_indexes(&app, &job);
+        job.run.end();
+        removed
+    })
+    .await
+}
+
+fn remove_indexes(app: &AppHandle, job: &IndexJob) -> Result<Settings, AppError> {
+    let store = app.state::<SettingsStore>();
+    let mut settings = store.get();
+    let chosen = settings.history.as_deref().map(Utf8Path::new);
+    if chosen.is_some_and(|dir| job.storage().owns(dir)) {
+        settings = store.save(Settings {
+            history: None,
+            ..settings
+        })?;
+    }
+    // The index open is one of them, and a file held open is not removed.
+    app.state::<Arc<OpenInputs>>().forget();
+    job.storage().remove_indexes()?;
+    Ok(settings)
+}
+
+/// Removes the app's clones of the census history (#ADR-0061), and answers the clone as it
+/// stands.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_census(app: AppHandle) -> IpcResult<CloneView> {
+    off_thread(move || {
+        let job = app.state::<Arc<IndexJob>>();
+        if !job.run.start() {
+            return Err(AppError::IndexBusy);
+        }
+        let removed = job.storage().remove_clones();
+        job.run.end();
+        removed?;
+        Ok(job.clones.view())
+    })
+    .await
+}
+
+/// Removes the downloads kept to resume (#ADR-0061).
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_downloads(app: AppHandle) -> IpcResult<()> {
+    off_thread(move || {
+        let job = app.state::<Arc<IndexJob>>();
+        if !job.run.start() {
+            return Err(AppError::IndexBusy);
+        }
+        let removed = job.storage().remove_downloads();
+        job.run.end();
+        removed
+    })
+    .await
+}
+
+/// Shows a folder of the inputs in the system's file manager.
+#[tauri::command]
+#[specta::specta]
+pub async fn reveal_place(app: AppHandle, place: Place) -> IpcResult<()> {
+    let settings = app.state::<SettingsStore>().get();
+    let job = Arc::clone(&app.state::<Arc<IndexJob>>());
+    off_thread(move || {
+        let chosen = Choice::from(&settings);
+        let dir = match place {
+            Place::Game => chosen.game,
+            Place::Hashes => Some(hashes_dir(&settings)?),
+            Place::Schema => match chosen.schema {
+                Some(file) => file.parent().map(Utf8Path::to_path_buf),
+                None => meta_cache_dir(),
+            },
+            Place::Index => chosen.history,
+            Place::Census => Some(job.clones.for_updates().to_path_buf()),
+        };
+        let dir = dir.ok_or_else(|| AppError::NotShown {
+            path: String::new(),
+            detail: "no folder is chosen".to_string(),
+        })?;
+        reveal::reveal(&dir)
     })
     .await
 }

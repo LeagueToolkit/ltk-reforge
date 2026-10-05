@@ -10,6 +10,7 @@ use parking_lot::Mutex;
 use crate::archive::Clones;
 use crate::error::AppError;
 use crate::inputs::{Choice, Inputs};
+use crate::storage::Storage;
 
 /// Work the window starts, one at a time, and can stop.
 pub struct Job {
@@ -66,6 +67,15 @@ impl IndexJob {
             clones,
             downloads,
             run: Job::new(),
+        }
+    }
+
+    /// The folders the job writes, to measure and to remove.
+    pub fn storage(&self) -> Storage<'_> {
+        Storage {
+            indexes: &self.root,
+            clones: &self.clones,
+            downloads: &self.downloads,
         }
     }
 }

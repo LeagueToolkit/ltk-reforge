@@ -107,6 +107,12 @@ pub enum AppError {
     /// The schema database could not be written to disk.
     #[error("the schema database could not be written: {detail}")]
     SchemaUnwritable { detail: String },
+    /// A folder of the app's did not go when the user asked for it removed.
+    #[error("{path} could not be removed: {detail}")]
+    NotRemoved { path: String, detail: String },
+    /// A folder did not open in the system's file manager.
+    #[error("{path} could not be shown: {detail}")]
+    NotShown { path: String, detail: String },
     /// The user stopped the work.
     #[error("cancelled")]
     Cancelled,

@@ -53,6 +53,22 @@ export const commands = {
 	 *  `ArchiveProgress` events.
 	 */
 	bootstrapCensus: () => __TAURI_INVOKE<({ ok: true; value: CloneView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("bootstrap_census"),
+	/**  What the app keeps on disk for the history: the index, the clones and the downloads kept. */
+	storage: () => __TAURI_INVOKE<({ ok: true; value: StorageView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("storage"),
+	/**
+	 *  Removes every index the app installed (#ADR-0061). The settings choose none after when
+	 *  the index they chose was one of them, and are answered as saved.
+	 */
+	removeIndex: () => __TAURI_INVOKE<({ ok: true; value: Settings }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_index"),
+	/**
+	 *  Removes the app's clones of the census history (#ADR-0061), and answers the clone as it
+	 *  stands.
+	 */
+	removeCensus: () => __TAURI_INVOKE<({ ok: true; value: CloneView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_census"),
+	/**  Removes the downloads kept to resume (#ADR-0061). */
+	removeDownloads: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_downloads"),
+	/**  Shows a folder of the inputs in the system's file manager. */
+	revealPlace: (place: Place) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("reveal_place", { place }),
 	/**  What an update of the hash tables the settings choose would download. */
 	hashesCheck: () => __TAURI_INVOKE<({ ok: true; value: HashesCheck }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("hashes_check"),
 	/**
@@ -179,6 +195,10 @@ export type AppError =
 { code: "SCHEMA_UNUSABLE"; detail: string } | 
 /**  The schema database could not be written to disk. */
 { code: "SCHEMA_UNWRITABLE"; detail: string } | 
+/**  A folder of the app's did not go when the user asked for it removed. */
+{ code: "NOT_REMOVED"; path: string; detail: string } | 
+/**  A folder did not open in the system's file manager. */
+{ code: "NOT_SHOWN"; path: string; detail: string } | 
 /**  The user stopped the work. */
 { code: "CANCELLED" } | 
 /**  A fault of the app's own, with no remedy a person can take. */
@@ -492,6 +512,18 @@ export type InstallStep =
 /**  What was downloaded is unpacking. */
 "unpack";
 
+/**  An index the app installed that the settings do not choose. */
+export type KeptIndex = {
+	/**  Its folder. */
+	dir: string,
+	/**  The newest build it holds. */
+	newest_build: string,
+	/**  How many builds it holds. */
+	builds: number,
+	/**  Its bytes on disk. */
+	bytes: number,
+};
+
 /**  One line of a run's details. */
 export type LogLine = {
 	/**  Milliseconds since the run started. */
@@ -582,6 +614,19 @@ targets: TargetsView } |
 { part: "package"; 
 /**  The package. */
 package: PackageView };
+
+/**  A folder the inputs page can show. */
+export type Place = 
+/**  The game install. */
+"game" | 
+/**  The hash cache. */
+"hashes" | 
+/**  The folder of the schema database. */
+"schema" | 
+/**  The history index. */
+"index" | 
+/**  The app's clone of the census history. */
+"census";
 
 /**  A policy: how a target is chosen, and how much animation reuse is accepted. */
 export type PolicyView = {
@@ -854,6 +899,23 @@ export type StageView = {
 	state: StageState,
 	/**  How long it took, in milliseconds, when it ran. */
 	millis: number | null,
+};
+
+/**  What the app keeps on disk for the history, as the inputs page shows it. */
+export type StorageView = {
+	/**  The bytes of the index the settings choose. Zero when they choose none. */
+	index_bytes: number,
+	/**  Whether the index the settings choose is one the app installed. */
+	index_owned: boolean,
+	/**
+	 *  The index with the most builds among those the app installed and the settings do not
+	 *  choose.
+	 */
+	kept: KeptIndex | null,
+	/**  The bytes of the app's clones of the census history. */
+	census_bytes: number,
+	/**  The bytes of the downloads kept to resume. */
+	downloads_bytes: number,
 };
 
 /**  What a finding is about. */

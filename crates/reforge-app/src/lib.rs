@@ -12,12 +12,14 @@ pub mod hashes;
 pub mod index;
 pub mod inputs;
 pub mod ipc;
+pub mod reveal;
 pub mod run;
 pub mod runlog;
 pub mod schema;
 pub mod selection;
 pub mod settings;
 pub mod state;
+pub mod storage;
 pub mod view;
 
 use std::sync::Arc;

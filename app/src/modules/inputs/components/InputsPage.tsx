@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
 
 import { Button, FailureNote, SectionCard, Spinner } from "@/components";
 import { m } from "@/i18n";
@@ -6,49 +6,18 @@ import type { InputsView, Settings } from "@/lib/bindings.gen";
 import { FindingList } from "@/modules/findings";
 import { useSaveSettings, useSettings } from "@/modules/settings";
 
+import { useHashesCheck } from "../api/hashes";
 import { useFindGame, useInputs } from "../api/inputs";
 import { pickFile, pickFolder } from "../api/pick";
-import { useStaleInputs } from "../api/stale";
-import { CensusDownload } from "./CensusDownload";
+import { useSchemaCheck } from "../api/schema";
+import { useCheckInputs } from "../api/stale";
+import { CensusRow, KeptDownloads } from "./CensusRow";
 import { HashesDownload } from "./HashesDownload";
-import { IndexDownload } from "./IndexDownload";
-import { IndexUpdate } from "./IndexUpdate";
+import { IndexRow } from "./IndexRow";
+import { InputRow, StatusBadge } from "./InputRow";
 import { SchemaDownload } from "./SchemaDownload";
-import { StaleMark, staleWords } from "./StaleMark";
 
 type InputKey = "inputs.game" | "inputs.hashes" | "inputs.schema" | "inputs.history";
-
-interface InputRowProps {
-  title: string;
-  description: string;
-  /** The path read, or null. */
-  path: string | null | undefined;
-  /** What the row says when no path was read. */
-  none: string;
-  /** What a download would bring up to date, in words. Null when nothing. */
-  stale?: string | null;
-  /** Lines under the path: a build, a count. */
-  facts?: ReactNode;
-  actions: ReactNode;
-}
-
-function InputRow({ title, description, path, none, stale, facts, actions }: InputRowProps) {
-  return (
-    <div className="flex items-start justify-between gap-4" data-ui="InputRow">
-      <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-sm text-surface-100 select-none">
-          {title}
-          {stale && <StaleMark lines={[stale]} />}
-        </p>
-        <p className="text-xs text-surface-400 select-none">{description}</p>
-        {path && <p className="mt-1 font-mono text-xs break-all text-surface-200">{path}</p>}
-        {!path && <p className="mt-1 text-xs text-surface-300 select-none">{none}</p>}
-        {facts && <div className="mt-0.5 text-xs text-surface-400">{facts}</div>}
-      </div>
-      <div className="flex shrink-0 gap-2">{actions}</div>
-    </div>
-  );
-}
 
 function useSetInput() {
   const settings = useSettings();
@@ -61,11 +30,52 @@ function useSetInput() {
   };
 }
 
+function HashesBadge({ installed }: { installed: boolean }) {
+  const check = useHashesCheck();
+  if (check.isFetching) {
+    return <StatusBadge tone="busy">{m.inputs_status_checking_label()}</StatusBadge>;
+  }
+  if (!check.data) {
+    return installed ? null : (
+      <StatusBadge tone="muted">{m.inputs_status_none_label()}</StatusBadge>
+    );
+  }
+  if (check.data.behind.length === 0) {
+    return <StatusBadge tone="ok">{m.inputs_status_current_label()}</StatusBadge>;
+  }
+  return installed ? (
+    <StatusBadge tone="warn">{m.inputs_status_update_label()}</StatusBadge>
+  ) : (
+    <StatusBadge tone="muted">{m.inputs_status_none_label()}</StatusBadge>
+  );
+}
+
+function SchemaBadge({ own, read }: { own: boolean; read: boolean }) {
+  const check = useSchemaCheck();
+  if (own) {
+    // A file the user chose is checked against nothing.
+    return read ? null : <StatusBadge tone="bad">{m.inputs_status_unreadable_label()}</StatusBadge>;
+  }
+  if (check.isFetching) {
+    return <StatusBadge tone="busy">{m.inputs_status_checking_label()}</StatusBadge>;
+  }
+  if (!check.data) {
+    return read ? null : <StatusBadge tone="muted">{m.inputs_status_none_label()}</StatusBadge>;
+  }
+  if (!check.data.behind) {
+    return <StatusBadge tone="ok">{m.inputs_status_current_label()}</StatusBadge>;
+  }
+  return check.data.held ? (
+    <StatusBadge tone="warn">{m.inputs_status_update_label()}</StatusBadge>
+  ) : (
+    <StatusBadge tone="muted">{m.inputs_status_none_label()}</StatusBadge>
+  );
+}
+
 function Rows({ view }: { view: InputsView | undefined }) {
   const settings = useSettings();
   const set = useSetInput();
   const find = useFindGame();
-  const stale = staleWords(useStaleInputs());
   const chosen = settings.data ?? {};
 
   const choose = async (key: InputKey) => {
@@ -88,30 +98,35 @@ function Rows({ view }: { view: InputsView | undefined }) {
         }
       },
     });
+  const game = view?.game.path ?? chosen["inputs.game"];
 
   return (
-    <>
+    <div className="flex flex-col divide-y divide-surface-700/50">
       <InputRow
         title={m.inputs_game_title()}
+        badge={!game && <StatusBadge tone="bad">{m.inputs_status_not_chosen_label()}</StatusBadge>}
         description={m.inputs_game_description()}
-        path={view?.game.path ?? chosen["inputs.game"]}
+        path={game}
+        place="game"
         none={m.inputs_game_none()}
         facts={
           <>
-            {view?.game.build && <p>{m.inputs_game_build_label({ build: view.game.build })}</p>}
+            {view?.game.build && (
+              <span>{m.inputs_game_build_label({ build: view.game.build })}</span>
+            )}
             {view && view.game.unreadable_wads > 0 && (
-              <p className="text-warning-text">
+              <span className="text-warning-text">
                 {m.inputs_game_unreadable_wads_label({ count: view.game.unreadable_wads })}
-              </p>
+              </span>
             )}
             {find.isSuccess && !find.data && (
-              <p className="text-warning-text">{m.inputs_find_none_hint()}</p>
+              <span className="text-warning-text">{m.inputs_find_none_hint()}</span>
             )}
           </>
         }
         actions={
           <>
-            <Button size="sm" variant="outline" loading={find.isPending} onClick={findGame}>
+            <Button size="sm" variant="ghost" loading={find.isPending} onClick={findGame}>
               {m.inputs_find_action()}
             </Button>
             <Button size="sm" variant="outline" onClick={() => void choose("inputs.game")}>
@@ -122,18 +137,24 @@ function Rows({ view }: { view: InputsView | undefined }) {
       />
       <InputRow
         title={m.inputs_hashes_title()}
+        badge={view && <HashesBadge installed={view.hashes.tables.length > 0} />}
         description={m.inputs_hashes_description()}
         path={view?.hashes.dir}
+        place="hashes"
         none={m.inputs_hashes_none()}
-        stale={stale.hashes}
         facts={
-          <>
-            {!chosen["inputs.hashes"] && view?.hashes.dir && <p>{m.inputs_shared_label()}</p>}
-            {view && view.hashes.tables.length > 0 && (
-              <p>{m.inputs_hashes_tables_label({ tables: view.hashes.tables.join(", ") })}</p>
-            )}
-            {view && <HashesDownload installed={view.hashes.tables.length > 0} />}
-          </>
+          view?.hashes.dir && (
+            <>
+              <span>
+                {chosen["inputs.hashes"] ? m.inputs_own_folder_label() : m.inputs_shared_label()}
+              </span>
+              {view.hashes.tables.length > 0 && (
+                <span>
+                  {m.inputs_hashes_tables_label({ tables: view.hashes.tables.join(", ") })}
+                </span>
+              )}
+            </>
+          )
         }
         actions={
           <>
@@ -147,21 +168,31 @@ function Rows({ view }: { view: InputsView | undefined }) {
             </Button>
           </>
         }
-      />
+      >
+        {view && <HashesDownload installed={view.hashes.tables.length > 0} />}
+      </InputRow>
       <InputRow
         title={m.inputs_schema_title()}
+        badge={
+          view && (
+            <SchemaBadge own={chosen["inputs.schema"] != null} read={view.schema.path != null} />
+          )
+        }
         description={m.inputs_schema_description()}
         path={view?.schema.path}
+        place="schema"
         none={m.inputs_schema_none()}
-        stale={stale.schema}
         facts={
-          <>
-            {!chosen["inputs.schema"] && view?.schema.path && <p>{m.inputs_shared_label()}</p>}
-            {view?.schema.latest_build && (
-              <p>{m.inputs_schema_build_label({ build: view.schema.latest_build })}</p>
-            )}
-            {view && !chosen["inputs.schema"] && <SchemaDownload />}
-          </>
+          view?.schema.path && (
+            <>
+              <span>
+                {chosen["inputs.schema"] ? m.inputs_own_file_label() : m.inputs_shared_label()}
+              </span>
+              {view.schema.latest_build && (
+                <span>{m.inputs_schema_build_label({ build: view.schema.latest_build })}</span>
+              )}
+            </>
+          )
         }
         actions={
           <>
@@ -175,58 +206,52 @@ function Rows({ view }: { view: InputsView | undefined }) {
             </Button>
           </>
         }
-      />
-      <InputRow
-        title={m.inputs_history_title()}
-        description={m.inputs_history_description()}
-        path={view?.history.dir}
-        none={m.inputs_history_none()}
-        stale={stale.history}
-        facts={
-          <>
-            {view?.history.builds != null && view.history.newest_build && (
-              <p>
-                {m.inputs_history_builds_label({
-                  builds: view.history.builds,
-                  build: view.history.newest_build,
-                })}
-              </p>
-            )}
-            <IndexDownload installed={view?.history} />
-            {view?.history.dir && <IndexUpdate />}
-            <CensusDownload />
-          </>
-        }
-        actions={
-          <>
-            {chosen["inputs.history"] && (
-              <Button size="sm" variant="ghost" onClick={() => set("inputs.history", null)}>
-                {m.inputs_history_use_none_action()}
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => void choose("inputs.history")}>
-              {m.inputs_choose_folder_action()}
-            </Button>
-          </>
+      >
+        {view && !chosen["inputs.schema"] && <SchemaDownload />}
+      </InputRow>
+      <IndexRow
+        view={view?.history}
+        chosen={chosen["inputs.history"] ?? null}
+        onChoose={(dir) => set("inputs.history", dir)}
+        pick={
+          <Button size="sm" variant="outline" onClick={() => void choose("inputs.history")}>
+            {m.inputs_choose_folder_action()}
+          </Button>
         }
       />
-    </>
+    </div>
   );
 }
 
-/** The inputs a run is judged against: each one, where it was read from, and what was found. */
+/**
+ * The inputs a run is judged against: each one, where it was read from, how it stands against
+ * what is published, and what was found. Under them, what the history index is made from, which
+ * no run reads.
+ */
 export function InputsPage() {
   const inputs = useInputs();
+  const { check, checking } = useCheckInputs();
 
   return (
     <div className="flex max-w-3xl flex-col gap-6" data-ui="InputsPage">
-      <div>
-        <h1 className="font-display text-xl font-semibold text-surface-50">
-          {m.inputs_page_title()}
-        </h1>
-        <p className="text-sm text-surface-400">{m.inputs_page_description()}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-xl font-semibold text-surface-50">
+            {m.inputs_page_title()}
+          </h1>
+          <p className="text-sm text-surface-400">{m.inputs_page_description()}</p>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          loading={checking}
+          left={<ArrowsClockwiseIcon weight="bold" />}
+          onClick={check}
+        >
+          {m.inputs_check_action()}
+        </Button>
       </div>
-      <SectionCard title={m.inputs_page_title()}>
+      <SectionCard title={m.inputs_read_title()} description={m.inputs_read_description()}>
         <Rows view={inputs.data} />
         {inputs.isFetching && (
           <p className="flex items-center gap-2 text-xs text-surface-400 select-none">
@@ -235,6 +260,12 @@ export function InputsPage() {
           </p>
         )}
         {inputs.isError && <FailureNote failure={inputs.error} />}
+      </SectionCard>
+      <SectionCard title={m.inputs_source_title()} description={m.inputs_source_description()}>
+        <div className="flex flex-col divide-y divide-surface-700/50">
+          <CensusRow />
+          <KeptDownloads />
+        </div>
       </SectionCard>
       {inputs.data && (
         <SectionCard title={m.inputs_findings_title()}>

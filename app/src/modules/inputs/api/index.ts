@@ -1,4 +1,10 @@
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import {
@@ -10,6 +16,29 @@ import {
 } from "@/lib/bindings.gen";
 import { settingsKeys, useSettings } from "@/modules/settings";
 import { queryFn, unwrap } from "@/utils";
+
+import { storageKey } from "./storage";
+
+/**
+ * The work that writes the indexes, the clones or the downloads. The backend runs one at a
+ * time, so each is a mutation under this key and a button of one is off while another runs.
+ */
+const indexJobKey = ["index-job"] as const;
+
+/** A kind of work on the history. */
+export type IndexJobKind =
+  | "install"
+  | "update"
+  | "bootstrap"
+  | "remove-index"
+  | "remove-census"
+  | "remove-downloads";
+
+/** Whether work on the history is under way: any, or of one kind. A page left and come back to still answers. */
+export function useIndexJobRunning(kind?: IndexJobKind): boolean {
+  const mutationKey = kind ? [...indexJobKey, kind] : indexJobKey;
+  return useIsMutating({ mutationKey }) > 0;
+}
 
 /** The newest release of the census history that holds an index, read from GitHub. */
 export const indexReleaseQuery = () =>
@@ -30,8 +59,11 @@ export function useIndexRelease() {
 export function useInstallIndex() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: [...indexJobKey, "install"],
     mutationFn: async () => unwrap(await commands.installIndex()),
     onSuccess: (settings) => queryClient.setQueryData(settingsKeys.current(), settings),
+    // A download that stopped is kept on disk.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: storageKey }),
   });
 }
 
@@ -85,11 +117,13 @@ export const censusCloneQuery = () =>
 export function useUpdateIndex() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: [...indexJobKey, "update"],
     mutationFn: async () => unwrap(await commands.updateIndex()),
-    onSuccess: (settings) => {
-      queryClient.setQueryData(settingsKeys.current(), settings);
-      // A first update makes the app's clone.
+    onSuccess: (settings) => queryClient.setQueryData(settingsKeys.current(), settings),
+    onSettled: () => {
+      // A first update makes the app's clone, and a stopped one keeps what it fetched.
       void queryClient.invalidateQueries({ queryKey: censusCloneQuery().queryKey });
+      void queryClient.invalidateQueries({ queryKey: storageKey });
     },
   });
 }
@@ -103,8 +137,46 @@ export function useCensusClone() {
 export function useBootstrapCensus() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: [...indexJobKey, "bootstrap"],
     mutationFn: async () => unwrap(await commands.bootstrapCensus()),
     onSuccess: (clone) => queryClient.setQueryData(censusCloneQuery().queryKey, clone),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: storageKey }),
+  });
+}
+
+/** Removes every index the app installed; the settings come back choosing none of them. */
+export function useRemoveIndex() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: [...indexJobKey, "remove-index"],
+    mutationFn: async () => unwrap(await commands.removeIndex()),
+    onSuccess: (settings) => queryClient.setQueryData(settingsKeys.current(), settings),
+    // A folder that did not go is still on disk.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: storageKey }),
+  });
+}
+
+/** Removes the app's clones of the census history. */
+export function useRemoveCensus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: [...indexJobKey, "remove-census"],
+    mutationFn: async () => unwrap(await commands.removeCensus()),
+    onSuccess: (clone) => queryClient.setQueryData(censusCloneQuery().queryKey, clone),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: censusCloneQuery().queryKey });
+      void queryClient.invalidateQueries({ queryKey: storageKey });
+    },
+  });
+}
+
+/** Removes the downloads kept to resume. */
+export function useRemoveDownloads() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: [...indexJobKey, "remove-downloads"],
+    mutationFn: async () => unwrap(await commands.removeDownloads()),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: storageKey }),
   });
 }
 

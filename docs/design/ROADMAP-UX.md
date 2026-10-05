@@ -5,7 +5,8 @@ work needs to know of the library. The decisions are #ADR-0046 (a standalone app
 Manager's stack), #ADR-0047 (the history index, distributed and grown on the user's machine),
 #ADR-0057 (the census history fetched as far as an append reads it), #ADR-0060 (the census
 history bootstrapped from a released archive), #ADR-0059 (the League Toolkit caches updated
-when asked and marked when behind), #ADR-0049 (an AI agent as a caller, proposed),
+when asked and marked when behind), #ADR-0061 (what the app downloaded removed when asked,
+proposed), #ADR-0049 (an AI agent as a caller, proposed),
 #ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
@@ -105,6 +106,40 @@ On this machine (2026-10-04), the inputs open in 1.7 s with the name-hash index 
 and a repair of a mod of 27 MB runs through check in 0.4 s and through write in 0.5 s. The
 report of that run is the command's, byte for byte, with the same inputs.
 
+## The inputs page
+
+The page has two groups, and a button that asks every server again how the inputs stand.
+
+- **What a run reads**: the game, the hash tables, the schema database and the history index,
+  a row each.
+- **What the history index is made from**: the app's clone of the census history, and the
+  downloads a stop kept. No run reads either, and the group says so.
+
+The history index is a SQLite database and the census history a Git repository, and each row
+names its kind beside its title. They are two rows in two groups because they are brought up to
+date in different ways and cost different amounts: the index is what a run needs, and the clone
+is only where its new builds are fetched into.
+
+A row holds, in this order:
+
+1. Its title, and a badge of how it stands: up to date, an update published, none, being
+   checked, or not opening.
+2. The path read, with a button that shows the folder in the system's file manager
+   (`reveal_place`, which takes the name of a place and never a path).
+3. Short facts: whether the folder is the shared one or one the user chose, the build, the
+   tables, the bytes on disk.
+4. An offer for each thing the user can have done, as a box with what it does, what it costs
+   and one button. Work under way shows its progress in the same box.
+
+The index row has up to three offers: the builds after its head added from the census history,
+the newest release downloaded in its place, and an index of the app's that the settings do not
+name put back in use. The filled button is the cheapest that brings the index up to date.
+
+The index, the clone and the kept downloads each show their bytes on disk and a button that
+removes them, asked about first (#ADR-0061, `reforge_app::storage`). The work on the history
+(a download, an update, a bootstrap, a removal) runs one at a time, and the buttons of the
+others are off while one runs. A page left and come back to shows the work still under way.
+
 ## The history index
 
 #ADR-0047. To build, in this order:
@@ -133,8 +168,8 @@ folder per release (`reforge_app::index`). The settings then name it, and a fold
 longer name is removed at the next start. The published database of 767 MB downloaded and
 unpacked in 42 s on this machine (2026-10-05).
 
-The history row offers the archive as a download of its own, which makes the app's whole clone,
-`census-history` in its data folder, or makes it again (`reforge_app::archive`). The archive
+The census history's row offers the archive as a download of its own, which makes the app's
+whole clone, `census-history` in its data folder, or makes it again (`reforge_app::archive`). The archive
 downloads as the database does, and is read as a stream: its pack's four files go into a new
 bare clone, under names built from the pack's hash, the commit of `history-v2` in its
 `packed-refs` becomes the clone's branch, and nothing else of the archive is written. The new
@@ -163,8 +198,8 @@ The inputs open again once either download ends.
 
 The app checks both, and the census history's tip, at its start, and downloads nothing unasked.
 An input a download would bring up to date is marked with a warning triangle that names what
-is behind when hovered: beside Inputs in the list of pages, on the run page as a link to the
-inputs page, and on the input's row.
+is behind when hovered: beside Inputs in the list of pages, and on the run page as a link to
+the inputs page. On the inputs page the input's row says it with its badge and its offer.
 
 ## Two views of one run
 

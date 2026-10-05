@@ -61,6 +61,17 @@ export function megabytes(bytes: number): string {
   return (bytes / 1_000_000).toFixed(0);
 }
 
+/** Bytes on disk with their unit: tenths of a gigabyte, whole megabytes or whole kilobytes. */
+export function diskSize(bytes: number): string {
+  if (bytes >= 1_000_000_000) {
+    return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+  }
+  if (bytes >= 1_000_000) {
+    return `${megabytes(bytes)} MB`;
+  }
+  return `${kilobytes(bytes)} KB`;
+}
+
 /** Bytes as whole kilobytes. */
 export function kilobytes(bytes: number): string {
   return (bytes / 1_000).toFixed(0);

@@ -126,6 +126,15 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.SCHEMA_UNWRITABLE.title"](),
       detail,
     }))
+    .with({ code: "NOT_REMOVED" }, ({ path, detail }) => ({
+      title: m["error.NOT_REMOVED.title"]({ path }),
+      description: m["error.NOT_REMOVED.description"](),
+      detail,
+    }))
+    .with({ code: "NOT_SHOWN" }, ({ path, detail }) => ({
+      title: m["error.NOT_SHOWN.title"](),
+      detail: path ? `${path}: ${detail}` : detail,
+    }))
     .with({ code: "CANCELLED" }, () => ({ title: m["error.CANCELLED.title"]() }))
     .with({ code: "INTERNAL" }, ({ detail }) => ({
       title: m["error.INTERNAL.title"](),

@@ -4,7 +4,14 @@ import { Button, FailureNote } from "@/components";
 import { m } from "@/i18n";
 import type { UpdateStep } from "@/lib/bindings.gen";
 
-import { cancelIndex, useIndexBehind, useIndexUpdateStep, useUpdateIndex } from "../api/index";
+import {
+  cancelIndex,
+  useIndexBehind,
+  useIndexJobRunning,
+  useIndexUpdateStep,
+  useUpdateIndex,
+} from "../api/index";
+import { Offer } from "./InputRow";
 import { kilobytes, ProgressRow } from "./ProgressRow";
 
 function Step({ step }: { step: UpdateStep }) {
@@ -29,41 +36,43 @@ function Step({ step }: { step: UpdateStep }) {
 }
 
 /**
- * The index taken forward from the census history (#ADR-0057): whether the history holds builds
- * after the index's head, and an update that fetches them and appends them to a copy of the
- * index.
+ * The index taken forward from the census history (#ADR-0057): an update that fetches the
+ * builds after the index's head and appends them to a copy of the index. Nothing when the
+ * index holds every build.
  */
 export function IndexUpdate() {
   const behind = useIndexBehind();
   const update = useUpdateIndex();
   const step = useIndexUpdateStep();
+  const running = useIndexJobRunning("update");
+  const busy = useIndexJobRunning();
 
   if (behind.isError) {
     return <FailureNote failure={behind.error} className="text-xs" />;
   }
-  if (behind.data == null) {
+  if (!behind.data && !running && !update.isError) {
     return null;
   }
 
   return (
-    <div className="mt-2 flex flex-col gap-2" data-ui="IndexUpdate">
-      <p className="text-xs text-surface-400 select-none">
-        {behind.data ? m.inputs_index_behind_label() : m.inputs_index_up_to_date_label()}
-      </p>
-      {update.isPending && step && <Step step={step} />}
-      {behind.data && !update.isPending && (
-        <div>
+    <Offer
+      text={m.inputs_index_behind_label()}
+      action={
+        !running && (
           <Button
             size="sm"
             variant="filled"
             left={<ArrowsClockwiseIcon weight="bold" />}
+            disabled={busy}
             onClick={() => update.mutate()}
           >
             {m.inputs_index_update_action()}
           </Button>
-        </div>
-      )}
+        )
+      }
+    >
+      {running && step && <Step step={step} />}
       {update.isError && <FailureNote failure={update.error} className="text-xs" />}
-    </div>
+    </Offer>
   );
 }

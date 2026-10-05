@@ -1,6 +1,32 @@
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
+
 import { useHashesCheck } from "./hashes";
 import { useIndexBehind } from "./index";
 import { useSchemaCheck } from "./schema";
+
+/** The start of the key of every read that asks a server how an input stands. */
+const checkKeys = [
+  ["hashes", "check"],
+  ["schema", "check"],
+  ["index", "behind"],
+  ["index", "release"],
+] as const;
+
+/** Asks every server again how the inputs stand, and says whether an answer is awaited. */
+export function useCheckInputs() {
+  const queryClient = useQueryClient();
+  const checking =
+    useIsFetching({
+      predicate: (query) =>
+        checkKeys.some(([area, what]) => query.queryKey[0] === area && query.queryKey[1] === what),
+    }) > 0;
+  const check = () => {
+    for (const queryKey of checkKeys) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  };
+  return { check, checking };
+}
 
 /** What a download would bring up to date, input by input. */
 export interface StaleInputs {
