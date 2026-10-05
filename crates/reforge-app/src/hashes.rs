@@ -1,7 +1,7 @@
-//! The hash tables downloaded and kept up to date by the app (#ADR-0058): mimir's own updater,
-//! over the app's web client, into the hash cache the settings choose, else the one LTK Manager
-//! keeps. The cache is shared: its lock keeps two programs from updating it at once, and a
-//! reader sees the old tables or the new ones whole.
+//! The hash tables downloaded and kept up to date by the app (#ADR-0059): mimir's own updater,
+//! over the app's web client, into the hash cache the settings choose, else the one the League
+//! Toolkit programs share. Its lock keeps two programs from updating it at once, and a reader
+//! sees the old tables or the new ones whole.
 
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

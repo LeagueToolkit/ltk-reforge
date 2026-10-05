@@ -11,6 +11,7 @@ import { isAppError } from "@/utils";
 import { useInputs } from "../api/inputs";
 import { HashesDownload } from "./HashesDownload";
 import { IndexDownload } from "./IndexDownload";
+import { SchemaDownload } from "./SchemaDownload";
 
 /** The inputs a run lacks. */
 export interface Missing {
@@ -123,7 +124,11 @@ export function useInputsGate() {
             <HashesDownload installed={false} />
           </Row>
         )}
-        {missing.schema && <Row icon={warn} text={m.gate_schema_text()} />}
+        {missing.schema && (
+          <Row icon={warn} text={m.gate_schema_text()}>
+            <SchemaDownload />
+          </Row>
+        )}
       </ul>
       {!missing.game && (
         <label className="flex items-center gap-2 text-sm text-surface-300 select-none">

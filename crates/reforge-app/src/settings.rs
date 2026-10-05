@@ -23,10 +23,12 @@ pub struct Settings {
     /// `DATA/FINAL`. None until it is found or picked.
     #[serde(rename = "inputs.game")]
     pub game: Option<String>,
-    /// The hash cache's folder. None: the one LTK Manager keeps on this machine (#ADR-0058).
+    /// The hash cache's folder. None: the one the League Toolkit programs share on this machine
+    /// (#ADR-0059).
     #[serde(rename = "inputs.hashes")]
     pub hashes: Option<String>,
-    /// The meta schema database. None: the copy LTK Manager keeps on this machine.
+    /// The meta schema database. None: the one the League Toolkit programs share on this
+    /// machine (#ADR-0059).
     #[serde(rename = "inputs.schema")]
     pub schema: Option<String>,
     /// The history index's folder. None: a run is judged against the install alone

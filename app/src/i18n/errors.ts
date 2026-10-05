@@ -99,6 +99,19 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.HASHES_BUSY.title"](),
       description: m["error.HASHES_BUSY.description"](),
     }))
+    .with({ code: "SCHEMA_FETCH" }, ({ detail }) => ({
+      title: m["error.SCHEMA_FETCH.title"](),
+      detail,
+    }))
+    .with({ code: "SCHEMA_UNUSABLE" }, ({ detail }) => ({
+      title: m["error.SCHEMA_UNUSABLE.title"](),
+      description: m["error.SCHEMA_UNUSABLE.description"](),
+      detail,
+    }))
+    .with({ code: "SCHEMA_UNWRITABLE" }, ({ detail }) => ({
+      title: m["error.SCHEMA_UNWRITABLE.title"](),
+      detail,
+    }))
     .with({ code: "CANCELLED" }, () => ({ title: m["error.CANCELLED.title"]() }))
     .with({ code: "INTERNAL" }, ({ detail }) => ({
       title: m["error.INTERNAL.title"](),

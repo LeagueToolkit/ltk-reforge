@@ -1,6 +1,6 @@
 # ADR-0058: The app downloads the hash tables into the shared cache
 
-- **Status:** Accepted (2026-10-05)
+- **Status:** Superseded by #ADR-0059
 - **Related:** #ADR-0046; supersedes #ADR-0048; `docs/design/ROADMAP-UX.md`, "The inputs"
 
 ## Context

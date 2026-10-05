@@ -55,7 +55,7 @@ pub struct PortCommand {
     #[arg(long)]
     keep_dds: bool,
     /// The meta schema database the fixups and the checks read the target build's types from
-    /// (default: the one LTK Manager keeps on this machine).
+    /// (default: the one the League Toolkit programs share on this machine).
     #[arg(long)]
     schema: Option<Utf8PathBuf>,
     #[command(flatten)]

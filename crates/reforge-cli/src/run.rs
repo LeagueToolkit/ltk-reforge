@@ -33,7 +33,8 @@ pub struct Inputs {
     /// The census history, to compare its head with the index's.
     #[arg(long)]
     repo: Option<Utf8PathBuf>,
-    /// The hash cache's directory (default: the one LTK Manager keeps on this machine).
+    /// The hash cache's directory (default: the one the League Toolkit programs share on this
+    /// machine).
     #[arg(long)]
     mimir: Option<Utf8PathBuf>,
     /// Read no hash cache.
@@ -52,7 +53,7 @@ pub struct Inputs {
 pub enum SchemaInput<'a> {
     /// No database: the run reads no value's type.
     Unread,
-    /// The database at a path, else the one LTK Manager keeps on this machine.
+    /// The database at a path, else the one the League Toolkit programs share on this machine.
     Read(Option<&'a Utf8Path>),
 }
 
@@ -99,7 +100,7 @@ impl Inputs {
             SchemaInput::Unread => None,
             SchemaInput::Read(path) => {
                 let path = path.map(Utf8Path::to_path_buf);
-                let path = path.or_else(Schema::manager_cache);
+                let path = path.or_else(Schema::shared_copy);
                 let schema = Schema::open_reported(path.as_deref(), sink);
                 if let Some(schema) = &schema {
                     schema.report(build.as_ref(), sink);

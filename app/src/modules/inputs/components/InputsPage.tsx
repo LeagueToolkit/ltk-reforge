@@ -8,9 +8,12 @@ import { useSaveSettings, useSettings } from "@/modules/settings";
 
 import { useFindGame, useInputs } from "../api/inputs";
 import { pickFile, pickFolder } from "../api/pick";
+import { useStaleInputs } from "../api/stale";
 import { HashesDownload } from "./HashesDownload";
 import { IndexDownload } from "./IndexDownload";
 import { IndexUpdate } from "./IndexUpdate";
+import { SchemaDownload } from "./SchemaDownload";
+import { StaleMark, staleWords } from "./StaleMark";
 
 type InputKey = "inputs.game" | "inputs.hashes" | "inputs.schema" | "inputs.history";
 
@@ -21,16 +24,21 @@ interface InputRowProps {
   path: string | null | undefined;
   /** What the row says when no path was read. */
   none: string;
+  /** What a download would bring up to date, in words. Null when nothing. */
+  stale?: string | null;
   /** Lines under the path: a build, a count. */
   facts?: ReactNode;
   actions: ReactNode;
 }
 
-function InputRow({ title, description, path, none, facts, actions }: InputRowProps) {
+function InputRow({ title, description, path, none, stale, facts, actions }: InputRowProps) {
   return (
     <div className="flex items-start justify-between gap-4" data-ui="InputRow">
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-surface-100 select-none">{title}</p>
+        <p className="flex items-center gap-1.5 text-sm text-surface-100 select-none">
+          {title}
+          {stale && <StaleMark lines={[stale]} />}
+        </p>
         <p className="text-xs text-surface-400 select-none">{description}</p>
         {path && <p className="mt-1 font-mono text-xs break-all text-surface-200">{path}</p>}
         {!path && <p className="mt-1 text-xs text-surface-300 select-none">{none}</p>}
@@ -56,6 +64,7 @@ function Rows({ view }: { view: InputsView | undefined }) {
   const settings = useSettings();
   const set = useSetInput();
   const find = useFindGame();
+  const stale = staleWords(useStaleInputs());
   const chosen = settings.data ?? {};
 
   const choose = async (key: InputKey) => {
@@ -115,11 +124,10 @@ function Rows({ view }: { view: InputsView | undefined }) {
         description={m.inputs_hashes_description()}
         path={view?.hashes.dir}
         none={m.inputs_hashes_none()}
+        stale={stale.hashes}
         facts={
           <>
-            {!chosen["inputs.hashes"] && view?.hashes.dir && (
-              <p>{m.inputs_hashes_manager_label()}</p>
-            )}
+            {!chosen["inputs.hashes"] && view?.hashes.dir && <p>{m.inputs_shared_label()}</p>}
             {view && view.hashes.tables.length > 0 && (
               <p>{m.inputs_hashes_tables_label({ tables: view.hashes.tables.join(", ") })}</p>
             )}
@@ -130,7 +138,7 @@ function Rows({ view }: { view: InputsView | undefined }) {
           <>
             {chosen["inputs.hashes"] && (
               <Button size="sm" variant="ghost" onClick={() => set("inputs.hashes", null)}>
-                {m.inputs_use_manager_action()}
+                {m.inputs_use_shared_action()}
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={() => void choose("inputs.hashes")}>
@@ -144,16 +152,21 @@ function Rows({ view }: { view: InputsView | undefined }) {
         description={m.inputs_schema_description()}
         path={view?.schema.path}
         none={m.inputs_schema_none()}
+        stale={stale.schema}
         facts={
-          view?.schema.latest_build && (
-            <p>{m.inputs_schema_build_label({ build: view.schema.latest_build })}</p>
-          )
+          <>
+            {!chosen["inputs.schema"] && view?.schema.path && <p>{m.inputs_shared_label()}</p>}
+            {view?.schema.latest_build && (
+              <p>{m.inputs_schema_build_label({ build: view.schema.latest_build })}</p>
+            )}
+            {view && !chosen["inputs.schema"] && <SchemaDownload />}
+          </>
         }
         actions={
           <>
             {chosen["inputs.schema"] && (
               <Button size="sm" variant="ghost" onClick={() => set("inputs.schema", null)}>
-                {m.inputs_use_manager_action()}
+                {m.inputs_use_shared_action()}
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={() => void chooseSchema()}>
@@ -167,6 +180,7 @@ function Rows({ view }: { view: InputsView | undefined }) {
         description={m.inputs_history_description()}
         path={view?.history.dir}
         none={m.inputs_history_none()}
+        stale={stale.history}
         facts={
           <>
             {view?.history.builds != null && view.history.newest_build && (

@@ -54,6 +54,13 @@ export const commands = {
 	updateHashes: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("update_hashes"),
 	/**  Stops the download of the hash tables under way. */
 	cancelHashes: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("cancel_hashes"),
+	/**  How the schema database the League Toolkit programs share stands against the published one. */
+	schemaCheck: () => __TAURI_INVOKE<({ ok: true; value: SchemaCheck }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("schema_check"),
+	/**
+	 *  Downloads the published schema database into the folder the League Toolkit programs share,
+	 *  unless the copy there is the one published.
+	 */
+	updateSchema: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("update_schema"),
 };
 
 /** Events */
@@ -149,6 +156,12 @@ export type AppError =
 { code: "HASHES_FETCH"; detail: string } | 
 /**  Another program, or this one, is updating the hash tables. */
 { code: "HASHES_BUSY" } | 
+/**  The schema database did not download. */
+{ code: "SCHEMA_FETCH"; detail: string } | 
+/**  The schema database served is not one the app reads. */
+{ code: "SCHEMA_UNUSABLE"; detail: string } | 
+/**  The schema database could not be written to disk. */
+{ code: "SCHEMA_UNWRITABLE"; detail: string } | 
 /**  The user stopped the work. */
 { code: "CANCELLED" } | 
 /**  A fault of the app's own, with no remedy a person can take. */
@@ -672,6 +685,17 @@ export type RunView = {
 	names: { [key in string]: string },
 };
 
+/**  The schema database in a folder, against the published one. */
+export type SchemaCheck = {
+	/**  Whether the folder holds a database. */
+	held: boolean,
+	/**
+	 *  Whether an update downloads one: the folder holds none, or another than the one
+	 *  published.
+	 */
+	behind: boolean,
+};
+
 /**  The schema database as read. */
 export type SchemaView = {
 	/**  The file that was read. None when none was found or it did not read. */
@@ -693,9 +717,15 @@ export type Settings = {
 	 *  `DATA/FINAL`. None until it is found or picked.
 	 */
 	"inputs.game"?: string | null,
-	/**  The hash cache's folder. None: the one LTK Manager keeps on this machine (#ADR-0058). */
+	/**
+	 *  The hash cache's folder. None: the one the League Toolkit programs share on this machine
+	 *  (#ADR-0059).
+	 */
 	"inputs.hashes"?: string | null,
-	/**  The meta schema database. None: the copy LTK Manager keeps on this machine. */
+	/**
+	 *  The meta schema database. None: the one the League Toolkit programs share on this
+	 *  machine (#ADR-0059).
+	 */
 	"inputs.schema"?: string | null,
 	/**
 	 *  The history index's folder. None: a run is judged against the install alone

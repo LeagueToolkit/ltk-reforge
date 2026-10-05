@@ -86,6 +86,15 @@ pub enum AppError {
     /// Another program, or this one, is updating the hash tables.
     #[error("the hash tables are being updated already")]
     HashesBusy,
+    /// The schema database did not download.
+    #[error("the schema database did not download: {detail}")]
+    SchemaFetch { detail: String },
+    /// The schema database served is not one the app reads.
+    #[error("the schema database served does not read: {detail}")]
+    SchemaUnusable { detail: String },
+    /// The schema database could not be written to disk.
+    #[error("the schema database could not be written: {detail}")]
+    SchemaUnwritable { detail: String },
     /// The user stopped the work.
     #[error("cancelled")]
     Cancelled,

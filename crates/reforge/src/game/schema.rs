@@ -1,5 +1,5 @@
 //! The meta schema database: the type every field of every class has at every build, as the LTK
-//! Meta Wiki publishes it and LTK Manager caches it
+//! Meta Wiki publishes it and the League Toolkit programs keep it beside the hash cache
 //! (`%LOCALAPPDATA%/LeagueToolkit/meta/meta-schema.json`). Read only.
 //!
 //! ```json
@@ -22,12 +22,22 @@ use fs_err as fs;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum};
 use serde::{Deserialize, Serialize};
 
-use super::Build;
+use super::{Build, mimir_cache_dir};
 use crate::diag::{Channel, Code, Diag, Input, Message, Severity, Sink, Subject};
 use crate::model::BinHash;
 
 /// The one format this reader reads.
 const FORMAT: u32 = 1;
+
+/// The database's file in the folder the League Toolkit programs keep it in.
+pub const SCHEMA_FILE: &str = "meta-schema.json";
+
+/// The folder the League Toolkit programs keep the schema database in on this machine: `meta`
+/// beside the hash cache, as LTK Manager places it. The folder may not exist. `None` when the
+/// platform names no data directory.
+pub fn meta_cache_dir() -> Option<Utf8PathBuf> {
+    Some(mimir_cache_dir()?.parent()?.join("meta"))
+}
 
 /// Why a meta schema database does not read.
 #[derive(Debug, thiserror::Error)]
@@ -276,13 +286,10 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// Where LTK Manager keeps its copy of the database on this machine, when it has one.
-    pub fn manager_cache() -> Option<Utf8PathBuf> {
-        let base = Utf8PathBuf::from(std::env::var("LOCALAPPDATA").ok()?);
-        let file = base
-            .join("LeagueToolkit")
-            .join("meta")
-            .join("meta-schema.json");
+    /// The copy of the database the League Toolkit programs share on this machine, when there
+    /// is one.
+    pub fn shared_copy() -> Option<Utf8PathBuf> {
+        let file = meta_cache_dir()?.join(SCHEMA_FILE);
         file.is_file().then_some(file)
     }
 

@@ -1,7 +1,7 @@
 //! The name tables. Names are for reading, for spelling and for finding characters by pattern:
 //! nothing a run decides rests on a hash having a name. Two sources, the first spelling winning:
 //!
-//! 1. the hash cache LTK Manager keeps on the machine (Mimir);
+//! 1. the hash cache every League Toolkit program shares on the machine (Mimir);
 //! 2. CommunityDragon text tables, `<hex> <name>` per line, from the directories given.
 //!
 //! Field names are the exception to "cosmetic": a PTCH record addresses a property by a path of
@@ -184,9 +184,9 @@ impl Diag for MimirAbsent {
     }
 }
 
-/// The directory LTK Manager keeps its hash cache in on this machine: `MIMIR_DIR` when set,
-/// else under the platform's data directory. The directory may not exist. `None` when the
-/// platform names no data directory.
+/// The directory of the hash cache every League Toolkit program shares on this machine:
+/// `MIMIR_DIR` when set, else `LeagueToolkit/hashes` under the platform's data directory. The
+/// directory may not exist. `None` when the platform names no data directory.
 pub fn mimir_cache_dir() -> Option<Utf8PathBuf> {
     let store = HashStore::discover().ok()?;
     Utf8PathBuf::from_path_buf(store.dir().to_path_buf()).ok()

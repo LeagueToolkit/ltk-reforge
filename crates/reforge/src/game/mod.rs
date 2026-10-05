@@ -29,7 +29,8 @@ pub use self::names::{
     mimir_cache_dir,
 };
 pub use self::schema::{
-    FieldType, Schema, SchemaAbsent, SchemaError, SchemaInstallNewer, SchemaUnreadable,
+    FieldType, SCHEMA_FILE, Schema, SchemaAbsent, SchemaError, SchemaInstallNewer,
+    SchemaUnreadable, meta_cache_dir,
 };
 pub use self::speller::Speller;
 pub use self::view::{GameBin, GameSkin, GameView};

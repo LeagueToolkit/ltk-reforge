@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use parking_lot::Mutex;
-use reforge::game::mimir_cache_dir;
+use reforge::game::{meta_cache_dir, mimir_cache_dir};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
@@ -20,6 +20,7 @@ use crate::index::{IndexReleaseView, InstallProgress, Installer, Web};
 use crate::inputs::{self, Choice, InputsView};
 use crate::run::{self, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
 use crate::runlog::LogLine;
+use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{HashesJob, IndexJob, OpenInputs};
@@ -184,7 +185,7 @@ pub async fn load_selection(path: String) -> IpcResult<FixupChoice> {
 #[specta::specta]
 pub async fn index_release() -> IpcResult<Option<IndexReleaseView>> {
     off_thread(|| {
-        let web = Web::new()?;
+        let web = Web::for_checks()?;
         match web.latest()? {
             Some(release) => Ok(Some(release.view(&web)?)),
             None => Ok(None),
@@ -301,14 +302,16 @@ fn update_from_census(
         .update(index)
 }
 
-/// The hash cache the settings choose, else LTK Manager's.
+fn no_data_dir() -> AppError {
+    AppError::NoDataDir {
+        detail: "the platform names no data directory".to_string(),
+    }
+}
+
+/// The hash cache the settings choose, else the one the League Toolkit programs share.
 fn hashes_dir(settings: &Settings) -> Result<Utf8PathBuf, AppError> {
     let chosen = Choice::from(settings).hashes;
-    chosen
-        .or_else(mimir_cache_dir)
-        .ok_or_else(|| AppError::NoDataDir {
-            detail: "the platform names no data directory".to_string(),
-        })
+    chosen.or_else(mimir_cache_dir).ok_or_else(no_data_dir)
 }
 
 /// What an update of the hash tables the settings choose would download.
@@ -318,7 +321,7 @@ pub async fn hashes_check(app: AppHandle) -> IpcResult<HashesCheck> {
     let settings = app.state::<SettingsStore>().get();
     off_thread(move || {
         let dir = hashes_dir(&settings)?;
-        let web = Web::new()?;
+        let web = Web::for_checks()?;
         let never = AtomicBool::new(false);
         hashes::check(&dir, &Release::new(&web, TABLES, &never))
     })
@@ -365,6 +368,35 @@ pub async fn update_hashes(app: AppHandle) -> IpcResult<()> {
 pub fn cancel_hashes(job: State<'_, Arc<HashesJob>>) -> IpcResult<()> {
     job.run.cancel.store(true, Ordering::Relaxed);
     IpcResult::ok(())
+}
+
+/// How the schema database the League Toolkit programs share stands against the published one.
+#[tauri::command]
+#[specta::specta]
+pub async fn schema_check() -> IpcResult<SchemaCheck> {
+    off_thread(|| {
+        let dir = meta_cache_dir().ok_or_else(no_data_dir)?;
+        let web = Web::for_checks()?;
+        schema::check(&dir, &Wiki::new(&web, schema::PUBLISHED))
+    })
+    .await
+}
+
+/// Downloads the published schema database into the folder the League Toolkit programs share,
+/// unless the copy there is the one published.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_schema(app: AppHandle) -> IpcResult<()> {
+    off_thread(move || {
+        let dir = meta_cache_dir().ok_or_else(no_data_dir)?;
+        let web = Web::new()?;
+        if schema::update(&dir, &Wiki::new(&web, schema::PUBLISHED))? {
+            // The database open is the old one: the next run opens the new.
+            app.state::<Arc<OpenInputs>>().forget();
+        }
+        Ok(())
+    })
+    .await
 }
 
 /// The inputs the settings choose, opened, and what opening them found.

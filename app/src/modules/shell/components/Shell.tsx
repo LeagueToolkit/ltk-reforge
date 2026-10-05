@@ -24,8 +24,14 @@ function NavLink({
   );
 }
 
+interface ShellProps {
+  /** A mark beside the inputs page's name, for inputs that call for it. */
+  inputsMark?: ReactNode;
+  children: ReactNode;
+}
+
 /** The app's frame: the pages on the left, the page beside them. */
-export function Shell({ children }: { children: ReactNode }) {
+export function Shell({ inputsMark, children }: ShellProps) {
   return (
     <div className="flex h-screen bg-surface-950 text-surface-100" data-ui="Shell">
       <nav
@@ -43,6 +49,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <NavLink to="/inputs">
           <StackIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_inputs_label()}
+          {inputsMark && <span className="ml-auto flex">{inputsMark}</span>}
         </NavLink>
         <NavLink to="/settings">
           <GearSixIcon weight="bold" className="h-4 w-4" />

@@ -7,9 +7,9 @@ import { cancelHashes, useHashesCheck, useHashesProgress, useUpdateHashes } from
 import { megabytes, ProgressRow } from "./ProgressRow";
 
 /**
- * The hash tables downloaded or updated by the app (#ADR-0058), for a machine where LTK Manager
- * does not keep them: the tables the newest release has that the cache lacks or holds older,
- * and a download of them into the cache every program reads.
+ * The hash tables downloaded or updated by the app (#ADR-0059): the tables the newest release
+ * has that the cache lacks or holds older, and a download of them into the cache every League
+ * Toolkit program reads.
  */
 export function HashesDownload({ installed }: { installed: boolean }) {
   const check = useHashesCheck();

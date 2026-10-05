@@ -40,6 +40,8 @@ pub fn builder() -> Builder<Wry> {
             commands::hashes_check,
             commands::update_hashes,
             commands::cancel_hashes,
+            commands::schema_check,
+            commands::update_schema,
         ])
         .events(collect_events![
             InstallProgress,

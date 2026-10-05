@@ -3,8 +3,9 @@
 The plan for the first release of reforge as a desktop app, and what a person starting that
 work needs to know of the library. The decisions are #ADR-0046 (a standalone app on LTK
 Manager's stack), #ADR-0047 (the history index, distributed and grown on the user's machine),
-#ADR-0057 (the census history fetched as far as an append reads it), #ADR-0058 (the hash tables
-on the machine, downloaded when asked), #ADR-0049 (an AI agent as a caller, proposed),
+#ADR-0057 (the census history fetched as far as an append reads it), #ADR-0059 (the League
+Toolkit caches updated when asked and marked when behind), #ADR-0049 (an AI agent as a caller,
+proposed),
 #ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
@@ -53,7 +54,7 @@ run and writes the report, in some two hundred lines.
 
 | the app needs | the library has |
 |---|---|
-| the inputs of a run | `Env::builder()` with an `Install`, a `History`, `Names` and a `Schema`. `mimir_cache_dir()` and `Schema::manager_cache()` name where LTK Manager keeps the hash cache and the schema database. An input that is absent or does not read is a diagnostic, and the run goes on with less |
+| the inputs of a run | `Env::builder()` with an `Install`, a `History`, `Names` and a `Schema`. `mimir_cache_dir()`, `meta_cache_dir()` and `Schema::shared_copy()` name the hash cache and the schema database the League Toolkit programs share. An input that is absent or does not read is a diagnostic, and the run goes on with less |
 | a repair | `Repairer::new(&env)`, with its fixups, checks and caps, gives a `Run` |
 | a port | `Porter::new(&env)`, with a `Policy` and the policies to compare with |
 | a run a stage at a time | `Run::read`, `load`, `fix`, `gather`, `decide`, `plan`, `build`, `check`, `write`, or `Run::through(stage)`. A stage runs once, and the run holds every result: `module()`, `changes()`, `facts()`, `targets()`, `port()`, `package()`. `Run::stages()` lists the stages of the run's kind, `Run::ran(stage)` says whether one ran to its end, and `Run::halted_at()` names the stage a fatal finding ended |
@@ -91,8 +92,8 @@ before it.
 | input | where it comes from | without it |
 |---|---|---|
 | the game install | the user picks the folder, or the app finds it as LTK Manager does | no run |
-| the hash tables | the ones on the machine, LTK Manager's first, downloaded or updated by the app when asked (#ADR-0058) | a run names less: a chunk no table spells ships under its hash |
-| the schema database | LTK Manager's copy on the machine | the types come from the install's bins alone |
+| the hash tables | the cache the League Toolkit programs share, else a folder the user picks; downloaded or updated by the app when asked (#ADR-0059) | a run names less: a chunk no table spells ships under its hash |
+| the schema database | the copy the League Toolkit programs share, downloaded or updated by the app when asked (#ADR-0059), else a file the user picks | the types come from the install's bins alone |
 | the history index | fetched prebuilt and taken forward from the census history (#ADR-0047, #ADR-0057) | the run is judged against the install alone, and says so |
 
 The app says which inputs it read and how old each is, since a report differs with them: the
@@ -134,12 +135,19 @@ read 616 KB and the append took 4 to 7 s, most of it the copy of the database (2
 
 Not settled: how one bin entry's text at a build before the head is fetched with no full clone.
 
-## The hash tables
+## The hash tables and the schema database
 
-#ADR-0058. The inputs page reads the list of tables of Mimir's newest release and names the
+#ADR-0059. The inputs page reads the list of tables of Mimir's newest release and names the
 tables the cache lacks or holds older, with the size to download. The download runs Mimir's
-own updater into the cache the settings choose, else LTK Manager's, so the tables are the ones
-LTK Manager reads too (`reforge_app::hashes`). The inputs open again once it ends.
+own updater into the cache the settings choose, else the shared one (`reforge_app::hashes`).
+The schema database is asked for with the tag of the shared copy, and downloaded into the
+shared `meta` folder with its tag beside it, in LTK Manager's files (`reforge_app::schema`).
+The inputs open again once either download ends.
+
+The app checks both, and the census history's tip, at its start, and downloads nothing unasked.
+An input a download would bring up to date is marked with a warning triangle that names what
+is behind when hovered: beside Inputs in the list of pages, on the run page as a link to the
+inputs page, and on the input's row.
 
 ## Two views of one run
 
@@ -199,8 +207,8 @@ user picks another policy and runs again.
 - A rule is edited as its JSON is written, and a choice of fixups is saved and loaded as the
   selection file the command reads with `--fixups` (`reforge_app::selection`).
 - A run with an input absent asks first: with no game it does not start, and with no history
-  index, hash tables or schema it says what is judged with less and offers the index's
-  download, until the user tells it not to ask (`prompts.runWithLess`).
+  index, hash tables or schema it says what is judged with less and offers their downloads,
+  until the user tells it not to ask (`prompts.runWithLess`).
 
 ## The first version
 
@@ -210,7 +218,8 @@ user picks another policy and runs again.
    every finding, write the `.modpkg`.
 4. The advanced view of a repair: the stages, a run up to one of them, the fixups and checks
    turned on and off, the findings that block the write.
-5. The history index, as far as step 3 of the list above, and the hash tables downloaded.
+5. The history index, as far as step 3 of the list above, and the hash tables and the schema
+   database downloaded.
 6. A selection of fixups saved and loaded, and a rule added in the app.
 7. A port in both views, with the decision, its candidates and the policy.
 

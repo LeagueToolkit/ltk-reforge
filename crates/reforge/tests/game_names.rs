@@ -32,7 +32,7 @@ struct CacheTable<'a> {
     under: &'a [(u64, &'a str)],
 }
 
-/// Publishes a hash cache in `dir` as LTK Manager's updater does.
+/// Publishes a hash cache in `dir` as Mimir's updater does.
 fn hash_cache(dir: &Utf8Path, version: &str, tables: &[CacheTable<'_>]) {
     let staging = dir.join("staging");
     fs::create_dir_all(&staging).unwrap();

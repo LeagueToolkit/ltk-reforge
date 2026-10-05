@@ -37,7 +37,7 @@ pub struct Load {
     #[arg(long)]
     fix: bool,
     /// The meta schema database the fixups read the target build's types from (default: the
-    /// one LTK Manager keeps on this machine). Read with `--fix` only.
+    /// one the League Toolkit programs share on this machine). Read with `--fix` only.
     #[arg(long, requires = "fix")]
     schema: Option<Utf8PathBuf>,
     #[command(flatten)]

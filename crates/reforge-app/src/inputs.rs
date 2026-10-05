@@ -26,9 +26,9 @@ use crate::view::Finding;
 pub struct Choice {
     /// The game install.
     pub game: Option<Utf8PathBuf>,
-    /// The hash cache's folder, else LTK Manager's.
+    /// The hash cache's folder, else the one the League Toolkit programs share.
     pub hashes: Option<Utf8PathBuf>,
-    /// The schema database, else LTK Manager's.
+    /// The schema database, else the one the League Toolkit programs share.
     pub schema: Option<Utf8PathBuf>,
     /// The history index's folder, else none.
     pub history: Option<Utf8PathBuf>,
@@ -116,7 +116,7 @@ impl Inputs {
             },
         };
 
-        let schema = match choice.schema.clone().or_else(Schema::manager_cache) {
+        let schema = match choice.schema.clone().or_else(Schema::shared_copy) {
             None => Opened::Absent,
             Some(path) => match Schema::open(&path) {
                 Ok(schema) => {

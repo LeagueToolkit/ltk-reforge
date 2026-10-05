@@ -9,6 +9,6 @@
   "gate_less_title": "Some inputs are missing",
   "gate_no_game_title": "No game to run against",
   "gate_run_anyway_action": "Run anyway",
-  "gate_schema_text": "No schema database: a value's type comes from the game's own files alone. LTK Manager installs the database.",
+  "gate_schema_text": "No schema database: a value's type comes from the game's own files alone.",
   "gate_skip_label": "Do not ask again"
 }

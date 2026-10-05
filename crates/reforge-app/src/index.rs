@@ -9,6 +9,7 @@
 
 use std::io::{self, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
@@ -109,24 +110,45 @@ pub trait Source {
     fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, AppError>;
 }
 
+/// How long a connection may take to open, as LTK Manager allows.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// How long a check may take in all, as LTK Manager allows. The app checks unasked, where a
+/// request that hangs is worse than one that gives up.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(20);
+
 /// The web, as GitHub serves a release.
 pub struct Web {
     client: reqwest::blocking::Client,
 }
 
 impl Web {
-    /// A client that names the app, as GitHub's API asks.
+    /// A client for downloads, which names the app, as GitHub's API asks.
     pub fn new() -> Result<Self, AppError> {
-        let agent = concat!("reforge-app/", env!("CARGO_PKG_VERSION"));
+        // A download of 900 MB takes as long as it takes.
+        Self::with_timeout(None)
+    }
+
+    /// A client for checks, whose requests give up after 20 seconds.
+    pub fn for_checks() -> Result<Self, AppError> {
+        Self::with_timeout(Some(CHECK_TIMEOUT))
+    }
+
+    fn with_timeout(timeout: Option<Duration>) -> Result<Self, AppError> {
         let client = reqwest::blocking::Client::builder()
-            .user_agent(agent)
-            // A download of 900 MB takes as long as it takes.
-            .timeout(None)
+            .user_agent(concat!("reforge-app/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(timeout)
             .build()
             .map_err(|error| AppError::IndexFetch {
                 detail: chain(&error),
             })?;
         Ok(Self { client })
+    }
+
+    /// The client, for a request other than a plain read.
+    pub(crate) fn client(&self) -> &reqwest::blocking::Client {
+        &self.client
     }
 
     /// The newest release that holds an index.

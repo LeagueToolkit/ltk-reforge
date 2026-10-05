@@ -1,6 +1,6 @@
 //! The inputs: opened once, and what each one found raised into every run's log as the command
-//! raises it. Every test names its hash cache and schema, so none reads LTK Manager's copies on
-//! the machine.
+//! raises it. Every test names its hash cache and schema, so none reads the copies the League
+//! Toolkit programs share on the machine.
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;

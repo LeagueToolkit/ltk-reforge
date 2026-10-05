@@ -39,7 +39,7 @@ pub struct Inspect {
     #[arg(long)]
     keep_stale: bool,
     /// The meta schema database the fixups read the target build's types from (default: the
-    /// one LTK Manager keeps on this machine).
+    /// one the League Toolkit programs share on this machine).
     #[arg(long)]
     schema: Option<Utf8PathBuf>,
     #[command(flatten)]
