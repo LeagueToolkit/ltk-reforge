@@ -3,8 +3,10 @@
 //! mod. `docs/design/ROADMAP-UX.md` holds the plan.
 
 pub mod catalog;
+pub mod census;
 pub mod commands;
 pub mod error;
+pub mod hashes;
 pub mod index;
 pub mod inputs;
 pub mod ipc;
@@ -21,7 +23,7 @@ use camino::Utf8PathBuf;
 use tauri::Manager;
 
 use crate::settings::SettingsStore;
-use crate::state::{IndexJob, OpenInputs};
+use crate::state::{HashesJob, IndexJob, OpenInputs};
 
 /// Starts the app and returns when its window closes.
 pub fn run() -> tauri::Result<()> {
@@ -39,10 +41,11 @@ pub fn run() -> tauri::Result<()> {
             })?;
             app.manage(Arc::new(OpenInputs::new(cache)));
 
-            let indexes = app.path().app_data_dir()?.join("history-indexes");
-            let indexes = Utf8PathBuf::from_path_buf(indexes).map_err(|path| {
+            let data = app.path().app_data_dir()?;
+            let data = Utf8PathBuf::from_path_buf(data).map_err(|path| {
                 format!("the app's data folder is not UTF-8: {}", path.display())
             })?;
+            let indexes = data.join("history-indexes");
             // Before any run opens one: an index the settings no longer name is an older
             // release's, and nothing holds it open yet.
             let current = app
@@ -53,7 +56,11 @@ pub fn run() -> tauri::Result<()> {
             if let Some(current) = current.filter(|path| path.starts_with(&indexes)) {
                 index::remove_others(&indexes, &current);
             }
-            app.manage(Arc::new(IndexJob::new(indexes)));
+            app.manage(Arc::new(IndexJob::new(
+                indexes,
+                data.join("census-history"),
+            )));
+            app.manage(Arc::new(HashesJob::default()));
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -7,7 +7,9 @@ use specta_typescript::Typescript;
 use tauri::Wry;
 use tauri_specta::{Builder, collect_commands, collect_events};
 
+use crate::census::IndexUpdateProgress;
 use crate::commands;
+use crate::hashes::HashesProgress;
 use crate::index::InstallProgress;
 
 /// Where the bindings are kept, relative to this crate.
@@ -33,9 +35,16 @@ pub fn builder() -> Builder<Wry> {
             commands::index_release,
             commands::install_index,
             commands::cancel_index,
+            commands::index_behind,
+            commands::update_index,
+            commands::hashes_check,
+            commands::update_hashes,
+            commands::cancel_hashes,
         ])
         .events(collect_events![
             InstallProgress,
+            IndexUpdateProgress,
+            HashesProgress,
             commands::RunStage,
             commands::RunFinding,
             commands::RunLog,

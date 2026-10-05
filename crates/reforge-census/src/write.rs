@@ -389,17 +389,18 @@ pub(crate) fn write(
     Ok(stamp)
 }
 
-/// Adds the builds of `source` after the head of the index at `out`. Every build the index
-/// holds must be the history's at the same position. An index of a history that was rewritten
-/// is rebuilt instead.
+/// Writes the index at `index` with the builds of `source` after its head into `out`, which may
+/// be `index`. Every build the index holds must be the history's at the same position. An
+/// index of a history that was rewritten is rebuilt instead.
 pub(crate) fn append(
     source: &dyn ChangeSource,
     repo: &str,
+    index: &Utf8Path,
     out: &Utf8Path,
     progress: &mut dyn FnMut(Progress<'_>),
 ) -> Result<Stamp, CensusError> {
-    let stamp = Stamp::read(out)?;
-    let mut builds = BuildRow::read_all(out)?;
+    let stamp = Stamp::read(index)?;
+    let mut builds = BuildRow::read_all(index)?;
     let commits = source.commits()?;
     for row in &builds {
         let at = usize::from(row.at.0);
@@ -418,7 +419,7 @@ pub(crate) fn append(
     }
 
     let tmp = scratch(out)?;
-    fs::copy(out.join(DB_FILE), tmp.join(DB_FILE))?;
+    fs::copy(index.join(DB_FILE), tmp.join(DB_FILE))?;
     let mut db = Connection::open(tmp.join(DB_FILE))?;
     // A copy renamed into place when done: no journal, no syncing.
     db.execute_batch("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;")?;

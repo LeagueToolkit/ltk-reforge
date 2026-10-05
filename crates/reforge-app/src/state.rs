@@ -1,5 +1,5 @@
 //! What the app holds while it runs, beside its settings: the inputs opened for the settings
-//! as they stand.
+//! as they stand, and the downloads under way.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,36 +10,66 @@ use parking_lot::Mutex;
 use crate::error::AppError;
 use crate::inputs::{Choice, Inputs};
 
-/// The download of the history index: where indexes are installed, and the flag that stops
-/// one.
-pub struct IndexJob {
-    /// The folder each release's index is installed in, one folder per release.
-    pub root: Utf8PathBuf,
-    /// Set to stop the download under way.
+/// Work the window starts, one at a time, and can stop.
+pub struct Job {
+    /// Set to stop the work under way.
     pub cancel: AtomicBool,
     running: AtomicBool,
 }
 
-impl IndexJob {
-    /// No download under way.
-    pub fn new(root: Utf8PathBuf) -> Self {
+impl Job {
+    /// No work under way.
+    pub fn new() -> Self {
         Self {
-            root,
             cancel: AtomicBool::new(false),
             running: AtomicBool::new(false),
         }
     }
 
-    /// Marks a download started, unless one is under way.
+    /// Marks the work started, unless some is under way.
     pub fn start(&self) -> bool {
         self.cancel.store(false, Ordering::Relaxed);
         !self.running.swap(true, Ordering::AcqRel)
     }
 
-    /// Marks the download ended.
+    /// Marks the work ended.
     pub fn end(&self) {
         self.running.store(false, Ordering::Release);
     }
+}
+
+impl Default for Job {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The history index's download and its update from the census history.
+pub struct IndexJob {
+    /// The folder each index is installed in, one folder per index.
+    pub root: Utf8PathBuf,
+    /// The app's clone of the census history, which an update fetches into.
+    pub census: Utf8PathBuf,
+    /// The download or the update under way.
+    pub run: Job,
+}
+
+impl IndexJob {
+    /// No download under way.
+    pub fn new(root: Utf8PathBuf, census: Utf8PathBuf) -> Self {
+        Self {
+            root,
+            census,
+            run: Job::new(),
+        }
+    }
+}
+
+/// The hash tables' download.
+#[derive(Default)]
+pub struct HashesJob {
+    /// The download under way.
+    pub run: Job,
 }
 
 /// The inputs opened for one choice, opened again when the choice changes.
@@ -71,5 +101,11 @@ impl OpenInputs {
         let inputs = Arc::new(Inputs::open(choice, &self.names_index)?);
         *current = Some((choice.clone(), Arc::clone(&inputs)));
         Ok(inputs)
+    }
+
+    /// Lets go of the inputs open, so the next call opens them again: their files changed under
+    /// the same choice.
+    pub fn forget(&self) {
+        *self.current.lock() = None;
     }
 }

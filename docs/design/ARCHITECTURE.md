@@ -130,7 +130,7 @@ a crate.
 | `reforge-magic` | what a file is by its first bytes and name |
 | `reforge-wwise` | Wwise banks and packages, read and written; a bank whose clips are larger than its data is refused |
 | `reforge` | the stages, `Report`, `Porter`, `Repairer` |
-| `reforge-census` | the census history (format 2) read with gix; builds and appends the history index (#ADR-0005) |
+| `reforge-census` | the census history (format 2) read with gix; builds and appends the history index (#ADR-0005); with the feature `fetch`, fetches the history as far as an append reads it (#ADR-0057) |
 | `reforge-cli` | the `reforge` command |
 | `reforge-app` | the desktop app's Tauri side: its commands, settings and generated bindings; its front end is `app/` ([ROADMAP-UX.md](ROADMAP-UX.md)) |
 | `reforge-testkit` | builders for games, archives, bins, schemas and histories; a dev-dependency |

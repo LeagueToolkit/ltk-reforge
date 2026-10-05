@@ -35,12 +35,31 @@ export const commands = {
 	 *  the settings as saved. Progress comes as `InstallProgress` events.
 	 */
 	installIndex: () => __TAURI_INVOKE<({ ok: true; value: Settings }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("install_index"),
-	/**  Stops the download of the index under way. */
+	/**  Stops the download or the update of the index under way. */
 	cancelIndex: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("cancel_index"),
+	/**  Whether the census history holds builds after the head of the index the settings choose. */
+	indexBehind: () => __TAURI_INVOKE<({ ok: true; value: boolean }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("index_behind"),
+	/**
+	 *  Fetches the census history's builds after the head of the index the settings choose,
+	 *  appends them to a copy of the index, and makes the copy the history the runs read. Answers
+	 *  the settings as saved. Progress comes as `IndexUpdateProgress` events.
+	 */
+	updateIndex: () => __TAURI_INVOKE<({ ok: true; value: Settings }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("update_index"),
+	/**  What an update of the hash tables the settings choose would download. */
+	hashesCheck: () => __TAURI_INVOKE<({ ok: true; value: HashesCheck }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("hashes_check"),
+	/**
+	 *  Downloads the hash tables the cache lacks or holds older, and installs them for every
+	 *  program that reads the cache. Progress comes as `HashesProgress` events.
+	 */
+	updateHashes: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("update_hashes"),
+	/**  Stops the download of the hash tables under way. */
+	cancelHashes: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("cancel_hashes"),
 };
 
 /** Events */
 export const events = {
+	hashesProgress: makeEvent<HashesProgress>("hashes-progress"),
+	indexUpdateProgress: makeEvent<IndexUpdateProgress>("index-update-progress"),
 	installProgress: makeEvent<InstallProgress>("install-progress"),
 	runFinding: makeEvent<RunFinding>("run-finding"),
 	runLog: makeEvent<RunLog>("run-log"),
@@ -114,10 +133,22 @@ export type AppError =
 { code: "INDEX_UNREADABLE"; detail: string } | 
 /**  The index could not be written to disk. */
 { code: "INDEX_UNWRITABLE"; detail: string } | 
-/**  A download of the index is under way already. */
+/**  A download or an update of the index is under way already. */
 { code: "INDEX_BUSY" } | 
 /**  No release of the census history holds an index. */
 { code: "NO_INDEX_RELEASE" } | 
+/**  No history index is chosen to update. */
+{ code: "NO_INDEX" } | 
+/**  The census history did not fetch. */
+{ code: "CENSUS_FETCH"; detail: string } | 
+/**  The index's head is no commit of the census history: it was built from another. */
+{ code: "INDEX_FOREIGN"; head: string } | 
+/**  The builds after the index's head did not append. */
+{ code: "INDEX_APPEND"; detail: string } | 
+/**  The hash tables did not download. */
+{ code: "HASHES_FETCH"; detail: string } | 
+/**  Another program, or this one, is updating the hash tables. */
+{ code: "HASHES_BUSY" } | 
 /**  The user stopped the work. */
 { code: "CANCELLED" } | 
 /**  A fault of the app's own, with no remedy a person can take. */
@@ -312,6 +343,22 @@ export type GameView = {
 	unreadable_wads: number,
 };
 
+/**  What an update of the tables would download. */
+export type HashesCheck = {
+	/**  The tables an update downloads, by name. */
+	behind: string[],
+	/**  The bytes it downloads. None when the release lists no size for one of them. */
+	bytes: number | null,
+};
+
+/**  How far a download of the tables has got, for the window to show. */
+export type HashesProgress = {
+	/**  The bytes downloaded. */
+	done: number,
+	/**  The bytes to download in all. Zero when the release lists no size. */
+	total: number,
+};
+
 /**  The hash tables as read. */
 export type HashesView = {
 	/**  The hash cache's folder. None when the platform names none. */
@@ -342,6 +389,12 @@ export type IndexReleaseView = {
 	newest_build: string,
 	/**  How many builds it holds. */
 	builds: number,
+};
+
+/**  An update of the index, as it goes. */
+export type IndexUpdateProgress = {
+	/**  The step under way. */
+	step: UpdateStep,
 };
 
 /**  The inputs as the front end shows them: each one, and what opening them found. */
@@ -640,7 +693,7 @@ export type Settings = {
 	 *  `DATA/FINAL`. None until it is found or picked.
 	 */
 	"inputs.game"?: string | null,
-	/**  The hash cache's folder. None: the one LTK Manager keeps on this machine (#ADR-0048). */
+	/**  The hash cache's folder. None: the one LTK Manager keeps on this machine (#ADR-0058). */
 	"inputs.hashes"?: string | null,
 	/**  The meta schema database. None: the copy LTK Manager keeps on this machine. */
 	"inputs.schema"?: string | null,
@@ -739,6 +792,23 @@ export type Theme =
 "dark" | 
 /**  Light. */
 "light";
+
+/**  How far an update of the index has got, for the window to show. */
+export type UpdateStep = 
+/**  The census history is fetching. */
+{ kind: "fetch"; 
+/**  The objects asked for. */
+objects: number; 
+/**  The bytes read. */
+bytes: number } | 
+/**  The builds are appending. */
+{ kind: "append"; 
+/**  The builds the index holds so far. */
+done: number; 
+/**  The builds it holds once the append ends. */
+of: number; 
+/**  The build appended last. */
+build: string };
 
 /**  A value on one line, with its kind. */
 export type ValueView = {

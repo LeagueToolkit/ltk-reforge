@@ -19,6 +19,8 @@ tauri-build.workspace = true
 
 [dependencies]
 reforge.workspace = true
+reforge-census = { workspace = true, features = ["fetch"] }
+ltk_mimir_cache.workspace = true
 tauri.workspace = true
 tauri-plugin-dialog.workspace = true
 ltk_mod_core.workspace = true
@@ -40,6 +42,8 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 reforge-testkit.workspace = true
+gix.workspace = true
+ltk_hashdb.workspace = true
 image.workspace = true
 tempfile.workspace = true
 zip.workspace = true

@@ -1,9 +1,9 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import { commands, events, type InstallProgress } from "@/lib/bindings.gen";
-import { settingsKeys } from "@/modules/settings";
-import { unwrap } from "@/utils";
+import { commands, events, type InstallProgress, type UpdateStep } from "@/lib/bindings.gen";
+import { settingsKeys, useSettings } from "@/modules/settings";
+import { queryFn, unwrap } from "@/utils";
 
 /** The newest release of the census history that holds an index, read from GitHub. */
 export const indexReleaseQuery = () =>
@@ -44,4 +44,45 @@ export function useIndexProgress(): InstallProgress | null {
     };
   }, []);
   return progress;
+}
+
+/**
+ * Whether the census history holds builds after the head of the index in `index`. The key holds
+ * the folder, so an index updated or chosen anew is asked about again.
+ */
+export const indexBehindQuery = (index: string | null) =>
+  queryOptions({
+    queryKey: ["index", "behind", index] as const,
+    queryFn: queryFn(commands.indexBehind),
+    // The census history takes a build or two a week.
+    staleTime: 1000 * 60 * 30,
+    retry: false,
+    enabled: index != null,
+  });
+
+/** Whether the census history holds builds after the head of the index the settings choose. */
+export function useIndexBehind() {
+  const settings = useSettings();
+  return useQuery(indexBehindQuery(settings.data?.["inputs.history"] ?? null));
+}
+
+/** Fetches the builds after the index's head and appends them; the settings come back pointing at the new index. */
+export function useUpdateIndex() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => unwrap(await commands.updateIndex()),
+    onSuccess: (settings) => queryClient.setQueryData(settingsKeys.current(), settings),
+  });
+}
+
+/** The step of the update under way, from the backend's events. */
+export function useIndexUpdateStep(): UpdateStep | null {
+  const [step, setStep] = useState<UpdateStep | null>(null);
+  useEffect(() => {
+    const unlisten = events.indexUpdateProgress.listen((event) => setStep(event.payload.step));
+    return () => {
+      void unlisten.then((stop) => stop());
+    };
+  }, []);
+  return step;
 }

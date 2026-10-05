@@ -3,25 +3,27 @@
 //! runs through [`off_thread`].
 
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 
+use camino::{Utf8Path, Utf8PathBuf};
+use parking_lot::Mutex;
+use reforge::game::mimir_cache_dir;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
-use crate::index::{IndexReleaseView, InstallProgress, Installer, Web};
-use crate::state::IndexJob;
-
 use crate::catalog::{self, CheckEntry, FixupEntry};
+use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
+use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
+use crate::index::{IndexReleaseView, InstallProgress, Installer, Web};
 use crate::inputs::{self, Choice, InputsView};
 use crate::run::{self, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
 use crate::runlog::LogLine;
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
-use crate::state::OpenInputs;
+use crate::state::{HashesJob, IndexJob, OpenInputs};
 use crate::view::Finding;
-use camino::Utf8Path;
-use serde::{Deserialize, Serialize};
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
 /// window. A panic in it answers as an internal error.
@@ -198,11 +200,11 @@ pub async fn index_release() -> IpcResult<Option<IndexReleaseView>> {
 pub async fn install_index(app: AppHandle) -> IpcResult<Settings> {
     off_thread(move || {
         let job = app.state::<Arc<IndexJob>>();
-        if !job.start() {
+        if !job.run.start() {
             return Err(AppError::IndexBusy);
         }
         let installed = download_index(&app, &job);
-        job.end();
+        job.run.end();
         let store = app.state::<SettingsStore>();
         let settings = Settings {
             history: Some(installed?.to_string()),
@@ -225,14 +227,143 @@ fn download_index(app: &AppHandle, job: &IndexJob) -> Result<camino::Utf8PathBuf
             let _ = seen.emit(app);
         }
     };
-    Installer::new(&web, &job.cancel, &mut progress).install(&release, &job.root)
+    Installer::new(&web, &job.run.cancel, &mut progress).install(&release, &job.root)
 }
 
-/// Stops the download of the index under way.
+/// Stops the download or the update of the index under way.
 #[tauri::command]
 #[specta::specta]
 pub fn cancel_index(job: State<'_, Arc<IndexJob>>) -> IpcResult<()> {
-    job.cancel.store(true, Ordering::Relaxed);
+    job.run.cancel.store(true, Ordering::Relaxed);
+    IpcResult::ok(())
+}
+
+/// Whether the census history holds builds after the head of the index the settings choose.
+#[tauri::command]
+#[specta::specta]
+pub async fn index_behind(app: AppHandle) -> IpcResult<bool> {
+    let history = app.state::<SettingsStore>().get().history;
+    let job = Arc::clone(&app.state::<Arc<IndexJob>>());
+    off_thread(move || {
+        let index = history.ok_or(AppError::NoIndex)?;
+        let never = AtomicBool::new(false);
+        Updater::new(CENSUS, &job.census, &job.root, &never).behind(Utf8Path::new(&index))
+    })
+    .await
+}
+
+/// Fetches the census history's builds after the head of the index the settings choose,
+/// appends them to a copy of the index, and makes the copy the history the runs read. Answers
+/// the settings as saved. Progress comes as `IndexUpdateProgress` events.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_index(app: AppHandle) -> IpcResult<Settings> {
+    off_thread(move || {
+        let job = app.state::<Arc<IndexJob>>();
+        let store = app.state::<SettingsStore>();
+        let index = store.get().history.ok_or(AppError::NoIndex)?;
+        if !job.run.start() {
+            return Err(AppError::IndexBusy);
+        }
+        let updated = update_from_census(&app, &job, Utf8Path::new(&index));
+        job.run.end();
+        match updated? {
+            Some(dir) => store.save(Settings {
+                history: Some(dir.to_string()),
+                ..store.get()
+            }),
+            None => Ok(store.get()),
+        }
+    })
+    .await
+}
+
+fn update_from_census(
+    app: &AppHandle,
+    job: &IndexJob,
+    index: &Utf8Path,
+) -> Result<Option<Utf8PathBuf>, AppError> {
+    let app = app.clone();
+    // An event per request and per 256 KB: a fetch reads in chunks of a few KB.
+    let shown = Mutex::new((usize::MAX, 0u64));
+    let heard = move |step: UpdateStep| {
+        if let UpdateStep::Fetch { objects, bytes } = step {
+            let mut shown = shown.lock();
+            if objects == shown.0 && bytes < shown.1 + 256 * 1024 {
+                return;
+            }
+            *shown = (objects, bytes);
+        }
+        let _ = IndexUpdateProgress { step }.emit(&app);
+    };
+    Updater::new(CENSUS, &job.census, &job.root, &job.run.cancel)
+        .on_progress(heard)
+        .update(index)
+}
+
+/// The hash cache the settings choose, else LTK Manager's.
+fn hashes_dir(settings: &Settings) -> Result<Utf8PathBuf, AppError> {
+    let chosen = Choice::from(settings).hashes;
+    chosen
+        .or_else(mimir_cache_dir)
+        .ok_or_else(|| AppError::NoDataDir {
+            detail: "the platform names no data directory".to_string(),
+        })
+}
+
+/// What an update of the hash tables the settings choose would download.
+#[tauri::command]
+#[specta::specta]
+pub async fn hashes_check(app: AppHandle) -> IpcResult<HashesCheck> {
+    let settings = app.state::<SettingsStore>().get();
+    off_thread(move || {
+        let dir = hashes_dir(&settings)?;
+        let web = Web::new()?;
+        let never = AtomicBool::new(false);
+        hashes::check(&dir, &Release::new(&web, TABLES, &never))
+    })
+    .await
+}
+
+/// Downloads the hash tables the cache lacks or holds older, and installs them for every
+/// program that reads the cache. Progress comes as `HashesProgress` events.
+#[tauri::command]
+#[specta::specta]
+pub async fn update_hashes(app: AppHandle) -> IpcResult<()> {
+    off_thread(move || {
+        let dir = hashes_dir(&app.state::<SettingsStore>().get())?;
+        let job = app.state::<Arc<HashesJob>>();
+        if !job.run.start() {
+            return Err(AppError::HashesBusy);
+        }
+        let web = Web::new();
+        let updated = web.and_then(|web| {
+            // An event per percent: a table of 38 MB arrives in some hundreds of chunks.
+            let shown = Mutex::new(u64::MAX);
+            let heard = |seen: HashesProgress| {
+                let percent = seen.done * 100 / seen.total.max(1);
+                let mut shown = shown.lock();
+                if percent != *shown {
+                    *shown = percent;
+                    let _ = seen.emit(&app);
+                }
+            };
+            hashes::update(&dir, &Release::new(&web, TABLES, &job.run.cancel), &heard)
+        });
+        job.run.end();
+        updated?;
+        // The tables open are the old ones: the next run opens the new.
+        app.state::<Arc<OpenInputs>>().forget();
+        Ok(())
+    })
+    .await
+}
+
+/// Stops the download of the hash tables under way.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_hashes(job: State<'_, Arc<HashesJob>>) -> IpcResult<()> {
+    job.run.cancel.store(true, Ordering::Relaxed);
     IpcResult::ok(())
 }
 

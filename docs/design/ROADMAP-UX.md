@@ -3,7 +3,8 @@
 The plan for the first release of reforge as a desktop app, and what a person starting that
 work needs to know of the library. The decisions are #ADR-0046 (a standalone app on LTK
 Manager's stack), #ADR-0047 (the history index, distributed and grown on the user's machine),
-#ADR-0048 (the hash tables on the machine), #ADR-0049 (an AI agent as a caller, proposed),
+#ADR-0057 (the census history fetched as far as an append reads it), #ADR-0058 (the hash tables
+on the machine, downloaded when asked), #ADR-0049 (an AI agent as a caller, proposed),
 #ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
@@ -90,9 +91,9 @@ before it.
 | input | where it comes from | without it |
 |---|---|---|
 | the game install | the user picks the folder, or the app finds it as LTK Manager does | no run |
-| the hash tables | the ones on the machine, LTK Manager's first (#ADR-0048) | a run names less: a chunk no table spells ships under its hash |
+| the hash tables | the ones on the machine, LTK Manager's first, downloaded or updated by the app when asked (#ADR-0058) | a run names less: a chunk no table spells ships under its hash |
 | the schema database | LTK Manager's copy on the machine | the types come from the install's bins alone |
-| the history index | fetched prebuilt, or built from a clone (#ADR-0047) | the run is judged against the install alone, and says so |
+| the history index | fetched prebuilt and taken forward from the census history (#ADR-0047, #ADR-0057) | the run is judged against the install alone, and says so |
 
 The app says which inputs it read and how old each is, since a report differs with them: the
 install's build, the newest build the schema and the history index describe, and what opening
@@ -111,11 +112,10 @@ report of that run is the command's, byte for byte, with the same inputs.
 2. **A prebuilt index fetched and unpacked**: the SQLite file compressed, as a file of a GitHub
    release, with a stamp that names the published repository. The file is 2.75 GB and some
    880 MB compressed.
-3. **The builds after the index's head added** on the user's machine: `Indexer::append` of
-   `reforge-census`, which reports its progress. It reads the census history, so it needs the
-   commits after the head.
-4. **The census history cloned by the app** at the user's choice, some 5 GB. A user with a
-   clone builds and appends from it and needs no download.
+3. **The builds after the index's head added** on the user's machine, from the census history
+   fetched as far as the append reads it (#ADR-0057).
+4. **The census history cloned whole by the app** at the user's choice, some 5 GB, to build an
+   index with no download.
 
 The census history is public, `https://github.com/LeagueToolkit/ltk-census-history`, and the
 index is published as a release of it: `stamp.json`, `builds.tsv` and `history.sqlite.xz`,
@@ -125,8 +125,21 @@ the SHA-256 GitHub lists for it, unpacks the database as it downloads, opens the
 installs it in its data folder, a folder per release (`reforge_app::index`). The settings
 then name it, and a folder they no longer name is removed at the next start.
 
-Not settled: how the commits after an index's head are fetched with no full clone, and how
-one bin entry's text is fetched with no clone.
+The inputs page asks the census history's server for the branch's tip and offers the update
+when it is not the index's head (`reforge_app::census`). The update fetches into the app's
+clone, `census-history` in its data folder, appends the new builds to a copy of the index in a
+folder named for the new head, `head-<commit>`, and moves the settings to it. A download of a
+release older than the index is not offered. For the two builds after 16.19.8207193, the fetch
+read 616 KB and the append took 4 to 7 s, most of it the copy of the database (2026-10-05).
+
+Not settled: how one bin entry's text at a build before the head is fetched with no full clone.
+
+## The hash tables
+
+#ADR-0058. The inputs page reads the list of tables of Mimir's newest release and names the
+tables the cache lacks or holds older, with the size to download. The download runs Mimir's
+own updater into the cache the settings choose, else LTK Manager's, so the tables are the ones
+LTK Manager reads too (`reforge_app::hashes`). The inputs open again once it ends.
 
 ## Two views of one run
 
@@ -197,7 +210,7 @@ user picks another policy and runs again.
    every finding, write the `.modpkg`.
 4. The advanced view of a repair: the stages, a run up to one of them, the fixups and checks
    turned on and off, the findings that block the write.
-5. The history index, as far as step 2 of the list above.
+5. The history index, as far as step 3 of the list above, and the hash tables downloaded.
 6. A selection of fixups saved and loaded, and a rule added in the app.
 7. A port in both views, with the decision, its candidates and the policy.
 

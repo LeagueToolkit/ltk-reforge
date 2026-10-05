@@ -5,14 +5,11 @@ import { m } from "@/i18n";
 import type { HistoryView } from "@/lib/bindings.gen";
 
 import { cancelIndex, useIndexProgress, useIndexRelease, useInstallIndex } from "../api/index";
-
-function megabytes(bytes: number): string {
-  return (bytes / 1_000_000).toFixed(0);
-}
+import { megabytes, ProgressRow } from "./ProgressRow";
 
 /**
  * The prebuilt history index (#ADR-0047): the newest release's build, and a download when the
- * index read is not that release's.
+ * index read is not that release's. An index taken further than the release is offered none.
  */
 export function IndexDownload({ installed }: { installed: HistoryView | undefined }) {
   const release = useIndexRelease();
@@ -26,6 +23,9 @@ export function IndexDownload({ installed }: { installed: HistoryView | undefine
     return null;
   }
   const offered = release.data;
+  if (installed?.builds != null && installed.builds > offered.builds) {
+    return null;
+  }
   const current =
     installed?.newest_build === offered.newest_build && installed.builds === offered.builds;
 
@@ -42,23 +42,14 @@ export function IndexDownload({ installed }: { installed: HistoryView | undefine
             })}
       </p>
       {install.isPending && progress && (
-        <div className="flex items-center gap-3">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-700">
-            <div
-              className="h-full bg-accent-500 transition-[width]"
-              style={{ width: `${(progress.done * 100) / Math.max(progress.total, 1)}%` }}
-            />
-          </div>
-          <span className="font-mono text-xs text-surface-300">
-            {m.inputs_index_progress_label({
-              done: megabytes(progress.done),
-              total: megabytes(progress.total),
-            })}
-          </span>
-          <Button size="xs" variant="ghost" onClick={cancelIndex}>
-            {m.inputs_index_cancel_action()}
-          </Button>
-        </div>
+        <ProgressRow
+          fraction={progress.done / Math.max(progress.total, 1)}
+          label={m.inputs_download_progress_label({
+            done: megabytes(progress.done),
+            total: megabytes(progress.total),
+          })}
+          onStop={cancelIndex}
+        />
       )}
       {!current && !install.isPending && (
         <div>

@@ -9,6 +9,7 @@ import { useSaveSettings, useSettings } from "@/modules/settings";
 import { isAppError } from "@/utils";
 
 import { useInputs } from "../api/inputs";
+import { HashesDownload } from "./HashesDownload";
 import { IndexDownload } from "./IndexDownload";
 
 /** The inputs a run lacks. */
@@ -117,7 +118,11 @@ export function useInputsGate() {
             <IndexDownload installed={inputs.data?.history} />
           </Row>
         )}
-        {missing.hashes && <Row icon={warn} text={m.gate_hashes_text()} />}
+        {missing.hashes && (
+          <Row icon={warn} text={m.gate_hashes_text()}>
+            <HashesDownload installed={false} />
+          </Row>
+        )}
         {missing.schema && <Row icon={warn} text={m.gate_schema_text()} />}
       </ul>
       {!missing.game && (

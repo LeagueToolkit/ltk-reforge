@@ -1,6 +1,6 @@
 # ADR-0048: The hash tables are the ones on the machine, LTK Manager's first
 
-- **Status:** Accepted (2026-10-04)
+- **Status:** Superseded by #ADR-0058
 - **Related:** #ADR-0046; `docs/design/ARCHITECTURE.md`, "The environment"
 
 ## Context

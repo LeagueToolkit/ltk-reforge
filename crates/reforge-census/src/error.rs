@@ -17,6 +17,24 @@ pub enum CensusError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    /// The census history's server has no branch that holds the builds.
+    #[error("{url} has no {branch}")]
+    NoRemoteBranch {
+        /// The server's address.
+        url: String,
+        /// The branch looked for.
+        branch: String,
+    },
+    /// The census history's server does not leave out what an object reaches, so a fetch of
+    /// one commit would take the whole history.
+    #[error("{url} does not filter what it sends")]
+    NoFilter {
+        /// The server's address.
+        url: String,
+    },
+    /// The fetch was stopped.
+    #[error("the fetch was stopped")]
+    Cancelled,
     /// The clone has no branch that holds the builds.
     #[error("{repo} has neither {local} nor {remote}")]
     NoBranch {

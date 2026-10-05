@@ -62,12 +62,30 @@ pub enum AppError {
     /// The index could not be written to disk.
     #[error("the index could not be written: {detail}")]
     IndexUnwritable { detail: String },
-    /// A download of the index is under way already.
-    #[error("the index is downloading already")]
+    /// A download or an update of the index is under way already.
+    #[error("the index is downloading or updating already")]
     IndexBusy,
     /// No release of the census history holds an index.
     #[error("no release holds an index")]
     NoIndexRelease,
+    /// No history index is chosen to update.
+    #[error("no history index is chosen")]
+    NoIndex,
+    /// The census history did not fetch.
+    #[error("the census history did not fetch: {detail}")]
+    CensusFetch { detail: String },
+    /// The index's head is no commit of the census history: it was built from another.
+    #[error("the index's head {head} is not in the census history")]
+    IndexForeign { head: String },
+    /// The builds after the index's head did not append.
+    #[error("the builds did not append to the index: {detail}")]
+    IndexAppend { detail: String },
+    /// The hash tables did not download.
+    #[error("the hash tables did not download: {detail}")]
+    HashesFetch { detail: String },
+    /// Another program, or this one, is updating the hash tables.
+    #[error("the hash tables are being updated already")]
+    HashesBusy,
     /// The user stopped the work.
     #[error("cancelled")]
     Cancelled,

@@ -10,6 +10,10 @@ license.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The history fetched from its server as far as an append reads it, over HTTPS (#ADR-0057).
+fetch = ["gix/blocking-http-transport-reqwest-native-tls"]
+
 [dependencies]
 reforge.workspace = true
 reforge-wwise.workspace = true

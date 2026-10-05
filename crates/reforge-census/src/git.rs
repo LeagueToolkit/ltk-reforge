@@ -19,7 +19,7 @@ use crate::format::{self, BuildFile};
 use crate::walk::{BlobId, Change, ChangeSource};
 
 /// Carries a gix error into this crate's with what was being read.
-trait Gx<T> {
+pub(crate) trait Gx<T> {
     fn gx(self, what: &str) -> Result<T, CensusError>;
 }
 
@@ -48,13 +48,13 @@ pub struct GitRepo {
     tip: ObjectId,
 }
 
-struct TreeEntry {
-    name: String,
-    id: ObjectId,
-    tree: bool,
+pub(crate) struct TreeEntry {
+    pub(crate) name: String,
+    pub(crate) id: ObjectId,
+    pub(crate) tree: bool,
 }
 
-fn commit_id(commit: &str) -> Result<ObjectId, CensusError> {
+pub(crate) fn commit_id(commit: &str) -> Result<ObjectId, CensusError> {
     ObjectId::from_hex(commit.as_bytes()).gx("reading a commit id")
 }
 
@@ -159,7 +159,7 @@ impl GitRepo {
     }
 }
 
-fn tree_of(repo: &gix::Repository, commit: &str) -> Result<ObjectId, CensusError> {
+pub(crate) fn tree_of(repo: &gix::Repository, commit: &str) -> Result<ObjectId, CensusError> {
     let commit = repo
         .find_commit(commit_id(commit)?)
         .gx("reading a commit")?;
@@ -173,7 +173,10 @@ fn files_tree(repo: &gix::Repository, commit: &str) -> Result<Option<ObjectId>, 
 }
 
 /// A tree's entries, sorted by name.
-fn entries(repo: &gix::Repository, tree: ObjectId) -> Result<Vec<TreeEntry>, CensusError> {
+pub(crate) fn entries(
+    repo: &gix::Repository,
+    tree: ObjectId,
+) -> Result<Vec<TreeEntry>, CensusError> {
     let tree = repo.find_tree(tree).gx("reading a tree")?;
     let decoded = tree.decode().gx("decoding a tree")?;
     let entries = decoded.entries.iter().map(|e| TreeEntry {
@@ -253,6 +256,61 @@ fn blob_id(id: &ObjectId) -> BlobId {
         .unwrap_or_else(|_| panic!("object id {id} is {} bytes, not SHA-1's 20", bytes.len()))
 }
 
+/// The two sides of one name, in the parent and in the commit.
+pub(crate) type Sides = (Option<ObjectId>, Option<ObjectId>);
+
+/// A name two trees differ at: the subtrees the diff descends into, and the blobs that differ.
+/// A name can be a tree on one side and a blob on the other.
+pub(crate) struct Differs {
+    /// The name's path, from the root of the trees compared.
+    pub(crate) path: String,
+    /// The subtrees, when the diff descends into them.
+    pub(crate) trees: Option<Sides>,
+    /// The blobs, when either side is one.
+    pub(crate) blobs: Option<Sides>,
+}
+
+/// The names two trees' entries differ at, in name order. The diff descends only into
+/// subtrees whose ids differ, and into a bin's entry texts only when `texts`.
+pub(crate) fn differs(
+    old: &[TreeEntry],
+    new: &[TreeEntry],
+    prefix: &str,
+    texts: bool,
+) -> Vec<Differs> {
+    let mut out = Vec::new();
+    let (mut o, mut n) = (old.iter().peekable(), new.iter().peekable());
+    loop {
+        let (o, n) = match (o.peek(), n.peek()) {
+            (None, None) => break,
+            (Some(a), Some(b)) => match a.name.cmp(&b.name) {
+                Ordering::Less => (o.next(), None),
+                Ordering::Greater => (None, n.next()),
+                Ordering::Equal => (o.next(), n.next()),
+            },
+            (Some(_), None) => (o.next(), None),
+            (None, Some(_)) => (None, n.next()),
+        };
+        if o.map(|e| (e.id, e.tree)) == n.map(|e| (e.id, e.tree)) {
+            continue;
+        }
+        let Some(name) = o.or(n).map(|e| e.name.as_str()) else {
+            continue;
+        };
+        let tree = |e: Option<&TreeEntry>| e.filter(|e| e.tree).map(|e| e.id);
+        let blob = |e: Option<&TreeEntry>| e.filter(|e| !e.tree).map(|e| e.id);
+        let subtree = tree(o).is_some() || tree(n).is_some();
+        let descend = subtree && (texts || format::bin_dir(name).is_none());
+        let changed = blob(o).is_some() || blob(n).is_some();
+        out.push(Differs {
+            path: format!("{prefix}{name}"),
+            trees: descend.then(|| (tree(o), tree(n))),
+            blobs: changed.then(|| (blob(o), blob(n))),
+        });
+    }
+    out
+}
+
 /// The diff of two trees by object id.
 struct Diff<'a> {
     repo: &'a gix::Repository,
@@ -262,8 +320,7 @@ struct Diff<'a> {
 }
 
 impl Diff<'_> {
-    /// Adds every blob under two trees that differs, recursing only into subtrees whose ids
-    /// differ, and into a bin's entry texts only when they are read.
+    /// Adds every blob under two trees that differs.
     fn trees(
         &mut self,
         old: Option<ObjectId>,
@@ -276,36 +333,15 @@ impl Diff<'_> {
         let list = |tree: Option<ObjectId>| tree.map(|t| entries(self.repo, t)).transpose();
         let old_entries = list(old)?.unwrap_or_default();
         let new_entries = list(new)?.unwrap_or_default();
-        let (mut o, mut n) = (old_entries.iter().peekable(), new_entries.iter().peekable());
-        loop {
-            let (o, n) = match (o.peek(), n.peek()) {
-                (None, None) => break,
-                (Some(a), Some(b)) => match a.name.cmp(&b.name) {
-                    Ordering::Less => (o.next(), None),
-                    Ordering::Greater => (None, n.next()),
-                    Ordering::Equal => (o.next(), n.next()),
-                },
-                (Some(_), None) => (o.next(), None),
-                (None, Some(_)) => (None, n.next()),
-            };
-            if o.map(|e| (e.id, e.tree)) == n.map(|e| (e.id, e.tree)) {
-                continue;
+        for name in differs(&old_entries, &new_entries, prefix, self.texts) {
+            if let Some((o, n)) = name.trees {
+                self.trees(o, n, &format!("{}/", name.path))?;
             }
-            let Some(name) = o.or(n).map(|e| e.name.as_str()) else {
-                continue;
-            };
-            let path = format!("{prefix}{name}");
-            let tree = |e: Option<&TreeEntry>| e.filter(|e| e.tree).map(|e| e.id);
-            let blob = |e: Option<&TreeEntry>| e.filter(|e| !e.tree).map(|e| blob_id(&e.id));
-            let subtree = tree(o).is_some() || tree(n).is_some();
-            if subtree && (self.texts || format::bin_dir(name).is_none()) {
-                self.trees(tree(o), tree(n), &format!("{path}/"))?;
-            }
-            if blob(o).is_some() || blob(n).is_some() {
+            if let Some((o, n)) = name.blobs {
                 self.out.push(Change {
-                    path,
-                    old: blob(o),
-                    new: blob(n),
+                    path: name.path,
+                    old: o.as_ref().map(blob_id),
+                    new: n.as_ref().map(blob_id),
                 });
             }
         }

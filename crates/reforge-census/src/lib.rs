@@ -6,6 +6,8 @@
 //! is exact, stamped with the commit it came from, and disposable: deleting it loses nothing.
 
 mod error;
+#[cfg(feature = "fetch")]
+mod fetch;
 pub mod format;
 mod git;
 mod walk;
@@ -15,6 +17,8 @@ use camino::Utf8Path;
 use reforge::history::{Families, Stamp};
 
 pub use self::error::CensusError;
+#[cfg(feature = "fetch")]
+pub use self::fetch::{Fetcher, Received};
 pub use self::git::GitRepo;
 pub use self::walk::{BlobId, Change, ChangeSource, Fold, Folds, Progress, Walked, walk};
 
@@ -55,6 +59,15 @@ impl<'a> Indexer<'a> {
     /// Adds the builds of the history after the head of the index at `out`. An index that
     /// holds every build is left as it is.
     pub fn append(&mut self, out: &Utf8Path) -> Result<Stamp, CensusError> {
-        write::append(self.source, &self.repo, out, &mut *self.progress)
+        self.append_to(out, out)
+    }
+
+    /// Writes the index at `index` with the builds of the history after its head into `out`,
+    /// built beside it and renamed into place, and leaves `index` as it is. An index a process
+    /// holds open is taken forward this way: on Windows it is not replaced while open.
+    ///
+    /// When the index holds every build, nothing is written and the stamp is the index's.
+    pub fn append_to(&mut self, index: &Utf8Path, out: &Utf8Path) -> Result<Stamp, CensusError> {
+        write::append(self.source, &self.repo, index, out, &mut *self.progress)
     }
 }

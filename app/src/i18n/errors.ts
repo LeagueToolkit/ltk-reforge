@@ -78,6 +78,27 @@ export function describeError(error: AppError): ErrorCopy {
     }))
     .with({ code: "INDEX_BUSY" }, () => ({ title: m["error.INDEX_BUSY.title"]() }))
     .with({ code: "NO_INDEX_RELEASE" }, () => ({ title: m["error.NO_INDEX_RELEASE.title"]() }))
+    .with({ code: "NO_INDEX" }, () => ({ title: m["error.NO_INDEX.title"]() }))
+    .with({ code: "CENSUS_FETCH" }, ({ detail }) => ({
+      title: m["error.CENSUS_FETCH.title"](),
+      detail,
+    }))
+    .with({ code: "INDEX_FOREIGN" }, ({ head }) => ({
+      title: m["error.INDEX_FOREIGN.title"](),
+      description: m["error.INDEX_FOREIGN.description"]({ head }),
+    }))
+    .with({ code: "INDEX_APPEND" }, ({ detail }) => ({
+      title: m["error.INDEX_APPEND.title"](),
+      detail,
+    }))
+    .with({ code: "HASHES_FETCH" }, ({ detail }) => ({
+      title: m["error.HASHES_FETCH.title"](),
+      detail,
+    }))
+    .with({ code: "HASHES_BUSY" }, () => ({
+      title: m["error.HASHES_BUSY.title"](),
+      description: m["error.HASHES_BUSY.description"](),
+    }))
     .with({ code: "CANCELLED" }, () => ({ title: m["error.CANCELLED.title"]() }))
     .with({ code: "INTERNAL" }, ({ detail }) => ({
       title: m["error.INTERNAL.title"](),

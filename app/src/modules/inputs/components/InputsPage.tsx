@@ -8,7 +8,9 @@ import { useSaveSettings, useSettings } from "@/modules/settings";
 
 import { useFindGame, useInputs } from "../api/inputs";
 import { pickFile, pickFolder } from "../api/pick";
+import { HashesDownload } from "./HashesDownload";
 import { IndexDownload } from "./IndexDownload";
+import { IndexUpdate } from "./IndexUpdate";
 
 type InputKey = "inputs.game" | "inputs.hashes" | "inputs.schema" | "inputs.history";
 
@@ -121,6 +123,7 @@ function Rows({ view }: { view: InputsView | undefined }) {
             {view && view.hashes.tables.length > 0 && (
               <p>{m.inputs_hashes_tables_label({ tables: view.hashes.tables.join(", ") })}</p>
             )}
+            {view && <HashesDownload installed={view.hashes.tables.length > 0} />}
           </>
         }
         actions={
@@ -175,6 +178,7 @@ function Rows({ view }: { view: InputsView | undefined }) {
               </p>
             )}
             <IndexDownload installed={view?.history} />
+            {view?.history.dir && <IndexUpdate />}
           </>
         }
         actions={

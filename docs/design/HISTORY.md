@@ -143,7 +143,27 @@ Every build the index holds must be the history's at the same position, or the a
 asks for a rebuild. The database is copied beside the index, appended to, and renamed into
 place. An index appended to holds the rows a whole build of the same commits writes.
 
-On Windows the rename fails while a process holds the index open.
+On Windows the rename fails while a process holds the index open. `Indexer::append_to` writes
+the appended index into another folder and leaves the index as it is, which is how the app
+takes forward the index its runs hold open.
+
+## Fetching
+
+#ADR-0057. `Fetcher` (`reforge-census`, the feature `fetch`) fetches the census history into a
+bare clone as far as an append after an index's head reads it:
+
+1. the tip of the builds' branch on the server;
+2. every commit of the branch, without its tree;
+3. of each build after the head, the commit's tree, its `census.yaml` and `build.yaml`, and the
+   trees under `files/` that its diff descends into, on both sides, a level of the tree at a
+   time for every build at once;
+4. both sides of each entry file and entry text the walk reads.
+
+A request names its objects by id, at most 10,000 of them, with the filter `tree:0`: the server
+sends what is named and nothing it reaches. The trees fetched are decided by the walk's own
+comparison of two trees, so the clone holds every object the append reads. It holds every
+commit, so an append from it checks each build of the index as one from a full clone does. A
+whole build from it stops at the first object it lacks.
 
 ## The questions
 
