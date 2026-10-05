@@ -113,7 +113,7 @@ The facts and the decision. `copies` is channel `input`, the rest `decision`.
 | `origin.none` | note | no evidence decides | `origin.none` |
 | `rig.submesh-copied` | warning | a submesh copied whole from a premium skin, with its visibility | `rig.copied-submesh` |
 | `rig.unreadable` | warning | a mesh, skeleton or clip that does not parse | `rig.unreadable` |
-| `target.chosen` | note | the unit's target and the reason: base, paste cleaned, slot, fallback, clips origin, follows its champion | `target.base`, `target.paste-cleaned`, `target.slot`, `target.fallback`, `target.clips-origin`, `target.sub-follows` |
+| `target.chosen` | note | the unit's target and the reason: base, paste cleaned, slot, fallback, clips origin, skeleton origin, follows its champion | `target.base`, `target.paste-cleaned`, `target.slot`, `target.fallback`, `target.clips-origin`, `target.sub-follows` |
 | `target.forced-unfit` | warning | a target a person or the champion forced, which the work does not fit | `target.forced` |
 | `target.superseded` | note | another unit of the character took the slot | `target.superseded` |
 | `target.conflict` | warning | two units of one character, of the same rank, end on one slot | `target.conflict` |
@@ -177,6 +177,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `check.link-unresolved` | error | links the package adds that resolve to nothing | `verify.link` |
 | `check.name-unresolved` | error | names the patched entry reaches that resolve to nothing, and did resolve in the mod | `verify.unresolved` |
 | `check.file-missing` | error | files the package names that are neither shipped nor the game's | `verify.file` |
+| `check.other-skin` | warning | values of a champion's patched base skin that name another skin of the champion (#ADR-0062) | |
 | `check.type-mismatch` | error | values written of another type than the target build declares | `verify.type` |
 | `check.field-undeclared` | error | fields written that the target build's class does not declare | `verify.undeclared` |
 | `check.round-trip-failed` | error | a rewritten bin does not read back as it was built | `inplace.verify` |

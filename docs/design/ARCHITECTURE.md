@@ -424,8 +424,9 @@ level of animation reuse (`AnimReuse`). It reads neither the mod nor the game.
   rework gets no target (#ADR-0019); a sub-character follows its champion (#ADR-0013,
   #ADR-0017); a unit with no rig stays unjudged at its slot; a unit in a premium slot that is no
   spread stays there (#ADR-0012); every other unit goes to skin0 where it fits, else to its
-  premium origin, else to the skin whose clips it mostly plays (#ADR-0015), else stays on skin0
-  for a person to decide (#ADR-0016).
+  premium origin, else to the skin whose clips it mostly plays (#ADR-0015), else to the
+  premium skin whose skeleton file it takes (#ADR-0062), else stays on skin0 for a person to
+  decide (#ADR-0016).
 - **Two units on one slot.** One keeps it: a unit whose entry reads, then the unit written for
   the slot, then a skin0 unit, then a spread, then the lower slot. The others get no target.
 - **The diagnostics are made from the decisions afterwards**, by `Targets::report`. A decision
@@ -622,7 +623,8 @@ object takes a name of its own, which every link to it follows.
   object.
 - **Checks** implement `Check`: the patches applied (`Apply`), the types of every value
   written and of every field a patch changes (`Types`), a bin and a bank the run wrote read
-  back, the bank at the client's version (`RoundTrip`). `Apply` holds that every record
+  back, the bank at the client's version (`RoundTrip`), a champion's patched base skin
+  naming no other skin of the champion (`BaseSkin`, #ADR-0062). `Apply` holds that every record
   applies, that every link a patch adds leads to a bin, that every name and file a patched
   entry reaches through the port's objects resolves in what its group loads, and that every
   bank a voice layer's audio block names is the game's or ships in the layer or in the base

@@ -426,7 +426,7 @@ fn what_a_check_finds_does_not_stop_the_write_unless_the_policy_says_so() {
 fn the_checks_are_listed_and_chosen_as_data() {
     let catalog = CheckSet::catalog();
     let ids: Vec<&str> = catalog.iter().map(|info| info.id.as_str()).collect();
-    assert_eq!(ids, ["types", "round-trip", "apply"]);
+    assert_eq!(ids, ["types", "round-trip", "apply", "base-skin"]);
     assert!(catalog.iter().all(|info| info.default));
     let json = serde_json::to_value(&catalog[0]).expect("a description is data");
     assert_eq!(
@@ -450,7 +450,7 @@ fn the_checks_are_listed_and_chosen_as_data() {
     assert_eq!(unknown, ["nothing"]);
     let set = CheckSet::from(&read);
     let ids: Vec<&str> = set.infos().iter().map(|info| info.id.as_str()).collect();
-    assert_eq!(ids, ["round-trip", "apply"]);
+    assert_eq!(ids, ["round-trip", "apply", "base-skin"]);
 }
 
 /// A check a caller adds: it raises what it covered and nothing else.

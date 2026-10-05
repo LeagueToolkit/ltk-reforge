@@ -14,7 +14,7 @@ use reforge::port::{
     AnimReuse, Conflict, Considered, ForcedUnfit, Infeasible, NewBin, Policy, PreRework, Reason,
     SubLeft, Superseded, TargetChosen, TargetConflict, TargetPolicy, Unjudged, clip_fit,
 };
-use reforge_testkit::bins::{Skin, blob, graph, resolver};
+use reforge_testkit::bins::{self, Skin, blob, graph, resolver};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
 use reforge_testkit::plans::{
     NEW_TEX, OLD_TEX, champion_and_pet, champion_and_unbound_pet, old_model_and_pet,
@@ -132,6 +132,65 @@ fn an_own_mesh_on_a_premium_skeleton_falls_back() {
         (decision.chosen, decision.reason),
         (Some(Slot(3)), Reason::Fallback)
     );
+}
+
+#[test]
+fn an_own_mesh_on_a_premium_skeleton_file_of_the_bases_joints_goes_to_that_skin() {
+    let mut game = skins::game();
+    // Skin 3's skeleton with the base's joints, in a file of other bytes than the base's.
+    game.insert(skins::BASE_SKEL, rigs::skeleton(&["Root", "Spine"]));
+    game.insert(S3_SKEL, rigs::skeleton_named("three", &["Root", "Spine"]));
+    // The base's resolver holds a key no other skin's does.
+    let idle = bins::particle(skins::BASE_PARTICLE, skins::BASE_PARTICLE_TEX);
+    let base_bin = vec![
+        bins::entry(SKIN0, &skins::base_skin()),
+        graph(GRAPH0, BASE_CLIPS),
+        bins::resolver_with(RESOURCES0, &[("Idle", skins::BASE_PARTICLE)]),
+        idle.clone(),
+    ];
+    game.insert(&skins::skin_bin("test", 0), bins::bin(base_bin));
+    let env = env(game, NoHistory);
+    let mut files = own_files("a");
+    let skin = Skin {
+        skeleton: S3_SKEL.into(),
+        ..own_skin("a", GRAPH0, RESOURCES0)
+    };
+    // The base's resolver with a key added, and the base's particle: beside skin 3's
+    // skeleton, the unit derives from the base.
+    let keys = [
+        ("Idle", skins::BASE_PARTICLE),
+        ("Glow", skins::BASE_PARTICLE),
+    ];
+    let objects = vec![
+        own_graph("a", GRAPH0),
+        bins::resolver_with(RESOURCES0, &keys),
+        idle,
+    ];
+    files.push(mod_skin("test", 0, SKIN0, &skin, objects));
+    let run = FactRun::of(&env, &archive(&files));
+    let decision = run.decide(block(), "test", 0);
+    assert_eq!(decision.premium, None, "{}", run.dump());
+    assert_eq!(
+        (decision.chosen, decision.reason),
+        (Some(Slot(3)), Reason::SkeletonOrigin),
+        "{}",
+        run.dump()
+    );
+    let weighed = decision.candidates.iter().map(|c| (c.why, c.feasible));
+    let weighed: Vec<_> = weighed.collect();
+    assert_eq!(
+        weighed,
+        [
+            (Considered::BaseFirst, false),
+            (Considered::SkeletonSkin, true)
+        ]
+    );
+    let skeleton = &decision.candidates[0].checks;
+    let skeleton = skeleton
+        .iter()
+        .find(|check| check.aspect == Aspect::Skeleton);
+    let why = skeleton.map(|check| check.fit.why.clone());
+    assert!(matches!(why, Some(Why::PremiumSkeleton { .. })), "{why:?}");
 }
 
 #[test]

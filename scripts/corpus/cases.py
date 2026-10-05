@@ -63,11 +63,11 @@ FIXUPS = (
     "vfx-spawn-shape-birth-translation material-sampler-fields vfx-emission-surface reshape-hoist "
     "reshape-wrap retype strip-undeclared"
 )
-REASONS = "base paste-cleaned slot fallback clips-origin forced infeasible sub-follows sub-left-to-base unjudged superseded pre-rework"
+REASONS = "base paste-cleaned slot fallback clips-origin skeleton-origin forced infeasible sub-follows sub-left-to-base unjudged superseded pre-rework"
 LEFT = "copy superseded pre-rework sub-left equal-to-game no-target game-skin chroma-folded"
 CHECK_WHY = (
     "no-such-skin no-mesh slot-mesh other-skin-mesh own-mesh foreign-mesh copied-visible copied-shown "
-    "copied-hidden no-copied-submesh no-skeleton slot-skeleton slot-joints other-skin-skeleton unbound "
+    "copied-hidden no-copied-submesh no-skeleton slot-skeleton slot-joints other-skin-skeleton premium-skeleton unbound "
     "own-skeleton foreign-skeleton no-entry no-clips clips-blocked clips-fit"
 )
 VISIBILITY = "visible hidden-shown hidden-never"
@@ -162,7 +162,7 @@ RULES = [
     ("decision", "decision by the clips played", SET, ".targets.decisions[].played"),
     ("decision", "decision makes a new bin", SET, ".targets.decisions[].new_bin"),
     ("decision", "decision made before a rework", SET, ".targets.decisions[].made_before"),
-    ("decision", "candidate", VALUE, ".targets.decisions[].candidates[].why", "skin0 first|the premium origin|the skin whose clips it plays|the champion's target|the policy"),
+    ("decision", "candidate", VALUE, ".targets.decisions[].candidates[].why", "skin0 first|the premium origin|the skin whose clips it plays|the skin whose skeleton it takes|the champion's target|the policy"),
     ("decision", "candidate feasible", VALUE, ".targets.decisions[].candidates[].feasible", "true false"),
     ("decision", "alternative reason", VALUE, ".targets.decisions[].alternatives[].reason"),
     ("decision", "targets conflict", SET, ".targets.conflicts"),
@@ -232,8 +232,9 @@ RULES += [
     data("bin.taken-from-game", "never", POSITIVE, name="bin.taken-from-game with files the game never held"),
     data("rig.submesh-copied", "submeshes[].visibility", VALUE, VISIBILITY),
     data("rig.unreadable", "parts[]", VALUE, "mesh skeleton"),
-    data("target.chosen", "reason", VALUE, "base paste-cleaned slot fallback clips-origin sub-follows"),
+    data("target.chosen", "reason", VALUE, "base paste-cleaned slot fallback clips-origin skeleton-origin sub-follows"),
     data("target.forced-unfit", "follows", VALUE, "true false"),
+    data("check.other-skin", "values[].value", VALUE, "skin-name audio-tag bank-unit skeleton simple-skin texture"),
     data("unit.left", "units[].why", VALUE, LEFT),
     data("unit.ported", "graph", VALUE, "true false"),
     data("unit.ported", "new_bin", VALUE, "true false"),
@@ -269,7 +270,7 @@ RULES += [
     data("package.in-place", "rewritten", POSITIVE, name="package.in-place writes bins again"),
     data("package.in-place", "whole", POSITIVE, name="package.in-place writes a bin whole"),
     data("package.in-place", "unnamed", POSITIVE, name="package.in-place keeps files with no path spelled"),
-    data("check.done", "check", VALUE, "round-trip types apply"),
+    data("check.done", "check", VALUE, "round-trip types apply base-skin"),
     data("check.done", "against.source", VALUE, "schema install"),
     data("check.type-mismatch", "fields[].found.kind", VALUE, name="check.type-mismatch found"),
     data("check.type-mismatch", "fields[].wants.kind", VALUE, name="check.type-mismatch wants"),

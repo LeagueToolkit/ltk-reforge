@@ -31,7 +31,7 @@ use ltk_meta::BinObject;
 use serde::Serialize;
 
 pub use self::check::{
-    Apply, Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, RoundTrip, Types,
+    Apply, BaseSkin, Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, RoundTrip, Types,
 };
 pub use self::config::{Made, ProjectConfig};
 pub use self::evidence::{
@@ -42,9 +42,9 @@ pub use self::evidence::{
 pub use self::findings::{
     Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
     FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBinFailed,
-    NotWritten, Place, Ported, RecordSkipped, ResolverFrozen, RoundTripFailed, RoundTripProblem,
-    Shape, TextureContained, ThumbnailDropped, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted,
-    Written,
+    NotWritten, OtherSkin, OtherSkinName, Place, Ported, RecordSkipped, ResolverFrozen,
+    RoundTripFailed, RoundTripProblem, Shape, SkinValue, TextureContained, ThumbnailDropped,
+    TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
 };
 pub use self::inplace::{BuildError, InPlaceBuilder};
 pub use self::overlay::{AppliedBin, AppliedPatch, Held, Loaded, Outcome, Overlay};
@@ -81,6 +81,7 @@ pub const CODES: &[Code] = &[
     LinkUnresolved::CODE,
     NameUnresolved::CODE,
     FileMissing::CODE,
+    OtherSkin::CODE,
     TypeMismatch::CODE,
     FieldUndeclared::CODE,
     RoundTripFailed::CODE,

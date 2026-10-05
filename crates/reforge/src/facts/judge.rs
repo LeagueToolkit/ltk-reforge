@@ -174,6 +174,12 @@ pub enum Why {
         /// The slot judged.
         slot: Slot,
     },
+    /// The skeleton is a premium skin's file with the base's joints, which a champion's base
+    /// does not take.
+    PremiumSkeleton {
+        /// The skins whose skeleton it is.
+        of: Vec<Slot>,
+    },
     /// The mesh binds joints the mod's own skeleton does not have.
     Unbound,
     /// The skeleton is the mod's own.
@@ -241,6 +247,9 @@ impl fmt::Display for Why {
             Why::NoSkeleton => f.write_str("no skeleton"),
             Why::SlotSkeleton => f.write_str("the slot's own skeleton"),
             Why::SlotJoints => f.write_str("the slot's joints"),
+            Why::PremiumSkeleton { of } => {
+                write!(f, "skin {}'s skeleton file, on the base", slots_text(of))
+            }
             Why::OtherSkinSkeleton { of, slot } => {
                 write!(
                     f,
@@ -396,6 +405,8 @@ pub struct UnitJudge<'a> {
     pub(super) catalog: &'a SkinCatalog,
     pub(super) rigs: &'a Rigs,
     pub(super) character: CharId,
+    /// Whether the character is a sub-character.
+    pub(super) sub: bool,
     pub(super) rig: Option<&'a UnitRig>,
     pub(super) clips: Option<&'a UnitClips>,
 }
@@ -506,6 +517,17 @@ impl UnitJudge<'_> {
         let skeleton = match rig.skeleton.file.source {
             Source::Missing => Fit::unknown(Why::NoSkeleton),
             _ if slots.iter().any(same_skeleton) => Fit::fits(Why::SlotSkeleton),
+            // #ADR-0062: a premium skin's file with the base's joints.
+            _ if joints.is_some()
+                && joints == target_joints
+                && k.is_base()
+                && !self.sub
+                && !slots.is_empty() =>
+            {
+                Fit::does_not(Why::PremiumSkeleton {
+                    of: slots.iter().copied().collect(),
+                })
+            }
             _ if joints.is_some() && joints == target_joints => Fit::fits(Why::SlotJoints),
             _ if !slots.is_empty() => Fit::does_not(Why::OtherSkinSkeleton {
                 of: slots.iter().copied().collect(),

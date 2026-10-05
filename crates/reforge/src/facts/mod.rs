@@ -285,10 +285,17 @@ impl Facts {
 
     /// Judges a unit of a character at any slot.
     pub fn judge(&self, character: CharId, unit: UnitId) -> Option<UnitJudge<'_>> {
+        let characters = self
+            .roster
+            .groups
+            .iter()
+            .flat_map(|group| &group.characters);
+        let sub = characters.into_iter().any(|c| c.id == character && c.sub);
         Some(UnitJudge {
             catalog: self.catalogs.of(character)?,
             rigs: &self.rigs,
             character,
+            sub,
             rig: self.rigs.of(unit),
             clips: self.clips.of(unit),
         })

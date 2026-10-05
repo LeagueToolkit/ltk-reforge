@@ -276,6 +276,37 @@ fn an_own_skeleton_of_the_slots_joints_is_taken_as_the_slots() {
 }
 
 #[test]
+fn a_premium_skins_skeleton_file_does_not_fit_the_base_though_it_has_the_bases_joints() {
+    let mut game = game();
+    // Skin 3's skeleton with the base's joints, in a file of other bytes than the base's.
+    game.insert(S3_SKEL, rigs::skeleton_named("three", &["Root", "Spine"]));
+    let env = env(game, NoHistory);
+    let skin = Skin {
+        skeleton: S3_SKEL.into(),
+        ..own_skin("a", GRAPH0, RESOURCES0)
+    };
+    let mesh = rigs::mesh(&[("hat", HAT)], 0);
+    let files = [
+        (skin.mesh.as_str(), mesh),
+        (skin.texture.as_str(), blob(&skin.texture)),
+    ];
+    let run = FactRun::of(&env, &skin0(vec![entry(SKIN0, &skin)]).files(WAD, &files));
+    let premium = Why::PremiumSkeleton {
+        of: vec![Slot(3), Slot(9)],
+    };
+    assert_eq!(
+        check(&run, 0, Aspect::Skeleton),
+        Fit {
+            outcome: Outcome::DoesNotFit,
+            why: premium
+        },
+        "{}",
+        run.dump()
+    );
+    assert_eq!(check(&run, 3, Aspect::Skeleton).why, Why::SlotSkeleton);
+}
+
+#[test]
 fn an_own_skeleton_without_a_joint_the_mesh_binds_does_not_fit() {
     let env = env(game(), NoHistory);
     // Every vertex binds to the joint at index 4, and the skeleton has two.

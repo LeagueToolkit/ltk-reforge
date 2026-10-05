@@ -494,6 +494,71 @@ impl Diag for FileMissing {
     }
 }
 
+/// A value of a skin entry that a check of the base skin reads for another skin's name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkinValue {
+    /// `championSkinName`.
+    SkinName,
+    /// A tag of `skinAudioProperties.tagEventList`.
+    AudioTag,
+    /// The name of a unit of `skinAudioProperties.bankUnits`.
+    BankUnit,
+    /// `skinMeshProperties.skeleton`.
+    Skeleton,
+    /// `skinMeshProperties.simpleSkin`.
+    SimpleSkin,
+    /// `skinMeshProperties.texture`.
+    Texture,
+}
+
+impl SkinValue {
+    /// The value as the entry spells its place.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SkinValue::SkinName => "championSkinName",
+            SkinValue::AudioTag => "tagEventList",
+            SkinValue::BankUnit => "bankUnits",
+            SkinValue::Skeleton => "skeleton",
+            SkinValue::SimpleSkin => "simpleSkin",
+            SkinValue::Texture => "texture",
+        }
+    }
+}
+
+/// One value of a patched base skin that names another skin of the champion.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct OtherSkinName {
+    /// Which value.
+    pub value: SkinValue,
+    /// What it holds.
+    pub names: String,
+}
+
+/// A champion's base skin that, patched, names another skin of the champion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OtherSkin {
+    /// The unit.
+    pub unit: UnitId,
+    /// The values, in the order a check of the base skin reads them.
+    pub values: Vec<OtherSkinName>,
+}
+
+impl Diag for OtherSkin {
+    const CODE: Code = code("check.other-skin", Severity::Warning);
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("the patched base skin names another skin of the champion: ");
+        f.list(&self.values, |f, value| {
+            f.text(value.value.as_str()).text(" ").spelled(&value.names);
+        });
+    }
+}
+
 /// The package holds nothing: there is nothing to write.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Empty {
@@ -824,6 +889,11 @@ pub enum Coverage {
         /// Files the game's own entry and resolver leave unresolved.
         files_game: usize,
     },
+    /// Champions' patched base skins read for another skin's name.
+    BaseSkin {
+        /// How many patched base skin entries were read.
+        entries: usize,
+    },
 }
 
 /// What a check covered, whatever it found.
@@ -887,6 +957,10 @@ impl Diag for Done {
                     f,
                     "; {names_known} names and {files_known} files unresolved as they were in the mod, {names_game} names and {files_game} files the game's own entry and resolver leave unresolved"
                 );
+            }
+            Coverage::BaseSkin { entries } => {
+                f.count(entries, "patched base skin")
+                    .text(" read for another skin's name");
             }
         }
     }

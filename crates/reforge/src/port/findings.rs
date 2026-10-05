@@ -80,6 +80,10 @@ impl Diag for TargetChosen {
                 "plays skin {slot}'s animations ({} of its clips) and fits nothing else: a mod for skin{slot}",
                 self.clips.unwrap_or(0)
             ),
+            (Reason::SkeletonOrigin, _) => write!(
+                f,
+                "on skin {slot}'s skeleton file, which the base does not take: a mod for skin{slot}"
+            ),
             (Reason::SubFollows, _) => write!(f, "follows the champion to skin{slot}"),
             _ => write!(f, "skin{slot}"),
         };

@@ -181,6 +181,12 @@ record and no measurement of reforge's own says it is right.
   hash keeps its use.
 - The three earliest reworks of #GAME-CHANGE-0001 (Mordekaiser, Pantheon, Fiddlesticks) are
   known by their joint names alone. Their submeshes and dropped paths are not measured.
+- A port to skin0 can name a premium skin of the champion in a value a check of the base skin
+  reads (#ADR-0062), in three cases `check.other-skin` reports: a game file in a premium
+  skin's folder that is no skin's mesh or skeleton (4 mods of the datasets, 2026-10-05, the
+  old base model in skin 5's folder), a unit that fits no slot (#ADR-0016), and a target
+  forced to the base. Whether one of the six values is enough for that check to refuse a mod,
+  or two are needed, is not established (the user recalls two, 2026-10-05).
 - A HUD edit on a path with a field no table names is left out (#ADR-0031 is not built).
 - The condition under which a block-compressed texture not in whole blocks crashes the client
   is not established (#GAME-BEHAVIOR-0018).

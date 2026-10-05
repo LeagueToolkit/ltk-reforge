@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 
 use super::findings::{
     Against, ApplyFailed, Coverage, Done, FieldUndeclared, FileMissing, LinkUnresolved,
-    ManifestUnreadable, NameUnresolved, Place, RecordSkipped, RoundTripFailed, RoundTripProblem,
-    Shape, TypeMismatch, TypeRow, UndeclaredRow,
+    ManifestUnreadable, NameUnresolved, OtherSkin, OtherSkinName, Place, RecordSkipped,
+    RoundTripFailed, RoundTripProblem, Shape, SkinValue, TypeMismatch, TypeRow, UndeclaredRow,
 };
 use super::overlay::{Loaded, Outcome, Overlay};
 use super::{Layer, Origin, Package, PatchOf, WrittenBin};
@@ -26,7 +26,9 @@ use crate::diag::{Record, Sink};
 use crate::fixups::{TargetTypes, TypeSource};
 use crate::game::{FieldType, Game as _, GameBin, GameView};
 use crate::model::entity::UnitId;
-use crate::model::{BinHash, Fields, SkinEntry, WadHash, bin, panic_text, path_hash, value};
+use crate::model::{
+    BinHash, Fields, SkinEntry, WadHash, bin, name_hash, panic_text, path_hash, value,
+};
 use crate::port::{FileVerdict, Group, Port};
 
 /// The name a caller turns a check on and off by: `round-trip`.
@@ -131,7 +133,12 @@ pub trait Check: Send + Sync {
 
 /// Every built-in check, in the order they run.
 fn built_in() -> Vec<Arc<dyn Check>> {
-    vec![Arc::new(Types), Arc::new(RoundTrip), Arc::new(Apply)]
+    vec![
+        Arc::new(Types),
+        Arc::new(RoundTrip),
+        Arc::new(Apply),
+        Arc::new(BaseSkin),
+    ]
 }
 
 /// A choice of checks, as data: saved and loaded beside a choice of fixups.
@@ -638,6 +645,136 @@ impl Check for RoundTrip {
     }
 }
 
+/// A champion's base skin, patched, names no other skin of the champion in the six values a
+/// check of the base skin for a premium skin put in its place reads (#ADR-0062).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BaseSkin;
+
+static BASE_SKIN: CheckInfo = CheckInfo::built_in(
+    "base-skin",
+    "A champion's patched base skin names no other skin of the champion",
+    None,
+);
+
+impl BaseSkin {
+    /// The champion whose base skin a patch's target is: `data/characters/<c>/skins/skin0.bin`.
+    fn champion(target: &str) -> Option<String> {
+        let lower = target.to_ascii_lowercase();
+        let rest = lower.strip_prefix("data/characters/")?;
+        let champion = rest.strip_suffix("/skins/skin0.bin")?;
+        (!champion.is_empty() && !champion.contains('/')).then(|| champion.to_string())
+    }
+
+    /// Whether `text` holds `marker`, then the number of a skin other than 0, then `suffix`,
+    /// whatever the case. `marker` and `suffix` are lowercase.
+    fn names_other_skin(text: &str, marker: &str, suffix: &str) -> bool {
+        let text = text.to_ascii_lowercase();
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find(marker) {
+            let tail = &rest[at + marker.len()..];
+            let digits = tail.len() - tail.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            let slot = tail[..digits].parse::<u32>();
+            if slot.is_ok_and(|slot| slot != 0) && tail[digits..].starts_with(suffix) {
+                return true;
+            }
+            rest = tail;
+        }
+        false
+    }
+
+    /// The values of a champion's skin entry that name another skin of the champion.
+    fn other_skin(entry: SkinEntry<'_>, champion: &str) -> Vec<OtherSkinName> {
+        let name = format!("{champion}skin");
+        let unit = format!("{champion}_skin");
+        let folder = format!("{champion}/skins/skin");
+        let mut out = Vec::new();
+        let mut read = |value: SkinValue, text: &str, marker: &str, suffix: &str| {
+            if Self::names_other_skin(text, marker, suffix) {
+                out.push(OtherSkinName {
+                    value,
+                    names: text.to_string(),
+                });
+            }
+        };
+        if let Some(skin) = entry.skin_name() {
+            read(SkinValue::SkinName, skin, &name, "");
+        }
+        let audio = entry.audio();
+        for tag in &audio.tags {
+            read(SkinValue::AudioTag, tag, &name, "");
+        }
+        for held in &audio.units {
+            read(SkinValue::BankUnit, &held.name, &unit, "_sfx");
+        }
+        // A file the entry holds by its hash spells no path, and is not read.
+        let files = [
+            (SkinValue::Skeleton, entry.skeleton()),
+            (SkinValue::SimpleSkin, entry.mesh()),
+            (SkinValue::Texture, entry.texture()),
+        ];
+        for (value, file) in files {
+            if let Some(path) = file.as_ref().and_then(value::FileRef::spelled) {
+                read(value, path, &folder, "");
+            }
+        }
+        out
+    }
+}
+
+impl Check for BaseSkin {
+    fn info(&self) -> &CheckInfo {
+        &BASE_SKIN
+    }
+
+    fn run(&self, cx: &CheckCx<'_>, sink: &mut Sink<'_>) {
+        let Some(overlay) = cx.overlay else {
+            return;
+        };
+        let mut entries = 0;
+        // A voice layer's patch leaves the same entry with another audio block.
+        let mut found: BTreeMap<UnitId, BTreeSet<OtherSkinName>> = BTreeMap::new();
+        for applied in &overlay.patches {
+            let Outcome::Applied(patched) = &applied.outcome else {
+                continue;
+            };
+            let Some(patch) = cx.package.patches(&applied.layer).get(applied.index) else {
+                continue;
+            };
+            let PatchOf::Skin { unit, entry } = patch.of else {
+                continue;
+            };
+            let Some(champion) = Self::champion(patch.target.as_str()) else {
+                continue;
+            };
+            // The base skin read is that of the champion the WAD is named after: no
+            // sub-character's, in its own bin or in the champion's.
+            let wad = applied
+                .wad
+                .as_ref()
+                .map(|wad| wad.as_str().to_ascii_lowercase());
+            let stem = wad.as_deref().and_then(|wad| wad.split('.').next());
+            if stem != Some(champion.as_str())
+                || entry != name_hash(&format!("Characters/{champion}/Skins/Skin0"))
+            {
+                continue;
+            }
+            let Some(object) = patched.objects.iter().find(|o| o.path_hash == entry) else {
+                continue;
+            };
+            entries += 1;
+            let values = Self::other_skin(SkinEntry::read(object), &champion);
+            if !values.is_empty() {
+                found.entry(unit).or_default().extend(values);
+            }
+        }
+        for (unit, values) in found {
+            let values = values.into_iter().collect();
+            sink.raise(OtherSkin { unit, values });
+        }
+        sink.raise(Done(Coverage::BaseSkin { entries }));
+    }
+}
+
 /// Every value of every bin the package ships is of the type the target build reads there,
 /// on a field its class declares. The types are the schema's at the install's build, and for
 /// a field the schema does not describe what the install's bins hold. Without a schema
@@ -840,5 +977,74 @@ impl Typing<'_> {
             V::Map(map) => map.entries().iter().for_each(|(_, v)| self.value(v, place)),
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ltk_meta::property::values;
+
+    use super::*;
+    use crate::model::known::field;
+
+    #[test]
+    fn a_name_is_another_skins_by_a_number_other_than_zero_after_the_marker() {
+        let names = BaseSkin::names_other_skin;
+        assert!(names("AatroxSkin07", "aatroxskin", ""));
+        assert!(names("AatroxSkin123", "aatroxskin", ""));
+        assert!(names("Aatrox_Skin07_SFX", "aatrox_skin", "_sfx"));
+        assert!(!names("Aatrox_Skin07_VO", "aatrox_skin", "_sfx"));
+        assert!(!names("AatroxSkin0", "aatroxskin", ""));
+        assert!(!names("AatroxSkin99999999999999999999", "aatroxskin", ""));
+        let base = "ASSETS/Characters/Aatrox/Skins/Base/Aatrox.skn";
+        assert!(!names(base, "aatrox/skins/skin", ""));
+        // The first number is the base's, the second is not.
+        let both = "ASSETS/Characters/Aatrox/Skins/Skin0/Aatrox/Skins/Skin12.skn";
+        assert!(names(both, "aatrox/skins/skin", ""));
+        // Another champion's skin, and a sub-character's.
+        let other = "ASSETS/Characters/Ahri/Skins/Skin07/Ahri_Skin07.skn";
+        assert!(!names(other, "aatrox/skins/skin", ""));
+        let sub = "ASSETS/Characters/AatroxPet/Skins/Skin07/AatroxPet.skn";
+        assert!(!names(sub, "aatrox/skins/skin", ""));
+    }
+
+    #[test]
+    fn the_base_skin_read_is_the_champions_own_bin() {
+        let champion = BaseSkin::champion;
+        let base = "DATA/Characters/Aatrox/Skins/Skin0.bin";
+        assert_eq!(champion(base).as_deref(), Some("aatrox"));
+        assert_eq!(champion("data/characters/aatrox/skins/skin7.bin"), None);
+        assert_eq!(champion("data/characters/aatrox/aatrox.bin"), None);
+    }
+
+    #[test]
+    fn a_file_held_by_its_hash_is_not_read() {
+        let entry = name_hash("Characters/Aatrox/Skins/Skin0");
+        let mesh = BinObject::builder(name_hash("mesh"), name_hash("SkinMeshDataProperties"))
+            .property(
+                name_hash(field::SKELETON),
+                values::String::from("ASSETS/Characters/Aatrox/Skins/Skin07/Aatrox_Skin07.skl"),
+            )
+            .property(
+                name_hash(field::TEXTURE),
+                values::WadChunkLink::new(path_hash(
+                    "ASSETS/Characters/Aatrox/Skins/Skin07/Aatrox_Skin07_TX_CM.tex",
+                )),
+            )
+            .build();
+        let mesh = values::Embedded(values::Struct {
+            class_hash: mesh.class_hash,
+            properties: mesh.properties,
+        });
+        let object = BinObject::builder(entry, SkinEntry::class())
+            .property(name_hash(field::SKIN_MESH_PROPERTIES), mesh)
+            .property(
+                name_hash(field::CHAMPION_SKIN_NAME),
+                values::String::from("Aatrox"),
+            )
+            .build();
+        let found = BaseSkin::other_skin(SkinEntry::read(&object), "aatrox");
+        let found: Vec<SkinValue> = found.iter().map(|name| name.value).collect();
+        assert_eq!(found, [SkinValue::Skeleton]);
     }
 }

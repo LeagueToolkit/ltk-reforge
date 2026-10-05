@@ -45,6 +45,8 @@ pub enum Reason {
     Fallback,
     /// A skin0 unit that fits only the skin whose game clips it mostly plays.
     ClipsOrigin,
+    /// A skin0 unit on a premium skin's skeleton file, which fits that skin.
+    SkeletonOrigin,
     /// The policy named the slot.
     Forced,
     /// Nothing fits: skin0 is kept for a person to decide.
@@ -70,6 +72,7 @@ impl Reason {
             Reason::Slot => "slot",
             Reason::Fallback => "fallback",
             Reason::ClipsOrigin => "clips-origin",
+            Reason::SkeletonOrigin => "skeleton-origin",
             Reason::Forced => "forced",
             Reason::Infeasible => "infeasible",
             Reason::SubFollows => "sub-follows",
@@ -90,6 +93,8 @@ pub enum Considered {
     PremiumOrigin,
     /// The skin whose clips the unit mostly plays.
     ClipsSkin,
+    /// The skin whose skeleton file the unit takes.
+    SkeletonSkin,
     /// The slot the unit's champion goes to.
     ChampionTarget,
     /// The slot the policy names.
@@ -103,6 +108,7 @@ impl Considered {
             Considered::BaseFirst => "skin0 first",
             Considered::PremiumOrigin => "the premium origin",
             Considered::ClipsSkin => "the skin whose clips it plays",
+            Considered::SkeletonSkin => "the skin whose skeleton it takes",
             Considered::ChampionTarget => "the champion's target",
             Considered::Policy => "the policy",
         }
@@ -419,6 +425,10 @@ impl Deciding<'_> {
         let base_facts = at(Slot::BASE);
         let base = Candidate::judge(&base_facts, Considered::BaseFirst, anim);
         let fits_base = base.feasible;
+        let skeleton_of = base.checks.iter().find_map(|check| match &check.fit.why {
+            Why::PremiumSkeleton { of } => Some(of.clone()),
+            _ => None,
+        });
         decision.candidates.push(base);
         if fits_base {
             let reason = if premium.is_some() {
@@ -447,6 +457,22 @@ impl Deciding<'_> {
             if feasible {
                 decision.played = Some(clips);
                 return (Some(skin), Reason::ClipsOrigin);
+            }
+        }
+        // #ADR-0062: the first skin of the skeleton's that the work fits.
+        let weighed = |decision: &Decision, skin: Slot| {
+            let mut candidates = decision.candidates.iter();
+            candidates.any(|candidate| candidate.slot == skin)
+        };
+        for skin in skeleton_of.into_iter().flatten() {
+            if weighed(decision, skin) {
+                continue;
+            }
+            let candidate = Candidate::judge(&at(skin), Considered::SkeletonSkin, anim);
+            let feasible = candidate.feasible;
+            decision.candidates.push(candidate);
+            if feasible {
+                return (Some(skin), Reason::SkeletonOrigin);
             }
         }
         (Some(Slot::BASE), Reason::Infeasible)
