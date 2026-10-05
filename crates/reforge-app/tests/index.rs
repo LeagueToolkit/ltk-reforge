@@ -167,6 +167,21 @@ fn install_stopping(
     result
 }
 
+/// Installs, and answers what the install reported.
+fn install_seen(
+    folder: &Folder,
+    release: &IndexRelease,
+) -> (Result<Utf8PathBuf, AppError>, Vec<InstallProgress>) {
+    let mut seen = Vec::new();
+    let mut progress = |report: InstallProgress| seen.push(report);
+    let result = Installer::new(folder, &AtomicBool::new(false), &mut progress).install(
+        release,
+        &folder.root(),
+        &folder.downloads(),
+    );
+    (result, seen)
+}
+
 fn entries(dir: &Utf8Path) -> Vec<String> {
     let Ok(read) = fs::read_dir(dir) else {
         return Vec::new();
@@ -329,6 +344,49 @@ fn a_database_download_that_stopped_resumes_from_where_it_stopped() {
         entries(&folder.downloads()).is_empty(),
         "the download is removed"
     );
+}
+
+#[test]
+fn a_download_is_checked_as_it_comes_with_no_step_of_its_own() {
+    let folder = Folder::new();
+    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+
+    let (installed, seen) = install_seen(&folder, &folder.release());
+
+    installed.unwrap();
+    assert!(
+        seen.iter().all(|report| report.step != InstallStep::Check),
+        "{:?}",
+        seen.iter().find(|report| report.step == InstallStep::Check)
+    );
+}
+
+#[test]
+fn a_resumed_download_checks_the_bytes_it_kept_before_the_rest() {
+    let folder = Folder::new();
+    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+    let release = folder.release();
+    install_stopping(&folder, &release, &AtomicBool::new(false), Some(100_000)).unwrap_err();
+
+    let (installed, seen) = install_seen(&folder, &release);
+
+    installed.unwrap();
+    let kept = folder.asked.lock().unwrap()[1];
+    let checked = seen
+        .iter()
+        .take_while(|report| report.step == InstallStep::Check)
+        .count();
+    assert!(checked > 0, "the kept bytes were checked first: {seen:?}");
+    let last = seen[checked - 1];
+    assert_eq!((last.done, last.total), (kept, kept), "all the kept bytes");
+    assert!(
+        seen[checked..]
+            .iter()
+            .all(|report| report.step != InstallStep::Check),
+        "nothing else was read again"
+    );
+    assert_eq!(seen[checked].step, InstallStep::Download);
+    assert_eq!(seen[checked].done, kept, "the download went on from them");
 }
 
 #[test]

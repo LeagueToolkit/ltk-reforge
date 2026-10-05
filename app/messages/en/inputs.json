@@ -5,6 +5,7 @@
   "inputs_census_none_label": "Census history: none on this machine; an update fetches what it reads",
   "inputs_census_partial_label": "Census history: fetched as far as updates read it",
   "inputs_census_whole_label": "Census history: whole, from {tag}",
+  "inputs_check_progress_label": "Checking: {done} of {total} MB",
   "inputs_choose_file_action": "Choose file",
   "inputs_choose_folder_action": "Choose folder",
   "inputs_download_progress_label": "{done} of {total} MB",

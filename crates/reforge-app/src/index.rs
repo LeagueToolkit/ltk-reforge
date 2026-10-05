@@ -229,6 +229,9 @@ impl Source for Web {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum InstallStep {
+    /// What a download holds already is read again for its digest: the bytes a stopped download
+    /// kept, before the rest is asked for, or a file downloaded whole before.
+    Check,
     /// Its files are downloading.
     Download,
     /// What was downloaded is unpacking.
@@ -242,7 +245,8 @@ pub enum InstallStep {
 pub struct InstallProgress {
     /// What the install is doing.
     pub step: InstallStep,
-    /// The bytes done: of the release downloaded, or of the download unpacked.
+    /// The bytes done: of the download checked, of the release downloaded, or of the download
+    /// unpacked.
     pub done: u64,
     /// The bytes to do.
     pub total: u64,
@@ -363,12 +367,10 @@ impl<'a> Installer<'a> {
         let db = downloads.join(format!("{name}-{}", release.db.name));
         let (cancel, total) = (self.cancel, self.total);
         let progress = &mut *self.progress;
-        let mut heard = |done: u64| {
-            progress(InstallProgress {
-                step: InstallStep::Download,
-                done,
-                total,
-            })
+        // The database comes first, so its bytes downloaded are the release's.
+        let mut heard = |seen: InstallProgress| match seen.step {
+            InstallStep::Download => progress(InstallProgress { total, ..seen }),
+            _ => progress(seen),
         };
         Download::new(self.source, cancel, &mut heard, |detail| {
             AppError::IndexFetch { detail }

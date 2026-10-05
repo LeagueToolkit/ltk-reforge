@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::download::Download;
 use crate::error::{AppError, chain};
-use crate::index::{Counted, IndexRelease, InstallStep, Source, folder_name, zst_reader};
+use crate::index::{
+    Counted, IndexRelease, InstallProgress, InstallStep, Source, folder_name, zst_reader,
+};
 
 /// The file a clone bootstrapped from an archive notes it in.
 pub const ARCHIVE_NOTE: &str = "archive.json";
@@ -98,7 +100,8 @@ fn note_of(dir: &Utf8Path) -> Option<ArchiveNote> {
 pub struct ArchiveProgress {
     /// What the bootstrap is doing.
     pub step: InstallStep,
-    /// The bytes done: of the archive downloaded, or of the download unpacked.
+    /// The bytes done: of the download checked, of the archive downloaded, or of the download
+    /// unpacked.
     pub done: u64,
     /// The bytes to do.
     pub total: u64,
@@ -149,13 +152,12 @@ impl<'a> Bootstrap<'a> {
         let census = clones.whole.as_path();
         let asset = release.archive.as_ref().ok_or(AppError::NoArchive)?;
         let file = downloads.join(format!("{}-{}", folder_name(&release.tag), asset.name));
-        let total = asset.size;
         let progress = &mut *self.progress;
-        let mut heard = |done: u64| {
+        let mut heard = |seen: InstallProgress| {
             progress(ArchiveProgress {
-                step: InstallStep::Download,
-                done,
-                total,
+                step: seen.step,
+                done: seen.done,
+                total: seen.total,
             })
         };
         Download::new(self.source, self.cancel, &mut heard, |detail| {

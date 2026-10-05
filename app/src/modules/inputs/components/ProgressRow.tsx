@@ -33,7 +33,7 @@ export function ProgressRow({ fraction, label, onStop }: ProgressRowProps) {
   );
 }
 
-/** A download of a release's file, or its unpacking after, as a progress row. */
+/** A download of a release's file, its check, or its unpacking after, as a progress row. */
 export function StepProgress({
   progress,
   onStop,
@@ -42,14 +42,15 @@ export function StepProgress({
   onStop: () => void;
 }) {
   const sizes = { done: megabytes(progress.done), total: megabytes(progress.total) };
+  const labels = {
+    check: m.inputs_check_progress_label,
+    download: m.inputs_download_progress_label,
+    unpack: m.inputs_unpack_progress_label,
+  };
   return (
     <ProgressRow
       fraction={progress.done / Math.max(progress.total, 1)}
-      label={
-        progress.step === "unpack"
-          ? m.inputs_unpack_progress_label(sizes)
-          : m.inputs_download_progress_label(sizes)
-      }
+      label={labels[progress.step](sizes)}
       onStop={onStop}
     />
   );

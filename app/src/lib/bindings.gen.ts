@@ -188,7 +188,10 @@ export type AppError =
 export type ArchiveProgress = {
 	/**  What the bootstrap is doing. */
 	step: InstallStep,
-	/**  The bytes done: of the archive downloaded, or of the download unpacked. */
+	/**
+	 *  The bytes done: of the download checked, of the archive downloaded, or of the download
+	 *  unpacked.
+	 */
 	done: number,
 	/**  The bytes to do. */
 	total: number,
@@ -468,7 +471,10 @@ export type InputsView = {
 export type InstallProgress = {
 	/**  What the install is doing. */
 	step: InstallStep,
-	/**  The bytes done: of the release downloaded, or of the download unpacked. */
+	/**
+	 *  The bytes done: of the download checked, of the release downloaded, or of the download
+	 *  unpacked.
+	 */
 	done: number,
 	/**  The bytes to do. */
 	total: number,
@@ -476,6 +482,11 @@ export type InstallProgress = {
 
 /**  What a download of a release is doing. */
 export type InstallStep = 
+/**
+ *  What a download holds already is read again for its digest: the bytes a stopped download
+ *  kept, before the rest is asked for, or a file downloaded whole before.
+ */
+"check" | 
 /**  Its files are downloading. */
 "download" | 
 /**  What was downloaded is unpacking. */
