@@ -271,10 +271,11 @@ pub struct FixupInfo {
 
 - **The engine owns the frame.** `FixupSet::apply` walks every loaded object once per fixup, in
   the set's order. `FixCx` gives the target build's types (`declares`, `type_of`), whether the
-  mod's build read a field (`read_at_source`, from the mod's dating), the names, and the calls
-  that record what a fixup did.
+  mod's build read a field (`read_at_source`, from the mod's dating), the character whose skin
+  entry the object is (`entry_of`), the names, and the calls that record what a fixup did.
 - **The target's types** are `TargetTypes`: the meta schema, else what the install's own bins
-  hold for a class and field.
+  hold for a class and field, and the install's version, `16.19`, which orders builds across
+  hotfixes where a build's number does not.
 - **A change is a record.** `Change { fixup, object, path, before, after }`, where `after` is a
   value, a move to another path, removed, lost or unconvertible. A fixup writes no sentence and
   sets no flag. The object's edited state, the report's rows and the four `fixup.*` findings

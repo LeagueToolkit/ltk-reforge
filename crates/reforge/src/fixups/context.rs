@@ -7,7 +7,7 @@ use super::changes::{After, Change, Changes, Snapshot};
 use super::set::FixError;
 use super::types::{TargetTypes, TypeSource};
 use crate::game::{FieldType, NameBook, Names, Speller};
-use crate::model::entity::{Character, ObjectId};
+use crate::model::entity::{Character, ObjectId, SkinUnit};
 use crate::model::value::kind_name;
 use crate::model::{Arena, BinHash, FieldPath, FixupId, WadHash};
 
@@ -17,6 +17,7 @@ pub struct FixCx<'a> {
     /// The number of the build the mod was made at or after.
     pub(super) source: Option<u64>,
     pub(super) characters: &'a Arena<Character>,
+    pub(super) units: &'a Arena<SkinUnit>,
     pub(super) tables: &'a Names,
     pub(super) book: &'a mut NameBook,
     pub(super) fixup: &'a FixupId,
@@ -81,6 +82,13 @@ impl FixCx<'_> {
     /// The mod's characters.
     pub fn characters(&self) -> &Arena<Character> {
         self.characters
+    }
+
+    /// The character whose skin entry the object being fixed is. None for any other object.
+    pub fn entry_of(&self) -> Option<&Character> {
+        let mut units = self.units.values();
+        let unit = units.find(|unit| unit.entry == Some(self.object))?;
+        Some(&self.characters[unit.character])
     }
 
     /// The name tables, without what the run learnt.

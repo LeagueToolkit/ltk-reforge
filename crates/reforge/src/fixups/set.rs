@@ -326,6 +326,7 @@ impl FixupSet {
                     types: &types,
                     source: inputs.dating.build(),
                     characters: &m.characters,
+                    units: &m.units,
                     tables: inputs.env.names(),
                     book: &mut *inputs.names,
                     fixup: &fixup.info().id,

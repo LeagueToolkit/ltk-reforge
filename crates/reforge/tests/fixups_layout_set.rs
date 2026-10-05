@@ -1,6 +1,7 @@
 //! The layout fixups that are code, as a set: what each says of itself, the order they run in,
 //! and one mod taken through all of them.
 
+use ltk_meta::property::values;
 use ltk_meta::{BinObject, PropertyValueEnum as V};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, layout};
@@ -10,8 +11,12 @@ use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{embed, field, kind, pointer as to};
 use reforge_testkit::{FixRun, SchemaRows, skins};
 
+/// The champion's skin entry of the base skin.
+const ENTRY: &str = "Characters/Test/Skins/Skin0";
+
 /// The ids of the fixups of this file, in the order the set runs them.
-const IDS: [&str; 6] = [
+const IDS: [&str; 7] = [
+    "health-bar-style",
     "material-default-technique",
     "vfx-mesh-align",
     "vfx-spawn-shape",
@@ -36,12 +41,13 @@ fn the_layout_fixups_name_their_records_and_builds() {
     assert_eq!(
         rows,
         [
-            row(IDS[0], "13.5", "#GAME-CHANGE-0015"),
-            row(IDS[1], "13.8", "#GAME-CHANGE-0017"),
-            row(IDS[2], "14.1", "#GAME-CHANGE-0006"),
-            row(IDS[3], "14.1", "#MOD-ARTIFACT-0019"),
-            row(IDS[4], "15.3", "#GAME-CHANGE-0014"),
-            row(IDS[5], "15.18", "#GAME-CHANGE-0018"),
+            row(IDS[0], "13.4", "#GAME-CHANGE-0023"),
+            row(IDS[1], "13.5", "#GAME-CHANGE-0015"),
+            row(IDS[2], "13.8", "#GAME-CHANGE-0017"),
+            row(IDS[3], "14.1", "#GAME-CHANGE-0006"),
+            row(IDS[4], "14.1", "#MOD-ARTIFACT-0019"),
+            row(IDS[5], "15.3", "#GAME-CHANGE-0014"),
+            row(IDS[6], "15.18", "#GAME-CHANGE-0018"),
         ]
     );
 }
@@ -52,7 +58,7 @@ fn the_standard_set_runs_them_by_build_after_the_table_rules() {
     let ids = set.ids();
     let found: Vec<&str> = ids.iter().copied().filter(|id| IDS.contains(id)).collect();
     assert_eq!(found, IDS);
-    // 13.1 is the last table rule's build, and 13.5 the first of these.
+    // 13.1 is the last table rule's build, and 13.4 the first of these.
     let place = |id: &str| ids.iter().position(|held| *held == id).expect("held");
     assert!(place("vfx-texture-mult") < place(IDS[0]));
 }
@@ -107,6 +113,17 @@ fn schema() -> Schema {
                 field("defaultTechnique", string()).until(120),
             ],
         )
+        .class(
+            "SkinCharacterDataProperties",
+            &[field(
+                "healthBarData",
+                embed("CharacterHealthBarDataRecord"),
+            )],
+        )
+        .class(
+            "CharacterHealthBarDataRecord",
+            &[field("unitHealthBarStyle", kind("U8"))],
+        )
         .build()
 }
 
@@ -129,7 +146,16 @@ fn old_mod() -> Vec<BinObject> {
         ("TextureName", text("assets/mod/a/body.tex")),
     ];
     let emitter = "VfxEmitterDefinitionData";
+    let bar = embedded(
+        "CharacterHealthBarDataRecord",
+        vec![("unitHealthBarStyle", V::U8(values::U8::new(9)))],
+    );
     vec![
+        object(
+            ENTRY,
+            "SkinCharacterDataProperties",
+            vec![("healthBarData", bar)],
+        ),
         object("Old", emitter, vec![("shape", shape)]),
         object("Misplaced", emitter, vec![("SpawnShape", misplaced)]),
         object(
@@ -170,13 +196,14 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
         .with(layout::BirthTranslation)
         .with(layout::SpawnShape)
         .with(layout::MeshAlign)
-        .with(layout::DefaultTechnique);
+        .with(layout::DefaultTechnique)
+        .with(layout::HealthBarStyle);
     let once = FixRun::of(&env, &set, &skin_archive(old_mod()));
     let by_fixup: Vec<&str> = once.changes.by_fixup().map(|(id, _)| id.as_str()).collect();
     assert_eq!(by_fixup, IDS);
     let counts = once.changes.counts();
     // Lost: the technique a material chose.
-    assert_eq!((counts.changed, counts.removed, counts.lost), (8, 1, 1));
+    assert_eq!((counts.changed, counts.removed, counts.lost), (9, 1, 1));
     assert!(once.field("Old", "SpawnShape").is_some());
     assert!(once.field("Misplaced", "EmitterPosition").is_some());
     assert!(once.field("Yaw", "AlignPitchToCamera").is_some());
@@ -184,7 +211,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
     assert!(once.field("Sampler", "texturePath").is_some());
     assert!(once.field("Glow", "defaultTechnique").is_none());
 
-    let entries = ["Old", "Misplaced", "Yaw", "Mesh", "Sampler", "Glow"];
+    let entries = [ENTRY, "Old", "Misplaced", "Yaw", "Mesh", "Sampler", "Glow"];
     let after = entries.map(|entry| once.object(entry).clone());
     let twice = once.again(&set);
     assert!(twice.changes.is_empty(), "{:?}", twice.changes);

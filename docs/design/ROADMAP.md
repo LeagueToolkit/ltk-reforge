@@ -164,8 +164,9 @@ record and no measurement of reforge's own says it is right.
 
 - *fixer* A list of floats where the build reads a list of vectors, and the reverse, has no
   conversion (46 mods).
-- *fixer* A health bar style keeps the number of the mod's build, and a champion's skin made
-  before 13.4 holds none (#GAME-CHANGE-0023). The conversion is read and not built.
+- *fixer* The health bar style of a unit other than a champion's skin entry keeps the number of
+  the mod's build (#GAME-CHANGE-0023): a sub-character's value does not say its numbering, and
+  the mod's date is a lower bound.
 - *fixer* A material keeps a link to a shader Riot removed, and the client crashes at load
   (#GAME-CHANGE-0024, #GAME-BEHAVIOR-0023). Riot's relinks are read, and Riot rewrote the
   material with its link, so the link alone is no conversion.

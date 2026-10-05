@@ -10,7 +10,7 @@ use ltk_meta::{BinObject, PropertyKind as Kind};
 use crate::env::Env;
 use crate::game::{Build, FieldType, GameError, Schema};
 use crate::model::hash::skin_paths;
-use crate::model::{BinHash, MAX_SLOT, Mod, Slot, WadHash, path_hash, walk};
+use crate::model::{BinHash, MAX_SLOT, Mod, Slot, Version, WadHash, path_hash, walk};
 
 /// How many bins of one game skin are read for their shapes, the skin bin included.
 pub const MAX_CHAIN: usize = 16;
@@ -31,6 +31,8 @@ pub struct TargetTypes<'a> {
     schema: Option<&'a Schema>,
     /// The build the schema is read at.
     build: Option<u64>,
+    /// The install's version.
+    version: Option<Version>,
     /// The shape the first bin read holds each field of each class in.
     witnessed: HashMap<(BinHash, BinHash), FieldType>,
 }
@@ -42,8 +44,15 @@ impl<'a> TargetTypes<'a> {
         Self {
             schema,
             build: schema.map(|schema| schema.at_install(install)),
+            version: install.and_then(Build::version),
             witnessed: HashMap::new(),
         }
+    }
+
+    /// The version of the install the mod is fixed for, `16.19`. None when the install does
+    /// not say its build.
+    pub fn version(&self) -> Option<Version> {
+        self.version
     }
 
     /// The types a mod is fixed to: the environment's schema at the game's build, and the

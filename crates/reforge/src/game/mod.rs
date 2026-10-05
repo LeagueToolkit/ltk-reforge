@@ -35,7 +35,7 @@ pub use self::schema::{
 pub use self::speller::Speller;
 pub use self::view::{GameBin, GameSkin, GameView};
 use crate::diag::{Code, Diag};
-use crate::model::{WadHash, WadName};
+use crate::model::{Version, WadHash, WadName};
 
 /// Every diagnostic code this module raises.
 pub const CODES: &[Code] = &[
@@ -96,6 +96,15 @@ impl Build {
     /// them by position, and a late hotfix has a higher number than the patch after it.
     pub fn number(&self) -> u64 {
         self.number
+    }
+
+    /// The first two parts, `16.19`, which order builds across hotfixes. None for a build
+    /// written with fewer than three parts, or parts too large for a version.
+    pub fn version(&self) -> Option<Version> {
+        let mut parts = self.parts();
+        let (major, minor) = (parts.next()?, parts.next()?);
+        parts.next()?;
+        Some(Version::new(major.try_into().ok()?, minor.try_into().ok()?))
     }
 }
 

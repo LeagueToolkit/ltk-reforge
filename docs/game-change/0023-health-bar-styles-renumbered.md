@@ -86,5 +86,9 @@ value is another (Tibbers holds `5`).
   holding `1` and one holding `3` are unchanged from 8.20 to 16.19. A skin entry of Tibbers
   holds `4` from 11.3 and `5` from 14.17 to 16.19.
 - The schema and the meta wiki, read with `rito-meta` on 2026-10-05.
-- How many mods of the datasets hold a style of an older numbering, or no style, is not
-  counted.
+- Repair runs with the conversion on champions' skin entries (2026-10-06). Of 400 mods of the
+  datasets, every twelfth by SHA-256, 29 hold such an entry of an older numbering: 161 entries
+  hold `11`, 4 hold `10`, and one has no `healthBarData`; none holds `9`. Of the 54 mods of the
+  reduced corpus, 9: 59 entries hold `10` and 14 hold `11`. The skin entries of mods dated
+  before 13.4 that were read hold `12`, and mods dated 10.11 and 13.3 hold `11`: a mod's date
+  does not tell the numbering of its entry.
