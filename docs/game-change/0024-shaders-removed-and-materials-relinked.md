@@ -4,7 +4,7 @@
   champion's materials are listed under "Riot's conversion"
 - **Affects:** `CustomShaderDef` objects of `data/shaders/shaders.bin`, and the link
   `StaticMaterialDef.techniques[].passes[].shader` that names one
-- **Related:** #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0022
+- **Related:** #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0022, #GAME-BEHAVIOR-0023
 
 ## Before
 
@@ -73,17 +73,19 @@ Every name is under `Shaders/SkinnedMesh/`. A count is of object files of the ch
   `Viktor_Skin04_Deathsworne_Shader` (15.23), `Pulsefire_Ezrael`, `Sylas_R_Clone` (16.2).
 - At 12.19 a shader no table names, `0x3094c02d`, left, and its one material links
   `2_Diffuse_Lerp`.
-- Whether a relinked material's other values (its parameters and samplers) changed with the link
-  is not read here.
+- Riot rewrote a relinked material with its link, so the link alone is not the conversion. At
+  16.10 Vex's `Characters/Vex/Skins/Skin33/Materials/Vex_Skin33_Shadow_Mat`, from `Cloth_Base`
+  to `Diffuse_Alpha_mult`, kept its `Diffuse_Texture` sampler alone, of six, with two fields
+  added to it; its 14 parameters became one, `Alpha`; its seven switches and the define
+  `DISABLE_SHADOWS` went, and one flag of its pass. Whether every relinked material was rewritten
+  so is not read here.
 
 ## In a mod
 
 A mod made before the build keeps the old link, and from the build it names no shader the
-client loads (#GAME-BEHAVIOR-0006). What the client draws for a pass with no shader is not
-checked in game. Two other fixers state that the model is not drawn: Hematite's source says
-"Missing shaders cause invisible models". A material whose shader has no compiled programs
-crashes the client at its first draw (#GAME-BEHAVIOR-0022); whether a link to no shader does the
-same is not established.
+client holds. The client crashes while it loads such a material (#GAME-BEHAVIOR-0023): a mod
+whose material names `Cloth_Base` crashes the game at 16.19. Two other fixers state that the
+model is only not drawn: Hematite's source says "Missing shaders cause invisible models".
 
 Both relink such a material to the current shader of the same folder whose name shares the most
 `_`-separated words with the old one, after replacing `MultiLayered` with `MultiLayer` and
@@ -106,3 +108,5 @@ Both relink such a material to the current shader of the same folder whose name 
   (2026-10-05), and applied by a script of its steps to the shaders the bin holds at
   16.19.8230722.
 - How many mods of the datasets name a removed shader is not counted.
+- Seen in game (2026-10-06): a material linking `Cloth_Base` crashes the 16.19 client at load
+  (#GAME-BEHAVIOR-0023).

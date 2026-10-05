@@ -166,9 +166,11 @@ record and no measurement of reforge's own says it is right.
   conversion (46 mods).
 - *fixer* A health bar style keeps the number of the mod's build, and a champion's skin made
   before 13.4 holds none (#GAME-CHANGE-0023). The conversion is read and not built.
-- *fixer* A material keeps a link to a shader Riot removed, which names nothing
-  (#GAME-CHANGE-0024). Riot's relinks are read; whether its materials' other values changed
-  with them is not.
+- *fixer* A material keeps a link to a shader Riot removed, and the client crashes at load
+  (#GAME-CHANGE-0024, #GAME-BEHAVIOR-0023). Riot's relinks are read, and Riot rewrote the
+  material with its link, so the link alone is no conversion.
+- *fixer* A mod's own `CustomShaderDef` is kept, and the client crashes at the first draw of a
+  material that uses it (#GAME-BEHAVIOR-0022).
 - *fixer* A repair keeps a skin bin's link to a shared bin at its path before 16.10, which the
   client skips (#GAME-CHANGE-0012). Riot's bins link the `_multi_` path from 16.10.
 - *fixer* A repair ships a mod's champion root bin whole, with the champion's gameplay data of
