@@ -2,7 +2,8 @@
 
 - **Build:** 14.1
 - **Affects:** `VfxEmitterDefinitionData`, `VfxShape`, `IVfxShape` and the classes derived from
-  it: `VfxShapeLegacy`, `VfxShapeBox`, `VfxShapeCylinder`, `VfxShapeSphere`
+  it: `VfxShapeLegacy`, `VfxShapePointDoNotUse`, `VfxShapeBox`, `VfxShapeCylinder`,
+  `VfxShapeSphere`
 - **Related:** #GAME-BEHAVIOR-0002
 
 ## Before
@@ -26,8 +27,10 @@ From 14.1 an emitter holds two fields in its place, and its class does not decla
   default.
 
 `IVfxShape` is an interface. A `SpawnShape` is one of the classes derived from it:
-`VfxShapeBox`, `VfxShapeCylinder` and `VfxShapeSphere`, each a volume, or `VfxShapeLegacy`, which
-holds `emitOffset`, `emitRotationAngles` and `emitRotationAxes` as `VfxShape` held them.
+`VfxShapeBox`, `VfxShapeCylinder` and `VfxShapeSphere`, each a volume; `VfxShapeLegacy`, which
+holds `emitOffset`, `emitRotationAngles` and `emitRotationAxes` as `VfxShape` held them; or
+`VfxShapePointDoNotUse`, which holds one field, `emitOffset: vec3`. No name table spells the
+point's class: a bin shows it as `0xee39916f`.
 
 `VfxShapeLegacy` declares no `birthTranslation`.
 
@@ -37,10 +40,12 @@ holds `emitOffset`, `emitRotationAngles` and `emitRotationAxes` as `VfxShape` he
 - The other three fields became the `SpawnShape`. Riot rewrote many shapes as the volume they
   drew: a random offset as a `VfxShapeBox`, `VfxShapeSphere` or `VfxShapeCylinder` of the
   offset's range, a constant offset under a random rotation as a `VfxShapeSphere` of that
-  radius. It kept the others as a `VfxShapeLegacy` with the three fields unchanged.
+  radius. It rewrote a constant offset as a `VfxShapePointDoNotUse` holding the constant as a
+  bare vector. It kept the others as a `VfxShapeLegacy` with the three fields unchanged.
 - No other field of the emitter moved.
 
-Which shapes Riot rewrote as a volume and which it kept is not established as a rule.
+Which shapes Riot rewrote as a volume or a point and which it kept is not established as a
+rule. Some points came from shapes with a curve or a rotation, one at another value.
 `VfxShapeLegacy` holds the three fields under their old names and types, so every old shape can
 be written as one.
 
@@ -68,3 +73,10 @@ author's own build dropped it.
   The class `VfxShape` is removed in 14.5.
 - No game object from 10.9 to 16.19 holds a `birthTranslation` in a `VfxShapeLegacy`
   (ltk-forge's census lookup, 2026-09-30).
+- The point: `rito-meta` (generation 2026-10-05, read 2026-10-06) names `0xee39916f`
+  `VfxShapePointDoNotUse`, derived from `IVfxShape` from 14.1, declaring `emitOffset: vec3`. In
+  the census history, branch `history-v2`, 425 object files of Ahri's WAD hold one at
+  14.1.5512844 and none at 13.24.5479214. In the first 40 of them, emitters paired by file and
+  `emitterName` give 121 points from a 13.24 shape whose `emitOffset` held a constant alone, and
+  89 from shapes with a curve, a rotation or other fields. The samples read keep the constant's
+  value, but for one: `{30, 0, 0}` with a curve became `{1, 0, 0}`.

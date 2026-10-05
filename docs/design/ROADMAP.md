@@ -175,9 +175,6 @@ record and no measurement of reforge's own says it is right.
   client skips (#GAME-CHANGE-0012). Riot's bins link the `_multi_` path from 16.10.
 - *fixer* A repair ships a mod's champion root bin whole, with the champion's gameplay data of
   the mod's build (#MOD-ARTIFACT-0032), in 259 mods of the datasets.
-- *fixer* An emitter shape a tool renamed under the old field (#MOD-ARTIFACT-0031) is removed as
-  undeclared, with nothing counted lost: the game files the tool copied in date the mod after
-  14.1 (#MOD-ARTIFACT-0029).
 - *fixer* A birth translation in a `VfxShapeLegacy` is stripped in the 206 mods dated 14.1 or
   later (276,644 values), where the mod's own build never read the old `shape`.
 - *fixer* Which of two entries of one hash in a bin the client keeps is not established, and
