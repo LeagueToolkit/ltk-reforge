@@ -36,6 +36,10 @@ established: its format, its mip chain, or the `.dds` path it sits at.
   path stay DDS for a size not in whole blocks.
 - The crash and its code are LTK Manager's statement, taken from ltk-forge's `TRANSFORMS.md`.
   No crash was reproduced.
+- Hematite's source states it of a TEX in DXT1 or DXT5: the client "reads garbage past the end
+  of the buffer" and draws noise, "or crashes outright on some patches". It crops every such
+  TEX to whole blocks and drops its mip chain, and names the Python and Celestial fixers as
+  doing the same (read 2026-10-05). It names no build and no check.
 - Two checks would confirm it: a count, over the census history's texture facts, of the
   block-compressed textures of such a size the game ships at the target build; and one mod
   texture of 10 by 10 in DXT1, at a `.dds` path and at a `.tex` path, seen in game.

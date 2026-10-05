@@ -74,5 +74,10 @@ Only the class of the table loses the field. The same hash on another class is a
   do not hold them (2026-09-30). Not checked again here.
 - What the mods hold under each hash is ltk-forge's description of them. The reports of the
   baseline run give it and not the values.
+- TopazModFixer, the fixer of the cslol-go manager, reads `StaticMaterialDef.0xf3d3de85` as the
+  material's list of samplers where `samplerValues` is absent, renames the fields of its
+  samplers and leaves the list under `0xf3d3de85` (source of TopazModFixerCLI, read
+  2026-10-05). A tool's author took the field for a list of samplers too. Which tool writes it
+  is not established.
 - That removing the fields changes nothing drawn is inferred from #GAME-BEHAVIOR-0002. No check
   in game is recorded.

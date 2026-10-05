@@ -18,7 +18,12 @@ and its sub-characters load together and share the set.
 The bin of shader definitions, `data/shaders/shaders.bin`, is loaded whatever plays, so a
 material's link to a shader resolves with no bin listing it.
 
-Not established: the order in which two loaded bins that hold one name are searched.
+Not established:
+
+- the order in which two loaded bins that hold one name are searched;
+- whether a skin's link to a gear upgrade (`skinUpgradeData.mGearSkinUpgrades`) that no loaded
+  bin holds is skipped like any other name. Hematite's source states that it crashes the
+  client.
 
 ## In a mod
 
@@ -41,3 +46,8 @@ Not established: the order in which two loaded bins that hold one name are searc
   under this rule, and the ports work in game (2026-09-29).
 - What would confirm the open part: two loaded bins defining one name with different values,
   and the value seen in game.
+- Hematite's source (read 2026-10-05) calls the crash on a gear upgrade's link to a name
+  nothing loads "confirmed", names no build or check, and removes the skin's `skinUpgradeData`
+  where it finds one. It states that a contextual action's link to a name nothing loads is
+  harmless, and that removing such links lost the voice lines. A skin with a gear upgrade linked
+  to a name nothing loads, seen in game, would settle the first.

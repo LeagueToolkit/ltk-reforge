@@ -1,6 +1,7 @@
 # MOD-ARTIFACT-0001: A skin bin copied to every slot
 
-- **Source:** authors, and tools that do it for them
+- **Source:** authors, and tools that do it for them: TopazModFixer by default
+  (#MOD-ARTIFACT-0030), and Celestial's SkinLite by Hematite's source
 - **Affects:** `data/characters/<character>/skins/skin<N>.bin` and the bins each links
 - **Related:** #MOD-ARTIFACT-0002
 
@@ -45,3 +46,10 @@ manager's setting, not a property of the mod.
 - Comparing rigs by the bytes of the shipped files and not by their paths took the characters
   with several distinct units from 715 to 60 in that run.
 - 16 of those mods write a different bin for each of 99 or 100 slots.
+- The tools' copies are renamed copies. TopazModFixer copies skin0's bin to every skin the game
+  held at its run, with the skin entry's name, the resolver's name and the link to it set to the
+  slot (source of TopazModFixerCLI, read 2026-10-05). Celestial's SkinLite, by Hematite's
+  source, copies it to slots 1 to 99 with the same three names set and the two renamed objects
+  moved to the end of the bin.
+- The baseline repair run (2026-10-04): in 41 of the 54 mods laid out by TopazModFixer
+  (#MOD-ARTIFACT-0030), one character has 8 to 101 skin bins.

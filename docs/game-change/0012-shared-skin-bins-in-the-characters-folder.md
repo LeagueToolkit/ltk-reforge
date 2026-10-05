@@ -89,3 +89,7 @@ ended before 16.10.
   them, in 1,463 mods, to the `_multi_` path of the same name: files at a path the game held at
   earlier builds, where the game holds the new path and the mod ships no file there.
 - ltk-forge's docs name no dated check in game for the skipped link.
+- Other tools (source read 2026-10-05): TopazModFixer looks for a linked shared bin at its old
+  path and at its `_multi_` path, either way. League-Mod-Repather adds the game skin bin's links
+  to a mod's skin bin, stating that a mod without the game's newer linked bins crashes the
+  client when certain abilities are used (Yone's E). It names no build and no check.
