@@ -1,7 +1,7 @@
 # MOD-ARTIFACT-0031: An emitter shape renamed under its old field
 
 - **Source:** TopazModFixer, the fixer of the cslol-go manager (its "FixiShape" step, ported from
-  a Python script); another tool for one variant
+  a Python script); LtMAO's "Fix VFX Shape" writes the same classes under `SpawnShape`
 - **Affects:** `VfxEmitterDefinitionData.shape`, `EmitterPosition`, `SpawnShape`; the classes
   `VfxShapeLegacy`, `VfxShapeSphere` and `0xee39916f`
 - **Related:** #GAME-CHANGE-0006, #MOD-ARTIFACT-0019, #MOD-ARTIFACT-0029, #GAME-BEHAVIOR-0002
@@ -16,9 +16,12 @@ An emitter that still holds the field `shape`, which no emitter class declares f
 - `shape: embed = 0xee39916f { emitOffset: vec3 }`: a class no build declares, holding the old
   `emitOffset`'s constant value as a bare vector.
 
-The class `0xee39916f` is also found under the new field, from another writer:
-`SpawnShape: 0xee39916f { constantValue: vec3 }`, the vector's z set to 0
-(`[-155.0, 450.0, 0.0]`).
+The class `0xee39916f` is also found under the new field: `SpawnShape: 0xee39916f {
+constantValue: vec3 }`, the vector's z set to 0 (`[-155.0, 450.0, 0.0]`). LtMAO's converter, whose
+branches TopazModFixer's follow, writes the key `SpawnShape` in every branch, as a pointer:
+`VfxShapeLegacy` with the old fields and an emptied birth translation (#MOD-ARTIFACT-0019),
+`0xee39916f { emitOffset: vec3 }`, or `VfxShapeSphere { radius, radius, flags: 1 }`, where a slip
+writes `radius` a second time in place of the offset's y.
 
 Beside it the emitter holds `EmitterPosition: embed = ValueVector3 { constantValue }`, the old
 birth translation's constant, as its last field, and twice where it held one already.
@@ -66,7 +69,7 @@ The value under `shape` is the author's old shape, converted as #GAME-CHANGE-000
   repath prefix (#MOD-ARTIFACT-0029). One of them holds 206 such values and 30 of class
   `0xee39916f`. A second mod holds 101 `SpawnShape: 0xee39916f { constantValue }` values with
   z 0, and no repath prefix of #MOD-ARTIFACT-0029. Which tool wrote it is not established:
-  Hematite's source writes `0xee39916f { emitOffset: vec3 }` under `SpawnShape`.
+  LtMAO's and Hematite's sources write `0xee39916f { emitOffset: vec3 }` under `SpawnShape`.
 - In those runs each value was removed as a field the target build does not declare, with
   nothing lost: the mods are dated 16.3 and later by the game files the tool copied in
   (#MOD-ARTIFACT-0029), so the mod's build was taken to read no `shape`.
@@ -74,4 +77,6 @@ The value under `shape` is the author's old shape, converted as #GAME-CHANGE-000
 - The branches and the values are read from the source of TopazModFixerCLI (2026-10-05).
   Hematite's source writes the same classes under `SpawnShape` (`0xee39916f` with the offset as
   a vector whose z is set to 0, a `VfxShapeSphere` with a `height`, an empty `VfxShapeLegacy`
-  otherwise), which no mod of the datasets shows. Nothing was run.
+  otherwise), which no mod of the datasets shows. LtMAO's is its hapiBin "Fix VFX Shape
+  Property + BirthTranslation" (source of version 28032026.0, read 2026-10-06), whose comments
+  call the sphere's rule a theory. Nothing was run.

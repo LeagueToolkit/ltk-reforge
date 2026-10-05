@@ -36,3 +36,7 @@ Leave the file out. The game's own bytes at the path stand.
   bin claimed, 77% were such copies, by sample.
 - Without a history nothing is known to be stale: against the install alone, an older game file
   looks like the author's own.
+- Repath tools copy game files under a prefix of their own (#MOD-ARTIFACT-0029). LtMAO's bumpath
+  also writes a game bin it reaches, a skin's linked animation bin for one, at the game's own path
+  with its strings rewritten (source read 2026-10-06): the game's objects of the tool's build, in
+  bytes the game never shipped, which the history does not show as a copy.

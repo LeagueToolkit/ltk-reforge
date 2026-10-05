@@ -4,7 +4,7 @@
   champion's materials are listed under "Riot's conversion"
 - **Affects:** `CustomShaderDef` objects of `data/shaders/shaders.bin`, and the link
   `StaticMaterialDef.techniques[].passes[].shader` that names one
-- **Related:** #GAME-BEHAVIOR-0006
+- **Related:** #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0022
 
 ## Before
 
@@ -81,7 +81,9 @@ Every name is under `Shaders/SkinnedMesh/`. A count is of object files of the ch
 A mod made before the build keeps the old link, and from the build it names no shader the
 client loads (#GAME-BEHAVIOR-0006). What the client draws for a pass with no shader is not
 checked in game. Two other fixers state that the model is not drawn: Hematite's source says
-"Missing shaders cause invisible models".
+"Missing shaders cause invisible models". A material whose shader has no compiled programs
+crashes the client at its first draw (#GAME-BEHAVIOR-0022); whether a link to no shader does the
+same is not established.
 
 Both relink such a material to the current shader of the same folder whose name shares the most
 `_`-separated words with the old one, after replacing `MultiLayered` with `MultiLayer` and

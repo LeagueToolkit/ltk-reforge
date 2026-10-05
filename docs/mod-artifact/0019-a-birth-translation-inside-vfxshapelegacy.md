@@ -1,6 +1,7 @@
 # MOD-ARTIFACT-0019: A birth translation inside VfxShapeLegacy
 
-- **Source:** a tool that converts an emitter to the layout of 14.1; which is not established
+- **Source:** a tool that converts an emitter to the layout of 14.1: LtMAO's converter where the
+  birth translation is empty; not established where it holds a value
 - **Affects:** `VfxEmitterDefinitionData.SpawnShape`, `VfxShapeLegacy`,
   `VfxEmitterDefinitionData.EmitterPosition`
 - **Related:** #GAME-BEHAVIOR-0002, #GAME-CHANGE-0006
@@ -58,3 +59,9 @@ Riot's conversion made of a `birthTranslation` (#GAME-CHANGE-0006).
   (ltk-forge's census lookup, 2026-09-30).
 - That the client draws the emitter at the origin is inferred from #GAME-BEHAVIOR-0002 and the
   default. No check in game is recorded.
+- LtMAO's "Fix VFX Shape Property + BirthTranslation" (source of version 28032026.0, read
+  2026-10-06) writes this class with every old field under `SpawnShape`. It empties the
+  `birthTranslation` it leaves there, and appends the constant of a vector birth translation to
+  the emitter as an `EmitterPosition`. A birth translation that still holds a value, beside no
+  `EmitterPosition`, matches no tool source read: an older version of the converter, or another
+  tool.

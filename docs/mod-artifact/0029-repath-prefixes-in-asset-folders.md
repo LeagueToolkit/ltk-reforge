@@ -1,7 +1,7 @@
 # MOD-ARTIFACT-0029: Repath prefixes in asset folders
 
 - **Source:** repath tools: TopazModFixer (the fixer of the cslol-go manager),
-  League-Mod-Repather, Hematite, and the tool that writes `bum`
+  League-Mod-Repather, LtMAO's bumpath and Hematite
 - **Affects:** the paths of the files a mod's bins name, and the strings that name them
 - **Related:** #MOD-ARTIFACT-0003, #MOD-ARTIFACT-0004, #MOD-ARTIFACT-0026, #MOD-ARTIFACT-0033,
   #MOD-ARTIFACT-0034
@@ -15,7 +15,7 @@ path holds. Four shapes are known:
 |---|---|---|
 | `.<p><N>_` glued to the second folder, or standing as a folder of its own | `ASSETS/.Yasu54_Characters/Yasuo/Skins/Skin54/...`, `ASSETS/.Ahri0_/characters/...` | TopazModFixer; Hematite's "in folder" layout |
 | a word as the second folder | `assets/steel/characters/...`, `ASSETS/fire/Characters/Yone/...` | League-Mod-Repather |
-| `bum` as the second folder | `assets/bum/characters/sett/skins/skin38/particles/...` | a repath tool Hematite's source names LtMAO's bumpath |
+| `bum` as the second folder | `assets/bum/characters/sett/skins/skin38/particles/...` | LtMAO's bumpath |
 | `hematite` as the second folder | `assets/hematite/<folder>/...`, `assets/hematite/hematite/...` | Hematite |
 
 - **TopazModFixer's prefix.** `<p>` is the first four characters of the character's name, in
@@ -28,6 +28,12 @@ path holds. Four shapes are known:
   `poison`, `mystic`, `cosmic`, `royal`, `wild`, `rage`, `fury`, `power`, `death`), or a text
   its user gives. The bin strings keep their case; the files are written in lower case. A
   second run nests a second word and leaves the first.
+- **LtMAO's bumpath.** `bum` unless its user gives another text to chosen entries; a new scan
+  sets every entry back to `bum`. The prefix goes after the path's first folder, and the files
+  are written in lower case while the bin strings keep their case. A string is rewritten only
+  where the tool found its file. Its default refuses to run while a named file is missing, so
+  its users add the game's unpacked champion WAD as a source, and every file found there is
+  copied in.
 - **Hematite.** A path with no `assets` or `data` root gets the prefix as a new first folder:
   `hematite/<folder>/...`. A second run on its own output stacks the prefix, and Hematite
   removes a stacked one when it runs again.
@@ -41,8 +47,9 @@ path holds. Four shapes are known:
   datasets hold bins and banks under it all the same, from another version or another tool.
   League-Mod-Repather writes bins at the game's paths, moves banks, and leaves voice-over files
   and `icons2d` at the game's paths. It puts its word into every `assets/` or `data/` string of
-  the skin's bins, files it does not hold included (#MOD-ARTIFACT-0034). Under `bum` banks are
-  moved too.
+  the skin's bins, files it does not hold included (#MOD-ARTIFACT-0034). LtMAO's bumpath moves
+  banks too and no bin: a bin it reaches, the game's linked bins included, is written at its own
+  path with its strings rewritten (#MOD-ARTIFACT-0004).
 
 It is told from an author's own folder by the shape: a game category (`characters`, `shared`,
 `particles`) follows the prefix, glued to it or in the next folder.
@@ -56,7 +63,8 @@ several skins or champions then changes only for the mod's skin.
 The tools also copy in every file the bins name that the mod lacks, from the player's install
 or from an older game's WADs, and put the copies under the prefix too: TopazModFixer with its
 `SmallMod` setting off or its older WADs given, League-Mod-Repather from the player's champion
-WAD, Hematite in its default repair. Most files under a prefix are such copies.
+WAD, LtMAO's bumpath from the unpacked game WAD its user adds, Hematite in its default repair.
+Most files under a prefix are such copies.
 
 ## What reads it, and how
 
@@ -105,4 +113,4 @@ that path stands for it.
   (`assets/.talo12_characters/talon/skins/skin12/particles/...scb`,
   `assets/.vieg0_characters/viego/skins/skin21/...tex`).
 - The shapes and the tools' choices are read from the source of TopazModFixerCLI,
-  League-Mod-Repather and Hematite (2026-10-05). Nothing was run.
+  League-Mod-Repather, LtMAO and Hematite (2026-10-05 and 2026-10-06). Nothing was run.

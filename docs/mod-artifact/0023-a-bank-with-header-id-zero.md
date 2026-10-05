@@ -1,6 +1,7 @@
 # MOD-ARTIFACT-0023: A bank with header id zero
 
-- **Source:** a tool that builds a bank; which is not established
+- **Source:** LtMAO's bank writer, by its source; that the datasets' banks are its output is
+  inferred from their shape
 - **Affects:** `.bnk` files, the id in the `BKHD` chunk
 - **Related:** none
 
@@ -19,8 +20,13 @@ bank by the id alone.
 
 ## Why it is there
 
-Not established. The bank is one a tool built from the author's sounds, and the tool wrote no
-id. Which tools do so is not known.
+The bank is one a tool built from the author's sounds, and the tool wrote no id. LtMAO's bank
+writer, which builds a bank from a folder of `.wem` files, writes every bank so: a `BKHD` of
+length 32 with version 134 and id 0, then the same 24 bytes (`3E 5D 70 17`, the language id of
+the effects banks, then 0, then 250, then twelve zeros), copied from a game bank of version 134.
+Only a `DIDX` and a `DATA` chunk follow, the media packed with no alignment, and no `HIRC`: the
+bank holds sounds and no events, as a media bank does. It writes the effects language into a
+voice bank too.
 
 ## What reads it, and how
 
@@ -50,3 +56,6 @@ A bank whose path no name table spells has no name to hash, and keeps its zero
   holds a bank's clips and events and not its header, so it is not checked here.
 - ltk-forge's notes record a check in game (2026-09-30) of the opposite case: a bank under a
   file name that does not hash to its header id plays.
+- LtMAO's bank writer is read from its source (version 28032026.0, read 2026-10-06). Whether
+  the banks of the datasets hold its 24 fixed bytes is not checked: the reports do not give a
+  bank's header.

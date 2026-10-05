@@ -1,6 +1,7 @@
 # MOD-ARTIFACT-0007: Chunks named by their path hash
 
-- **Source:** not established
+- **Source:** the WAD extractors of the modding tools; which one wrote a given mod's entries is
+  not established
 - **Affects:** the archive: entries under a WAD's folder
 - **Related:** #MOD-ARTIFACT-0008, #MOD-ARTIFACT-0009
 
@@ -21,9 +22,18 @@ The extension is no part of the hash. An extension that is a number marks a repa
 ## Why it is there
 
 A WAD holds each chunk under the hash of its path and holds no path. A path comes from a name
-table, and a table does not spell every hash. `ltk_wad`'s extractor writes a chunk no table
-names under its hash as sixteen hex digits. Which tool wrote the entries of the mods that carry
-them is not established.
+table, and a table does not spell every hash. The extractors write a chunk no table names under
+its hash as sixteen hex digits:
+
+- `ltk_wad`'s extractor, with no extension;
+- LtMAO's, with an extension it guesses from the bytes. It also writes a chunk whose name is over
+  255 characters, or names a folder, as `<hex>.<ext>`, and lists each such name with its path in
+  `hashed_files.json`;
+- cslol-go's, with an extension guessed from the first bytes: any `r3d` magic gives `.scb`, so an
+  animation or a voice package is named `.scb`, and a texture, a mesh or a skeleton `.bin`.
+  Its fixer writes a `file` value it cannot name as sixteen hex digits with no extension.
+
+Which tool wrote the entries of the mods that carry them is not established.
 
 ## What reads it, and how
 
@@ -36,6 +46,10 @@ hex digits is the chunk's hash, and any other name is hashed as a path. The stem
 to its last dot. It reads a mod project's files and a `.fantome`'s entries so. A file of that
 shape inside a folder, whose path its bins name, lands at the hash its stem spells, where those
 bins do not look.
+
+Other tools read a name at a WAD folder's root so too, some with no check of its length.
+TopazModFixer's folder packer and cslol-go's fixer take any root name whose stem reads as a hex
+number for that number: `face.dds` is packed at `0x000000000000face`, `1.png` at `0x1`.
 
 ## The repair
 
@@ -55,6 +69,10 @@ the first in archive order stays and the second is skipped (`archive.chunk-dupli
 - LTK Manager's reading, from the source of `ltk_overlay` 0.14.2 and `ltk_wad` 0.5.8 (read
   2026-10-05): `resolve_chunk_hash` and the `.fantome` reader take the hash from
   `hex_chunk_hash`, which tests the path's file stem only.
+- The tools' extractors and readers, from the source of LtMAO, TopazModFixerCLI and cslol-go
+  (read 2026-10-05 and 2026-10-06). The baseline repair run (2026-10-04) holds one packed WAD
+  with a chunk at `0x000000000000face`, which no name table spells: the hash such a reader makes
+  of a file named `face`.
 - Seen in game (2026-10-05, build 16.19): a port that shipped four textures as
   `textures/<16 hex>.tex` under its namespace, installed with LTK Manager, showed no texture on
   the model, no loading screen picture and no icons. Its mesh and skeleton, under names, loaded.
