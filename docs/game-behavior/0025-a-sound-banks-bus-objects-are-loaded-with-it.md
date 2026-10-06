@@ -44,6 +44,8 @@ the game lacks is enough.
     them, and its media bank the clips alone: Kennen's own sounds only.
   - In each check where the mod's sounds play, Kennen's own voice is heard beside them. The
     original's skin entry loads no voice unit.
+  - The port of a build that carries the two buses the init bank lacks, and leaves the voice
+    unit out of the block (#ADR-0063): the mod's sounds play, and no voice.
 - The bank of each variant was read back before the check: the clips and the bus objects byte for
   byte the original's.
 - The inference: the effects route to 393239870, which the init bank defines, and play only when

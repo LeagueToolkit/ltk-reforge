@@ -748,6 +748,10 @@ Two variants of the port, each with one of those differences undone, seen in gam
 The port writes each media bank with the clips alone, so the bus objects a mod's media bank holds
 are not carried.
 
+The port of `40606c273797…` by the build with the rules of #ADR-0064 and #ADR-0063, its media
+bank holding the mod's two buses and its block no voice unit, seen in game by the user
+(2026-10-06): the mod's sounds play and Kennen's voice is not heard, as with the original.
+
 ## The baselines and the edge cases (2026-10-04)
 
 The two baselines reforge is compared with (#ADR-0044), over the 5,137 mods of the datasets,

@@ -73,10 +73,9 @@ In this order. Each item is one or more changes measured against the baseline.
 
 1. **The behaviour carried over from ltk-forge** ([Carried over](#carried-over-from-ltk-forge)),
    each item changed or removed as a change of its own.
-2. **Ports checked in game** where none was: a bank unit cut from the mod's own events bank. In
-   the one port tried, none of its sounds was heard: the port leaves out the bus objects of the
-   mod's media bank, and with the two the game lacks added the sounds play
-   (#GAME-BEHAVIOR-0025). A voice layer and a `hud` layer were checked and work
+2. **Ports checked in game** where none was: done. A voice layer, a `hud` layer and a bank unit
+   cut from the mod's own events bank were checked and work, the last with the mod's own buses
+   carried (#ADR-0064) and the game unit it left out left out (#ADR-0063)
    ([RUNS.md](RUNS.md), "Ports in game").
 3. **A game source that answers from the history**: a run with no install, and against the
    game at any build the history holds (#ADR-0042, #ADR-0043). The index holds what the typed
