@@ -175,6 +175,9 @@ impl Renames {
             .copied()
             .collect();
         let named: HashSet<BinHash> = all.iter().map(|(from, _)| *from).collect();
+        // Every object of the mod, not the group's alone: a bin can hold objects under another
+        // unit's source names beside its own entry, which takes one of them
+        // (`docs/design/ARCHITECTURE.md`, "Plan").
         for (id, object) in m.objects.iter() {
             if !value::names_any(&object.value, &named) {
                 continue;
