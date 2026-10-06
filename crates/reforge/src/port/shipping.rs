@@ -40,6 +40,8 @@ pub enum Left {
         /// The unit that keeps the slot.
         by: Option<UnitId>,
     },
+    /// Units of the character of one rank target the slot, and each leaves it (#ADR-0076).
+    Conflict,
     /// Made for the champion's model before its rework (#ADR-0019).
     PreRework,
     /// A sub-character whose model does not fit the base, left to the game.
@@ -64,6 +66,7 @@ impl Left {
         match self {
             Left::Copy { .. } => "a copy",
             Left::Superseded { .. } => "superseded",
+            Left::Conflict => "tied with another unit on its target",
             Left::PreRework => "made before the rework",
             Left::SubLeft => "left to the game's base",
             Left::EqualToGame => "equal to the game's",
@@ -121,6 +124,7 @@ impl Shipping {
                         Reason::Superseded => Left::Superseded {
                             by: decision.taken_by,
                         },
+                        Reason::Conflict => Left::Conflict,
                         Reason::PreRework => Left::PreRework,
                         Reason::SubLeftToBase => Left::SubLeft,
                         _ => Left::NoTarget,

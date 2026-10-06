@@ -439,7 +439,8 @@ level of animation reuse (`AnimReuse`). It reads neither the mod nor the game.
   premium skin whose skeleton file it takes (#ADR-0062), else stays on skin0 for a person to
   decide (#ADR-0016).
 - **Two units on one slot.** One keeps it: a unit whose entry reads, then the unit written for
-  the slot, then a skin0 unit, then a spread, then the lower slot. The others get no target.
+  the slot, then a skin0 unit, then one that is no spread. The others get no target. When the
+  best two are of one rank, each unit on the slot leaves it to the game (#ADR-0076).
 - **The diagnostics are made from the decisions afterwards**, by `Targets::report`. A decision
   keeps what they need: what it chose before another unit took the slot, the unit that took
   it, whether a forced target does not fit, the slot at which the game has no bin of a

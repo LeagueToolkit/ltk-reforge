@@ -119,7 +119,7 @@ The facts and the decision. `catalog` and `copies` are channel `input`, the rest
 | `target.chosen` | note | the unit's target and the reason: base, paste cleaned, slot, fallback, clips origin, skeleton origin, follows its champion | `target.base`, `target.paste-cleaned`, `target.slot`, `target.fallback`, `target.clips-origin`, `target.sub-follows` |
 | `target.forced-unfit` | warning | a target a person or the champion forced, which the work does not fit | `target.forced` |
 | `target.superseded` | note | another unit of the character took the slot | `target.superseded` |
-| `target.conflict` | warning | two units of one character, of the same rank, end on one slot | `target.conflict` |
+| `target.conflict` | warning | units of one character, of the same rank, target one slot; each leaves it to the game | `target.conflict` |
 | `target.sub-left` | warning | a sub-character whose model does not fit the base, left to the game | `target.sub-left-to-base` |
 | `target.unjudged` | warning | no rig facts; the unit stays at its slot unjudged | `target.unjudged` |
 | `target.infeasible` | error | the work fits no slot; written at skin0 for a person to decide | `target.infeasible` |
@@ -133,7 +133,7 @@ bin. `unit.left` is raised once per character, with each of its units that leave
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
-| `unit.left` | note | the units of a character that leave the port, and why: a copy, superseded, made before a rework, a sub-character left to the base or equal to the game's, no target, the game's own skin, a chroma folded into its parent | `drop-copies.dropped` |
+| `unit.left` | note | the units of a character that leave the port, and why: a copy, superseded, tied with another unit on its target, made before a rework, a sub-character left to the base or equal to the game's, no target, the game's own skin, a chroma folded into its parent | `drop-copies.dropped` |
 | `unit.retargeted` | note | the unit's names moved from its slot to its target | `retarget.renamed` |
 | `unit.new-bin` | note | a sub-character the game ships only at skin0 gets a skin bin at the target | `target.sub-no-slot-bin`, `lower.new-bin` as a note |
 | `unit.new-bin-failed` | error | a record did not apply to that new bin | `lower.new-bin` as an error |

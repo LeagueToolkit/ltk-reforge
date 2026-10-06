@@ -542,6 +542,37 @@ fn the_games_own_skin_beside_the_mods_leaves_the_port() {
 }
 
 #[test]
+fn units_of_one_rank_on_one_slot_leave_the_port_and_the_champion_ships() {
+    // #ADR-0076: two pets on models of their own at slots 1 and 2 follow the champion's paste
+    // of skin 3 there.
+    let mut files = vec![mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    for slot in [1, 2] {
+        let prefix = format!("pet{slot}");
+        files.extend(own_files(&prefix));
+        let pet = own_skin(
+            &prefix,
+            &format!("Characters/TestPet/Animations/Skin{slot}"),
+            &format!("Characters/TestPet/Skins/Skin{slot}/Resources"),
+        );
+        let entry = format!("Characters/TestPet/Skins/Skin{slot}");
+        files.push(mod_skin("testpet", slot, &entry, &pet, vec![]));
+    }
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    assert_eq!(
+        run.port.shipping.ships,
+        [run.unit("test", 0)],
+        "{}",
+        run.dump()
+    );
+    for slot in [1, 2] {
+        let left = &run.port.shipping.left[&run.unit("testpet", slot)];
+        assert_eq!(left.why, Left::Conflict);
+    }
+}
+
+#[test]
 fn what_a_unit_that_leaves_reaches_is_not_reported() {
     // #ADR-0072: the game's own skin 7 bin, with an object nothing reaches.
     let mut files = own_mod(&[], vec![]);

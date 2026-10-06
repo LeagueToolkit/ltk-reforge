@@ -63,8 +63,8 @@ FIXUPS = (
     "vfx-spawn-shape-birth-translation material-sampler-fields vfx-emission-surface reshape-hoist "
     "reshape-wrap retype strip-undeclared"
 )
-REASONS = "base paste-cleaned slot fallback clips-origin skeleton-origin forced infeasible sub-follows sub-left-to-base unjudged superseded pre-rework"
-LEFT = "copy superseded pre-rework sub-left equal-to-game no-target game-skin chroma-folded"
+REASONS = "base paste-cleaned slot fallback clips-origin skeleton-origin forced infeasible sub-follows sub-left-to-base unjudged superseded conflict pre-rework"
+LEFT = "copy superseded conflict pre-rework sub-left equal-to-game no-target game-skin chroma-folded"
 CHECK_WHY = (
     "no-such-skin no-mesh slot-mesh other-skin-mesh own-mesh foreign-mesh copied-visible copied-shown "
     "copied-hidden no-copied-submesh no-skeleton slot-skeleton slot-joints other-skin-skeleton premium-skeleton unbound "

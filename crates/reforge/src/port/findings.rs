@@ -145,7 +145,7 @@ impl Diag for Superseded {
     }
 }
 
-/// Two units of one character, of the same rank, end on one slot.
+/// Units of one character, of the same rank, on one slot: each leaves it to the game (#ADR-0076).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TargetConflict {
     /// The character.
@@ -164,7 +164,12 @@ impl Diag for TargetConflict {
     }
 
     fn message(&self, f: &mut Message<'_>) {
-        let _ = write!(f, "{} units target skin{}: ", self.units.len(), self.slot);
+        let _ = write!(
+            f,
+            "{} units of one rank target skin{}, and each leaves it to the game: ",
+            self.units.len(),
+            self.slot
+        );
         f.list(&self.units, |f, unit| {
             f.unit(*unit);
         });

@@ -1186,3 +1186,8 @@ changes and no run is made.
 outside the slots compared do not differ: at those targets the skeleton is the mod's own, the game
 has no skin, or the joints differ and the mesh and the clips block too. Five of the 14, timed
 alone with the build before and this one, take 48.8 s and 49.0 s.
+
+**Units of one rank on a slot, left to the game** (#ADR-0076). The 6 mods where two units decide
+one slot, and the reduced corpus: one mod differs, `552d4d5e68c1`, of the reduced corpus. Its 18
+units of `teemomushroom` leave with `target.conflict` in place of 17 `target.superseded`, the unit
+of skin14 among them, whose patch goes; Teemo's unit ports to skin25 as before.

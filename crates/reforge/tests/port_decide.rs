@@ -11,8 +11,8 @@ use reforge::history::NoHistory;
 use reforge::load::ReworkTable;
 use reforge::model::Slot;
 use reforge::port::{
-    AnimReuse, Conflict, Considered, ForcedUnfit, Infeasible, Policy, PreRework, Reason, SubLeft,
-    Superseded, TargetChosen, TargetConflict, TargetPolicy, Unjudged, clip_fit,
+    AnimReuse, Considered, ForcedUnfit, Infeasible, Policy, PreRework, Reason, SubLeft, Superseded,
+    TargetChosen, TargetConflict, TargetPolicy, Unjudged, clip_fit,
 };
 use reforge_testkit::bins::{self, Skin, blob, graph, resolver};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
@@ -448,28 +448,39 @@ fn a_unit_written_for_the_fallback_slot_supersedes_the_paste() {
 }
 
 #[test]
-fn two_units_of_one_rank_on_one_slot_are_reported_as_a_conflict() {
+fn two_units_of_one_rank_on_one_slot_leave_it_to_the_game() {
+    // #ADR-0076: two pets on models of their own at slots 1 and 2 follow the champion's paste
+    // of skin 3 there. Neither is written for skin 3, and neither is at skin0.
     let env = env(skins::game(), NoHistory);
-    let run = FactRun::of(&env, &archive(&paste_and_own_skin3()));
-    let mut targets = block().decide(&run.facts);
-    let (paste, written) = (run.unit("test", 0), run.unit("test", 3));
-    let character = targets.decisions[&paste].character;
-    // A unit's rank ends on its slot, and a character has one unit per slot: no two units of
-    // a loaded mod tie. The conflict is given to the report as the decision would hold it.
-    targets.conflicts.push(Conflict {
-        character,
-        slot: Slot(3),
-        units: vec![paste, written],
-    });
+    let mut files = vec![mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    for slot in [1, 2] {
+        let prefix = format!("pet{slot}");
+        files.extend(own_files(&prefix));
+        let pet = own_skin(
+            &prefix,
+            &format!("Characters/TestPet/Animations/Skin{slot}"),
+            &format!("Characters/TestPet/Skins/Skin{slot}/Resources"),
+        );
+        let entry = format!("Characters/TestPet/Skins/Skin{slot}");
+        files.push(mod_skin("testpet", slot, &entry, &pet, vec![]));
+    }
+    let run = FactRun::of(&env, &archive(&files));
+    let targets = block().decide(&run.facts);
+    let pets = [run.unit("testpet", 1), run.unit("testpet", 2)];
+    for pet in pets {
+        let decision = &targets.decisions[&pet];
+        assert_eq!(decision.placed.0, Some(Slot(3)), "{}", run.dump());
+        assert_eq!((decision.chosen, decision.reason), (None, Reason::Conflict));
+    }
+    assert_eq!(targets.target(run.unit("test", 0)), Some(Slot(3)));
     let mut log = Diagnostics::new();
     targets.report(&mut log.at(Stage::Decide));
     let conflicts: Vec<&TargetConflict> = log.of().collect();
     assert_eq!(conflicts.len(), 1);
     assert_eq!(
-        (conflicts[0].character, conflicts[0].slot),
-        (character, Slot(3))
+        (conflicts[0].slot, &conflicts[0].units[..]),
+        (Slot(3), &pets[..])
     );
-    assert_eq!(conflicts[0].units, [paste, written]);
 }
 
 #[test]

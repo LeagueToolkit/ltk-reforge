@@ -8,7 +8,7 @@
 //! - A sub-character follows its champion (#ADR-0013, #ADR-0017).
 //! - A unit made for a model before its rework gets no target (#ADR-0019).
 //! - Of two units of one character on one slot, the one written for it keeps it, then a skin0
-//!   unit, then a spread.
+//!   unit, then one that is no spread; two of one rank leave it to the game (#ADR-0076).
 //!
 //! The decision reads the facts and nothing else. Its diagnostics are made from the decisions
 //! afterwards, so a policy that is only compared raises none.
@@ -58,6 +58,8 @@ pub enum Reason {
     Unjudged,
     /// Another unit of the character took the slot.
     Superseded,
+    /// Units of the character of one rank target the slot: each leaves it to the game.
+    Conflict,
     /// Made for the champion's model before its rework: left to the game.
     PreRework,
 }
@@ -78,6 +80,7 @@ impl Reason {
             Reason::SubLeftToBase => "sub-left-to-base",
             Reason::Unjudged => "unjudged",
             Reason::Superseded => "superseded",
+            Reason::Conflict => "conflict",
             Reason::PreRework => "pre-rework",
         }
     }
@@ -516,8 +519,9 @@ impl Policy {
 }
 
 /// Leaves one unit on each slot two units of a character target: a unit whose skin entry reads
-/// before one whose does not, then the unit written for the slot, then a skin0 unit, then a
-/// spread, then the lower slot. The others get no target.
+/// before one whose does not, then the unit written for the slot, then a skin0 unit, then one
+/// that is no spread. The others get no target. When the best two tie, no unit keeps the slot
+/// (#ADR-0076).
 fn supersede(
     facts: &Facts,
     character: &RosterCharacter,
@@ -537,16 +541,16 @@ fn supersede(
                 .get(&unit.id)
                 .is_some_and(|d| d.reason == Reason::Slot);
             let written_for = by_slot || (unit.slot == t && !spread);
-            (
-                !unit.has_entry,
-                !written_for,
-                !unit.slot.is_base(),
-                spread,
-                unit.slot,
-            )
+            (!unit.has_entry, !written_for, !unit.slot.is_base(), spread)
         };
         units.sort_by_key(rank);
         if rank(&units[0]) == rank(&units[1]) {
+            for unit in &units {
+                if let Some(decision) = decisions.get_mut(&unit.id) {
+                    decision.chosen = None;
+                    decision.reason = Reason::Conflict;
+                }
+            }
             conflicts.push(Conflict {
                 character: character.id,
                 slot: t,
