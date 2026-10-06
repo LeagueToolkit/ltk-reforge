@@ -22,10 +22,12 @@ use crate::model::hash::skin_paths;
 use crate::model::{ContentId, FileKey, SideTable, Slot, Spell, WadHash, WadName};
 
 /// Every diagnostic code file provenance raises.
-pub const CODES: &[Code] = &[OlderGameFiles::CODE];
+pub const CODES: &[Code] = &[OlderGameFiles::CODE, SameSizeCapped::CODE];
 
 /// How many game chunks of a file's size are read to look for its bytes under another path.
-pub const MAX_SAME_SIZE_READS: usize = 64;
+// Measured 2026-10-06: a file of the datasets meets at most 1,167 chunks of its size in its
+// champion's WAD at 16.19.
+pub const MAX_SAME_SIZE_READS: usize = 2048;
 
 /// What the install holds at a file's own path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -186,6 +188,33 @@ impl Diag for OlderGameFiles {
     }
 }
 
+/// Files that meet more game chunks of their size than are read: the chunks past the cap are
+/// not looked at for their bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SameSizeCapped {
+    /// The files, in file order.
+    pub files: Vec<FileId>,
+    /// The cap on chunks read for one file.
+    pub cap: usize,
+}
+
+impl Diag for SameSizeCapped {
+    const CODE: Code = Code::new("file.same-size-capped", Channel::Input, Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.files.len(), "file");
+        let _ = write!(
+            f,
+            " meet more than {} game chunks of their size; the rest are not read for their bytes",
+            self.cap
+        );
+    }
+}
+
 /// What a mod's files are judged against.
 #[derive(Clone, Copy)]
 pub struct Against<'a> {
@@ -204,6 +233,7 @@ pub struct Against<'a> {
 pub struct FileProvenance {
     facts: SideTable<FileNode, FileFact>,
     older: Vec<OlderGameFiles>,
+    capped: Vec<FileId>,
 }
 
 impl FileProvenance {
@@ -213,6 +243,7 @@ impl FileProvenance {
         let mut finder = Finder {
             against: *against,
             contents: BTreeMap::new(),
+            capped: Vec::new(),
         };
         let mut out = Self::default();
         let mut older: BTreeMap<WadId, OlderGameFiles> = BTreeMap::new();
@@ -235,6 +266,7 @@ impl FileProvenance {
             out.facts.insert(id, fact);
         }
         out.older = older.into_values().collect();
+        out.capped = finder.capped;
         Ok(out)
     }
 
@@ -273,10 +305,17 @@ impl FileProvenance {
         &self.older
     }
 
-    /// Raises `file.older-game` for each WAD holding such files.
+    /// Raises `file.older-game` for each WAD holding such files, then the files whose chunks of
+    /// their size passed the cap.
     pub fn report(&self, sink: &mut Sink<'_>) {
         for of_wad in &self.older {
             sink.raise(of_wad.clone());
+        }
+        if !self.capped.is_empty() {
+            sink.raise(SameSizeCapped {
+                files: self.capped.clone(),
+                cap: MAX_SAME_SIZE_READS,
+            });
         }
     }
 }
@@ -304,6 +343,8 @@ struct Finder<'a> {
     against: Against<'a>,
     /// The digest of each game chunk read. None for a path the game gave no bytes at.
     contents: BTreeMap<WadHash, Option<ContentId>>,
+    /// The files whose chunks of their size passed the cap.
+    capped: Vec<FileId>,
 }
 
 impl Finder<'_> {
@@ -366,6 +407,9 @@ impl Finder<'_> {
         }
         let same_size = home.map_or(&[][..], |home| sizes.same_size(&home, file.size));
         let others = same_size.iter().filter(|path| **path != file.hash);
+        if others.clone().count() > MAX_SAME_SIZE_READS {
+            self.capped.push(id);
+        }
         for &other in others.take(MAX_SAME_SIZE_READS) {
             if self.holds(other, file)? {
                 paths.push(other);

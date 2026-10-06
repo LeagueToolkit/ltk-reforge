@@ -71,6 +71,7 @@ A file of the mod. Channel `input`, but the four a file fixup raises, which are 
 | `file.stale` | note | files holding the bytes the game shipped at their paths at earlier builds; not carried | `load.stale` |
 | `file.former-path` | note | files at paths the game shipped at earlier builds and does not ship | `load.former-game-path` |
 | `file.older-game` | warning | files that are bytes the game shipped at earlier builds, which the install does not hold | `files.older-game` |
+| `file.same-size-capped` | note | files that meet more game chunks of their size than the cap; the rest are not read for their bytes | none |
 | `file.format-converted` | note | files in a format the game dropped, made the one it reads at the same stem | `legacy-formats.converted` |
 | `file.format-unreadable` | warning | such files that do not read, left where they are | `legacy-formats.failed` |
 | `file.moved` | note | files at former paths, made where the game ships the asset | `moved-assets.followed` |

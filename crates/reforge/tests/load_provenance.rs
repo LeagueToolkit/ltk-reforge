@@ -11,7 +11,7 @@ use reforge::history::{History, HistoryError, Life, NoHistory};
 use reforge::load::Fault;
 use reforge::load::provenance::{
     Against, AtPath, BytesOrigin, CODES, FileProvenance, MAX_SAME_SIZE_READS, OlderGameFiles,
-    SkinFolder, is_vfx_path,
+    SameSizeCapped, SkinFolder, is_vfx_path,
 };
 use reforge::model::entity::{
     FileId, FileNode, FileSource, FileUse, ModMeta, ModWad, WadId, WadLayout, WadRole,
@@ -576,7 +576,7 @@ fn a_locale_wads_files_are_looked_for_in_the_champions_wad() {
 }
 
 #[test]
-fn no_more_chunks_of_a_files_size_are_read_than_the_cap() {
+fn no_more_chunks_of_a_files_size_are_read_than_the_cap_and_the_files_past_it_are_reported() {
     let mut world = World::new();
     let bytes = blob("the copy");
     for i in 0..MAX_SAME_SIZE_READS {
@@ -590,6 +590,13 @@ fn no_more_chunks_of_a_files_size_are_read_than_the_cap() {
     let copy = file(&mut m, wad, "assets/mod/a/copy.tex", &bytes);
     let facts = world.find(&m, &builds());
     assert_eq!(facts.fact(copy).unwrap().origin, BytesOrigin::Own);
+    let mut log = Diagnostics::new();
+    facts.report(&mut log.at(Stage::Load));
+    let capped = SameSizeCapped {
+        files: vec![copy],
+        cap: MAX_SAME_SIZE_READS,
+    };
+    assert_eq!(log.of::<SameSizeCapped>().collect::<Vec<_>>(), [&capped]);
 
     // One filler fewer and the copy is within the cap.
     let mut world = World::new();
@@ -602,6 +609,9 @@ fn no_more_chunks_of_a_files_size_are_read_than_the_cap() {
     world.ship("assets/characters/test/skins/base/last.tex", &bytes);
     let facts = world.find(&m, &builds());
     assert!(facts.is_game(copy));
+    let mut log = Diagnostics::new();
+    facts.report(&mut log.at(Stage::Load));
+    assert_eq!(log.of::<SameSizeCapped>().count(), 0);
 }
 
 /// A game whose chunks are listed and do not read.
@@ -719,6 +729,6 @@ fn a_particles_folder_is_told_in_any_case() {
 }
 
 #[test]
-fn file_provenance_raises_one_code() {
-    assert_eq!(CODES, [OlderGameFiles::CODE]);
+fn file_provenance_raises_two_codes() {
+    assert_eq!(CODES, [OlderGameFiles::CODE, SameSizeCapped::CODE]);
 }

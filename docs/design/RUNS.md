@@ -1132,3 +1132,14 @@ not differ. `2c2bd16ccd4a`, whose 100 units loaded 64 bins each: they load all o
 Its shipped kled unit carries 85 objects where it carried 60: 25 names that resolved to the
 game's objects find the mod's past the old cap, and 11 files left behind as orphaned ship. No
 run raises the note.
+
+**Game chunks of a file's size read up to 2,048, and `file.same-size-capped` past it.** The 1,801
+mods with a file whose game copy sat past the 64th chunk of its size, and the reduced corpus:
+no repair differs, and 1,785 ports do (15 of the reduced corpus). More copies are found: the
+first game path and the skin folder of files change in 1,785 mods, and the origin evidence counts
+more game files of a skin in 134. 352 files in 71 mods held a copy in the champion's WAD past
+the cap and one only outside the WADs mounted with the champion; their references now name the
+copy in the champion's WAD, and the port no longer ships them. The origin of 5 decisions moves
+(in 2 a premium origin goes, in 1 skin 12 becomes skin 9), and no target changes: one reason goes
+from `paste-cleaned` to `base`. A run takes as long: 7.2 s a mod on average, with and without.
+No run raises the note.

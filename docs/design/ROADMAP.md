@@ -148,8 +148,7 @@ record and no measurement of reforge's own says it is right.
   unit with no decision, and the two reasons the build has for not writing a unit's audio
   (the game's entry has no bank unit to model one on; a skin bin written whole takes no
   layer).
-- The bounds a run reads under are ltk-forge's values: 16 bins read of one game skin, 64 chunks
-  of a file's size read to find its bytes under another path.
+- The bound on the bins read of one game skin is ltk-forge's value, 16.
 
 ### Known limits
 
