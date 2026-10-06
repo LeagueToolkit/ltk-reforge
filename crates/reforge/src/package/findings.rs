@@ -182,6 +182,33 @@ impl Diag for NewBinFailed {
     }
 }
 
+/// A sub-character the game ships no skin bin of at its target: the build writes one whole,
+/// from the game's skin0 (#ADR-0017).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NewBin {
+    /// The unit.
+    pub unit: UnitId,
+    /// The bin written.
+    pub target: ChunkPath,
+}
+
+impl Diag for NewBin {
+    const CODE: Code = code("unit.new-bin", Severity::Note);
+    const RECORD: Option<Record> = Some(Record::game_behavior(1));
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let _ = write!(
+            f,
+            "the game has no {} for the character; the port writes one from its skin0",
+            self.target
+        );
+    }
+}
+
 /// What one unit's port holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnitPorted {

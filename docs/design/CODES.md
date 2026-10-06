@@ -125,8 +125,8 @@ The facts and the decision. `copies` is channel `input`, the rest `decision`.
 ## unit, object, ref
 
 The port's plan and each unit's part of the package. Channel `output`, but
-`object.unreached`, which is `input`. `unit.new-bin` is raised with the decision, where the
-target is known. `unit.left` is raised once per character, with each of its units that leaves.
+`object.unreached`, which is `input`. `unit.new-bin` is raised by the build, which writes the
+bin. `unit.left` is raised once per character, with each of its units that leaves.
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|

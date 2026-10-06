@@ -1115,6 +1115,10 @@ Each change measured over the 63 mods of the reduced corpus against `baseline-po
 `baseline-repair-2`, and over the mods the change is about where the reduced corpus holds none.
 Every run ended as the baselines did unless the row says otherwise.
 
-**The text of a check's reason.** Five texts say what their check tests, and the block of clips
+**The text of a check's reason.** Six texts say what their check tests, and the block of clips
 that needs an own rig holds the clips borrowed. 27 ports differ, in the reasons' texts and that
 count alone. No repair differs.
+
+**`unit.new-bin` raised by the build.** The 5 mods that raise it: the finding comes with the
+package, names the bin written in place of the slot, and the ids of the diagnostics after it
+move by one. The reduced corpus holds one of them, and no other port differs.

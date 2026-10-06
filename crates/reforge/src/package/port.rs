@@ -23,7 +23,8 @@ use ltk_meta::{Bin, BinObject, PropertyKind, PropertyValueEnum};
 
 use super::config::{Made, ProjectConfig};
 use super::findings::{
-    Empty, EntryWhole, FieldKept, NewBinFailed, NotWritten, Ported, ResolverFrozen, UnitPorted,
+    Empty, EntryWhole, FieldKept, NewBin, NewBinFailed, NotWritten, Ported, ResolverFrozen,
+    UnitPorted,
 };
 use super::inplace::BuildError;
 use super::ptch::PtchBuilder;
@@ -500,6 +501,10 @@ impl<'a> PortBuilder<'a> {
                     whole.dependencies.push(link.as_str().to_string());
                 }
             }
+            sink.raise(NewBin {
+                unit: unit.unit,
+                target: target.clone(),
+            });
             if !report.skipped.is_empty() {
                 sink.raise(NewBinFailed {
                     unit: unit.unit,

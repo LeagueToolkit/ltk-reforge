@@ -16,7 +16,7 @@ use reforge::model::known::field;
 use reforge::model::{ContentId, SkinEntry, Slot, name_hash, path_hash, value};
 use reforge::package::{
     BinWrite, BuildError, Coverage, Done, EntryWhole, FieldKept, Layer, MANIFEST_FILE, Made,
-    Modpkg, NewBinFailed, NotWritten, Origin, PackageWriter, PatchOf, PortBuilder, Ported,
+    Modpkg, NewBin, NewBinFailed, NotWritten, Origin, PackageWriter, PatchOf, PortBuilder, Ported,
     ProjectConfig, ProjectDir, ResolverFrozen, UnitPorted,
 };
 use reforge::port::{HudCarried, Policy, PortOptions};
@@ -282,6 +282,10 @@ fn a_sub_character_at_a_slot_the_game_lacks_gets_a_new_bin() {
     let mesh = entry.mesh().expect("a mesh").hash();
     assert!(run.package().by_hash(mesh).is_some(), "{}", run.dump());
     assert!(run.found::<NewBinFailed>().is_empty());
+    // The build writes the bin, and says so where it does.
+    let new: Vec<&NewBin> = run.found();
+    assert_eq!(new.len(), 1);
+    assert_eq!(new[0].target.as_str(), target);
     let ported = run.found::<UnitPorted>();
     assert!(
         ported

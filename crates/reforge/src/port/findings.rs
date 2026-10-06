@@ -36,7 +36,6 @@ pub const CODES: &[Code] = &[
     Unjudged::CODE,
     Infeasible::CODE,
     PreRework::CODE,
-    NewBin::CODE,
 ];
 
 const fn code(name: &'static str, severity: Severity) -> Code {
@@ -851,33 +850,6 @@ impl Diag for LiteralsRenamed {
             self.to_mod + self.to_base,
             self.to_mod,
             self.to_base
-        );
-    }
-}
-
-/// A sub-character the game ships no skin bin of at its target: the port writes one
-/// (#ADR-0017).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct NewBin {
-    /// The unit.
-    pub unit: UnitId,
-    /// The target the game has no skin bin at.
-    pub slot: Slot,
-}
-
-impl Diag for NewBin {
-    const CODE: Code = Code::new("unit.new-bin", Channel::Output, Severity::Note);
-    const RECORD: Option<Record> = Some(Record::game_behavior(1));
-
-    fn subject(&self) -> Subject {
-        Subject::Unit(self.unit)
-    }
-
-    fn message(&self, f: &mut Message<'_>) {
-        let _ = write!(
-            f,
-            "the game has no skin{}.bin for the character; the port writes one from its skin0",
-            self.slot
         );
     }
 }

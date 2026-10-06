@@ -42,7 +42,7 @@ pub use self::evidence::{
 };
 pub use self::findings::{
     Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
-    FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBinFailed,
+    FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBin, NewBinFailed,
     NotWritten, OtherSkin, OtherSkinName, Place, Ported, RecordSkipped, ResolverFrozen,
     RoundTripFailed, RoundTripProblem, ShaderLink, ShaderMissing, Shape, SkinValue,
     TextureContained, ThumbnailDropped, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
@@ -66,6 +66,7 @@ use crate::model::{BinHash, ChunkPath, Dump, DumpCx, WadHash, WadName};
 /// Every diagnostic code this module raises.
 pub const CODES: &[Code] = &[
     NotWritten::CODE,
+    NewBin::CODE,
     NewBinFailed::CODE,
     UnitPorted::CODE,
     FieldKept::CODE,

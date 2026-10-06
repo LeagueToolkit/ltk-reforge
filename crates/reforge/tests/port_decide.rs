@@ -11,8 +11,8 @@ use reforge::history::NoHistory;
 use reforge::load::ReworkTable;
 use reforge::model::Slot;
 use reforge::port::{
-    AnimReuse, Conflict, Considered, ForcedUnfit, Infeasible, NewBin, Policy, PreRework, Reason,
-    SubLeft, Superseded, TargetChosen, TargetConflict, TargetPolicy, Unjudged, clip_fit,
+    AnimReuse, Conflict, Considered, ForcedUnfit, Infeasible, Policy, PreRework, Reason, SubLeft,
+    Superseded, TargetChosen, TargetConflict, TargetPolicy, Unjudged, clip_fit,
 };
 use reforge_testkit::bins::{self, Skin, blob, graph, resolver};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
@@ -316,7 +316,6 @@ fn a_sub_character_follows_its_champion() {
     assert!(pet.unfit);
     assert_eq!(pet.candidates[0].why, Considered::ChampionTarget);
     let log = run.decided(block());
-    assert_eq!(log.of::<NewBin>().count(), 1);
     let unfit: Vec<&ForcedUnfit> = log.of().collect();
     assert!(unfit.len() == 1 && unfit[0].follows);
 }

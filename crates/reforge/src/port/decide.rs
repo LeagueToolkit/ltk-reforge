@@ -19,8 +19,7 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 use super::findings::{
-    ForcedUnfit, Infeasible, NewBin, PreRework, SubLeft, Superseded, TargetChosen, TargetConflict,
-    Unjudged,
+    ForcedUnfit, Infeasible, PreRework, SubLeft, Superseded, TargetChosen, TargetConflict, Unjudged,
 };
 use super::{AnimReuse, Policy, TargetPolicy};
 use crate::diag::Sink;
@@ -597,9 +596,6 @@ impl Targets {
     pub fn report(&self, sink: &mut Sink<'_>) {
         for decision in self.decisions.values() {
             let unit = decision.unit;
-            if let Some(slot) = decision.new_bin {
-                sink.raise(NewBin { unit, slot });
-            }
             match decision.placed {
                 (None, Reason::SubLeftToBase) => {
                     sink.raise(SubLeft { unit });

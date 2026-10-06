@@ -27,7 +27,7 @@ pub use self::decide::{
 pub use self::findings::{
     AudioCarried, AudioNotCarried, AudioUnitsLeftOut, CODES, Carried, CarriedBank, CarriedOnce,
     Carry, ForcedUnfit, GameCarried, HudCarried, Infeasible, LeftRow, LinkDangling,
-    LiteralsRenamed, NewBin, NotCarried, PreRework, RefDangling, RefUnmounted, Retargeted, SubLeft,
+    LiteralsRenamed, NotCarried, PreRework, RefDangling, RefUnmounted, Retargeted, SubLeft,
     Superseded, TargetChosen, TargetConflict, UnitsLeft, Unjudged, Unreached,
 };
 pub use self::hud::{FieldEdit, HudEdits, HudPlan};
