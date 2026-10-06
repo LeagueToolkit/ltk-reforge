@@ -1143,3 +1143,12 @@ copy in the champion's WAD, and the port no longer ships them. The origin of 5 d
 (in 2 a premium origin goes, in 1 skin 12 becomes skin 9), and no target changes: one reason goes
 from `paste-cleaned` to `base`. A run takes as long: 7.2 s a mod on average, with and without.
 No run raises the note.
+
+**Bins read of one game skin up to 64, and `catalog.capped` past it; the apply check loads up to
+128 bins, and `check.load-capped` past it.** The 1,807 mods with a character whose game skin links
+more than 16 bins, and the reduced corpus: no repair differs, and 733 ports do (12 of the reduced
+corpus). The objects of the bins past the 16th are known to the facts and the plan: in 529 mods
+names that dangled resolve to the game's objects, 216 count more game objects among the objects
+loaded, and in 189 the game objects carried because they name files the mod overrides change. In
+2 Zed mods (`7c3a7383be57`, `dd17fbb652af`) every object the skin0 unit reaches is the game's byte
+for byte, and the unit leaves as the game's own skin. No run raises either note.
