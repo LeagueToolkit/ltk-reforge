@@ -26,7 +26,8 @@ use reforge_wwise::{Bank, CLIENT_VERSION, Cut, Object, Wem, id_of};
 use serde::Serialize;
 
 use super::findings::{
-    AudioCarried, AudioNotCarried, CarriedBank, CarriedOnce, Carry, LiteralsRenamed, NotCarried,
+    AudioCarried, AudioNotCarried, AudioUnitsLeftOut, CarriedBank, CarriedOnce, Carry,
+    LiteralsRenamed, NotCarried,
 };
 use super::layout::Layout;
 use super::plan::{Objects, PlanError, PortInputs};
@@ -111,6 +112,10 @@ pub struct UnitAudio {
     /// The events of the base layer's units that were renamed: the name in the mod,
     /// lowercase, and the name in the port.
     pub renamed: BTreeMap<String, String>,
+    /// The game's units at the target that the block leaves out, as the mod's own block does
+    /// (#ADR-0063).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub left_out: Vec<String>,
 }
 
 /// A bank the port makes.
@@ -545,8 +550,21 @@ impl AudioPlan {
             else {
                 continue;
             };
+            // #ADR-0063, at the slot the mod's block was made for only: a block made for
+            // another skin names that skin's units, and every unit of the target's is missing
+            // from it.
+            let left_out = match t == m.units[unit].source_slot {
+                true => sounds.left_out.as_slice(),
+                false => &[],
+            };
+            if !left_out.is_empty() {
+                let units = left_out.to_vec();
+                sink.raise(AudioUnitsLeftOut { unit, units });
+            }
+            let left_out: Vec<String> = left_out.iter().map(|left| left.name.clone()).collect();
             let clips = sounds.own();
             if clips == 0 {
+                plan.leave_out(unit, left_out);
                 continue;
             }
             let character = &m.characters[m.units[unit].character];
@@ -560,6 +578,7 @@ impl AudioPlan {
             let (Some(game), Some(header)) = (game, header) else {
                 let left = vec![NotCarried::NoGameAudio { clips, target: t }];
                 sink.raise(AudioNotCarried { unit, left });
+                plan.leave_out(unit, left_out);
                 continue;
             };
             let paths = game.units.iter().flat_map(|unit| &unit.paths);
@@ -586,6 +605,7 @@ impl AudioPlan {
                     units: Vec::new(),
                     tags: Vec::new(),
                     renamed: BTreeMap::new(),
+                    left_out,
                 },
                 banks: Vec::new(),
                 carried: Vec::new(),
@@ -632,7 +652,7 @@ impl AudioPlan {
                 sink.raise(AudioNotCarried { unit, left });
             }
             plan.banks.extend(banks);
-            if !out.units.is_empty() {
+            if !out.units.is_empty() || !out.left_out.is_empty() {
                 plan.units.push(out);
             }
         }
@@ -647,6 +667,19 @@ impl AudioPlan {
             buses.map(|o| o.id).collect::<BTreeSet<u32>>()
         };
         Ok(init.map(|bank| buses(&bank)))
+    }
+
+    /// The audio of a unit that carries no clip: the game's units it leaves out, if any.
+    fn leave_out(&mut self, unit: UnitId, left_out: Vec<String>) {
+        if !left_out.is_empty() {
+            self.units.push(UnitAudio {
+                unit,
+                units: Vec::new(),
+                tags: Vec::new(),
+                renamed: BTreeMap::new(),
+                left_out,
+            });
+        }
     }
 
     /// The header of the first events bank the game's units at the target load.
@@ -764,6 +797,9 @@ impl Dump for AudioPlan {
                         ""
                     }
                 );
+            }
+            for name in &audio.left_out {
+                let _ = writeln!(out, "   left out: the game's unit {}", clean(name));
             }
         }
         for bank in &self.banks {

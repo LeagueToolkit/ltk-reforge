@@ -25,10 +25,10 @@ pub use self::decide::{
     Alternative, Candidate, Conflict, Considered, Decision, MadeBefore, Reason, Targets, clip_fit,
 };
 pub use self::findings::{
-    AudioCarried, AudioNotCarried, CODES, Carried, CarriedBank, CarriedOnce, Carry, ForcedUnfit,
-    GameCarried, HudCarried, Infeasible, LeftRow, LinkDangling, LiteralsRenamed, NewBin,
-    NotCarried, PreRework, RefDangling, RefUnmounted, Retargeted, SubLeft, Superseded,
-    TargetChosen, TargetConflict, UnitsLeft, Unjudged, Unreached,
+    AudioCarried, AudioNotCarried, AudioUnitsLeftOut, CODES, Carried, CarriedBank, CarriedOnce,
+    Carry, ForcedUnfit, GameCarried, HudCarried, Infeasible, LeftRow, LinkDangling,
+    LiteralsRenamed, NewBin, NotCarried, PreRework, RefDangling, RefUnmounted, Retargeted, SubLeft,
+    Superseded, TargetChosen, TargetConflict, UnitsLeft, Unjudged, Unreached,
 };
 pub use self::hud::{FieldEdit, HudEdits, HudPlan};
 pub use self::layout::{Layout, MadeNames, folder_name, tidy_stem};

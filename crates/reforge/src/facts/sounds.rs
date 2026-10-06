@@ -13,14 +13,16 @@ use reforge_wwise::Bank;
 use serde::ser::SerializeStruct as _;
 use serde::{Serialize, Serializer};
 
-use super::FactsError;
 use super::copies::Copies;
 use super::findings::{BankUnreadable, UnreadBank};
+use super::{Catalogs, FactsError};
 use crate::diag::Sink;
 use crate::env::Env;
 use crate::fixups::FixedMod;
-use crate::history::Position;
+use crate::history::{Position, UnitHit};
+use crate::load::Dating;
 use crate::model::entity::{FileId, Mod, SkinUnit, UnitId, WadRole};
+use crate::model::hash::skin_paths;
 use crate::model::{
     AudioUnit, BankClip, BankRole, Dump, DumpCx, SideTable, SkinEntry, clean, game_bank_path,
     path_hash,
@@ -119,6 +121,16 @@ impl SoundUnit {
     }
 }
 
+/// A bank unit of the game's skin that the mod's audio block leaves out, which the game's skin
+/// held when the mod was made.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LeftOut {
+    /// The game unit's name.
+    pub name: String,
+    /// The first build the game's skin held it.
+    pub first: Position,
+}
+
 /// The audio of one skin unit.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct UnitSounds {
@@ -126,6 +138,10 @@ pub struct UnitSounds {
     pub tags: Vec<String>,
     /// Its bank units.
     pub units: Vec<SoundUnit>,
+    /// The bank units of the game's skin at the unit's own slot that its block leaves out
+    /// (#ADR-0063), in the game's order.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub left_out: Vec<LeftOut>,
 }
 
 impl UnitSounds {
@@ -133,6 +149,18 @@ impl UnitSounds {
     pub fn own(&self) -> usize {
         self.units.iter().map(SoundUnit::own).sum()
     }
+}
+
+/// What the sound facts are found from, besides the mod.
+pub struct SoundInputs<'a> {
+    /// The game and the history.
+    pub env: &'a Env,
+    /// Which units are copies of which.
+    pub copies: &'a Copies,
+    /// The game's skins of each character.
+    pub catalogs: &'a Catalogs,
+    /// The mod's dating.
+    pub dating: &'a Dating,
 }
 
 /// The audio of each representative unit whose entry holds an audio block.
@@ -173,11 +201,13 @@ impl Judge<'_> {
 }
 
 impl Sounds {
-    /// Reads the banks each representative unit's audio block names, and judges their clips.
-    pub fn find(fixed: &FixedMod, env: &Env, copies: &Copies) -> Result<Self, FactsError> {
+    /// Reads the banks each representative unit's audio block names, judges their clips, and
+    /// finds the game's units the block leaves out.
+    pub fn find(fixed: &FixedMod, inputs: &SoundInputs<'_>) -> Result<Self, FactsError> {
         let m: &Mod = fixed;
+        let env = inputs.env;
         let mut out = Self::default();
-        for unit in copies.representatives() {
+        for unit in inputs.copies.representatives() {
             let Some(entry) = m.units[unit].entry else {
                 continue;
             };
@@ -188,6 +218,7 @@ impl Sounds {
             let mut sounds = UnitSounds {
                 tags: block.tags,
                 units: Vec::new(),
+                left_out: Vec::new(),
             };
             for declared in block.units {
                 let mut files = Vec::new();
@@ -197,7 +228,66 @@ impl Sounds {
                 let unit = declared;
                 sounds.units.push(SoundUnit { unit, files });
             }
+            sounds.left_out = Self::left_out(m, inputs, unit, &sounds)?;
             out.units.insert(unit, sounds);
+        }
+        Ok(out)
+    }
+
+    /// The game's bank units at the unit's own slot that its audio block leaves out, where the
+    /// game's skin held them when the mod was made (#ADR-0063). None for a mod the history does
+    /// not date, and for a block that names none of the game's units there: it was made from
+    /// another skin's, a premium skin's pasted (#MOD-ARTIFACT-0002). A game unit is left out
+    /// only when the block holds no unit of its kind, voice or effects: one that does swapped
+    /// it for another skin's, whose game banks a port does not carry.
+    fn left_out(
+        m: &Mod,
+        inputs: &SoundInputs<'_>,
+        unit: UnitId,
+        sounds: &UnitSounds,
+    ) -> Result<Vec<LeftOut>, FactsError> {
+        let env = inputs.env;
+        let (Some(made), true) = (inputs.dating.position(), env.has_history()) else {
+            return Ok(Vec::new());
+        };
+        let node = &m.units[unit];
+        let skin = inputs.catalogs.of(node.character);
+        let Some(skin) = skin.and_then(|catalog| catalog.skin(node.source_slot)) else {
+            return Ok(Vec::new());
+        };
+        let named = |name: &str| {
+            let mut mine = sounds.units.iter();
+            mine.any(|held| held.unit.name.eq_ignore_ascii_case(name))
+        };
+        let game = &skin.audio.units;
+        if !game.iter().any(|held| named(&held.name)) {
+            return Ok(Vec::new());
+        }
+        let character = &m.characters[node.character].name;
+        let bin = path_hash(&skin_paths::skin_bin(character, node.source_slot));
+        // The skin's unit of that name loaded the bank at the build the mod was made at.
+        let held_then = |hit: &UnitHit, name: &str| {
+            let life = hit.life;
+            hit.bin == bin && hit.unit == name && life.first <= made && made <= life.last
+        };
+        let kind_held = |voice: bool| sounds.units.iter().any(|mine| mine.unit.voice == voice);
+        let left = game
+            .iter()
+            .filter(|held| !named(&held.name) && !kind_held(held.voice));
+        let mut out = Vec::new();
+        for held in left {
+            let mut firsts = Vec::new();
+            for path in &held.paths {
+                let hits = env
+                    .history()
+                    .units_loading(path_hash(&game_bank_path(path)))?;
+                let hits = hits.iter().filter(|hit| held_then(hit, &held.name));
+                firsts.extend(hits.map(|hit| hit.life.first));
+            }
+            if let Some(first) = firsts.into_iter().min() {
+                let name = held.name.clone();
+                out.push(LeftOut { name, first });
+            }
         }
         Ok(out)
     }
@@ -327,6 +417,14 @@ impl Dump for Sounds {
                         file.own()
                     );
                 }
+            }
+            for left in &sounds.left_out {
+                let name = clean(&left.name);
+                let _ = writeln!(
+                    out,
+                    "   left out: the game's unit {name}, since {}",
+                    left.first
+                );
             }
         }
         out

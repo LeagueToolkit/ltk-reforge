@@ -39,7 +39,9 @@ pub use self::objects::{ObjectOrigin, ObjectProvenance, Via};
 pub use self::origin::{Evidence, Origin, OriginEvidence, OriginInputs, Origins, Verdict, Weight};
 pub use self::rework::{Judged, Made, Reworks};
 pub use self::rig::{COPIED_SHARE, RigInputs, Rigs, Source, UnitRig, Visibility};
-pub use self::sounds::{BankFile, ClipOrigin, SoundClip, SoundUnit, Sounds, UnitSounds};
+pub use self::sounds::{
+    BankFile, ClipOrigin, LeftOut, SoundClip, SoundInputs, SoundUnit, Sounds, UnitSounds,
+};
 use crate::diag::Sink;
 use crate::env::Env;
 use crate::fixups::FixedMod;
@@ -235,7 +237,13 @@ impl Facts {
         let rigs = Rigs::find(fixed, &rig_inputs)?;
         let clips = Clips::find(fixed, env, &catalogs, &copies, &origins, &rigs)?;
         let reworks = Reworks::find(fixed, env.history(), dating, reworks)?;
-        let sounds = Sounds::find(fixed, env, &copies)?;
+        let sound_inputs = SoundInputs {
+            env,
+            copies: &copies,
+            catalogs: &catalogs,
+            dating,
+        };
+        let sounds = Sounds::find(fixed, &sound_inputs)?;
         let mut facts = Self {
             roster: Roster::of(fixed),
             catalogs,

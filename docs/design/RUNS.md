@@ -888,3 +888,20 @@ ended with exit 0.
 one chunk, the media bank of its unit cut from the mod's own events bank: `sfx_audio.bnk` in two,
 `sfx2_audio.bnk` in one. The port of `40606c273797…` writes that bank byte for byte as the
 variant `PikachuKennen-Nyht-own-buses` holds it, whose sounds play in game ("Ports in game").
+
+## The game's units a mod leaves out (2026-10-06)
+
+The rule of #ADR-0063 measured the same way: `reforge port --no-write` at the head with the
+buses of #ADR-0064 and with the rule, over the 54 mods of the reduced corpus and the 142 mods of
+the port's baseline whose block keeps an effects unit of the base's name and no voice unit.
+Every run ended as at the head: 3 mods of the reduced corpus by a fatal diagnostic
+(`archive.no-skin` in one, `package.empty` in two), the others with exit 0.
+
+`compare.py`: 127 of the 194 mods differ, 1 of them of the reduced corpus. 124 leave out one
+game unit each, the base skin's voice unit, and their patch holds the block without it. 21 of
+the 124 carry no own clip, and their patch gains an audio record. In 3 the facts find a unit
+left out and the port targets another slot, so the block stays as the game's.
+
+A first run without the bound on a unit's kind left out the base skin's effects unit in 3 mods,
+whose block holds another skin's effects units in its place (`13137f23efc8…`, `278079f09fc4…`,
+`7e478f0479c9…`). With the bound none is left out.

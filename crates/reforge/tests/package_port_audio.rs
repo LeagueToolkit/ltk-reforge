@@ -3,6 +3,7 @@
 //! result, and the package written. The game is `reforge_testkit::sounds`.
 
 use std::collections::BTreeMap;
+use std::ops::RangeInclusive;
 
 use ltk_meta::BinObject;
 use reforge::diag::{Diagnostics, Stage};
@@ -12,15 +13,15 @@ use reforge::model::{AudioBlock, ChunkPath, Layer, SkinEntry, name_hash, path_ha
 use reforge::package::{
     Coverage, Done, MANIFEST_FILE, Origin, Package, PackageWriter, PortBuilder, Ported, ProjectDir,
 };
-use reforge::port::{AudioNotCarried, BankUnit, NotCarried, Port, UnitAudio};
+use reforge::port::{AudioNotCarried, AudioUnitsLeftOut, BankUnit, NotCarried, Port, UnitAudio};
 use reforge_testkit::bins::{Skin, bin, entry, graph, resolver};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files};
 use reforge_testkit::skins::{self, BASE_CLIPS, WAD, skin_bin};
 use reforge_testkit::sounds::{
-    BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_WPK, audio_game, base_entry, clip, event,
-    events_bank, media_bank, package, play, sfx, sound, voice_game, with_audio,
+    BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_EVENTS, VO_WPK, audio_game, base_entry,
+    clip, event, events_bank, media_bank, package, play, sfx, sound, voice_game, with_audio,
 };
-use reforge_testkit::{ModArchive, PortRun};
+use reforge_testkit::{MemoryHistory, ModArchive, PortRun};
 use reforge_wwise::CLIENT_VERSION;
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
@@ -130,6 +131,90 @@ fn a_unit_that_stands_in_takes_the_games_unit_out_of_the_block() {
     // The base's tag is no premium one: no event is renamed, and the mod's tag is added
     // for the hooks composed under it.
     assert_eq!(patched.tags.len(), 2);
+}
+
+/// A file of the mod whose bytes the game shipped from build 150 on: it dates the mod at 150.
+const DATED: &str = "assets/characters/test/skins/base/dated.tex";
+
+fn dated_bytes() -> Vec<u8> {
+    vec![7; 5000]
+}
+
+/// The game with a voice unit, and a history of builds 50, 150 and 300 in which the base
+/// skin's effects unit loaded its events bank at every build and its voice unit at `voice`.
+fn dated_env(voice: RangeInclusive<u16>) -> Env {
+    let history = MemoryHistory::new(&["1.0.50", "1.0.150", "16.19.300"])
+        .with_content(DATED, &dated_bytes(), 1..=2)
+        .with_unit(
+            SFX_EVENTS,
+            ("Test_Base_SFX", SKIN0, SKIN0_BIN),
+            false,
+            0..=2,
+        )
+        .with_unit(VO_EVENTS, ("Test_Base_VO", SKIN0, SKIN0_BIN), true, voice);
+    env(voice_game(), history)
+}
+
+/// A mod of the base's model whose block holds `units`, made at build 150.
+fn dated_mod(units: &[Unit<'_>]) -> ModArchive {
+    mod_of(units, &[(DATED, dated_bytes())])
+}
+
+#[test]
+fn a_game_unit_the_mods_block_leaves_out_is_left_out_of_the_block() {
+    let env = dated_env(0..=2);
+    let run = PortRun::of(&env, &dated_mod(&[BASE_SFX]));
+    let patched = block(&run.applied(&Layer::Base, SKIN0_BIN).objects);
+    assert_eq!(names(&patched), ["Test_Base_SFX"], "{}", run.dump());
+    let left = &run.only::<AudioUnitsLeftOut>().units;
+    let left: Vec<&str> = left.iter().map(|left| left.name.as_str()).collect();
+    assert_eq!(left, ["Test_Base_VO"]);
+}
+
+#[test]
+fn a_game_unit_added_after_the_mod_was_made_stays_in_the_block() {
+    // The voice unit is the game's from build 300, after the mod was made at 150: the author
+    // left nothing out.
+    let env = dated_env(2..=2);
+    let run = PortRun::of(&env, &dated_mod(&[BASE_SFX]));
+    assert!(run.port.audio.is_empty(), "{}", run.dump());
+    assert_eq!(run.log.of::<AudioUnitsLeftOut>().count(), 0);
+}
+
+#[test]
+fn a_block_that_names_none_of_the_games_units_leaves_none_out() {
+    // A block made from another skin's, as a pasted premium skin's is, names that skin's
+    // units: every unit of the base's is missing from it.
+    let env = dated_env(0..=2);
+    let other = Unit {
+        name: "Test_Skin03_SFX",
+        ..BASE_SFX
+    };
+    let run = PortRun::of(&env, &dated_mod(&[other]));
+    assert_eq!(
+        run.log.of::<AudioUnitsLeftOut>().count(),
+        0,
+        "{}",
+        run.dump()
+    );
+}
+
+#[test]
+fn a_game_unit_swapped_for_another_skins_of_its_kind_stays_in_the_block() {
+    // The block keeps the base's voice and swaps its effects for skin 3's, whose game banks a
+    // port does not carry: leaving the base's effects out would leave the skin without any.
+    let env = dated_env(0..=2);
+    let other = Unit {
+        name: "Test_Skin03_SFX",
+        ..BASE_SFX
+    };
+    let run = PortRun::of(&env, &dated_mod(&[other, BASE_VO]));
+    assert_eq!(
+        run.log.of::<AudioUnitsLeftOut>().count(),
+        0,
+        "{}",
+        run.dump()
+    );
 }
 
 /// A mod of the base's model and audio block whose voice package, clip 3 replaced, ships in
@@ -298,6 +383,7 @@ fn a_skin_bin_written_whole_takes_no_voice_layers_patch() {
         }],
         tags: Vec::new(),
         renamed: BTreeMap::new(),
+        left_out: Vec::new(),
     });
     let (log, package) = built(&run, &port, &env);
     assert_eq!(

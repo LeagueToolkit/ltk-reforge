@@ -9,6 +9,7 @@ use serde::{Serialize, Serializer};
 use super::decide::Reason;
 use super::shipping::Left;
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
+use crate::facts::LeftOut;
 use crate::model::entity::{CharId, FileId, UnitId};
 use crate::model::{BinHash, Layer, Slot, WadHash};
 
@@ -25,6 +26,7 @@ pub const CODES: &[Code] = &[
     HudCarried::CODE,
     AudioCarried::CODE,
     AudioNotCarried::CODE,
+    AudioUnitsLeftOut::CODE,
     LiteralsRenamed::CODE,
     TargetChosen::CODE,
     ForcedUnfit::CODE,
@@ -732,6 +734,32 @@ pub enum NotCarried {
     /// The unit's skin bin is written whole (#ADR-0017), and a bin of the package takes no
     /// patch: its voice layers are not written.
     NewBin,
+}
+
+/// The game's bank units at the target the port leaves out of the block, as the mod's own block
+/// does (#ADR-0063).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AudioUnitsLeftOut {
+    /// The unit.
+    pub unit: UnitId,
+    /// The game's units, each with the first build the game's skin held it.
+    pub units: Vec<LeftOut>,
+}
+
+impl Diag for AudioUnitsLeftOut {
+    const CODE: Code = plan("audio.units-left-out");
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("the game's units the mod's audio block leaves out, which the game's skin held ")
+            .text("when the mod was made, are left out: ");
+        f.list(&self.units, |f, left| {
+            f.spelled(&left.name);
+        });
+    }
 }
 
 /// Own clips of a unit the port does not carry, each with why.

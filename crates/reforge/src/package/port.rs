@@ -102,11 +102,13 @@ fn unit_fields(unit: &mut PropertyValueEnum) -> Option<&mut IndexMap<BinHash, Pr
 /// The game's `bankUnits` with the port's units after them, and the game's tags with the
 /// port's after them when there are any. Each unit is modelled on the game's first, so its
 /// types are the build's. A game unit the port's unit stands in for is left out
-/// (#MOD-ARTIFACT-0028). None when the game's entry has no bank unit to model one on.
+/// (#MOD-ARTIFACT-0028), and so is one of `left_out`, which the mod's own block leaves out
+/// (#ADR-0063). None when the game's entry has no bank unit to model one on.
 fn audio_record(
     theirs: &BinObject,
     added: &[&BankUnit],
     tags: &[String],
+    left_out: &[String],
 ) -> Option<(PropertyValueEnum, Option<PropertyValueEnum>)> {
     let block = field::SKIN_AUDIO_PROPERTIES;
     let list = value::get(theirs, &[block, field::BANK_UNITS])?;
@@ -117,7 +119,10 @@ fn audio_record(
     };
     let template = items.first()?.clone();
     let name_field = name_hash(field::BANK_UNIT_NAME);
-    let replaced: BTreeSet<&str> = added.iter().filter_map(|u| u.replaces.as_deref()).collect();
+    let replaced = added.iter().filter_map(|u| u.replaces.as_deref());
+    let replaced: BTreeSet<&str> = replaced
+        .chain(left_out.iter().map(String::as_str))
+        .collect();
     items.retain_mut(|item| {
         let name = unit_fields(item).and_then(|fields| fields.get(&name_field));
         let name = name.and_then(value::as_str);
@@ -527,7 +532,8 @@ impl<'a> PortBuilder<'a> {
     /// The audio block: the game's units with the port's after them, and the tags likewise.
     /// The base layer's units go in the unit's patch. Each voice layer gets a patch of its own
     /// that sets the whole block: the game's units, the base layer's, then the layer's
-    /// (#ADR-0028).
+    /// (#ADR-0028). A game unit the mod's own block leaves out is out of every record
+    /// (#ADR-0063).
     fn audio(
         &self,
         unit: &PortUnit,
@@ -554,8 +560,8 @@ impl<'a> PortBuilder<'a> {
             units.collect()
         };
         let base = of_layer(&Layer::Base);
-        if !base.is_empty() {
-            match audio_record(theirs, &base, &added.tags) {
+        if !base.is_empty() || !added.left_out.is_empty() {
+            match audio_record(theirs, &base, &added.tags, &added.left_out) {
                 Some(record) => {
                     set(ptch, record);
                     out.voiced.insert(Layer::Base);
@@ -576,7 +582,7 @@ impl<'a> PortBuilder<'a> {
                 }
             }
             let units: Vec<&BankUnit> = base.iter().copied().chain(mine).collect();
-            let record = audio_record(theirs, &units, &tags);
+            let record = audio_record(theirs, &units, &tags, &added.left_out);
             let path = Layout::layer_patch(&character.name, unit.target, layer);
             let (Some(record), Some(path)) = (record, path) else {
                 let layer = layer.clone();

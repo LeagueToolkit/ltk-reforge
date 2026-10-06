@@ -398,7 +398,13 @@ pub struct Facts {
   copy is the game's when the history holds its bytes at any build, else the mod's own.
   Without a history a clip is the game's when the game's bank at the same path holds it
   under the same id, and an older clip of the game then passes as the mod's own. A bank a
-  repath tool moved counts at the game's path.
+  repath tool moved counts at the game's path. The units of the game's skin at the unit's own
+  slot that its block leaves out are those the history shows the skin held when the mod was
+  made, by the dating's bound (#ADR-0063). A mod the history does not date leaves none out,
+  and neither does a block that names none of the game's units there: it was made from another
+  skin's. A game unit is left out only when the block holds no unit of its kind, voice or
+  effects: one that does swapped it for another skin's unit, whose game banks a port does not
+  carry.
 - **The roster** is the mod's groups, characters and units as far as a policy needs them: ids,
   source slots, whether a unit has an entry. With it `Facts` holds everything `decide` reads.
 - **Faults.** A game chunk that does not read and a history that does not answer end
@@ -501,7 +507,11 @@ object takes a name of its own, which every link to it follows.
     `<base tag>Mod<id>`, token by token, and the tag goes after the game's
     (#GAME-BEHAVIOR-0011);
   - a unit of the mod with the name of a game unit and none of its banks takes that unit's
-    place in the block (#MOD-ARTIFACT-0028).
+    place in the block (#MOD-ARTIFACT-0028);
+  - a game unit the mod's block leaves out (Facts, "Sounds") is left out of the block, at the
+    unit's own slot only: a block made for another skin names that skin's units
+    (#ADR-0063). A unit with no own clip then still gets an audio plan, of the units left
+    out alone.
 
   A bank made is a `reforge_wwise::Bank` the build writes. Its header is the header of an
   events bank the game's units at the target load, so it is of the client's version

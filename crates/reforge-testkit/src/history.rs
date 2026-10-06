@@ -1,6 +1,7 @@
 //! A history in memory, for tests: built from facts (a path, a content, an object, a clip, an
-//! animation clip's joints or an events bank at builds a to b), with no SQLite file behind it.
-//! It answers the questions about those. The families no stage reads yet answer nothing.
+//! animation clip's joints, an events bank or a bank unit at builds a to b), with no SQLite file
+//! behind it. It answers the questions about those. The families no stage reads yet answer
+//! nothing.
 
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
@@ -25,6 +26,7 @@ pub struct MemoryHistory {
     clips: BTreeMap<ClipKey, Life>,
     animations: BTreeMap<(WadHash, FileKey), (Life, Vec<u32>)>,
     banks: BTreeMap<WadHash, Vec<EventsBankHit>>,
+    units: BTreeMap<WadHash, Vec<UnitHit>>,
 }
 
 fn life(builds: RangeInclusive<u16>) -> Life {
@@ -89,6 +91,7 @@ impl MemoryHistory {
             clips: BTreeMap::new(),
             animations: BTreeMap::new(),
             banks: BTreeMap::new(),
+            units: BTreeMap::new(),
         }
     }
 
@@ -169,6 +172,29 @@ impl MemoryHistory {
         held.sort_by_key(|hit| hit.life.first);
         self
     }
+
+    /// The game's bank unit `unit`, of the skin entry `entry` in the bin at `bin`, loaded the
+    /// bank at `bank` at these builds.
+    #[must_use]
+    pub fn with_unit(
+        mut self,
+        bank: &str,
+        (unit, entry, bin): (&str, &str, &str),
+        voice: bool,
+        builds: RangeInclusive<u16>,
+    ) -> Self {
+        let hit = UnitHit {
+            bin: path_hash(bin),
+            entry: name_hash(entry),
+            unit: unit.to_string(),
+            voice,
+            life: life(builds),
+        };
+        let held = self.units.entry(path_hash(bank)).or_default();
+        held.push(hit);
+        held.sort_by_key(|hit| hit.life.first);
+        self
+    }
 }
 
 impl History for MemoryHistory {
@@ -234,8 +260,8 @@ impl History for MemoryHistory {
         Ok(Vec::new())
     }
 
-    fn units_loading(&self, _: WadHash) -> Result<Vec<UnitHit>, HistoryError> {
-        Ok(Vec::new())
+    fn units_loading(&self, bank: WadHash) -> Result<Vec<UnitHit>, HistoryError> {
+        Ok(self.units.get(&bank).cloned().unwrap_or_default())
     }
 
     fn event_wems(&self, _: WadHash, _: u32) -> Result<Vec<WemPlayed>, HistoryError> {
