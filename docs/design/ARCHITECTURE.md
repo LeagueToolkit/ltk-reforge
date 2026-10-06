@@ -380,7 +380,9 @@ pub struct Facts {
 - **Rigs.** For each representative with a skin entry: where its mesh, its skeleton and each
   clip of its graph come from (the mod, the game, the game at the path Riot moved the file to,
   nowhere), the game skins each matches, whether it is the mod's own bytes; the submeshes of an
-  own mesh against the base's and each candidate's mesh; the skeleton's joints.
+  own mesh against the base's and each candidate's mesh; the skeleton's joints. The game's
+  skeleton of every skin of the character is read, so a unit is judged by its joints at any
+  slot.
 - **Clips.** `ClipsAt` sorts a unit's clips at one slot: the slot's own, the mod's own that
   move a joint of the skeleton, the mod's own that move none, the ones only other skins play
   (by skin, with how their tracks meet the unit's skeleton), the ones nothing judges.

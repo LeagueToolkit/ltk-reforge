@@ -300,6 +300,39 @@ fn under_the_slot_policy_a_unit_stays_where_its_bin_sits() {
 }
 
 #[test]
+fn a_sub_character_is_judged_by_the_joints_of_the_skin_it_follows_its_champion_to() {
+    // The game ships the pet at skin 3 on another skeleton file with the joints of the skin0
+    // file the mod's pet takes. Only the champion's unit is weighed at skin 3 by itself.
+    let mut game = skins::game();
+    let joints = ["Root", "Tail"];
+    game.insert(skins::PET_SKEL, rigs::skeleton(&joints));
+    let skeleton3 = "assets/characters/testpet/skins/skin03/testpet_skin03.skl";
+    game.insert(skeleton3, rigs::skeleton(&joints));
+    // A graph of its own: skin 3 plays none of the pet's clips.
+    let pet3 = Skin {
+        skeleton: skeleton3.into(),
+        graph: "Characters/TestPet/Animations/Skin3".into(),
+        ..skins::pet_skin()
+    };
+    let entry3 = bins::entry("Characters/TestPet/Skins/Skin3", &pet3);
+    game.insert(&skins::skin_bin("testpet", 3), bins::bin(vec![entry3]));
+    let env = env(game, NoHistory);
+    let run = FactRun::of(&env, &archive(&champion_and_pet()));
+    let pet = run.decide(block(), "testpet", 0);
+    assert_eq!(
+        (pet.chosen, pet.reason),
+        (Some(Slot(3)), Reason::SubFollows),
+        "{}",
+        run.dump()
+    );
+    let checks = pet.candidates[0].checks.iter();
+    let skeleton = checks
+        .clone()
+        .find(|check| check.aspect == Aspect::Skeleton);
+    assert_eq!(skeleton.map(|check| &check.fit.why), Some(&Why::SlotJoints));
+}
+
+#[test]
 fn a_sub_character_follows_its_champion() {
     let env = env(skins::game(), NoHistory);
     let run = FactRun::of(&env, &archive(&champion_and_pet()));

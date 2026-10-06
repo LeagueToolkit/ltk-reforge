@@ -458,7 +458,7 @@ impl RigInputs<'_> {
         Ok(out)
     }
 
-    /// The rig of one unit with an entry, and the game slots it is compared with.
+    /// The rig of one unit with an entry.
     fn rig(
         &self,
         m: &Mod,
@@ -466,7 +466,7 @@ impl RigInputs<'_> {
         unit: &SkinUnit,
         object: &BinObject,
         catalog: &SkinCatalog,
-    ) -> Result<(UnitRig, BTreeSet<Slot>), FactsError> {
+    ) -> Result<UnitRig, FactsError> {
         let entry = SkinEntry::read(object);
         let wad = m.files[unit.file].wad;
         let champion = &m.characters[m.champion_of(unit.character)].name;
@@ -575,21 +575,13 @@ impl RigInputs<'_> {
             });
         }
 
-        // The game skeletons the unit is compared with: of its candidates, and of every skin
-        // a part of it matches.
-        let mut compared = candidates;
-        compared.extend(skeleton.file.game_slots.iter().copied());
-        for clip in &clips {
-            compared.extend(clip.file.game_slots.iter().map(|slot| catalog.canon(*slot)));
-        }
-        let rig = UnitRig {
+        Ok(UnitRig {
             mesh,
             skeleton,
             graph: graph.map(|(_, from)| from),
             clips,
             unreadable,
-        };
-        Ok((rig, compared))
+        })
     }
 }
 
@@ -606,8 +598,10 @@ impl Rigs {
             let Some(object) = unit.entry.map(|entry| &m.objects[entry].value) else {
                 continue;
             };
-            let (rig, compared) = inputs.rig(m, id, unit, object, catalog)?;
-            for slot in compared {
+            let rig = inputs.rig(m, id, unit, object, catalog)?;
+            // Every skin's skeleton, so that a unit is judged by its joints at any slot: a
+            // sub-character follows its champion, and a person may force a target.
+            for &slot in catalog.skins.keys() {
                 let key = (unit.character, slot);
                 if out.game.contains_key(&key) {
                     continue;
@@ -633,8 +627,8 @@ impl Rigs {
         self.units.iter()
     }
 
-    /// The skeleton of a character's game skin at a slot, when a unit of the character was
-    /// compared with it and it reads.
+    /// The skeleton of a character's game skin at a slot, when a unit of the character has a
+    /// rig and the skeleton reads.
     pub fn game_skeleton(&self, character: CharId, slot: Slot) -> Option<&Skeleton> {
         self.game
             .get(&(character, slot))

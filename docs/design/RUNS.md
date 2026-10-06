@@ -1181,3 +1181,8 @@ bank. The patches of 17 of them gain the units' records.
 **The retarget's renames in every object.** Kept, with the measurement above: scoped to the
 group, the renames drop a patch in the two mods where they reach another group's objects. No code
 changes and no run is made.
+
+**The game's skeleton of every skin read.** The reduced corpus and the 14 mods whose targets lay
+outside the slots compared do not differ: at those targets the skeleton is the mod's own, the game
+has no skin, or the joints differ and the mesh and the clips block too. Five of the 14, timed
+alone with the build before and this one, take 48.8 s and 49.0 s.
