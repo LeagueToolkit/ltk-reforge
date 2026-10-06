@@ -4673,7 +4673,7 @@ dependencies = [
 
 [[package]]
 name = "reforge"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "camino",
  "ddsfile",
@@ -4709,7 +4709,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-app"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
  "camino",
@@ -4744,7 +4744,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-census"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "camino",
  "fs-err",
@@ -4766,7 +4766,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-cli"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "camino",
@@ -4780,7 +4780,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-magic"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -4788,7 +4788,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-testkit"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "glam",
  "ltk_anim",
@@ -4804,7 +4804,7 @@ dependencies = [
 
 [[package]]
 name = "reforge-wwise"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "thiserror 2.0.21",
 ]
