@@ -390,6 +390,43 @@ fn an_added_bank_is_cut_from_the_mods_own_events_bank() {
 }
 
 #[test]
+fn an_added_bank_is_cut_from_the_first_own_events_bank_that_plays_its_clips() {
+    // #ADR-0075: the unit's first events bank is the game's copy, which plays clip 1 alone, and
+    // its second plays the added clip 77.
+    let mut game = audio_game();
+    game.insert(SFX_EVENTS, base_events(1));
+    let (added, added_events) = (
+        sfx("base", "added_sfx_audio"),
+        sfx("base", "added_sfx_events"),
+    );
+    let banks = [added.as_str(), SFX_EVENTS, added_events.as_str()];
+    let unit = Unit {
+        banks: &banks,
+        events: &[BASE_DANCE],
+        ..BASE_SFX
+    };
+    let stem = "added_sfx_events";
+    let plays = vec![
+        sound(10, 77, 0),
+        play(20, 10, stem),
+        event(BASE_DANCE, &[20]),
+    ];
+    let media = media_bank("added_sfx_audio", CLIENT_VERSION, vec![clip(77, 7)]);
+    let files = [
+        (added.as_str(), media),
+        (SFX_EVENTS, base_events(1)),
+        (added_events.as_str(), events_bank(stem, plays)),
+    ];
+    let env = env(game, NoHistory);
+    let run = port(&env, &mod_of(&["Test"], &[unit], &files));
+    let audio = run.port.audio.of(run.unit("test", 0)).expect("planned");
+    assert_eq!(audio.units.len(), 1, "{}", run.dump());
+    assert_eq!(audio.units[0].events, [BASE_DANCE]);
+    assert_eq!(clip_ids(&read(&run, &format!("{DIR}/sfx_audio.bnk"))), [77]);
+    assert!(run.found::<AudioNotCarried>().is_empty());
+}
+
+#[test]
 fn an_added_banks_bus_the_game_lacks_is_carried_and_its_copy_of_a_game_bus_is_not() {
     // #GAME-BEHAVIOR-0025: without the bus the game lacks, the mod's events play nothing.
     let (env, archive) = added_buses(true);

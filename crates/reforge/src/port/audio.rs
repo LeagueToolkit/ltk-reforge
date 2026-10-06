@@ -9,7 +9,8 @@
 //!   unit holds a media bank of the own clips and an events bank with no object.
 //! - **Of its own.** The bank sits at any other path. The events that reach an own clip are
 //!   cut from the game's events bank at the unit's events path, else from the mod's own of the
-//!   client's version (#ADR-0030). Every other object of the source stays
+//!   client's version (#ADR-0030), the first that plays one (#ADR-0075). Every other object of
+//!   the source stays
 //!   (#GAME-BEHAVIOR-0017). A kept event is renamed under the mod's tag, token by token, and
 //!   the tag goes after the game's (#GAME-BEHAVIOR-0011).
 //!
@@ -233,16 +234,24 @@ impl Planning<'_> {
         Ok(bank.map(|bank| bank.bank()))
     }
 
-    /// The mod's own events bank of the unit, when it is of the version the client loads
-    /// (#GAME-BEHAVIOR-0015).
-    fn mod_events(&self, unit: &SoundUnit) -> Option<Bank> {
+    /// The mod's own events bank of the unit for its own clips, of the version the client loads
+    /// (#GAME-BEHAVIOR-0015): the first whose events reach one of the clips, else the first
+    /// (#ADR-0075).
+    fn mod_events(&self, unit: &SoundUnit, own: &BTreeSet<u32>) -> Option<Bank> {
         let m: &Mod = self.inputs.fixed;
         let events = unit
             .files
             .iter()
             .filter(|file| file.role == BankRole::Events && file.version == CLIENT_VERSION);
-        let mut banks = events.filter_map(|file| Bank::read(&m.files[file.file].bytes).ok());
-        banks.next()
+        let banks = events.filter_map(|file| Bank::read(&m.files[file.file].bytes).ok());
+        let mut banks: Vec<Bank> = banks.collect();
+        let playing = banks
+            .iter()
+            .position(|bank| !bank.cut_to(own).events.is_empty());
+        match playing {
+            Some(at) => Some(banks.swap_remove(at)),
+            None => banks.into_iter().next(),
+        }
     }
 
     /// The events of a unit of its own, cut to the own clips and renamed. None when no events
@@ -255,7 +264,7 @@ impl Planning<'_> {
     ) -> Result<Option<OwnEvents>, PlanError> {
         let source_name = &unit.unit.name;
         let game_source = self.game_events(unit)?;
-        let Some(mut source) = game_source.clone().or_else(|| self.mod_events(unit)) else {
+        let Some(mut source) = game_source.clone().or_else(|| self.mod_events(unit, own)) else {
             self.left.push(NotCarried::NoEventsBank {
                 clips: own.len(),
                 source: source_name.clone(),
@@ -268,7 +277,7 @@ impl Planning<'_> {
         if cut.events.is_empty()
             && !from_mod
             && !self.inputs.options.game_events_only
-            && let Some(theirs) = self.mod_events(unit)
+            && let Some(theirs) = self.mod_events(unit, own)
         {
             let of_mod = theirs.cut_to(own);
             if !of_mod.events.is_empty() {

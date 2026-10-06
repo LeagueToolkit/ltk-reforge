@@ -1172,3 +1172,8 @@ audio record, and the layer's patch sets the block with the unit among the base'
 
 **A locale copy with other own clips, not carried** (#ADR-0074). Kept as it was: no code changes
 but a comment, and no run is made.
+
+**The first own events bank that plays the clips** (#ADR-0075). The reduced corpus does not differ.
+The 18 mods with a bank no first events bank played: the 64 entries of `audio.not-carried` with no
+event are gone, and the banks carried go from 140 to 204, each with its events cut from the later
+bank. The patches of 17 of them gain the units' records.

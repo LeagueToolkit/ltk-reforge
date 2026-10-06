@@ -133,9 +133,6 @@ record and no measurement of reforge's own says it is right.
   At another slot, a forced target, the check "the slot's joints" cannot hold.
 - The names a retarget moves from a unit's slot to its target are replaced in every object of
   the mod, not only in the objects that unit's group loads.
-- Of a unit's own events banks of the client's version, only the first is read. 64 units in
-  18 mods have a second that plays their clips ([RUNS.md](RUNS.md), "Sound units of a mod's
-  own").
 - Four outcomes no run reaches, each tested with an input made by hand: `target.conflict`, a
   unit with no decision, and the two reasons the build has for not writing a unit's audio
   (the game's entry has no bank unit to model one on; a skin bin written whole takes no
@@ -162,6 +159,10 @@ record and no measurement of reforge's own says it is right.
   them, so such a chunk stays unnamed.
 - *fixer* A `ChunkPath` may be longer than a file name on disk: 1,264 game paths are over 512
   bytes. A writer of a project directory names such a chunk by its hash.
+- An event cut from a mod's own events bank can hold the id of an event of a game bank the
+  block keeps, and the report counts shared ids against the game's bank at the unit's events
+  path alone. Which of two effects banks defining one id the client keeps is not established
+  (#GAME-BEHAVIOR-0012). One mod of the datasets carries 26 such events (#ADR-0075).
 - 84 sound units have an events bank of version 134 that plays their clips, and nothing
   converts a bank from 134 to 145.
 - The history holds no vertex positions, so a source backed by it does not answer which
