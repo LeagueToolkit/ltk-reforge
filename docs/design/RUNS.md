@@ -998,3 +998,113 @@ without the rule and with it:
 
 A run ended keeps no package, check or summary of a package. Every other difference is the
 relinked links, the objects that hold them and the fixup's count.
+
+## The behaviour carried over from ltk-forge (2026-10-06)
+
+The thirteen items of [ROADMAP.md](ROADMAP.md), "Carried over from ltk-forge", measured before
+any of them changes. The counts are over the reports of `baseline-port-2`, the 5,137 mods of the
+datasets, against the 16.19.8207193 copy, the history index of 757 builds (head
+16.19.8230722) and the CommunityDragon hash tables. Archives and WADs were read in memory.
+
+**A `.tft_set<N>` tag in a ported file's name.**
+
+- The port ships 625 names with `.tft_set<N>`, in 221 mods: `tft_set13` 302, `tft_set12` 146,
+  `tft_set16` 60, eleven other sets 117. No shipped name and no file name of a mod holds
+  `.tftset<N>`.
+- The mods' file names hold the tag 1,921 times, in 838 mods. Each is a file name the game's own
+  paths had: the history holds 92,772 game paths with the tag, from 9.22 to 16.14, none at the
+  head. 237 of the 1,921 are game paths, the others sit in folders of the mod's own. The other
+  two shapes of #MOD-ARTIFACT-0026 are the game's file names as well: `.pie_c_<major>_<minor>`
+  6,962 of 6,967 names, `.skins_<character>_skin<N>` 107,257 of 107,354.
+- With the tag dropped, 6 shipped names in 6 mods meet a name the port ships already, an
+  effect's `color-hold.tex` beside its `color-hold.tft_set12.tex`, and would take `-2`. No two
+  tagged names drop to one.
+- The port ships 23,753 names, in 959 mods, with another tag the game's paths held (`domina`,
+  `mel`, `aurora`, `leblanc_rework` the most), and 1,399, in 105 mods, with a dotted part no
+  game path had.
+
+**Two units of one character on one slot.** 6 slots in 6 mods are decided by two units or more.
+The rank decides by the unit written for the slot in 3, by a readable entry in 1, by skin0 in 1,
+and by the source slot in 1: `552d4d5e68c1`, where 18 units of `teemomushroom` (slots 14, 27 to
+36, 47 to 53, none at the champion's slot) follow Teemo's skin0 unit to skin25, none fitting
+there. The unit of skin14 keeps the slot, and 17 are superseded.
+
+**The joints of a game skeleton at a target no unit was compared with.** 15 decisions in 14 mods,
+each a sub-character following its champion. At 4 targets the game has no skin of the
+sub-character, and the slot check blocks. At 8 the skeleton is the mod's own and fits whatever
+the joints. At 3 (`8336be0190b4` twice, `efddf09d6993`) the skeleton is a game file of another
+skin, and the check says "other joints than skin 16's" with skin 16's joints never read. The
+index's skeletons of 16.19 differ in all three (6 joints against 1, 16 against 8, 79 against
+115), and the mesh and the clips block there too. No decision would change.
+
+**Retarget renames in every object.** 596 mods retarget a unit, and its renames change 16,831
+objects. 15,223, in 139 mods, are outside the unit's group: 15,167 in bins only units that leave
+the port load (97 mods), 50 in bins no unit loads (43 mods), and 6 in bins that a shipping unit
+of another group loads (`0ba7ef809ade`, `137304ee1cad`). They are 9,934 graphs, 4,884 skin
+entries and 405 resolvers. The renames scoped to the group, run over the 597 mods: 595 equal.
+In the 2 others one unit goes from skin0 to a premium skin and another from skin1 to skin0, and
+skin1's bin holds objects under skin0's entry and resolver names. Scoped, those keep the names
+the second unit's entry takes, and that unit loses its patch.
+
+**What a unit reaches, reported for units that leave.** 3,529 findings in 118 mods are raised on
+units that leave the port: `object.unreached` 1,739, `object.link-dangling` 1,236, `ref.dangling`
+412, `ref.unmounted` 118, `object.game-carried` 24. Each such unit is a chroma folded into its
+parent or the game's own skin shipped again. Each of the 118 mods has findings on units that
+ship too. Units that ship have 9,968.
+
+**A locale bank of a unit that is not voice.** 2,665 copies of banks carry a locale, and one is
+of a unit that is not voice: `b7dcacfd0617`, `Yone_Base_SFX`, a media bank of version 134 at the
+base's effects path, shipped in the en_US WAD alone, with 57 own clips of 78. The port carries
+it in the layer `voice-en-us`.
+
+**A locale copy whose own clips are not the champion WAD's.** No report holds
+`audio.not-carried why=locale-differs`. Of 1,471 locale copies with own clips, one has a copy in
+the champion WAD with own clips at the same path (`9b85da734738`), and the two are byte for byte
+the same.
+
+**The first own events bank.** The 64 units in 18 mods of "Sound units of a mod's own", 630 own
+clips: in each the first events bank of the client's version, in the order the bin lists its
+banks, plays none of the unit's own clips, and one later bank plays all of them. 18 Rengar mods
+ship one of two copies of one added bank. Of the 8 with its larger copy, 3 list it first and are
+carried, and 5 list the base's first and are not. No event a later bank keeps is in another bank
+of the unit. 26 of the events `959d7baf9bb5` would carry hold the ids of the game's Volibear
+base events bank.
+
+**Sub-characters by the champion's name.** Over the 174 champion WADs of 16.19, 195 pairs of a
+champion and a character whose skin bins its WAD holds.
+
+- The names starting with a champion's, from the tables and the WAD: 138. The check for a skin
+  bin in the WAD keeps 98, each a sub-character. Of the 40 it drops, 5 are Vi's (Viego, Viktor,
+  their sub-characters, `visionward`) and 35 are characters of earlier builds.
+- Characters with skin bins in a champion's WAD that do not start with its name: `heimertblue`
+  and `heimertyellow` (Heimerdinger's turrets, 27 slots each), `testcuberender` (Skarner,
+  skin0), `trundlewall` (Zoe, skin0; Trundle's too), and 93 `jade_*` characters in 72 WADs from
+  16.15.7983109, each a champion's variant of a game mode with its own character record.
+- The skins' `extraCharacterPreloads` names 52 characters. It leaves out 67 of the 102
+  sub-characters that are not `jade_*`, and 17 of its names are in no WAD of the champion.
+- The mods with bins of those characters: 2 Heimerdinger, 1 Skarner, 4 Zoe and 2 with `jade_*`.
+
+**Four outcomes no run reaches.** Every character is added with a group, and `Catalogs::find`
+asks the game for each, so every representative unit gets a decision: `Left::NoTarget` follows
+from no input. Of the game's skin entries at the head, every champion's has a bank unit but
+TFT's, and 5,319 of 9,826 sub-characters' have none: a port of a sub-character's own audio to
+one of those reaches `no-unit-to-model`.
+
+**`unit.new-bin`.** 5 in 5 mods, each on a unit that ships, and `unit.ported` says in each that
+the bin is written whole.
+
+**The bounds.**
+
+| bound | value | largest in the datasets | largest in the game | passing it |
+|---|---:|---|---|---|
+| archive file | 4 GiB | 439,570,870 bytes | | fatal |
+| entries of an archive | 250,000 | 2,033 | | fatal |
+| one entry or chunk, inflated | 512 MiB | an entry of 439,570,394 bytes, a stored packed WAD; a chunk of 304,352,832 | a chunk of 220,975,794 | the entry is skipped, a packed WAD dropped |
+| all entries and chunks, inflated | 4 GiB | 1,056,182,694 bytes | | fatal |
+| chunks of a packed WAD | 250,000 | 5,261 | 90,012, `Companions.wad.client`; the most at 26 builds from 8.20 | the WAD is dropped |
+| bins followed from one root | 64 | 89, in one mod (`2c2bd16ccd4a`), whose 100 units load 64 | | nothing raised: the rest is not loaded |
+| bins read of one game skin | 16 | 1,807 mods have a character with a skin cut | 41 (Evelynn skin0); 533 of 19,609 skins pass 16 | nothing raised: the catalog holds the first 16 |
+| chunks of a file's size read | 64 | 1,167 candidates of one size; 258,056 of 1,315,880 files judged meet more than 64 | | nothing raised: 28,970 files in 1,554 mods would take another first path, no verdict changes |
+
+The game holds no WAD near 200,000 chunks. A slot is looked for up to 120: champions reach 116,
+and 46 `jade_*` characters have skin bins at 301 to 305.
