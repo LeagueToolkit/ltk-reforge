@@ -148,10 +148,9 @@ record and no measurement of reforge's own says it is right.
   unit with no decision, and the two reasons the build has for not writing a unit's audio
   (the game's entry has no bank unit to model one on; a skin bin written whole takes no
   layer).
-- The bounds a run reads under are ltk-forge's values: the archive's caps, 64 bins followed
-  from one root, 16 bins read of one game skin, 64 chunks of a file's size read to find its
-  bytes under another path. One has a measurement behind it: the cap on a packed WAD's chunks
-  is above the 200,000 the game's largest WADs hold.
+- The bounds a run reads under are ltk-forge's values: the archive's caps on bytes, 64 bins
+  followed from one root, 16 bins read of one game skin, 64 chunks of a file's size read to
+  find its bytes under another path.
 
 ### Known limits
 

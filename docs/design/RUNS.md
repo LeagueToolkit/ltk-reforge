@@ -1122,3 +1122,5 @@ count alone. No repair differs.
 **`unit.new-bin` raised by the build.** The 5 mods that raise it: the finding comes with the
 package, names the bin written in place of the slot, and the ids of the diagnostics after it
 move by one. The reduced corpus holds one of them, and no other port differs.
+
+**The archive's counts of entries and chunks at 262,144.** No run differs.

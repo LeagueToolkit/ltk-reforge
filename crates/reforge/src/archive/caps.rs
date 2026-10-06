@@ -17,12 +17,14 @@ pub struct Caps {
 }
 
 impl Default for Caps {
+    // Measured 2026-10-06: the datasets' largest archive holds 2,033 entries and its largest
+    // packed WAD 5,261 chunks; the game's largest WAD at 16.19 holds 90,012 chunks.
     fn default() -> Self {
         Self {
             entry_bytes: 512 << 20,
-            entries: 250_000,
+            entries: 1 << 18,
             total_bytes: 4 << 30,
-            packed_chunks: 250_000,
+            packed_chunks: 1 << 18,
             archive_bytes: 4 << 30,
         }
     }

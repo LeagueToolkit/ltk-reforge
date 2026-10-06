@@ -719,7 +719,7 @@ object takes a name of its own, which every link to it follows.
   aborts the process and no panic guard catches it, so a size a reader from another crate
   reserves before it reads is checked first: a packed WAD whose header declares more chunks
   than its bytes can list is refused before `ltk_wad` mounts it, and one over the cap after
-  that. The game's own WADs hold up to some 200,000 chunks, so the cap is above that. The
+  that. The cap, 262,144, is well above the 90,012 chunks of the game's largest WAD. The
   mod's image is decoded under limits on its width, its height and the memory the decoder
   asks for (#ADR-0051).
 - A mod's text reaches a terminal only through the `Speller` and `clean`.

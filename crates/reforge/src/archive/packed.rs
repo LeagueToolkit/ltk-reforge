@@ -159,8 +159,8 @@ impl<'a> PackedWad<'a> {
         if major != 3 {
             return Ok(());
         }
-        // The impossible count comes first: the game's own WADs hold up to some 200,000 chunks,
-        // so the cap is high, and a count the bytes cannot list is wrong whatever the cap.
+        // The impossible count comes first: the cap is set well above the game's own WADs, and
+        // a count the bytes cannot list is wrong whatever the cap.
         let fit = (self.bytes.len() - TABLE_AT) as u64 / ENTRY_BYTES;
         if chunks > fit {
             return Err(PackedError::TableLargerThanData {
