@@ -299,24 +299,18 @@ fn an_emitter_with_a_shape_and_a_converters_shape_takes_its_position_from_the_sh
 }
 
 #[test]
-fn a_layout_the_mods_own_build_did_not_read_is_left() {
-    // Made at 150 or later: no build since read `shape`, and none read a birth translation
-    // in a `VfxShapeLegacy`. Neither showed.
+fn an_old_shape_the_mods_own_build_did_not_read_is_left() {
+    // Made at 150 or later: no build since read `shape`, so it never showed.
     let env = env(true);
     let old = shape(vec![
         ("birthTranslation", vector(1.0)),
         ("emitOffset", vector(2.0)),
     ]);
-    let misplaced = pointer(LEGACY, vec![("birthTranslation", vector(3.0))]);
-    let objects = vec![
-        emitter("Old", vec![("shape", old)]),
-        emitter("Misplaced", vec![("SpawnShape", misplaced)]),
-    ];
+    let objects = vec![emitter("Old", vec![("shape", old)])];
     let run = FixRun::of(&env, &set(), &archive(objects.clone()));
     assert_eq!(run.dating.build(), Some(150));
     assert!(run.changes.is_empty(), "{:?}", run.changes);
     assert_eq!(run.object("Old"), &objects[0]);
-    assert_eq!(run.object("Misplaced"), &objects[1]);
 }
 
 #[test]
@@ -348,7 +342,9 @@ fn the_fixups_applied_twice_change_nothing_the_second_time() {
     for dated in [false, true] {
         let env = env(dated);
         let once = FixRun::of(&env, &set(), &archive(objects.clone()));
-        assert_eq!(once.changes.is_empty(), dated);
+        // Dated at 150, the old shapes are left and the converter's are mended.
+        assert_eq!(once.changes.of(SHAPE_ID).is_empty(), dated);
+        assert_eq!(once.changes.of(MEND_ID).len(), 3);
         let after = entries.map(|entry| once.object(entry).clone());
         let twice = once.again(&set());
         assert!(twice.changes.is_empty(), "{:?}", twice.changes);
@@ -377,26 +373,28 @@ fn the_fixups_run_where_the_target_reads_the_spawn_shape() {
 }
 
 #[test]
-fn a_misplaced_birth_translation_is_mended_where_the_mods_own_build_read_the_shape() {
-    // #MOD-ARTIFACT-0019: made at 110, when the build read `shape`. The offset showed, and
-    // the converter that rewrote the emitter since put it where no build reads it.
-    let env = env_made_with_the_shape();
-    let misplaced = pointer(
-        LEGACY,
-        vec![
-            ("birthTranslation", vector(3.0)),
-            ("emitOffset", vector(2.0)),
-        ],
-    );
-    let objects = vec![emitter("E", vec![("SpawnShape", misplaced)])];
-    let run = FixRun::of(&env, &set(), &archive(objects));
-    assert_eq!(run.dating.build(), Some(110));
-    assert_eq!(constant(run.field("E", "EmitterPosition")), Some(3.0));
-    let held: Vec<_> = run.child("E", "SpawnShape").properties.keys().collect();
-    assert_eq!(held, [&name_hash("emitOffset")]);
-    let [change] = run.changes.of(MEND_ID) else {
-        panic!("{:?}", run.changes);
-    };
-    let to = on_emitter("EmitterPosition");
-    assert_eq!(change.after, After::Moved { to });
+fn a_misplaced_birth_translation_is_mended_whatever_the_mods_date() {
+    // #MOD-ARTIFACT-0019: the offset of a mod made while the build read `shape`. A converted
+    // mod is dated by the game files the converter copied in (#MOD-ARTIFACT-0029), at 110
+    // when the build read `shape` or at 150 when none since did.
+    for (env, made) in [(env_made_with_the_shape(), 110), (env(true), 150)] {
+        let misplaced = pointer(
+            LEGACY,
+            vec![
+                ("birthTranslation", vector(3.0)),
+                ("emitOffset", vector(2.0)),
+            ],
+        );
+        let objects = vec![emitter("E", vec![("SpawnShape", misplaced)])];
+        let run = FixRun::of(&env, &set(), &archive(objects));
+        assert_eq!(run.dating.build(), Some(made));
+        assert_eq!(constant(run.field("E", "EmitterPosition")), Some(3.0));
+        let held: Vec<_> = run.child("E", "SpawnShape").properties.keys().collect();
+        assert_eq!(held, [&name_hash("emitOffset")]);
+        let [change] = run.changes.of(MEND_ID) else {
+            panic!("{:?}", run.changes);
+        };
+        let to = on_emitter("EmitterPosition");
+        assert_eq!(change.after, After::Moved { to });
+    }
 }

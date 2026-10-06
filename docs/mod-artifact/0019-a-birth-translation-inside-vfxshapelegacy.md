@@ -36,18 +36,30 @@ The client drops a field its class does not declare (#GAME-BEHAVIOR-0002). The e
 `EmitterPosition`, so its position is the default, the origin, and the effect is drawn without
 the offset the old emitter had.
 
-The author's own build dropped it too, where the mod was made at 14.1 or later.
+The value is the old `shape`'s, so the emitter was made while a build read that shape, and the
+offset showed then. A mod that holds it is most often dated 14.1 or later all the same, by game
+files and objects that came into it with the conversion or after it: a repath tool's copies
+under its prefix among them (#MOD-ARTIFACT-0029). Its date is not the build its offset showed
+at.
 
 ## The repair
 
 The value as the emitter's `EmitterPosition`, and no `birthTranslation` in the shape: what
-Riot's conversion made of a `birthTranslation` (#GAME-CHANGE-0006).
+Riot's conversion made of a `birthTranslation` (#GAME-CHANGE-0006). The mod's date is not read.
+
+Where the emitter holds an `EmitterPosition`, the value is removed: the position is the one the
+client reads.
 
 ## Evidence
 
 - The baseline run (2026-10-03), in the objects ltk-forge's port repaired: 45 of the 5,137 mods
   hold it, 14,899 values.
 - ltk-forge's notes give 42 mods and 15,394 values over the datasets, with no date recorded.
+- The repair baseline (2026-10-04), over the 5,137 mods of the datasets: 272 mods hold it. 206 of
+  them are dated 14.1 or later, with 276,638 values. With the repair above (2026-10-06), 106,828
+  of those values in 142 mods become an `EmitterPosition`, and 169,810 are beside one. Of the 142
+  mods, 121 are dated by a game file, 66 of them by one under a folder of the mod's own and 42
+  by one at a game folder, and 21 by a game object.
 - The meta database (generation 2026-09-28, read 2026-10-04): `VfxShapeLegacy` exists from
   14.1 and declares `emitOffset`, `emitRotationAngles` and `emitRotationAxes` at every build to
   16.19. `VfxEmitterDefinitionData.EmitterPosition` is an embed of `ValueVector3` from 14.1,

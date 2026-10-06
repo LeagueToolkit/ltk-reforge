@@ -924,3 +924,10 @@ strip removed the old fields of 2 more. With it, `vfx-legacy-simple` removes 1,1
 complex emitters in the 6 mods, and still moves 24 on simple emitters in 1. Two float animations
 `retype` left unconvertible in one mod were in those fields, and the type check counts fewer
 fields in 4. No emitter outside the two lists holds the old fields.
+
+**A birth translation inside a `VfxShapeLegacy` mended whatever the date** (#MOD-ARTIFACT-0019).
+3 mods of the reduced corpus differ, in the repair and in the port, every difference at a
+`SpawnShape.birthTranslation`. The 206 mods of the repair's baseline whose strip removed such a
+value, repaired without the rule and with it: every one differs, at those values alone. Without
+it the strip removes 276,638 values. With it 106,828 become an `EmitterPosition` in 142 mods and
+169,810 are removed beside the position the emitter holds. What dates the 206 is in the record.
