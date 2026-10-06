@@ -44,8 +44,10 @@ port").
 
 ## The fixer: left before a first release
 
-The fixer repairs the 5,137 mods of the datasets but one that holds no skin, and a repaired mod
-repaired again changes nothing ([RUNS.md](RUNS.md), "The baselines and the edge cases"). Eight
+The fixer repairs 5,109 of the 5,137 mods of the datasets. One holds no skin, and 27 end with no
+package: a material of theirs links a shader Riot removed with no relink (#ADR-0069). A
+repaired mod repaired again changes nothing ([RUNS.md](RUNS.md), "The baselines and the edge
+cases"). Eight
 repaired mods were checked in game by the user and work ([RUNS.md](RUNS.md), "Ports in game").
 Every run embeds its evidence in the package it writes (#ADR-0041,
 [ARCHITECTURE.md](ARCHITECTURE.md), "Package").
@@ -161,6 +163,10 @@ record and no measurement of reforge's own says it is right.
 - *fixer* An emitter's vector written as a float, in mods that restore old effects, has no
   conversion (#MOD-ARTIFACT-0036, 36 mods): no build of the census history holds one, so no
   conversion of Riot's is read. `retype` leaves the value, and the client drops it.
+- *fixer* `retype` takes a value for one that never showed only when its kind differs from
+  the build's. An embed or a pointer of another class than the build reads is left, where the
+  mod's own build did not read it either (#ADR-0065): the floats of #MOD-ARTIFACT-0036, in mods
+  dated 15.10 or later, among them.
 - *fixer* A mod's own `CustomShaderDef` is kept, and the client crashes at the first draw of a
   material that uses it (#GAME-BEHAVIOR-0022). No mod of the datasets defines one.
 - *fixer* A repair keeps a skin bin's link to a shared bin at its path before 16.10, which the

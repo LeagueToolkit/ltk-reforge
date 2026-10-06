@@ -3,9 +3,9 @@
 //! reported where no conversion takes it.
 //!
 //! A value never showed when no build from the mod's own to the target's read its kind. It is
-//! removed and not converted: converting it would show what the author never saw. The
-//! conversions the mod manager makes at install are the exception (#MOD-ARTIFACT-0022): the
-//! author may have seen the value converted so, and it is converted.
+//! removed and not converted (#ADR-0065): converting it would show what the author never saw.
+//! The conversions the mod manager makes at install are the exception (#MOD-ARTIFACT-0022):
+//! the author may have seen the value converted so, and it is converted.
 
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum as V};
 
