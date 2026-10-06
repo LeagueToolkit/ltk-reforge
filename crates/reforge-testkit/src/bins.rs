@@ -193,6 +193,18 @@ pub fn showing(mut graph: BinObject, submeshes: &[&str]) -> BinObject {
     graph
 }
 
+/// The same skin entry, preloading these characters.
+pub fn preloading(mut entry: BinObject, characters: &[&str]) -> BinObject {
+    let items = characters.iter().map(|name| text(name)).collect();
+    let list = values::Container::new(PropertyKind::String, items)
+        .unwrap_or_else(|error| panic!("a list of strings does not build: {error}"));
+    let field = name_hash(field::EXTRA_CHARACTER_PRELOADS);
+    entry
+        .properties
+        .insert(field, PropertyValueEnum::Container(list));
+    entry
+}
+
 /// A bin of these objects that links no bin.
 pub fn bin(objects: Vec<BinObject>) -> Vec<u8> {
     linked_bin(objects, &[])

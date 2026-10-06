@@ -18,7 +18,7 @@ use crate::model::entity::{
     CharId, CharKind, Character, FileId, Group, SkinUnit, UnitId, WadId, WadRole,
 };
 use crate::model::hash::skin_paths;
-use crate::model::{Slot, WadHash, WadName, path_hash};
+use crate::model::{MAX_SLOT, SkinEntry, Slot, WadHash, WadName, name_hash, path_hash};
 
 /// The extensions of a champion WAD as the game spells it.
 const GAME_SPELLING: &str = "wad.client";
@@ -223,9 +223,32 @@ impl<'a> Survey<'a> {
         }
     }
 
-    /// The champion of a WAD and its sub-characters: the directories starting with the
-    /// champion's name that ship a skin bin in the WAD, as the name tables or the WAD's own
-    /// paths spell them.
+    /// The characters the game's skins of a champion preload, by name in lowercase: what the
+    /// skin entries of its skin bins list. The bins they link are not read.
+    fn preloads(&self, champion: &str) -> Result<BTreeSet<String>, GameError> {
+        let game = self.run.env.game();
+        let mut out = BTreeSet::new();
+        for slot in (0..=MAX_SLOT).map(Slot) {
+            let Some(bin) = game.bin(path_hash(&skin_paths::skin_bin(champion, slot)))? else {
+                continue;
+            };
+            let entry = name_hash(&skin_paths::skin_entry(champion, slot));
+            let entries = bin
+                .parsed
+                .objects
+                .iter()
+                .filter(|o| o.value.path_hash == entry);
+            for object in entries {
+                let names = SkinEntry::read(&object.value).preloads();
+                out.extend(names.iter().map(|name| name.to_ascii_lowercase()));
+            }
+        }
+        Ok(out)
+    }
+
+    /// The champion of a WAD and its sub-characters (#ADR-0071): the directories starting with
+    /// the champion's name, as the name tables or the WAD's own paths spell them, and the
+    /// characters the game's skins of the champion preload, that ship a skin bin in the WAD.
     fn group(
         &mut self,
         wad: WadId,
@@ -243,6 +266,7 @@ impl<'a> Survey<'a> {
                 subs.insert(character);
             }
         }
+        subs.extend(self.preloads(champion)?);
         subs.remove(champion);
 
         let id = self.add_character(wad, champion, CharKind::Champion, slots);

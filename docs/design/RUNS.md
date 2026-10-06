@@ -1152,3 +1152,9 @@ names that dangled resolve to the game's objects, 216 count more game objects am
 loaded, and in 189 the game objects carried because they name files the mod overrides change. In
 2 Zed mods (`7c3a7383be57`, `dd17fbb652af`) every object the skin0 unit reaches is the game's byte
 for byte, and the unit leaves as the game's own skin. No run raises either note.
+
+**A sub-character by the champion's name or the game's preloads** (#ADR-0071). The reduced corpus
+does not differ. The 2 Heimerdinger mods that ship the turrets' bins port them as sub-characters,
+each with a patch at skin0; in `c3e402036ead` the turrets' 146 skin bins are loaded, and the
+copies among them leave. The Xayah mod `8afd81d86710`, which ships `taliyahwallchunk` in
+Xayah's WAD, ports it as Xayah's, patched at skin4.

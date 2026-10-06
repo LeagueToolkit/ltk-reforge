@@ -502,10 +502,21 @@ fn a_history_that_does_not_answer_is_a_fault_of_load_and_no_halt() {
     assert!(matches!(repaired, Err(RunError::Load(_))), "{repaired:?}");
 }
 
+/// The game with a bin skin 7's bin links, which does not read: `load` reads the skin bins
+/// alone, and `fix` the bins they link for their types.
+fn env_broken_past_skin7() -> Env {
+    const LINKED: &str = "data/characters/test/skins/skin7_shared.bin";
+    let mut game = skins::game();
+    let skin7 = entry("Characters/Test/Skins/Skin7", &skins::skin7());
+    game.insert(&skin_bin("test", 7), linked_bin(vec![skin7], &[LINKED]));
+    game.insert(LINKED, bin(vec![]));
+    env_broken_at(game, LINKED)
+}
+
 #[test]
 fn a_game_bin_that_does_not_read_while_the_types_are_read_is_a_fault_of_fix() {
     // `fix` reads the game's bins of every skin of the mod's characters for their types.
-    let env = env_broken_at(skins::game(), &skin_bin("test", 7));
+    let env = env_broken_past_skin7();
     let porter = Porter::new(&env);
     let mut run = run_through(&porter, Stage::Load);
     let fixed = run.fix().map(drop);
@@ -519,7 +530,7 @@ fn a_game_bin_that_does_not_read_while_the_types_are_read_is_a_fault_of_fix() {
 
 #[test]
 fn a_fault_of_fix_leaves_the_run_holding_the_mod_as_load_left_it() {
-    let env = env_broken_at(skins::game(), &skin_bin("test", 7));
+    let env = env_broken_past_skin7();
     let porter = Porter::new(&env);
     let mut run = run_through(&porter, Stage::Load);
     let before = parts(&run);

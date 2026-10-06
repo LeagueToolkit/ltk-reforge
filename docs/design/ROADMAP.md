@@ -142,8 +142,6 @@ record and no measurement of reforge's own says it is right.
 - Of a unit's own events banks of the client's version, only the first is read. 64 units in
   18 mods have a second that plays their clips ([RUNS.md](RUNS.md), "Sound units of a mod's
   own").
-- A champion's sub-characters are taken to be the directories in its WAD whose names start
-  with the champion's name. No count over the game's characters backs it.
 - Four outcomes no run reaches, each tested with an input made by hand: `target.conflict`, a
   unit with no decision, and the two reasons the build has for not writing a unit's audio
   (the game's entry has no bank unit to model one on; a skin bin written whole takes no

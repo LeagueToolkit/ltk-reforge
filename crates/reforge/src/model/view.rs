@@ -65,6 +65,15 @@ impl<'a> SkinEntry<'a> {
         })
     }
 
+    /// The characters the skin loads with its own, as the entry names them.
+    pub fn preloads(&self) -> Vec<&'a str> {
+        let list = value::get(self.object, &[field::EXTRA_CHARACTER_PRELOADS]);
+        list.map_or(Vec::new(), |list| {
+            let items = value::items(list).iter();
+            items.filter_map(value::as_str).collect()
+        })
+    }
+
     /// The skin's audio block: its tags and its bank units.
     pub fn audio(&self) -> AudioBlock {
         let strings = |list: Option<&'a PropertyValueEnum>| -> Vec<String> {

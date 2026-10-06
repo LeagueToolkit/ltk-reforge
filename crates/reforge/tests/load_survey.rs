@@ -8,7 +8,7 @@ use reforge::load::{
 };
 use reforge::model::Slot;
 use reforge::model::entity::{CharKind, WadId, WadRole};
-use reforge_testkit::bins::{Skin, bin, blob, entry};
+use reforge_testkit::bins::{Skin, bin, blob, entry, preloading};
 use reforge_testkit::skins::{self, BASE_TEX, WAD, base_skin, skin_bin, skin3};
 use reforge_testkit::{LoadRun, MemoryGame, ModArchive};
 
@@ -322,6 +322,38 @@ fn a_sub_character_is_found_by_the_paths_the_archive_spells() {
     assert_eq!(m.groups[0].characters, [champion, pet]);
     assert!(m.equal_to_game.is_empty());
     assert_eq!(m.unit_name(run.unit("testpet", 0)), "testpet skin0");
+}
+
+#[test]
+fn a_character_the_champions_skins_preload_is_a_sub_character_by_another_name() {
+    // #ADR-0071: Heimerdinger's turrets are `heimertblue` and `heimertyellow`.
+    let turret = Skin {
+        name: "Turret".into(),
+        ..skins::pet_skin()
+    };
+    let (path, bytes) = test_bin(0, &base_skin());
+    let archive = ModArchive::new().file(WAD, &path, bytes).file(
+        WAD,
+        &skin_bin("turret", 0),
+        bin(vec![entry("Characters/Turret/Skins/Skin0", &turret)]),
+    );
+    let names = |game: MemoryGame| -> Vec<String> {
+        let env = env_of(game);
+        let run = LoadRun::of(&env, options(), &archive);
+        let m = run.module();
+        m.characters.values().map(|c| c.name.clone()).collect()
+    };
+    // Not preloaded, the turret is no character of the mod: its name does not start with the
+    // champion's.
+    assert_eq!(names(skins::game()), ["test"]);
+
+    let mut game = skins::game();
+    let skin0 = entry("Characters/Test/Skins/Skin0", &base_skin());
+    game.insert(
+        &skin_bin("test", 0),
+        bin(vec![preloading(skin0, &["Turret"])]),
+    );
+    assert_eq!(names(game), ["test", "turret"]);
 }
 
 #[test]

@@ -74,6 +74,8 @@ pub mod field {
     pub const ANIMATION_FILE_PATH: &str = "mAnimationFilePath";
     /// The submeshes a visibility event shows.
     pub const SHOW_SUBMESH_LIST: &str = "mShowSubmeshList";
+    /// The characters a skin entry loads with its own, by name.
+    pub const EXTRA_CHARACTER_PRELOADS: &str = "extraCharacterPreloads";
 
     /// Every field name above. A run learns them, so that a field path spells them whatever
     /// tables are installed.
@@ -102,5 +104,6 @@ pub mod field {
         ANIMATION_RESOURCE_DATA,
         ANIMATION_FILE_PATH,
         SHOW_SUBMESH_LIST,
+        EXTRA_CHARACTER_PRELOADS,
     ];
 }
