@@ -1164,3 +1164,8 @@ on units that leave, and the reduced corpus: no repair differs, and the ports di
 findings alone, 3,493 fewer in 118 mods (`object.unreached` 1,739, `object.link-dangling` 1,200,
 `ref.dangling` 412, `ref.unmounted` 118, `object.game-carried` 24). 36 of the 1,236 counted
 before resolve to the game's objects since the cap on a game skin's bins.
+
+**A locale WAD's bank of a unit that is not voice, in the base layer** (#ADR-0073). The reduced
+corpus does not differ. In `b7dcacfd0617` the unit of `Yone_Base_SFX` moves from the layer
+`voice-en-us` and the en_US WAD to the base layer and the champion WAD: the base patch gains its
+audio record, and the layer's patch sets the block with the unit among the base's.

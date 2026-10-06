@@ -519,6 +519,28 @@ fn a_locale_wads_voice_goes_to_the_locales_layer_and_wad() {
 }
 
 #[test]
+fn a_locale_wads_bank_of_a_unit_that_is_not_voice_goes_to_the_base_layer() {
+    // #ADR-0073: the base's effects bank, its own clips 2 and 9, in the en_US WAD alone.
+    let clips = vec![clip(1, 1), clip(2, 7), clip(9, 9)];
+    let media = media_bank("test_base_sfx_audio", 134, clips);
+    let archive = mod_of(&["Test"], &[BASE_SFX], &[]).file(LOCALE_WAD, SFX_AUDIO, media);
+    let env = env(audio_game(), NoHistory);
+    let run = port(&env, &archive);
+    let audio = run.port.audio.of(run.unit("test", 0)).expect("planned");
+    assert_eq!(audio.units.len(), 1, "{}", run.dump());
+    let unit = &audio.units[0];
+    assert_eq!((&unit.layer, unit.voice), (&Layer::Base, false));
+    assert!(!unit.name.ends_with("_en_us"), "{}", unit.name);
+    let media_at = format!("{DIR}/sfx_audio.bnk");
+    let made = run.port.audio.banks.iter();
+    let made: Vec<_> = made.filter(|bank| bank.path.as_str() == media_at).collect();
+    assert_eq!(made.len(), 1, "{}", run.dump());
+    assert_eq!((made[0].wad.as_str(), &made[0].layer), (WAD, &Layer::Base));
+    assert_eq!(clip_ids(&read(&run, &media_at)), [2, 9]);
+    assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
+}
+
+#[test]
 fn a_locale_copy_of_the_champion_wads_voice_is_carried_once() {
     let env = env(voice_game(), NoHistory);
     let run = port(&env, &voice_mod(&[WAD, LOCALE_WAD]));

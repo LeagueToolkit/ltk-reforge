@@ -405,6 +405,9 @@ impl Planning<'_> {
         let media = read.media.into_iter().filter(|wem| own.contains(&wem.id));
         let media: Vec<Wem> = media.collect();
         let voice = file.role == BankRole::Package || unit.unit.voice;
+        // #ADR-0073: a locale WAD's bank of a unit that is not voice goes where the champion
+        // WAD's would.
+        let locale = locale.filter(|_| voice);
         let layer = match (locale, voice) {
             (Some(locale), _) => Layer::Voice(Some(locale.to_string())),
             (None, true) => Layer::Voice(None),
