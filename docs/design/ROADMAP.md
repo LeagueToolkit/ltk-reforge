@@ -150,7 +150,6 @@ record and no measurement of reforge's own says it is right.
   layer).
 - `unit.new-bin` is raised with the decision. The build says in `unit.ported` that the bin is
   written whole.
-- The text of a rig check's reason (`Why`) is ltk-forge's wording of the same check.
 - The bounds a run reads under are ltk-forge's values: the archive's caps, 64 bins followed
   from one root, 16 bins read of one game skin, 64 chunks of a file's size read to find its
   bytes under another path. One has a measurement behind it: the cap on a packed WAD's chunks

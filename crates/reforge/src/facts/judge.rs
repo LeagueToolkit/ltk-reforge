@@ -81,12 +81,15 @@ pub enum ClipBlock {
         /// The skin they are from.
         from: Slot,
     },
-    /// The level accepts reuse only for the author's own rig and clips.
+    /// The level accepts reuse only for the author's own rig and clips, or for a few clips
+    /// borrowed.
     NeedsOwnRig {
         /// Whether the mesh and the skeleton are the mod's own.
         own_rig: bool,
         /// The clips that are the mod's own.
         own: u32,
+        /// The clips only other skins play.
+        borrowed: u32,
         /// The clips the unit plays.
         total: u32,
     },
@@ -100,10 +103,16 @@ pub enum ClipBlock {
 impl fmt::Display for ClipBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClipBlock::Refused { clips, from } => write!(f, "{clips} clips of skin {from}"),
+            ClipBlock::Refused { clips, from } => {
+                write!(
+                    f,
+                    "{clips} clips of skin {from}, which the slot does not play"
+                )
+            }
             ClipBlock::NeedsOwnRig {
                 own_rig,
                 own,
+                borrowed,
                 total,
             } => {
                 let rig = match own_rig {
@@ -112,7 +121,8 @@ impl fmt::Display for ClipBlock {
                 };
                 write!(
                     f,
-                    "reuse needs its own rig and half its clips: {rig}, {own} of {total} clips its own"
+                    "reuse needs its own rig and half its clips its own, or fewer than half \
+                     borrowed: {rig}, {own} own and {borrowed} borrowed of {total} clips"
                 )
             }
             ClipBlock::OwnOff { clips } => {
@@ -217,7 +227,7 @@ impl fmt::Display for Why {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Why::NoSuchSkin { slot } => write!(f, "the game has no skin {slot}"),
-            Why::NoMesh => f.write_str("no mesh"),
+            Why::NoMesh => f.write_str("no mesh found"),
             Why::SlotMesh => f.write_str("the slot's own mesh"),
             Why::OtherSkinMesh { of } => write!(f, "skin {}'s mesh", slots_text(of)),
             Why::OwnMesh => f.write_str("the mod's own mesh"),
@@ -232,7 +242,7 @@ impl fmt::Display for Why {
             Why::CopiedShown { submeshes } => {
                 write!(
                     f,
-                    "props copied from a premium skin and shown by animation: {}",
+                    "hidden submeshes copied from a premium skin, shown by an animation: {}",
                     copied_text(submeshes)
                 )
             }
@@ -244,9 +254,9 @@ impl fmt::Display for Why {
                 )
             }
             Why::NoCopiedSubmesh => f.write_str("no submesh of another skin"),
-            Why::NoSkeleton => f.write_str("no skeleton"),
+            Why::NoSkeleton => f.write_str("no skeleton found"),
             Why::SlotSkeleton => f.write_str("the slot's own skeleton"),
-            Why::SlotJoints => f.write_str("the slot's joints"),
+            Why::SlotJoints => f.write_str("the slot's joints, in order"),
             Why::PremiumSkeleton { of } => {
                 write!(f, "skin {}'s skeleton file, on the base", slots_text(of))
             }
@@ -265,7 +275,7 @@ impl fmt::Display for Why {
             Why::NoClips { graph_found: false } => f.write_str("the graph was not found"),
             Why::ClipsBlocked { blocks } => {
                 let blocks: Vec<String> = blocks.iter().map(ClipBlock::to_string).collect();
-                f.write_str(&blocks.join(", "))
+                f.write_str(&blocks.join("; "))
             }
             Why::ClipsFit {
                 fits,

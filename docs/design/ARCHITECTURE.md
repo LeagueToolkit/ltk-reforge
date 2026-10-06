@@ -391,7 +391,7 @@ pub struct Facts {
   champion's.
 - **A check is typed.** A `RigCheck` is an `Aspect` and a `Fit`: an `Outcome` (fits, fits with
   a fix, does not fit, unknown) and a `Why`, an enum with the data of each reason. The text of
-  a `Why` is ltk-forge's wording of the same check ([ROADMAP.md](ROADMAP.md), "Open").
+  a `Why` says what the check tested.
 - **Reworks.** Each reworked champion of the mod is judged made before or after its rework,
   from `load`'s count of its files around the rework and from the dating.
 - **Sounds.** For each representative unit whose entry holds an audio block: its tags, its

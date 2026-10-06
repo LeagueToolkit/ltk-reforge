@@ -194,6 +194,7 @@ pub fn clip_fit(at: &ClipsAt, anim: AnimReuse) -> Fit {
         blocks.push(ClipBlock::NeedsOwnRig {
             own_rig: at.own_rig,
             own: at.own,
+            borrowed: at.borrowed(),
             total: at.total,
         });
     }

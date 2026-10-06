@@ -554,7 +554,9 @@ fn the_level_of_animation_reuse_is_the_policys() {
         .expect("the clips are judged");
     assert_eq!(
         clips.fit.why.to_string(),
-        "2 clips of skin 3, reuse needs its own rig and half its clips: own mesh and skeleton, 1 of 3 clips its own"
+        "2 clips of skin 3, which the slot does not play; reuse needs its own rig and half its \
+         clips its own, or fewer than half borrowed: own mesh and skeleton, 1 own and 2 borrowed \
+         of 3 clips"
     );
 }
 
@@ -765,6 +767,7 @@ fn under_own_rig_reuse_needs_the_authors_rig_and_half_the_clips_or_a_few_borrowe
     let needs = ClipBlock::NeedsOwnRig {
         own_rig: false,
         own: 0,
+        borrowed: 3,
         total: 4,
     };
     assert_eq!(

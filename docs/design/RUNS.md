@@ -1108,3 +1108,13 @@ the bin is written whole.
 
 The game holds no WAD near 200,000 chunks. A slot is looked for up to 120: champions reach 116,
 and 46 `jade_*` characters have skin bins at 301 to 305.
+
+### The changes, one at a time
+
+Each change measured over the 63 mods of the reduced corpus against `baseline-port-2` and
+`baseline-repair-2`, and over the mods the change is about where the reduced corpus holds none.
+Every run ended as the baselines did unless the row says otherwise.
+
+**The text of a check's reason.** Five texts say what their check tests, and the block of clips
+that needs an own rig holds the clips borrowed. 27 ports differ, in the reasons' texts and that
+count alone. No repair differs.
