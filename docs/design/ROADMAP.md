@@ -131,8 +131,6 @@ record and no measurement of reforge's own says it is right.
   so two units never rank the same and `target.conflict` is never raised.
 - The joints of a game skin's skeleton are asked only for the slots a unit was compared with.
   At another slot, a forced target, the check "the slot's joints" cannot hold.
-- The names a retarget moves from a unit's slot to its target are replaced in every object of
-  the mod, not only in the objects that unit's group loads.
 - Four outcomes no run reaches, each tested with an input made by hand: `target.conflict`, a
   unit with no decision, and the two reasons the build has for not writing a unit's audio
   (the game's entry has no bank unit to model one on; a skin bin written whole takes no

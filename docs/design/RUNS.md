@@ -1177,3 +1177,7 @@ but a comment, and no run is made.
 The 18 mods with a bank no first events bank played: the 64 entries of `audio.not-carried` with no
 event are gone, and the banks carried go from 140 to 204, each with its events cut from the later
 bank. The patches of 17 of them gain the units' records.
+
+**The retarget's renames in every object.** Kept, with the measurement above: scoped to the
+group, the renames drop a patch in the two mods where they reach another group's objects. No code
+changes and no run is made.

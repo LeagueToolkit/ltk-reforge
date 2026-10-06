@@ -463,8 +463,12 @@ object takes a name of its own, which every link to it follows.
    mod's own names, so `Reach` and `FileRefs` are found once before `Shipping` and once after
    the names moved.
 2. **`Renames`**, first part: each shipping unit's `Skin<S>` entry and resolver names become
-   `Skin<T>`'s, and its graph's when the mod defines one. A rename that only swaps one game
-   object for another is not taken by the objects of a unit whose rig does not fit its target.
+   `Skin<T>`'s, and its graph's when the mod defines one. These names are replaced in every
+   object of the mod, the objects of other groups and of no unit among them: a bin of one unit
+   that also holds objects under another's source names keeps them apart from its own renamed
+   entry ([RUNS.md](RUNS.md), "The behaviour carried over from ltk-forge"). A rename that only
+   swaps one game object for another is not taken by the objects of a unit whose rig does not
+   fit its target.
    `AudioPlan` is planned here, and the literal sound names are rewritten once step 3 is
    found.
 3. **`Reach`**, per unit at T: the objects its entry reaches through its load, each with a
