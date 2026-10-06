@@ -158,8 +158,9 @@ record and no measurement of reforge's own says it is right.
 
 *fixer* marks the ones a repair shows.
 
-- *fixer* A list of floats where the build reads a list of vectors, and the reverse, has no
-  conversion (46 mods).
+- *fixer* An emitter's vector written as a float, in mods that restore old effects, has no
+  conversion (#MOD-ARTIFACT-0036, 36 mods): no build of the census history holds one, so no
+  conversion of Riot's is read. `retype` leaves the value, and the client drops it.
 - *fixer* A material keeps a link to a shader Riot removed, and the client crashes at load
   (#GAME-CHANGE-0024, #GAME-BEHAVIOR-0023). Riot's relinks are read, and Riot rewrote the
   material with its link, so the link alone is no conversion.
@@ -211,3 +212,4 @@ code.
 | #GAME-CHANGE-0022, integer fields in narrower kinds | the narrowing conversion of `retype` |
 | #GAME-BEHAVIOR-0018, a block-compressed texture not in whole blocks is drawn | `TexContainer`, which leaves such a texture the DDS it is |
 | #GAME-BEHAVIOR-0019, a graph event does not look in the additional resolvers | `PortBuilder`, which writes the resolver's map whole under the game's name |
+| #MOD-ARTIFACT-0036, emitter vectors as floats in restored old effects | `retype`, which leaves such a value as it is |

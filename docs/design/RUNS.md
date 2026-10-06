@@ -940,3 +940,7 @@ The 128 repaired without the rule and with it: the 93 differ and the 35 are equa
 the 93 differ, and the 37 others are equal. The differences follow the object kept: its values,
 the fixups' changes to them, the files it names, and with them the files a package carries or
 leaves behind. No run of the 128 ended otherwise than with exit 0.
+
+**A float where the build reads a vector: no rule.** The census history holds no build at which
+an emitter's `scale0`, `birthScale0`, `birthRotation0` or `birthRotationalVelocity0` is a float
+(#MOD-ARTIFACT-0036), so no conversion of Riot's is read, and nothing was changed or run.
