@@ -1,7 +1,8 @@
 //! Fixtures for tests: a game and a history in memory, builders of bins, of archives and of a
 //! schema, a synthetic game with its skins, rig files, and a mod taken through `load`, `fix`,
-//! `facts`, the plan of its port and the build of its package. A test builds what it reads;
-//! nothing here reads a file of the machine.
+//! `facts`, the plan of its port and the build of its package, and test mods for checks in game
+//! made from a game's bins. A test builds what it reads; nothing here reads a file of the
+//! machine.
 
 pub mod archive;
 pub mod bins;
@@ -9,6 +10,7 @@ pub mod facts;
 pub mod fixes;
 pub mod game;
 pub mod history;
+pub mod ingame;
 pub mod mods;
 pub mod packs;
 pub mod plans;

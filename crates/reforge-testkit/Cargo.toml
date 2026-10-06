@@ -19,4 +19,5 @@ ltk_mesh.workspace = true
 ltk_anim.workspace = true
 ltk_hash.workspace = true
 glam.workspace = true
+serde_json.workspace = true
 zip.workspace = true

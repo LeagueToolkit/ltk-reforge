@@ -4798,6 +4798,7 @@ dependencies = [
  "ltk_wad",
  "reforge",
  "reforge-wwise",
+ "serde_json",
  "zip",
 ]
 
