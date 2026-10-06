@@ -4,7 +4,7 @@
 - **Builds:** 16.19
 - **Affects:** `.bnk`: the bus objects of a `HIRC` section; the output bus of a sound or a
   container
-- **Related:** #GAME-BEHAVIOR-0012, #GAME-BEHAVIOR-0017, #ADR-0030
+- **Related:** #GAME-BEHAVIOR-0012, #GAME-BEHAVIOR-0017, #ADR-0030, #MOD-ARTIFACT-0035
 
 ## Behaviour
 
