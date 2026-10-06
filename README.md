@@ -109,22 +109,22 @@ how it is recognised, why it is there and what the repair is.
 
 | | **reforge** | Hematite | Topaz / cslol-go | LtMAO | Mod-Repather |
 |:--|:--:|:--:|:--:|:--:|:--:|
-| **Knows every past patch** | ✅ **757 builds of history** | ❌ one hand-made rule file | ⚠️ tables per patch, by hand | ❌ | ❌ |
-| **Dates the mod** | ✅ by its bytes | ❌ | ⚠️ a stamp at import | ❌ | ❌ |
+| **Knows every past patch** | ✅ | ❌ | ⚠️ | ❌ | ❌ |
+| **Dates the mod** | ✅ | ❌ | ⚠️ | ❌ | ❌ |
 | **Tells stale game files from the author's** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Field types from a schema** | ✅ the target build's | ❌ | ❌ | ❌ | ❌ |
-| **Riot's own conversions** | ✅ read off Riot's files | ⚠️ copied once | ⚠️ | ❌ | ❌ |
-| **Ports to the right skin** | ✅ judged by rig and clips | ❌ | ❌ copies to all 100 | ❌ copies to all 100 | ❌ copies to all 100 |
-| **Voice and HUD as toggles** | ✅ layers | ❌ | ❌ | ❌ | ❌ |
-| **Safe by construction** | ✅ rebuilt from an IR, unknown files dropped | ❌ | ❌ | ❌ | ❌ |
-| **Never extracts to disk** | ✅ in memory | ❌ temp | ❌ temp | ❌ folders | ❌ 2–5 min |
-| **Every change recorded** | ✅ before/after, in the package | ⚠️ log | ⚠️ log | ⚠️ backup | ⚠️ backup |
-| **New patch without a maintainer** | ✅ appends the build | ❌ | ❌ | ❌ | ❌ |
-| **Rules are data** | ✅ | ✅ | ⚠️ the tables; the rest is code | ❌ | ❌ |
-| **.modpkg output** | ✅ layers and patches | ⚠️ passthrough | ❌ | ❌ | ❌ |
+| **Field types from a schema** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Riot's own conversions** | ✅ | ⚠️ | ⚠️ | ❌ | ❌ |
+| **Ports to the right skin** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Voice and HUD as toggles** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Safe by construction** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Never extracts to disk** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Every change recorded** | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| **New patch without a maintainer** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Rules are data** | ✅ | ✅ | ⚠️ | ❌ | ❌ |
+| **.modpkg output** | ✅ | ⚠️ | ❌ | ❌ | ❌ |
 | **Platform** | Windows, Linux | Windows | Windows | Windows | Windows |
-| **One-time download** | ⚠️ **~3 GB, ~6 GB on disk** | small | small | small | ~220 MB |
-| **Maturity** | 🚧 early preview | ✅ released | ✅ released | ✅ released | ✅ released |
+| **One-time download** | ~3 GB | small | small | small | ~220 MB |
+| **Maturity** | early preview | released | released | released | released |
 
 The rows come from the other tools' sources and READMEs, read on 2026-10-06, not from running
 them. The names are those of the tools; nothing here is a claim about their authors.
