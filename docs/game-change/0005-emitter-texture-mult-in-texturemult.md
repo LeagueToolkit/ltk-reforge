@@ -60,6 +60,10 @@ The author's own build dropped it, so the author saw the emitter without its sec
 - ltk-forge paired 15,669 of the game's emitters across 12.23 and 13.1 on the census and looked
   for each value that left an emitter in the same emitter at 13.1 (2026-09-30). The renames of
   the scroll rate and the rotate rate are read off equal values under the two names.
+- The two renamed rates keep their value's class (counted in the census history's object texts,
+  2026-10-07): `particleUVScrollRateMult` is an embed of `IntegratedValueVector2` and
+  `particleUVRotateRateMult` of `IntegratedValueFloat` at 12.23.4875509, and so are
+  `ParticleIntegratedUvScrollMult` and `ParticleIntegratedUvRotateMult` at 13.1.4875491.
 - A flag's value does not tell which field it moved to, since every `true` equals every other.
   The flags are paired by name: each left the emitter at 13.1, and its name, or for the two
   flips the name with `Filp`, appeared in the struct at 13.1.

@@ -3,7 +3,7 @@
 - **Build:** 13.8.5036621
 - **Affects:** `VfxPrimitiveMesh`, `VfxPrimitiveAttachedMesh` and their base
   `VfxPrimitiveMeshBase`
-- **Related:** #GAME-BEHAVIOR-0002
+- **Related:** #GAME-BEHAVIOR-0002, #GAME-BEHAVIOR-0026, #GAME-CHANGE-0025
 
 ## Before
 
@@ -62,7 +62,8 @@ The author's own build dropped them.
   `VfxPrimitiveMeshBase` declares `AlignYawToCamera` and `AlignPitchToCamera` as bools, and
   `VfxPrimitiveMesh` and `VfxPrimitiveAttachedMesh` derive from it and declare no
   `mAlignYawToCamera`.
-- That the default of the new flags is `false` is inferred from the game's data, where most
-  primitives hold neither. The meta database gives no default for them.
+- That the default of the new flags is `false` is inferred from the game's data: a game bin
+  holds a field only where it differs from its default (#GAME-BEHAVIOR-0026), and no primitive
+  holds either old flag as `false`. The meta database gives no default for them.
 - The baseline run (2026-10-03), in the objects ltk-forge's port repaired: 6 of the 5,137 mods
   hold an old flag, on 53 primitives. Each primitive holds a `true`.

@@ -71,6 +71,10 @@ author's own build dropped it.
   embed of `ValueVector3`, are declared from 14.1. `IVfxShape` and `VfxShapeLegacy` exist from
   14.1. `VfxShapeLegacy` declares `emitOffset`, `emitRotationAngles` and `emitRotationAxes`.
   The class `VfxShape` is removed in 14.5.
+- Counted in the census history's object texts by the field's hash (2026-10-07): 754,118 lines
+  hold `shape` as an embed of `VfxShape` at 13.24.5461574, and no line holds `shape` at
+  14.1.5512844, 14.5.5636323, 16.17.8104348 or 16.19.8207193. The class lives to 14.5 in the
+  schema; no emitter holds it after 13.24.
 - No game object from 10.9 to 16.19 holds a `birthTranslation` in a `VfxShapeLegacy`
   (ltk-forge's census lookup, 2026-09-30).
 - The point: `rito-meta` (generation 2026-10-05, read 2026-10-06) names `0xee39916f`

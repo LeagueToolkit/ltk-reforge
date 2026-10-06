@@ -4,7 +4,8 @@
   for the others
 - **Affects:** integer fields of `VfxEmitterDefinitionData`, `VfxSystemDefinitionData`,
   `VfxTrailDefinitionData`, `VfxAlphaErosionDefinitionData` and `TrackData`
-- **Related:** #GAME-BEHAVIOR-0002, #GAME-CHANGE-0020, #MOD-ARTIFACT-0021, #MOD-ARTIFACT-0022
+- **Related:** #GAME-BEHAVIOR-0002, #GAME-BEHAVIOR-0027, #GAME-CHANGE-0020, #MOD-ARTIFACT-0021,
+  #MOD-ARTIFACT-0022
 
 ## Before
 
@@ -48,7 +49,8 @@ an `i32` at 12.23.4875509 and none at 13.1.4875491. 3 lines hold the hash of `mP
 
 A mod made before the build of a change holds the field in the wide kind. A later build drops
 the property and the field keeps its default (#GAME-BEHAVIOR-0002): an emitter's blend mode,
-its render flags and its frame count are the defaults, not the author's.
+its render flags and its frame count are the defaults, not the author's. The client reads no
+`meshRenderFlags` (#GAME-BEHAVIOR-0027): that one changes nothing drawn.
 
 The wide kinds are also found in mods made long after the changes (#MOD-ARTIFACT-0021).
 
@@ -64,6 +66,10 @@ mod installed by it keeps the wide kind.
   9.22.2961221. `numFrames`: 45,815 `i32` at 9.22.2961221 and none as `u16` at 9.22.2974763,
   46,215 `u16` at 9.23.2983143. `flags`: 48,409 `u8` at 12.23.4875509, 49,691 `u16` at
   13.1.4875491. The numbers of the other fields were not kept.
+- `flags` as a `u16` above `0xFF`, the class not read (the same kind of count, 2026-10-07): 11
+  lines at 13.1.4875491, 35 at 13.23.5447494, 10,428 at 16.19.8207193. A `u8` holds none, so
+  the widening at 13.1 came with values that need it. `rito-meta` (generation 2026-10-05) gives
+  `VfxSystemDefinitionData.flags` the default 212 (`0xD4`).
 - The meta database (generation 2026-09-28, read 2026-10-04): each field has the narrow kind
   at every build from 13.15 to 16.19. The database starts at 13.15, so the builds of these
   changes come from the census alone.

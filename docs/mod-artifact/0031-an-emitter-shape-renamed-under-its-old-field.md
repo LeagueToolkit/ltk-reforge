@@ -85,6 +85,11 @@ A second `EmitterPosition` is the tool's copy of the first.
   the emitter holding none. The 101 points' `constantValue` became their `emitOffset`. No other
   mod changed.
 - No sphere with a `height` is in the datasets.
+- The sphere's `flags: 1` is the game's own common form. Counted in the census history's object
+  texts at 16.19.8207193, every WAD (2026-10-07): 45,834 of the 64,996 `VfxShapeSphere` hold
+  `flags: u8 = 1` and the others no `flags`. 103,513 of 107,640 boxes and 57,198 of 110,821
+  cylinders hold it too. LTK Manager's VFX renderer plan reads the bit as interior against
+  boundary (its section 2.12); its count of no sphere holding it is not reproduced here.
 - The class: `rito-meta` names `0xee39916f` `VfxShapePointDoNotUse`, of 14.1, declaring
   `emitOffset: vec3` (read 2026-10-06).
 - The branches and the values are read from the source of TopazModFixerCLI (2026-10-05).

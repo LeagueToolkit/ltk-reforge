@@ -124,6 +124,11 @@ Each is the user's. *fixer* marks the ones a repair depends on.
   of #MOD-ARTIFACT-0026: the port's baseline ships 23,753 such names in 959 mods, 62% of them
   bytes the game shipped. A pass that drops every tag the history knows, or one parameterised
   by the shape of a class of names, is to be explored (the user, 2026-10-06).
+- *fixer* Whether `vfx-texture-mult` moves `uvScrollAlphaMult` and `isRandomStartFrameMult`,
+  which the client does not read (#GAME-BEHAVIOR-0027), or removes them with nothing lost, as
+  #ADR-0068 removes what a complex emitter does not read. The same for an old simple emitter's
+  linger fields, which `vfx-linger` moves into a `Linger` a simple emitter does not read
+  (#GAME-BEHAVIOR-0024). Either way the emitter draws the same.
 
 ### Carried over from ltk-forge
 
@@ -147,6 +152,12 @@ record and no measurement of reforge's own says it is right.
   the build's. An embed or a pointer of another class than the build reads is left, where the
   mod's own build did not read it either (#ADR-0065): the floats of #MOD-ARTIFACT-0036, in mods
   dated 15.10 or later, among them.
+- *fixer* A mod made before 13.24 holds no `0x6aec9e7a` on its camera-aligned meshes, which
+  Riot's conversion set on every aligned `VfxPrimitiveMesh` of the game (#GAME-CHANGE-0025). No
+  fixup sets it. What the flag changes on screen is not checked in game.
+- A child particle set names its system by `effect`, a link, or by `effectKey`, a hash a
+  resolver's `resourceMap` maps (LTK Manager's VFX renderer plan, section 2.33). Whether each key
+  a port carries still resolves in the resolvers it writes is not checked.
 - *fixer* A mod's own `CustomShaderDef` is kept, and the client crashes at the first draw of a
   material that uses it (#GAME-BEHAVIOR-0022). No mod of the datasets defines one.
 - *fixer* A repair keeps a skin bin's link to a shared bin at its path before 16.10, which the

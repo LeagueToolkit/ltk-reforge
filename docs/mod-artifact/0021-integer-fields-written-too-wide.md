@@ -4,7 +4,8 @@
   which tool or practice carries them into a later mod is not established
 - **Affects:** integer fields of `VfxEmitterDefinitionData`, `VfxSystemDefinitionData`,
   `VfxTrailDefinitionData`, `VfxAlphaErosionDefinitionData` and `TrackData`
-- **Related:** #GAME-BEHAVIOR-0002, #GAME-CHANGE-0020, #GAME-CHANGE-0022, #MOD-ARTIFACT-0022
+- **Related:** #GAME-BEHAVIOR-0002, #GAME-BEHAVIOR-0027, #GAME-CHANGE-0020, #GAME-CHANGE-0022,
+  #MOD-ARTIFACT-0022
 
 ## What is found
 
@@ -41,6 +42,7 @@ that writes the kinds of an older schema.
 
 The client drops the property and the field keeps its default (#GAME-BEHAVIOR-0002): an
 emitter's blend mode, its render flags and its frame count are the defaults, not the author's.
+The client reads no `meshRenderFlags` (#GAME-BEHAVIOR-0027): that one changes nothing drawn.
 
 LTK Manager's repair rule widens an integer and does not narrow one (#MOD-ARTIFACT-0022), so a
 mod installed by it keeps the wide kind.
