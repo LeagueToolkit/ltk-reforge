@@ -53,6 +53,7 @@ is seldom the closest name: most went to a few general shaders.
 | 15.8 | `Addative/ScrollingUVs_MultiLayered_Addative` | `AlphaBlend_Additive_Scroll_Packed` (2) |
 | 15.9 | `Ekko_Skin18_Clone`, `Nunu_Bot_Faces` | `Outline_Iridescent_Add_Scroll` (2, 1) |
 | 15.10 | `NunuTest`, `Nunu_ScreenBackdrop` | `Outline_Iridescent_Add_Scroll` (1, 1) |
+| 15.12 | `MultiMask_Panner_Bloom` | `AlphaBlend_Additive_Scroll_Packed` (4, of the maps WADs) |
 | 15.15 | `MultiMask_Panner_Fresnel` | `AlphaBlend_Additive_Scroll_Packed` (24) |
 | 15.20 | `MultiMask_Panner_Bloom_Fresnel` | `AlphaBlend_Additive_Scroll_Packed` (166), `Outline_Iridescent_Add_Scroll` (14) |
 | 15.22 | `HKG_MatCap_Translucent_VsSimRef` | `Outline_MatCap_RMA_VertexDeform` (9) |
@@ -62,7 +63,8 @@ is seldom the closest name: most went to a few general shaders.
 | 15.23 | `HKG_MatCap_Masked` | `PBR_VFX` (10) |
 | 16.10 | `Cloth_Base` | `Diffuse_Alpha_mult` (9) |
 
-Every name is under `Shaders/SkinnedMesh/`. A count is of object files of the champions WADs.
+Every name is under `Shaders/SkinnedMesh/`. A count is of object files of the champions WADs, or
+of the maps WADs where the row says so.
 
 - Where every material that named a removed shader left the game at the same build, no
   conversion is read: `Basic_FresnelHighlights_Bloom` (10.13), `AkaliTest` (10.20),
@@ -104,9 +106,25 @@ Both relink such a material to the current shader of the same folder whose name 
   material links a removed shader at the build before, and the same file's shader links at the
   build, paired by position where the file holds as many links at both. A file absent at the
   build gives no pair.
+- The removals of the shaders mods link (below), read again over every WAD of the census history
+  (2026-10-06), the entry texts paired as above: `MultiMask_Panner_Bloom` left the shader bin at
+  15.12.6869776, and the 4 entry texts that linked it at 15.11.6855259, two materials each of
+  the maps WADs of maps 11 and 12, link `AlphaBlend_Additive_Scroll_Packed` at 15.12. Of
+  `Addative/ScrollingUVs_MultiLayered_Fresnel_Addative`, `Pulsefire_Ezrael`, `Sylas_R_Clone`,
+  `Viktor_Skin04_Deathsworne_Shader`, `HKG_Pantheon_Glasses` and `Hologram`, no entry text that
+  linked one at the build before its removal pairs with one at the removal build, in any WAD.
 - The other fixers' rule is read from the source of TopazModFixerCLI and of Hematite
   (2026-10-05), and applied by a script of its steps to the shaders the bin holds at
   16.19.8230722.
-- How many mods of the datasets name a removed shader is not counted.
+- Counted by `scripts/corpus/shaders.py` over the 5,137 mods of the datasets, against the shader
+  bin of 16.19.8207193 (2026-10-06): 104 mods hold a material linking a shader the bin lacks in a
+  bin the client loads, 112 in any bin. In the loaded bins, by shader (mods, links):
+  `MultiMask_Panner_Fresnel` (52, 298), `Addative/ScrollingUVs_MultiLayered_Fresnel_Addative`
+  (12, 160), `Gradient_Remaped_Mask` (12, 24), `MultiMask_Panner_Bloom` (10, 36),
+  `Addative/ScrollingUVs_MultiLayered_Addative` (6, 154), `Pulsefire_Ezrael` (6, 30),
+  `HKG_FakeSpec_Translucent` (4, 5), `AtlasWalk_Simple` (3, 3), `Sylas_R_Clone` (3, 3),
+  `Ekko_Skin18_Clone` (2, 2), `Viktor_Skin04_Deathsworne_Shader` (2, 2), `HKG_Pantheon_Cloak`
+  (1, 9), `HKG_Pantheon_Glasses` (1, 9), `Hologram` (1, 6), `NunuTest` (1, 1). Each is a name
+  of `Shaders/SkinnedMesh/` that a build removed.
 - Seen in game (2026-10-06): a material linking `Cloth_Base` crashes the 16.19 client at load
   (#GAME-BEHAVIOR-0023).

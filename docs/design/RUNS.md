@@ -944,3 +944,9 @@ leaves behind. No run of the 128 ended otherwise than with exit 0.
 **A float where the build reads a vector: no rule.** The census history holds no build at which
 an emitter's `scale0`, `birthScale0`, `birthRotation0` or `birthRotationalVelocity0` is a float
 (#MOD-ARTIFACT-0036), so no conversion of Riot's is read, and nothing was changed or run.
+
+**The shaders mods link and define**, counted by `scripts/corpus/shaders.py` over the 5,137 mods
+of the datasets, against the shader bin of the 16.19.8207193 copy, the bins the client loads read
+off the repair's baseline: 104 mods hold a material linking a shader the bin lacks, 15 shaders in
+all, each one a build removed (#GAME-CHANGE-0024 has them by shader). No mod defines a
+`CustomShaderDef`, in a loaded bin or in any other.

@@ -50,5 +50,5 @@ Without the definition, a material's link to a game shader of that name draws.
   log of 16.19.8217343 holds them, the hash printed as `822941f5adffbcc`.
 - The census history holds 350 `CustomShaderDef` objects in `data/shaders/shaders.bin` at
   16.19.8230722 (#GAME-CHANGE-0024).
-- How many mods of the datasets define a `CustomShaderDef` is not counted: the baseline reports
-  do not list objects by class.
+- Counted by `scripts/corpus/shaders.py` over the 5,137 mods of the datasets (2026-10-06): no mod
+  defines a `CustomShaderDef`, in a bin the client loads or in any other.
