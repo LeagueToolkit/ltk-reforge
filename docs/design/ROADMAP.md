@@ -118,15 +118,16 @@ Each is the user's. *fixer* marks the ones a repair depends on.
   it.
 - `Run` checks the order of the stages when it runs, where the design had the compiler hold it
   ([ARCHITECTURE.md](ARCHITECTURE.md), "Shape"). Whether that stays.
+- How a port names a file whose name holds a variant tag of the game beyond the four shapes
+  of #MOD-ARTIFACT-0026: the port's baseline ships 23,753 such names in 959 mods, 62% of them
+  bytes the game shipped. A pass that drops every tag the history knows, or one parameterised
+  by the shape of a class of names, is to be explored (the user, 2026-10-06).
 
 ### Carried over from ltk-forge
 
 Behaviour reforge has because ltk-forge had it and the comparison held reforge to it. No
 record and no measurement of reforge's own says it is right.
 
-- A repath tool's `.tft_set<N>` tag stays in a ported file's name (#MOD-ARTIFACT-0026): the
-  rule takes `.tftset<N>`, which no mod was seen to carry. Dropping the tag changes the paths
-  a port ships.
 
 ### Known limits
 

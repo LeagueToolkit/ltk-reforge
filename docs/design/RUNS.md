@@ -1197,3 +1197,10 @@ units. The two reasons the build has for not writing a unit's audio follow from 
 datasets do not hold: a sub-character's own audio at a skin whose game entry has no bank unit,
 and a layer of a unit whose bin is written whole. `Left::NoTarget` follows from no input, as
 measured above, and stays as the reason of a unit with no decision. No code changes.
+
+**A `.tft_set<N>` tag dropped from a ported file's name** (#MOD-ARTIFACT-0026, corrected: the four
+shapes are the game's own variant tags). The 221 mods that ship such a name, and the reduced
+corpus: no repair differs, and 221 ports do (2 of the reduced corpus), in names alone. 625 files
+take their name without the tag, and the bins and 3 patches that name them follow. In the 6 mods
+where the name met a shipped one, the tagged file, placed first, takes the bare name and the
+other takes `-2`. No diagnostic differs.

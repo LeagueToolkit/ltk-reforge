@@ -69,20 +69,15 @@ fn reads_as_hash(path: &ChunkPath) -> bool {
 }
 
 /// Whether a part between a stem and its extension is a tag a repath tool left
-/// (#MOD-ARTIFACT-0026): `skins_katarina_skin59`, `pie_c_12_19`.
+/// (#MOD-ARTIFACT-0026): `skins_katarina_skin59`, `pie_c_12_19`, `tft_set13`.
 fn is_repath_tag(part: &str) -> bool {
     let skin = |token: &str| token.strip_prefix("skin").is_some_and(digits);
     let tokens: Vec<&str> = part.split('_').collect();
     match tokens.as_slice() {
         ["skins", _, last] => skin(last) || *last == "base",
+        ["tft", set] => set.strip_prefix("set").is_some_and(digits),
         [_, last] => skin(last),
         ["pie", "c", a, b] => digits(a) && digits(b),
-        // Takes `tftset7` and leaves the `tft_set7` that mods carry (#MOD-ARTIFACT-0026): the
-        // rule is ltk-forge's, with no mod behind it (`docs/design/ROADMAP.md`, "Open").
-        [set] => set
-            .strip_prefix("tft")
-            .and_then(|rest| rest.strip_prefix("set"))
-            .is_some_and(digits),
         _ => false,
     }
 }
@@ -441,8 +436,8 @@ mod tests {
         let tidy = |stem: &str| tidy_stem(stem, &characters);
         assert_eq!(tidy("katarina_skin59_blade.skins_katarina_skin59"), "blade");
         assert_eq!(tidy("glow.pie_c_12_19"), "glow");
-        assert_eq!(tidy("glow.tftset7"), "glow");
-        assert_eq!(tidy("glow.tft_set7"), "glow.tft_set7");
+        assert_eq!(tidy("glow.tft_set7"), "glow");
+        assert_eq!(tidy("glow.tftset7"), "glow.tftset7");
         assert_eq!(tidy("katarina_base_tx_cm"), "tx_cm");
         assert_eq!(tidy("garen_base_tx_cm"), "garen_base_tx_cm");
         assert_eq!(tidy("katarina_skin59_"), "katarina_skin59_");
