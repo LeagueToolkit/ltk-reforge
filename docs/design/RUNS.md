@@ -683,6 +683,71 @@ beside the mod's on the same hook (#GAME-BEHAVIOR-0016) is not recorded.
 
 Not tried: the other 13 ports and 15 repairs, a voice layer and a `hud` layer.
 
+### Test mods (2026-10-06)
+
+Each test mod is the game's `skin0.bin` of one champion with one change, built from the
+16.19.8207193 copy by an example of `reforge` and seen by the user in a replay of the champion at
+skin 0 in that copy.
+
+| test mod | the change | seen | record |
+|---|---|---|---|
+| `legacy-simple-test-vi-kept-control` | none | Vi as without the mod | #GAME-BEHAVIOR-0024 |
+| `legacy-simple-test-vi-kept-scaled` | the `scale` curve of the `LegacySimple` of `glow` in `Vi_Base_Passive_BackPack` four times the game's | the ring on her back very big | #GAME-BEHAVIOR-0024 |
+| `legacy-simple-test-vi-kept-removed` | that `LegacySimple` removed | no ring on her back | #GAME-BEHAVIOR-0024 |
+| `legacy-simple-test-zac-control` | none | Zac as without the mod | #GAME-BEHAVIOR-0024 |
+| `legacy-simple-test-zac-kept-scaled` | the `scale` curve of the `LegacySimple` of `Shadow` in `Zac_Base_W_cas` four times the game's | the dark swirl of W big | #GAME-BEHAVIOR-0024 |
+| `legacy-simple-test-zac-kept-removed` | that `LegacySimple` removed | no swirl seen | #GAME-BEHAVIOR-0024 |
+| `legacy-simple-test-zac-simple-scaled` | `Splat` in `Zac_Base_W_cas`, a complex emitter, given a `LegacySimple` of `birthScale` 200 and `scale` 4 | no difference from the control noticed | #GAME-BEHAVIOR-0024 |
+| `legacy-simple-test-zac-simple-zeroed` | `Splat` given a `LegacySimple` of `birthScale` 0 and `scale` 0 | no difference from the control seen | #GAME-BEHAVIOR-0024 |
+| `birth-translation-test-zac-control` | `Splat` in `Zac_Base_W_cas` given an empty `VfxShapeLegacy` and `EmitterPosition` 300 up | the goo above Zac | #MOD-ARTIFACT-0019 |
+| `birth-translation-test-zac-misplaced` | the same vector as a `birthTranslation` in that shape, no `EmitterPosition` | the goo not above him, near his back; its place not sure | #MOD-ARTIFACT-0019 |
+| `birth-translation-test-zac-both` | `EmitterPosition` 300 up and a `birthTranslation` of 150 up | the goo above him; its height against the control's not judged | #MOD-ARTIFACT-0019 |
+| `entry-twice-test-azir-control` | Azir's skin entry drawing `Azir_base_BA_Beam_1x3.tex` on the whole model | Azir nearly black with orange streaks | #GAME-BEHAVIOR-0020 |
+| `entry-twice-test-azir-changed-first` | that entry, then the game's under the same hash | Azir nearly black with orange streaks | #GAME-BEHAVIOR-0020 |
+| `entry-twice-test-azir-changed-last` | the game's entry, then the changed one | Azir not drawn dark | #GAME-BEHAVIOR-0020 |
+
+### Ports of the roadmap's open cases (2026-10-06)
+
+Three mods of the datasets ported by `reforge port` at 0.1.2 against the 16.19.8207193 copy,
+each to a `.modpkg` targeting skin 0, each ended with exit 0. The user installed each in that copy
+and watched a replay of the champion at skin 0.
+
+| mod (SHA-256) | what it holds | seen |
+|---|---|---|
+| `06069f24f123…` | a `hud` layer: 6 spell icons and HUD textures, 10 records on the root bin | with `hud` off, only the champion's portrait the mod's; with it on, the spell icons the mod's too |
+| `1670c64ba7a5…` | a `voice` layer: 396 voice clips the game's events play; 4 effects clips in the base layer | with `voice` off, the game's voice; with it on, the mod's |
+| `40606c273797…` | 31 own clips in a bank unit of its own, 12 events cut from the mod's own events bank (#ADR-0030), posted by the clips of the mod's own graph and by two emitters | none of the mod's sounds heard |
+
+For `40606c273797…` the user watched a recall, a death and the respawn, the R and the emotes, with
+Kennen drawn as the mod's model and animations: Kennen's own sounds, none of the mod's. The
+original mod, installed as it is, plays the mod's sounds on the emotes.
+
+Compared in memory (2026-10-06):
+
+- The port carries the mod's graph and emitters, whose clips and effects name the 12 events
+  literally, and lists the 12 in its bank unit.
+- The port's events bank holds the original's sounds, container and attenuations byte for byte.
+  Its play actions name its own header id, as the original's name the original's. It leaves out
+  two events and the actions of the music events that set the volume of buses.
+- The port's media bank holds the original's 31 clips byte for byte, and none of its five bus
+  objects. Three of them are buses the game's init bank defines (393239870 among them, the bus
+  the eleven sounds route to), and two are not (3276768291, 3605772915).
+- The original's skin entry has one bank unit, `Kennen_Base_SFX`, loading the game's base events
+  bank beside the mod's banks, and no voice unit. The port keeps the game's two units and adds
+  one of its own.
+
+Two variants of the port, each with one of those differences undone, seen in game by the user:
+
+| variant | the change from the port | seen | record |
+|---|---|---|---|
+| `PikachuKennen-Nyht-bus` | the media bank given the original's five bus objects | the mod's sounds play; Kennen's own voice heard beside them, which the original leaves out | #GAME-BEHAVIOR-0025 |
+| `PikachuKennen-Nyht-unit` | the mod's banks in the game's `Kennen_Base_SFX`, no unit of the port's own | Kennen's own sounds only | #GAME-BEHAVIOR-0025 |
+| `PikachuKennen-Nyht-game-buses` | the media bank given the three bus objects whose ids the game's init bank defines | Kennen's own sounds only | #GAME-BEHAVIOR-0025 |
+| `PikachuKennen-Nyht-own-buses` | the media bank given the two bus objects the init bank lacks | the mod's sounds play; Kennen's own voice heard beside them | #GAME-BEHAVIOR-0025 |
+
+The port writes each media bank with the clips alone, so the bus objects a mod's media bank holds
+are not carried.
+
 ## The baselines and the edge cases (2026-10-04)
 
 The two baselines reforge is compared with (#ADR-0044), over the 5,137 mods of the datasets,

@@ -73,9 +73,11 @@ In this order. Each item is one or more changes measured against the baseline.
 
 1. **The behaviour carried over from ltk-forge** ([Carried over](#carried-over-from-ltk-forge)),
    each item changed or removed as a change of its own.
-2. **Ports checked in game** where none was: a voice layer, a `hud` layer, and a bank unit cut
-   from the mod's own events bank. Ten ports were checked and work ([RUNS.md](RUNS.md), "Ports
-   in game").
+2. **Ports checked in game** where none was: a bank unit cut from the mod's own events bank. In
+   the one port tried, none of its sounds was heard: the port leaves out the bus objects of the
+   mod's media bank, and with the two the game lacks added the sounds play
+   (#GAME-BEHAVIOR-0025). A voice layer and a `hud` layer were checked and work
+   ([RUNS.md](RUNS.md), "Ports in game").
 3. **A game source that answers from the history**: a run with no install, and against the
    game at any build the history holds (#ADR-0042, #ADR-0043). The index holds what the typed
    questions need but vertex positions.
@@ -100,8 +102,10 @@ Each is the user's. *fixer* marks the ones a repair depends on.
 
 - *fixer* A value no build since the mod's own read is removed, not revived. A policy of
   ltk-forge's docs with no decision behind it.
-- *fixer* Whether an old emitter's simple-particle fields are moved into `LegacySimple` or
-  removed: Riot removed the struct from most of its own emitters at 12.20 (#GAME-CHANGE-0004).
+- *fixer* Whether an old complex emitter's simple-particle fields are moved into `LegacySimple`
+  or removed. A simple emitter is drawn only with them moved, and a complex one is drawn the same
+  either way (#GAME-BEHAVIOR-0024); Riot's complex emitters hold none from 12.20
+  (#GAME-CHANGE-0004).
 - *fixer* An object of a class the build dropped is left as it is
   (`ItemRecommendationContextList`, gone at 16.6, in 227 mods' root bins). Whether it is
   removed.
@@ -178,8 +182,8 @@ record and no measurement of reforge's own says it is right.
   the mod's build (#MOD-ARTIFACT-0032), in 259 mods of the datasets.
 - *fixer* A birth translation in a `VfxShapeLegacy` is stripped in the 206 mods dated 14.1 or
   later (276,644 values), where the mod's own build never read the old `shape`.
-- *fixer* Which of two entries of one hash in a bin the client keeps is not established, and
-  the last is taken (#GAME-BEHAVIOR-0020). 128 mods of the datasets hold such a bin.
+- *fixer* Of two entries of one hash in a bin the client keeps the first (#GAME-BEHAVIOR-0020),
+  and the bin reader keeps the last. 128 mods of the datasets hold such a bin.
 - *fixer* 40 game paths the hash cache spells hold an empty part (`//`). `ChunkPath` refuses
   them, so such a chunk stays unnamed.
 - *fixer* A `ChunkPath` may be longer than a file name on disk: 1,264 game paths are over 512
@@ -222,4 +226,4 @@ code.
 | #GAME-CHANGE-0022, integer fields in narrower kinds | the narrowing conversion of `retype` |
 | #GAME-BEHAVIOR-0018, a block-compressed texture not in whole blocks is drawn | `TexContainer`, which leaves such a texture the DDS it is |
 | #GAME-BEHAVIOR-0019, a graph event does not look in the additional resolvers | `PortBuilder`, which writes the resolver's map whole under the game's name |
-| #GAME-BEHAVIOR-0020, which of two entries of one hash the client keeps | the bin reader, which keeps the last, and `bin.entry-duplicate` |
+| #GAME-BEHAVIOR-0020, of two entries of one hash the client keeps the first | the bin reader, which keeps the last, and `bin.entry-duplicate` |

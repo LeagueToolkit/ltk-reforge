@@ -32,5 +32,8 @@ the mod was made.
 - Seen in game, with no date recorded: one undeclared field nested in a map left a skin in its
   bind pose.
 - LTK Manager's repair rule for property types rests on the same reading.
+- Seen in game (2026-10-06): one undeclared field added alone, a `birthTranslation` inside a
+  `VfxShapeLegacy`, did not move its emitter, and the rest of the effect was drawn
+  (#MOD-ARTIFACT-0019).
 - No check isolated one property with its type changed and nothing else. That check would
-  confirm it.
+  confirm the rule for a value of another type.

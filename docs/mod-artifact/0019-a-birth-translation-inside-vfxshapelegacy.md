@@ -57,8 +57,16 @@ Riot's conversion made of a `birthTranslation` (#GAME-CHANGE-0006).
   holds one at 14.1.5516065 or at 16.19.8207193, in any class.
 - No game object from 10.9 to 16.19 holds a `birthTranslation` in a `VfxShapeLegacy`
   (ltk-forge's census lookup, 2026-09-30).
-- That the client draws the emitter at the origin is inferred from #GAME-BEHAVIOR-0002 and the
-  default. No check in game is recorded.
+- Seen in game (2026-10-06, the 16.19.8207193 copy, a replay of Zac at skin 0). Three test mods,
+  each Zac's `skin0.bin` with one emitter changed: `Splat` of `Zac_Base_W_cas`, the green goo
+  bursting up at his W, a complex emitter with no `EmitterPosition` and no `SpawnShape` in the
+  game. Each case gives it an empty `VfxShapeLegacy`.
+  - `control`, `EmitterPosition` 300 units up: the goo above Zac.
+  - `misplaced`, the same vector as a `birthTranslation` inside the `VfxShapeLegacy`, and no
+    `EmitterPosition`: the goo not above him, seen near his back among the other effects of W.
+    The user was not sure of its place.
+  - `both`, `EmitterPosition` 300 up and a `birthTranslation` of 150 up: the goo above him. Its
+    height against the control's was not judged.
 - LtMAO's "Fix VFX Shape Property + BirthTranslation" (source of version 28032026.0, read
   2026-10-06) writes this class with every old field under `SpawnShape`. It empties the
   `birthTranslation` it leaves there, and appends the constant of a vector birth translation to

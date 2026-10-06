@@ -23,6 +23,10 @@ of the old emitter moved into.
 From 12.20 about one game emitter in fifty still holds a `LegacySimple`. The others hold none, and
 nothing holds their old values.
 
+A system lists each emitter as simple (`simpleEmitterDefinitionData`) or complex
+(`complexEmitterDefinitionData`). At 16.19 nearly every simple emitter holds a `LegacySimple`, and
+nearly no complex one does.
+
 ## Riot's conversion
 
 Each field moved into `LegacySimple`, its value unchanged.
@@ -42,13 +46,17 @@ Each field moved into `LegacySimple`, its value unchanged.
 | `scaleUpFromOrigin` | `scaleUpFromOrigin` |
 
 At 12.20 Riot removed the `LegacySimple` from most emitters that had one, with every value in
-it, and put nothing in its place. Which emitters kept theirs is not established as a rule.
+it, and put nothing in its place. At 16.19 the emitters that hold one are the simple emitters,
+with few exceptions (After). That this was the rule of the removal is inferred from 16.19; the
+emitters of 12.20 are not counted by the list that holds them.
 
 ## In a mod
 
 A mod made before 12.19 holds the eleven fields on the emitter. A later build drops them
 (#GAME-BEHAVIOR-0002): the particle is drawn with the default of each, so the scale, rotation
-and scroll rate the author set do not apply.
+and scroll rate the author set do not apply. A simple emitter's particles are not seen when
+nothing else sets their size, and a complex emitter is drawn the same with or without the fields
+in a `LegacySimple` (#GAME-BEHAVIOR-0024).
 
 A mod made later holds them there too when its author pasted an emitter from an older mod. The
 author's own build dropped them.
@@ -74,6 +82,14 @@ author's own build dropped them.
   (the same count, 2026-10-03). The class declares it, as a bool, at every build from 13.15 to
   16.19. The field did not leave the class: the one emitter that held it lost its
   `LegacySimple` at 12.20.
-- Whether the client draws an emitter by its `LegacySimple` when Riot's own data holds none for
-  emitters of that kind is not established. A check in game of one old emitter with its fields
-  moved, against the same emitter with them removed, would settle it.
+- Counted in the 16.19.8207193 install copy (2026-10-06), over the skin bins
+  `data/characters/<name>/skins/skin<n>.bin`, n from 0 to 99, of the 174 WADs of
+  `DATA/FINAL/Champions` that are no locale's: 369 of the 382 emitters in a
+  `simpleEmitterDefinitionData` hold a `LegacySimple`, and 37 of the 794,451 in a
+  `complexEmitterDefinitionData`, each of the 37 beside a `birthScale0`. The bins a skin bin links
+  are not counted.
+- Counted in the reports of both baselines (2026-10-04, counted 2026-10-06): the mods hold the
+  old fields on 847 complex emitters in 16 mods, 5,811 values, and on 46 simple emitters in 7
+  mods, 132 values.
+- How the client draws an emitter by its `LegacySimple`, and what is not established of it:
+  #GAME-BEHAVIOR-0024.
