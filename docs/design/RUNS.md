@@ -814,6 +814,40 @@ only mod to show a case.
 Not measured: `inspect` and `load` over the datasets, a run without the history index or the
 schema, and a run that writes.
 
+### The baselines of 2026-10-06
+
+The baselines made again after the fixer batch ("The rules of the fixer batch"), over the 5,137
+mods of the datasets, against the 16.19.8207193 copy and the history index of 757 builds, at
+24 in parallel with one thread each. They cover the port's two rules of #ADR-0063 and #ADR-0064,
+which had no run of the datasets before.
+
+| baseline | command | done | ended by a fatal diagnostic | failed | time |
+|---|---|---:|---|---:|---|
+| `baseline-repair-2` | `repair --no-write --again` | 5,109 | 28: one `archive.no-skin`, 27 `package.shader-missing` | 0 | 1,213 s |
+| `baseline-port-2` | `port --no-write` | 5,102 | 35: one `archive.no-skin`, 15 `package.empty`, 19 `package.shader-missing` | 0 | 1,002 s |
+
+- **The repair.** Every one of the 5,109 packages built again from its own package: no second
+  repair changed a value or a chunk. The checks raise `check.field-undeclared` in 218 mods and
+  `check.type-mismatch` in 47. The batch's rules in it: `vfx-spawn-shape-birth-translation`
+  moves 110,401 values and removes 187,122 in 272 mods; `vfx-legacy-simple` removes 13,106
+  values of complex emitters and moves 129 in 76 mods; `material-shader-relink` relinks 547
+  passes in 89 mods.
+- **Against the baselines of 2026-10-04.** Every mod differs: each report holds the evidence
+  part the earlier baselines lack (#ADR-0041), and the history's head is another. The other
+  differences are those of the rules and fixes committed since, the batch's among them. This
+  comparison does not attribute each row to one of them.
+- **The edge cases**, derived by `cases.py` from the reports of both: 665 cases seen and 98
+  declared and not seen. [CASES.md](CASES.md) lists them. The table of `cases.py` gained the
+  places the reports hold since the earlier baselines: the evidence part, which says again
+  what other parts say, the units a port leaves out of the game's block, the reasons a thumbnail
+  is dropped, and the materials and shaders of `package.shader-missing`.
+- **The reduced corpus**: 63 mods show the 665 cases, 1.53 GB of archives. 14 of them are the
+  only mod to show a case. Run twice per command at 24 in parallel, the repair in 20 s and 17 s
+  and the port in 16 s and 17 s, as the baselines ended them: in the repair 1 `archive.no-skin`
+  and 2 `package.shader-missing`, in the port 1 `archive.no-skin`, 2 `package.empty` and 1
+  `package.shader-missing`. `compare.py` reports no difference between the two runs, nor
+  between a run and the baseline's reports of the 63 mods.
+
 ## The evidence embedded, against the baselines (2026-10-04)
 
 The first change measured against the baselines: every run embeds its evidence in the package

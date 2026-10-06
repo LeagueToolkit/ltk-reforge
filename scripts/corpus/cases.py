@@ -275,6 +275,11 @@ RULES += [
     data("check.type-mismatch", "fields[].found.kind", VALUE, name="check.type-mismatch found"),
     data("check.type-mismatch", "fields[].wants.kind", VALUE, name="check.type-mismatch wants"),
     data("check.round-trip-failed", "problem", VALUE, "unreadable entries object"),
+    data("package.thumbnail-dropped", "why", VALUE, "entry-too-large entry-unreadable not-an-image not-encoded too-large"),
+]
+
+RULES += [
+    ("audio", "unit leaves out a game unit", SET, ".port.audio.units[].left_out"),
 ]
 
 # Parts of a report that hold no case: what the run was given, what another part says again,
@@ -288,7 +293,7 @@ SKIP = {
     ".port.options", ".port.layout", ".port.files", ".port.renames.names", ".port.audio.banks", ".port.audio.units[].renamed",
     ".port.hud.champions[].edits", ".port.hud.champions[].files",
     ".package.paths", ".package.entries", ".package.chunks[].objects", ".package.chunks[].values", ".package.patches[].applied.objects",
-    ".again.chunks", ".again.redated",
+    ".again.chunks", ".again.redated", ".evidence",
     "diagnostics[inventory.executable].data", "diagnostics[inventory.bin-text].data", "diagnostics[inventory.source].data",
     "diagnostics[inventory.nested-archive].data", "diagnostics[inventory.os-artifact].data", "diagnostics[inventory.unknown].data",
 }  # fmt: skip
@@ -299,13 +304,14 @@ FREE = set(
     "object objects file files reference tags tag events path paths content shipped place version bin bins loads "
     "locale into taken_by target dir root namespace banks carried dangling leftovers game_links links skipped to "
     "text example rework patch class field fields copies unclaimed passed_over resolver names edited "
-    "packed_locale root_bin record records ships".split()
+    "packed_locale root_bin record records ships material shader thumbnail".split()
 )
 # Places that hold free text under a field name that is a closed set elsewhere.
 OPEN = {
     ".files[].from", ".facts.rigs[].clips[].moved", ".facts.rigs[].mesh.moved", ".facts.rigs[].skeleton.moved",
     ".facts.candidates[].base_rig_origin", ".facts.candidates[].spread", ".facts.copies[].copies[].kind",
     ".port.shipping.left.*.by", ".port.units[].graph", ".port.audio.units[].units[].voice", ".provenance[].vfx",
+    ".port.audio.units[].left_out[]",
     ".port.reach.units.*.game[]", ".port.reach.units.*.champion[]",
     ".port.renames.game_swaps[][]", ".port.renames.to_target[][]",
     ".targets.decisions[].candidates[].checks[].why.level", ".targets.decisions[].candidates[].checks[].why.graph_found",
