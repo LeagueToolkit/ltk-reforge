@@ -176,7 +176,7 @@ tables (`history`) and the bin value helpers (`model`).
   which file is there. A step that would add one (a file fixup, the game's bins for a mod with
   no skin bin) leaves the mod's own file in place.
 - **One object per entry hash in a bin.** Of the objects a bin lists under one entry hash, the
-  last is kept, and the bin is reported. The client keeps the first (#GAME-BEHAVIOR-0020).
+  first is kept, as the client keeps it (#GAME-BEHAVIOR-0020), and the bin is reported.
 - **The port is new data.** `plan` clones the objects a unit carries and renames the clones.
   The mod's objects stay as the fixups left them.
 - **Closed sets are enums.** A layer is `Layer::Base`, `Voice` with its locale when it is one

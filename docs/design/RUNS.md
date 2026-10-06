@@ -931,3 +931,12 @@ fields in 4. No emitter outside the two lists holds the old fields.
 value, repaired without the rule and with it: every one differs, at those values alone. Without
 it the strip removes 276,638 values. With it 106,828 become an `EmitterPosition` in 142 mods and
 169,810 are removed beside the position the emitter holds. What dates the 206 is in the record.
+
+**The first object of a hash listed twice kept** (#GAME-BEHAVIOR-0020). Counted first: of the
+128 mods of the datasets whose loaded bin lists an entry hash more than once, 93 hold objects
+under one hash that differ and 35 hold equal ones only. The record has the classes and the
+fields. 3 mods of the reduced corpus differ, in the repair and in the port, each one of the 93.
+The 128 repaired without the rule and with it: the 93 differ and the 35 are equal. Ported: 91 of
+the 93 differ, and the 37 others are equal. The differences follow the object kept: its values,
+the fixups' changes to them, the files it names, and with them the files a package carries or
+leaves behind. No run of the 128 ended otherwise than with exit 0.

@@ -169,8 +169,6 @@ record and no measurement of reforge's own says it is right.
   client skips (#GAME-CHANGE-0012). Riot's bins link the `_multi_` path from 16.10.
 - *fixer* A repair ships a mod's champion root bin whole, with the champion's gameplay data of
   the mod's build (#MOD-ARTIFACT-0032), in 259 mods of the datasets.
-- *fixer* Of two entries of one hash in a bin the client keeps the first (#GAME-BEHAVIOR-0020),
-  and the bin reader keeps the last. 128 mods of the datasets hold such a bin.
 - *fixer* 40 game paths the hash cache spells hold an empty part (`//`). `ChunkPath` refuses
   them, so such a chunk stays unnamed.
 - *fixer* A `ChunkPath` may be longer than a file name on disk: 1,264 game paths are over 512
@@ -213,4 +211,3 @@ code.
 | #GAME-CHANGE-0022, integer fields in narrower kinds | the narrowing conversion of `retype` |
 | #GAME-BEHAVIOR-0018, a block-compressed texture not in whole blocks is drawn | `TexContainer`, which leaves such a texture the DDS it is |
 | #GAME-BEHAVIOR-0019, a graph event does not look in the additional resolvers | `PortBuilder`, which writes the resolver's map whole under the game's name |
-| #GAME-BEHAVIOR-0020, of two entries of one hash the client keeps the first | the bin reader, which keeps the last, and `bin.entry-duplicate` |

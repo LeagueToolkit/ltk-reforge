@@ -2,7 +2,7 @@
 //! the same bytes, so the history's object key and the norm key come from the reader and not from
 //! a parser of this crate's.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -29,17 +29,6 @@ pub enum BinError {
     /// An object's range in the table of contents ends past the file.
     #[error("object {0:08x} runs past the end of the file")]
     PastEnd(u32),
-    /// The table of contents lists an object the tree does not hold.
-    #[error("object {0:08x} is in the table of contents and not in the tree")]
-    NotInTree(u32),
-    /// The tree and the table of contents hold different numbers of objects.
-    #[error("{tree} objects in the tree, {listed} in the table of contents")]
-    Count {
-        /// Objects in the tree.
-        tree: usize,
-        /// Distinct objects in the table of contents.
-        listed: usize,
-    },
 }
 
 /// One object of a bin, with the digests of its bytes.
@@ -61,8 +50,8 @@ pub struct ParsedBin {
     pub dependencies: Vec<String>,
     /// Its objects, in file order.
     pub objects: Vec<ParsedObject>,
-    /// Entry hashes the table of contents lists more than once. The tree keeps the last object
-    /// under each, at the first one's place, and so does `objects`.
+    /// Entry hashes the table of contents lists more than once, once for each further listing.
+    /// `objects` holds the first object listed under each, as the client keeps it.
     pub duplicates: Vec<BinHash>,
 }
 
@@ -81,11 +70,11 @@ fn read(bytes: &[u8]) -> Result<ParsedBin, BinError> {
     let text = |e: &dyn std::fmt::Display| BinError::Read(e.to_string());
     let mut stream = BinStream::mount(Cursor::new(bytes)).map_err(|e| text(&e))?;
     let toc = stream.toc().map_err(|e| text(&e))?.clone();
-    let bin = stream.into_bin().map_err(|e| text(&e))?;
+    let listed = listed(&mut stream).map_err(|e| text(&e))?;
     let mut objects: Vec<ParsedObject> = Vec::new();
-    let mut place: HashMap<u32, usize> = HashMap::new();
+    let mut seen: HashSet<u32> = HashSet::new();
     let mut duplicates = Vec::new();
-    for entry in toc.entries() {
+    for (entry, value) in toc.entries().iter().zip(listed) {
         let hash = entry.path_hash.0;
         // An entry's offset is of its size field; the object's bytes begin four bytes on.
         let range = usize::try_from(entry.offset)
@@ -94,38 +83,46 @@ fn read(bytes: &[u8]) -> Result<ParsedBin, BinError> {
             .and_then(|start| Some(start..start.checked_add(entry.size as usize)?))
             .and_then(|range| bytes.get(range))
             .ok_or(BinError::PastEnd(hash))?;
-        let value = bin
-            .objects
-            .get(&entry.path_hash)
-            .cloned()
-            .ok_or(BinError::NotInTree(hash))?;
-        let parsed = ParsedObject {
+        // #GAME-BEHAVIOR-0020: the client keeps the first object listed under a hash.
+        if !seen.insert(hash) {
+            duplicates.push(entry.path_hash);
+            continue;
+        }
+        objects.push(ParsedObject {
             value,
             raw: ContentId::of(range),
             body: ContentId::of(range.get(4..).unwrap_or_default()),
-        };
-        match place.get(&hash) {
-            Some(&i) => {
-                duplicates.push(entry.path_hash);
-                objects[i] = parsed;
-            }
-            None => {
-                place.insert(hash, objects.len());
-                objects.push(parsed);
-            }
-        }
-    }
-    if objects.len() != bin.objects.len() {
-        return Err(BinError::Count {
-            tree: bin.objects.len(),
-            listed: objects.len(),
         });
     }
     Ok(ParsedBin {
-        dependencies: bin.dependencies,
+        dependencies: stream.dependencies().to_vec(),
         objects,
         duplicates,
     })
+}
+
+/// Every object the table lists, in file order, a hash listed again included.
+///
+/// `BinStream::into_bin` keeps one object per hash. An object that reads only under the legacy
+/// numbering latches the stream onto it, and the objects read before it are read again under
+/// it, as `into_bin` does.
+fn listed(stream: &mut BinStream<Cursor<&[u8]>>) -> Result<Vec<BinObject>, ltk_meta::Error> {
+    let numbering = stream.numbering();
+    let objects = sweep(stream)?;
+    if stream.numbering() == numbering {
+        return Ok(objects);
+    }
+    sweep(stream)
+}
+
+/// Reads every object of the table from the top.
+fn sweep(stream: &mut BinStream<Cursor<&[u8]>>) -> Result<Vec<BinObject>, ltk_meta::Error> {
+    let mut objects = Vec::with_capacity(stream.class_hashes().len());
+    let mut cursor = stream.objects();
+    while let Some(mut object) = cursor.next()? {
+        objects.push(object.read()?);
+    }
+    Ok(objects)
 }
 
 /// A bin as bytes.

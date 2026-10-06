@@ -21,8 +21,8 @@ a later object replaces an earlier one at the earlier one's place in the bin's o
 
 - A reader that keeps the last object judges, fixes and ports an object the author did not see in
   game, when the two differ. The first, which the client drew, is not carried.
-- When the two objects are equal, the choice changes nothing. How many of the bins hold two that
-  differ is not counted.
+- When the two objects are equal, the choice changes nothing. Most mods that list a hash twice
+  hold two that differ, most often an effect system or a material.
 
 ## Evidence
 
@@ -39,3 +39,10 @@ a later object replaces an earlier one at the earlier one's place in the bin's o
   changed one from `changed-last`.
 - The baseline run (2026-10-03): 128 of the 5,137 mods hold a bin that lists an entry hash
   more than once.
+- Counted in the bins the client loads of those 128 mods (2026-10-06), every listing read through
+  `ltk_meta`'s stream and compared with the first: 6,984 hashes listed again, 6,871 twice and
+  113 three times. In 93 mods at least one hash holds objects that differ, 4,284 hashes in all,
+  most of them in one field. By class: `VfxSystemDefinitionData` 2,927 hashes in 73 mods
+  (`complexEmitterDefinitionData` in 72), `StaticMaterialDef` 796 in 16, `GearSkinUpgrade` 507 in
+  3, `ContextualActionData` 101 in 1, `SkinCharacterDataProperties` and `ResourceResolver` 3 each.
+  53 hashes list objects of two classes. The other 35 mods list equal objects only.

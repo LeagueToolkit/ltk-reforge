@@ -80,6 +80,28 @@ fn the_raw_digest_is_of_the_bytes_from_the_entry_hash_to_the_objects_end() {
 }
 
 #[test]
+fn a_hash_listed_twice_keeps_the_first_object_listed() {
+    // Two objects of one size, the second renamed to the first's entry hash in the bytes.
+    let (first, second) = ("Characters/Lux/Skins/Skin0", "Characters/Lux/Skins/Skin7");
+    let alone = bin::parse(&bytes(vec![object(first, "Lux")], &[])).unwrap();
+    let mut twice = bytes(vec![object(first, "Lux"), object(second, "Pix")], &[]);
+    let at = twice
+        .windows(4)
+        .position(|w| w == name_hash(second).0.to_le_bytes())
+        .expect("the second entry hash is in the bytes");
+    twice[at..at + 4].copy_from_slice(&name_hash(first).0.to_le_bytes());
+
+    let parsed = bin::parse(&twice).unwrap();
+    // #GAME-BEHAVIOR-0020: the client keeps the first.
+    assert_eq!(parsed.duplicates, [name_hash(first)]);
+    let [kept] = &parsed.objects[..] else {
+        panic!("one object: {:?}", parsed.objects);
+    };
+    assert_eq!(kept.value, alone.objects[0].value);
+    assert_eq!(kept.raw, alone.objects[0].raw);
+}
+
+#[test]
 fn bytes_that_are_no_bin_are_refused_with_the_reason() {
     assert_eq!(bin::parse(b"PTCH\x01\0\0\0").unwrap_err(), BinError::Patch);
     assert_eq!(bin::parse(b"DDS ").unwrap_err(), BinError::NotABin);

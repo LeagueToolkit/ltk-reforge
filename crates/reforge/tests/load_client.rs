@@ -11,6 +11,7 @@ use reforge::load::{
 };
 use reforge::model::bin::BinError;
 use reforge::model::entity::{FileUse, LinkTo};
+use reforge::model::value::as_str;
 use reforge::model::{Slot, name_hash};
 use reforge_testkit::bins::{Skin, bin, blob, entry, graph, linked_bin, particle};
 use reforge_testkit::skins::{self, BASE_TEX, S3_CLIPS, WAD, skin_bin, skin3};
@@ -268,7 +269,7 @@ fn a_patch_at_a_skin_bins_path_is_no_bin() {
 }
 
 #[test]
-fn a_bin_listing_an_entry_twice_keeps_the_last_and_is_reported() {
+fn a_bin_listing_an_entry_twice_keeps_the_first_and_is_reported() {
     // Two objects of one size, the second renamed to the first's entry hash in the bytes.
     let first = "Characters/Test/Skins/Skin0/Particles/A";
     let second = "Characters/Test/Skins/Skin0/Particles/B";
@@ -296,7 +297,12 @@ fn a_bin_listing_an_entry_twice_keeps_the_last_and_is_reported() {
 
     let duplicates = run.only::<EntryDuplicates>();
     assert_eq!(duplicates.entries, [name_hash(first)]);
-    assert_eq!(m.bins[duplicates.bin].objects.len(), 1);
+    let [kept] = m.bins[duplicates.bin].objects[..] else {
+        panic!("one object of {first}");
+    };
+    // #GAME-BEHAVIOR-0020: the client draws the first.
+    let texture = m.objects[kept].value.properties.get(&name_hash("texture"));
+    assert_eq!(texture.and_then(as_str), Some("assets/x/one.tex"));
 }
 
 #[test]

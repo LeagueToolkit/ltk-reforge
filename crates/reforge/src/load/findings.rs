@@ -401,8 +401,8 @@ impl Diag for BinUnreadable {
     }
 }
 
-/// A bin that lists entry hashes more than once. The last object under each is kept. Which one
-/// the client keeps is not established.
+/// A bin that lists entry hashes more than once. The first object under each is kept, as the
+/// client keeps it (#GAME-BEHAVIOR-0020).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EntryDuplicates {
     /// The bin.
@@ -424,7 +424,7 @@ impl Diag for EntryDuplicates {
         let noun = if n == 1 { "entry hash" } else { "entry hashes" };
         let _ = write!(
             f,
-            "{n} {noun} listed more than once, the last object kept: "
+            "{n} {noun} listed more than once, the first object kept: "
         );
         f.list(&self.entries, |f, entry| {
             f.entry(*entry);
