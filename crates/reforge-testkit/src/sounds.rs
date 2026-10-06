@@ -64,6 +64,29 @@ pub fn media_bank(stem: &str, version: u32, clips: Vec<Wem>) -> Vec<u8> {
     bank.write()
 }
 
+/// A media bank named `stem`, of the version the client loads, holding these clips and these
+/// objects beside them.
+pub fn media_bank_with(stem: &str, clips: Vec<Wem>, objects: Vec<Object>) -> Vec<u8> {
+    let mut bank = Bank::new_bnk(header(stem), true);
+    bank.media = clips;
+    bank.objects = objects;
+    bank.write()
+}
+
+/// A bus named `name` under the bus of an id, 0 for none.
+pub fn bus(name: &str, parent: u32) -> Object {
+    Object {
+        kind: kind::BUS,
+        id: id_of(name),
+        body: parent.to_le_bytes().to_vec(),
+    }
+}
+
+/// The game's init bank, defining buses of these names.
+pub fn init_bank(buses: &[&str]) -> Vec<u8> {
+    events_bank("init", buses.iter().map(|name| bus(name, 0)).collect())
+}
+
 /// A voice package of these clips.
 pub fn package(clips: Vec<Wem>) -> Vec<u8> {
     Bank::new_wpk(clips).write()

@@ -46,6 +46,8 @@ pub mod kind {
     pub const SWITCH: u8 = 6;
     /// An actor-mixer.
     pub const ACTOR_MIXER: u8 = 7;
+    /// An audio bus.
+    pub const BUS: u8 = 8;
     /// A layer container.
     pub const LAYER: u8 = 9;
     /// A music segment.
@@ -54,6 +56,8 @@ pub mod kind {
     pub const MUSIC_SWITCH: u8 = 12;
     /// A music playlist container.
     pub const MUSIC_PLAYLIST: u8 = 13;
+    /// An auxiliary bus.
+    pub const AUX_BUS: u8 = 18;
 }
 
 /// The action type that plays its target.

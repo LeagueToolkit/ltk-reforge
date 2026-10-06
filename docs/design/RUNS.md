@@ -876,3 +876,15 @@ clone held one pack of 10.06 GiB, compressed with zlib.
 
 The release `history-v2-snapshot-0` holds the `--path-walk` pack of window 1000, its frame
 taking a `.keep` for the pack afterwards: 1,771,553,727 bytes.
+
+## The buses of a mod's media bank (2026-10-06)
+
+The rule of #ADR-0064 measured: `reforge port --no-write` at 0.1.2 without the rule and with
+it, against the 16.19.8207193 copy and the history index of 757 builds, over the 54 mods of the
+reduced corpus and the 3 mods whose media bank holds buses (#MOD-ARTIFACT-0035). Every run
+ended with exit 0.
+
+`compare.py` finds no difference in the 54 mods of the reduced corpus. Each of the 3 differs in
+one chunk, the media bank of its unit cut from the mod's own events bank: `sfx_audio.bnk` in two,
+`sfx2_audio.bnk` in one. The port of `40606c273797…` writes that bank byte for byte as the
+variant `PikachuKennen-Nyht-own-buses` holds it, whose sounds play in game ("Ports in game").

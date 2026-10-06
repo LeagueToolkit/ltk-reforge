@@ -23,7 +23,7 @@ pub mod value;
 pub mod view;
 pub mod walk;
 
-pub use bank::{BankClip, BankRole, EventsBank, game_bank_path};
+pub use bank::{BankClip, BankRole, EventsBank, INIT_BANK, game_bank_path};
 pub use dump::{Dump, DumpCx};
 pub use entity::Mod;
 pub use fixup::{FixupId, FixupInfo, Phase, Version};

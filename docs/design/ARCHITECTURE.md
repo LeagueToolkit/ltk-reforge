@@ -507,6 +507,8 @@ object takes a name of its own, which every link to it follows.
   events bank the game's units at the target load, so it is of the client's version
   (#GAME-BEHAVIOR-0015). Its id is the hash of its unit's name (#GAME-BEHAVIOR-0014), and
   its file is named by its role, `sfx_audio.bnk` and `sfx_events.bnk` (#GAME-BEHAVIOR-0013).
+  A media bank made from a mod's bank holds the buses that bank defines and the game's init
+  bank does not, beside the own clips (#ADR-0064).
   Voice goes to the layer `voice`, and a bank of a locale WAD to `voice-<xx-xx>` in that WAD
   (#ADR-0028). A locale copy with the champion WAD's own clips is carried once, from the
   champion's WAD. A clip the game shipped is never carried.

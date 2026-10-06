@@ -117,6 +117,11 @@ impl Object {
         })
     }
 
+    /// Whether the object is a bus, an audio or an auxiliary one.
+    pub fn is_bus(&self) -> bool {
+        matches!(self.kind, kind::BUS | kind::AUX_BUS)
+    }
+
     /// A play action's bank: the one it expects its target in.
     pub fn play_bank(&self) -> Option<u32> {
         u32_at(&self.body, self.action()?.bank_at?)

@@ -7,7 +7,7 @@ use ltk_meta::BinObject;
 use reforge::env::Env;
 use reforge::facts::ClipOrigin;
 use reforge::history::{NoHistory, Position};
-use reforge::model::{BankClip, BankRole, Layer, Slot, name_hash, value};
+use reforge::model::{BankClip, BankRole, INIT_BANK, Layer, Slot, name_hash, value};
 use reforge::port::{
     AudioCarried, AudioNotCarried, Carry, LiteralsRenamed, NotCarried, Policy, PortOptions,
 };
@@ -15,8 +15,9 @@ use reforge_testkit::bins::{bin, graph, resolver, text};
 use reforge_testkit::facts::env;
 use reforge_testkit::skins::{self, BASE_CLIPS, WAD, skin_bin};
 use reforge_testkit::sounds::{
-    BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_WPK, audio_game, base_entry, clip,
-    container, event, events_bank, media_bank, package, play, sfx, sound, voice_game, with_audio,
+    BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_WPK, audio_game, base_entry, bus, clip,
+    container, event, events_bank, init_bank, media_bank, media_bank_with, package, play, sfx,
+    sound, voice_game, with_audio,
 };
 use reforge_testkit::{MemoryGame, MemoryHistory, ModArchive, PlanRun, PortRun};
 use reforge_wwise::{Bank, CLIENT_VERSION, id_of, kind};
@@ -325,10 +326,9 @@ fn base_events(clip: u32) -> Vec<u8> {
     events_bank(stem, objects)
 }
 
-/// A mod that adds a media bank of its own, clip 77, to the base's unit. Its copy of the
-/// base's events bank plays the clip under the base's event.
-fn added_bank(options: PortOptions) -> (Env, ModArchive, PortOptions) {
-    let mut game = audio_game();
+/// A mod that adds a media bank of its own, `media`, to the base's unit. Its copy of the
+/// base's events bank plays clip 77 under the base's event.
+fn adding(mut game: MemoryGame, media: Vec<u8>) -> (Env, ModArchive) {
     game.insert(SFX_EVENTS, base_events(1));
     let added = sfx("base", "added_sfx_audio");
     let banks = [added.as_str(), SFX_EVENTS];
@@ -337,10 +337,28 @@ fn added_bank(options: PortOptions) -> (Env, ModArchive, PortOptions) {
         events: &[BASE_DANCE],
         ..BASE_SFX
     };
-    let media = media_bank("added_sfx_audio", CLIENT_VERSION, vec![clip(77, 7)]);
     let files = [(added.as_str(), media), (SFX_EVENTS, base_events(77))];
     let archive = mod_of(&["Test"], &[unit], &files);
-    (env(game, NoHistory), archive, options)
+    (env(game, NoHistory), archive)
+}
+
+/// [`adding`] a media bank of clip 77.
+fn added_bank(options: PortOptions) -> (Env, ModArchive, PortOptions) {
+    let media = media_bank("added_sfx_audio", CLIENT_VERSION, vec![clip(77, 7)]);
+    let (env, archive) = adding(audio_game(), media);
+    (env, archive, options)
+}
+
+/// [`adding`] a media bank of clip 77 that defines a bus of its own, under its copy of the
+/// game's `SFX` bus. The game's init bank, when there is one, defines `SFX`.
+fn added_buses(init: bool) -> (Env, ModArchive) {
+    let mut game = audio_game();
+    if init {
+        game.insert(INIT_BANK, init_bank(&["SFX"]));
+    }
+    let buses = vec![bus("SFX", 0), bus("Test_Mod_Music", id_of("SFX"))];
+    let media = media_bank_with("added_sfx_audio", vec![clip(77, 7)], buses);
+    adding(game, media)
 }
 
 #[test]
@@ -369,6 +387,26 @@ fn an_added_bank_is_cut_from_the_mods_own_events_bank() {
         ),
         "{carried:?}"
     );
+}
+
+#[test]
+fn an_added_banks_bus_the_game_lacks_is_carried_and_its_copy_of_a_game_bus_is_not() {
+    // #GAME-BEHAVIOR-0025: without the bus the game lacks, the mod's events play nothing.
+    let (env, archive) = added_buses(true);
+    let run = port(&env, &archive);
+    let audio = read(&run, &format!("{DIR}/sfx_audio.bnk"));
+    assert_eq!(clip_ids(&audio), [77]);
+    let buses: Vec<u32> = audio.objects.iter().map(|o| o.id).collect();
+    assert_eq!(buses, [id_of("Test_Mod_Music")]);
+}
+
+#[test]
+fn without_an_init_bank_no_bus_of_an_added_bank_is_carried() {
+    let (env, archive) = added_buses(false);
+    let run = port(&env, &archive);
+    let audio = read(&run, &format!("{DIR}/sfx_audio.bnk"));
+    assert_eq!(clip_ids(&audio), [77]);
+    assert!(audio.objects.is_empty(), "{:?}", audio.objects);
 }
 
 #[test]

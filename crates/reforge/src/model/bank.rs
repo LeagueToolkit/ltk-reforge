@@ -130,6 +130,9 @@ impl BankRole {
 /// The folder every bank of the game sits under.
 const BANKS_FOLDER: &str = "sounds/wwise2016/";
 
+/// The game's init bank: the buses and the rest of the mixing graph every bank routes into.
+pub const INIT_BANK: &str = "assets/sounds/wwise2016/sfx/shared/init.bnk";
+
 /// The game's path of a bank, lowercase. Whatever a path holds before `sounds/wwise2016/` is a
 /// repath tool's (`assets/<tag>/sounds/wwise2016/...`): the rest is where the game has the bank.
 pub fn game_bank_path(path: &str) -> String {

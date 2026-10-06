@@ -15,12 +15,14 @@
 //!
 //! Every bank made takes its header from an events bank of the game's units at the target, so
 //! it is of the version the client loads (#GAME-BEHAVIOR-0015), and its id is the hash of its
-//! unit's name (#GAME-BEHAVIOR-0014). A clip the game shipped is never carried.
+//! unit's name (#GAME-BEHAVIOR-0014). A clip the game shipped is never carried. A media bank
+//! made from a mod's bank carries the buses that bank defines and the game's init bank does not
+//! (#ADR-0064).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use reforge_wwise::{Bank, CLIENT_VERSION, Cut, Wem, id_of};
+use reforge_wwise::{Bank, CLIENT_VERSION, Cut, Object, Wem, id_of};
 use serde::Serialize;
 
 use super::findings::{
@@ -34,8 +36,8 @@ use crate::diag::Sink;
 use crate::facts::{BankFile, SoundUnit, Sounds, UnitSounds};
 use crate::model::entity::{FileId, Mod, UnitId};
 use crate::model::{
-    AudioBlock, BankRole, ChunkPath, Dump, DumpCx, Layer, WadName, clean, game_bank_path,
-    path_hash, value,
+    AudioBlock, BankRole, ChunkPath, Dump, DumpCx, EventsBank, INIT_BANK, Layer, WadName, clean,
+    game_bank_path, path_hash, value,
 };
 
 /// One clip of a bank: the bank's path and the clip's id in it.
@@ -197,6 +199,8 @@ struct Planning<'a> {
     loaded: BTreeSet<String>,
     /// The header every bank made takes.
     header: Vec<u8>,
+    /// The ids of the buses the game's init bank defines; none when the game has no init bank.
+    game_buses: Option<&'a BTreeSet<u32>>,
     /// The unit's directory.
     dir: String,
     tag_id: String,
@@ -328,6 +332,19 @@ impl Planning<'_> {
         Ok(Some(OwnEvents { cut, names, carry }))
     }
 
+    /// The buses among a mod's bank's objects that the game's init bank does not define
+    /// (#GAME-BEHAVIOR-0025). A copy of a game bus is left out (#ADR-0064). None when the game
+    /// has no init bank to tell them by.
+    fn own_buses(&self, objects: &[Object]) -> Vec<Object> {
+        let Some(game) = self.game_buses else {
+            return Vec::new();
+        };
+        let own = objects
+            .iter()
+            .filter(|o| o.is_bus() && !game.contains(&o.id));
+        own.cloned().collect()
+    }
+
     /// A bank of the game's header under the id of a name.
     fn bank(&self, stem: &str, hirc: bool) -> Bank {
         let mut bank = Bank::new_bnk(self.header.clone(), hirc);
@@ -379,6 +396,7 @@ impl Planning<'_> {
         let Ok(read) = Bank::read(&m.files[file.file].bytes) else {
             return Ok(());
         };
+        let buses = self.own_buses(&read.objects);
         let media = read.media.into_iter().filter(|wem| own.contains(&wem.id));
         let media: Vec<Wem> = media.collect();
         let voice = file.role == BankRole::Package || unit.unit.voice;
@@ -442,8 +460,9 @@ impl Planning<'_> {
             made.push((package_at.clone(), Bank::new_wpk(media)));
             paths.push(package_at);
         } else {
-            let mut audio = self.bank(&format!("{stem}_audio"), false);
+            let mut audio = self.bank(&format!("{stem}_audio"), !buses.is_empty());
             audio.media = media;
+            audio.objects = buses;
             made.push((audio_at, audio));
         }
         let mut events_bank = self.bank(&format!("{stem}_events"), true);
@@ -519,6 +538,7 @@ impl AudioPlan {
     ) -> Result<Self, PlanError> {
         let m: &Mod = inputs.fixed;
         let mut plan = Self::default();
+        let game_buses = Self::game_buses(inputs)?;
         for &unit in &shipping.ships {
             let (Some(sounds), Some(t)) =
                 (inputs.facts.sounds.of(unit), inputs.targets.target(unit))
@@ -554,6 +574,7 @@ impl AudioPlan {
                 game,
                 loaded,
                 header,
+                game_buses: game_buses.as_ref(),
                 dir: layout.unit_dir(&character.name, t),
                 mod_tag: format!("{base_tag}Mod{tag_id}"),
                 tag_id,
@@ -616,6 +637,16 @@ impl AudioPlan {
             }
         }
         Ok(plan)
+    }
+
+    /// The ids of the buses the game's init bank defines. None when the game has no init bank.
+    fn game_buses(inputs: &PortInputs<'_>) -> Result<Option<BTreeSet<u32>>, PlanError> {
+        let init = inputs.env.game().events_bank(path_hash(INIT_BANK))?;
+        let buses = |bank: &EventsBank| {
+            let buses = bank.objects.iter().filter(|o| o.is_bus());
+            buses.map(|o| o.id).collect::<BTreeSet<u32>>()
+        };
+        Ok(init.map(|bank| buses(&bank)))
     }
 
     /// The header of the first events bank the game's units at the target load.
