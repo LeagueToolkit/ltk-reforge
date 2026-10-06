@@ -176,6 +176,14 @@ record and no measurement of reforge's own says it is right.
   old base model in skin 5's folder), a unit that fits no slot (#ADR-0016), and a target
   forced to the base. Whether one of the six values is enough for that check to refuse a mod,
   or two are needed, is not established (the user recalls two, 2026-10-05).
+- A character a champion's skins preload is its sub-character when the champion's WAD ships its
+  skin bins (#ADR-0071), even under another champion's name, and it follows the champion's
+  target. One Xayah mod of the datasets (`8afd81d86710`) ships `taliyahwallchunk` bins in
+  Xayah's WAD, likely a tool's copy of the game's at the mod's build, and the port patches
+  Taliyah's wall chunk at skin4, Xayah's target, which plays with Taliyah's skin4: a wrong patch
+  shipped. Telling such a copy from the author's work is the game at the mod's own build
+  ([The porter: next](#the-porter-next), item 4); until then, a sub-character of another
+  champion's name could follow nothing and be left to the game with a finding.
 - A HUD edit on a path with a field no table names is left out (#ADR-0031 is not built).
 - The condition under which a block-compressed texture not in whole blocks crashes the client
   is not established (#GAME-BEHAVIOR-0018).
