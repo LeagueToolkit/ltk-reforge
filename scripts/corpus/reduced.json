@@ -4,7 +4,7 @@
   "repair"
  ],
  "mods_in_runs": 5137,
- "cases": 665,
+ "cases": 670,
  "without": [],
  "mods": [
   {
@@ -342,67 +342,17 @@
    "only": []
   },
   {
-   "sha256": "552d4d5e68c1edc1fbf69e9ad1295963ba74a2d05ee602823646224c1a4f0086",
-   "bytes": 11313323,
-   "first": [
-    "audio.carried from_mod=false",
-    "audio.carried shape=own",
-    "candidate feasible=false",
-    "candidate=the champion's target",
-    "candidate=the skin whose clips it plays",
-    "carried unit with events of its own",
-    "character kind=sub",
-    "check why=clips-blocked",
-    "check why=slot-joints",
-    "clips blocked=needs-own-rig",
-    "clips blocked=refused",
-    "clips unknown",
-    "decision by the clips played",
-    "decision reason=clips-origin",
-    "decision reason=sub-follows",
-    "decision reason=superseded",
-    "decision taken by another unit",
-    "decision unfit",
-    "decision with no target",
-    "file.moved how=dds-as-tex",
-    "file.moved rename=base-suffix",
-    "file.moved rename=variant-tag",
-    "fixup material-sampler-fields",
-    "fixup material-sampler-fields as=moved",
-    "fixup.changed by=material-sampler-fields",
-    "origin.ambiguous",
-    "package.field-kept",
-    "package.texture-contained kept=format",
-    "record #GAME-CHANGE-0001",
-    "record #GAME-CHANGE-0009",
-    "record #GAME-CHANGE-0011",
-    "record #GAME-CHANGE-0014",
-    "renames keep links to the source slot",
-    "renames retarget a unit",
-    "renames swap game names",
-    "renames to the target's names",
-    "rework.restoration",
-    "rework=14.20",
-    "rig clip at a moved path",
-    "rig mesh at a moved path",
-    "rig skeleton at a moved path",
-    "target.chosen reason=clips-origin",
-    "target.forced-unfit",
-    "target.forced-unfit follows=true",
-    "target.superseded",
-    "unit left=superseded",
-    "unit.left why=superseded",
-    "unit.retargeted",
-    "wad restores a model from before a rework"
-   ],
-   "only": []
-  },
-  {
    "sha256": "c3ebd7d6df2d64a92c4c84f9332f968ef5e9d6364401b79d72e1eb8ad0a885ac",
    "bytes": 7053208,
    "first": [
+    "candidate feasible=false",
+    "candidate=the champion's target",
     "candidate=the premium origin",
+    "character kind=sub",
+    "check why=clips-blocked",
     "check why=copied-visible",
+    "clips blocked=needs-own-rig",
+    "clips blocked=refused",
     "copies spread over other skins",
     "copies.found",
     "copies.near",
@@ -411,6 +361,7 @@
     "copy kind=same-rig",
     "copy role=copy",
     "decision reason=fallback",
+    "decision reason=sub-follows",
     "fixup known-artifacts-value-color",
     "fixup known-artifacts-value-color as=removed",
     "fixup material-default-technique",
@@ -430,15 +381,69 @@
     "record #MOD-ARTIFACT-0019",
     "record #MOD-ARTIFACT-0020",
     "record #MOD-ARTIFACT-0024",
+    "renames retarget a unit",
+    "renames swap game names",
+    "renames to the target's names",
     "rig.submesh-copied",
     "rig.submesh-copied visibility=hidden-shown",
     "rig.submesh-copied visibility=visible",
     "target.chosen reason=fallback",
     "target.chosen reason=sub-follows",
     "unit left=copy",
-    "unit.left why=copy"
+    "unit.left why=copy",
+    "unit.retargeted"
    ],
    "only": []
+  },
+  {
+   "sha256": "552d4d5e68c1edc1fbf69e9ad1295963ba74a2d05ee602823646224c1a4f0086",
+   "bytes": 11313323,
+   "first": [
+    "audio.carried from_mod=false",
+    "audio.carried shape=own",
+    "candidate=the skin whose clips it plays",
+    "carried unit with events of its own",
+    "check why=slot-joints",
+    "clips unknown",
+    "decision by the clips played",
+    "decision reason=clips-origin",
+    "decision reason=conflict",
+    "decision unfit",
+    "decision with no target",
+    "file.moved how=dds-as-tex",
+    "file.moved rename=base-suffix",
+    "file.moved rename=variant-tag",
+    "fixup material-sampler-fields",
+    "fixup material-sampler-fields as=moved",
+    "fixup.changed by=material-sampler-fields",
+    "origin.ambiguous",
+    "package.field-kept",
+    "package.texture-contained kept=format",
+    "record #GAME-CHANGE-0001",
+    "record #GAME-CHANGE-0009",
+    "record #GAME-CHANGE-0011",
+    "record #GAME-CHANGE-0014",
+    "rework.restoration",
+    "rework=14.20",
+    "rig clip at a moved path",
+    "rig mesh at a moved path",
+    "rig skeleton at a moved path",
+    "target.chosen reason=clips-origin",
+    "target.conflict",
+    "target.forced-unfit",
+    "target.forced-unfit follows=true",
+    "targets conflict",
+    "unit left=conflict",
+    "unit.left why=conflict",
+    "wad restores a model from before a rework"
+   ],
+   "only": [
+    "decision reason=conflict",
+    "target.conflict",
+    "targets conflict",
+    "unit left=conflict",
+    "unit.left why=conflict"
+   ]
   },
   {
    "sha256": "bb677a3d9e9dc3e003c5df65140624aafbec6257f7bb05cd29bbe658ae44a00e",
@@ -573,19 +578,21 @@
    "only": []
   },
   {
-   "sha256": "46a6739cce82a7f5f14ce7f6cce611acbd29ab2ec711311aec27e6f724d0c545",
-   "bytes": 4436749,
+   "sha256": "3f6da961fcf13a99e5532afa4fd5f5178b273e4ddf6324ca25dfa5bb45f113b0",
+   "bytes": 33879397,
    "first": [
     "check aspect=rig",
+    "check why=copied-shown",
     "check why=no-entry",
-    "decision reason=unjudged",
-    "origin verdict=unknown",
-    "origin with no evidence that decides",
-    "origin.none",
+    "decision reason=superseded",
+    "decision taken by another unit",
+    "origin evidence=resolver",
+    "target.superseded",
     "target.unjudged",
-    "unit whose bin does not read",
+    "unit left=superseded",
     "unit whose entry name spells no slot",
-    "unit with no skin entry"
+    "unit with no skin entry",
+    "unit.left why=superseded"
    ],
    "only": []
   },
@@ -639,16 +646,30 @@
    ]
   },
   {
-   "sha256": "21708c2c69f7937022e65a503fba39146d5f3f88b823074881412b58a9e923b4",
-   "bytes": 16196816,
+   "sha256": "20f0a871b35216384c05554e687f15d733d976c688e2817d7f52198b730d3c61",
+   "bytes": 14849711,
    "first": [
     "check aspect=slot",
-    "check why=copied-shown",
     "check why=no-such-skin",
     "decision makes a new bin",
     "record #GAME-BEHAVIOR-0001",
+    "renames keep links to the source slot",
     "unit.new-bin",
     "unit.ported new_bin=true"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "15007bca8ea75410d4a22371dde4fb70cf5ee42b80f752f025345ce1d4109192",
+   "bytes": 45813016,
+   "first": [
+    "origin verdict=unknown",
+    "origin with no evidence that decides",
+    "origin.none",
+    "record #MOD-ARTIFACT-0010",
+    "rework=13.3",
+    "wad a locale's, holding the whole mod",
+    "wad.locale-packed"
    ],
    "only": []
   },
@@ -693,19 +714,6 @@
    "only": []
   },
   {
-   "sha256": "de8d0f3e03b5613a8d7a72aa7c09e1f9ba471da6ae66b2ae5e17f086c9e9420d",
-   "bytes": 35009223,
-   "first": [
-    "archive holds=gltf-binary",
-    "fixup retype U32>U8",
-    "inventory item=gltf-binary",
-    "rework=13.3",
-    "unit left=game-skin",
-    "unit.left why=game-skin"
-   ],
-   "only": []
-  },
-  {
    "sha256": "13137f23efc8de9e23b3b14b8eb8bc254605eb371266b29ee4cfa038704dba19",
    "bytes": 15156079,
    "first": [
@@ -714,6 +722,18 @@
     "file.older-game of bytes the game still ships",
     "provenance still shipped=true",
     "rig.submesh-copied visibility=hidden-never"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "de8d0f3e03b5613a8d7a72aa7c09e1f9ba471da6ae66b2ae5e17f086c9e9420d",
+   "bytes": 35009223,
+   "first": [
+    "archive holds=gltf-binary",
+    "fixup retype U32>U8",
+    "inventory item=gltf-binary",
+    "unit left=game-skin",
+    "unit.left why=game-skin"
    ],
    "only": []
   },
@@ -748,17 +768,6 @@
     "clips own, off the slot's joints",
     "decision reason=infeasible",
     "target.infeasible"
-   ],
-   "only": []
-  },
-  {
-   "sha256": "007ca063a3c26ca9ccf0ca42ca775c476d0038d980c8f9d5c16df1a71d2ba521",
-   "bytes": 6781949,
-   "first": [
-    "origin evidence=resolver",
-    "record #MOD-ARTIFACT-0010",
-    "wad a locale's, holding the whole mod",
-    "wad.locale-packed"
    ],
    "only": []
   },
@@ -915,6 +924,15 @@
     "archive.no-skin",
     "halt archive.no-skin"
    ]
+  },
+  {
+   "sha256": "46a6739cce82a7f5f14ce7f6cce611acbd29ab2ec711311aec27e6f724d0c545",
+   "bytes": 4436749,
+   "first": [
+    "decision reason=unjudged",
+    "unit whose bin does not read"
+   ],
+   "only": []
   },
   {
    "sha256": "75de127d9e63016d7ec719cef10e70488fe62d870d5fd82d791ab542e89e7c2a",

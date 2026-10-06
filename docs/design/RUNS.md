@@ -1111,9 +1111,10 @@ and 46 `jade_*` characters have skin bins at 301 to 305.
 
 ### The changes, one at a time
 
-Each change measured over the 63 mods of the reduced corpus against `baseline-port-2` and
-`baseline-repair-2`, and over the mods the change is about where the reduced corpus holds none.
-Every run ended as the baselines did unless the row says otherwise.
+Each change measured over the 63 mods of the reduced corpus and over the mods the change is
+about, against the build before it, the reduced corpus against `baseline-port-2` and
+`baseline-repair-2` as well. Every run ended as the baselines did unless the row says
+otherwise.
 
 **The text of a check's reason.** Six texts say what their check tests, and the block of clips
 that needs an own rig holds the clips borrowed. 27 ports differ, in the reasons' texts and that
@@ -1204,3 +1205,27 @@ corpus: no repair differs, and 221 ports do (2 of the reduced corpus), in names 
 take their name without the tag, and the bins and 3 patches that name them follow. In the 6 mods
 where the name met a shipped one, the tagged file, placed first, takes the bare name and the
 other takes `-2`. No diagnostic differs.
+
+### The baselines after the changes
+
+Made again over the 5,137 mods of the datasets once the changes were in, against the
+16.19.8207193 copy and the history index of 757 builds, at 24 in parallel with one thread each,
+and compared with the baselines they replace.
+
+| baseline | command | done | ended by a fatal diagnostic | failed | time | differs from the one replaced |
+|---|---|---:|---|---:|---|---:|
+| `baseline-port-3` | `port --no-write` | 5,102 | 35: one `archive.no-skin`, 15 `package.empty`, 19 `package.shader-missing` | 0 | 969 s | 3,600 mods |
+| `baseline-repair-3` | `repair --no-write --again` | 5,109 | 28: one `archive.no-skin`, 27 `package.shader-missing` | 0 | 1,273 s | 4 mods |
+
+- **The differences** are those of the changes above, section by section: the port's in
+  provenance, facts, decisions, plan, chunks, patches and diagnostics, the repair's in the 3 mods
+  of the new sub-characters and the one whose units load more bins. Every repair built again
+  from its own package changes nothing. No run raises one of the four notes of a passed bound,
+  and one raises `target.conflict`.
+- **The edge cases**, derived by `cases.py` from the reports of both: 670 cases seen and 100
+  declared and not seen. The four notes of a passed bound are among the cases not seen;
+  `target.conflict` is seen.
+- **The reduced corpus**: 64 mods show the 670 cases, 1.60 GB of archives. 15 of them are the
+  only mod to show a case. Run twice per command, the port in 15 s and 16 s and the repair in
+  16 s twice, as the baselines ended them. `compare.py` reports no difference between the two
+  runs, nor between a run and the baseline's reports of the 64 mods.
