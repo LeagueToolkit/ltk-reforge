@@ -1124,3 +1124,5 @@ package, names the bin written in place of the slot, and the ids of the diagnost
 move by one. The reduced corpus holds one of them, and no other port differs.
 
 **The archive's counts of entries and chunks at 262,144.** No run differs.
+
+**One entry or chunk inflated, up to 1 GiB.** No run differs.
