@@ -909,3 +909,18 @@ left out and the port targets another slot, so the block stays as the game's.
 A first run without the bound on a unit's kind left out the base skin's effects unit in 3 mods,
 whose block holds another skin's effects units in its place (`13137f23efc8…`, `278079f09fc4…`,
 `7e478f0479c9…`). With the bound none is left out.
+
+## The rules of the fixer batch (2026-10-06)
+
+Each rule measured over the 54 mods of the reduced corpus, `repair --no-write --again` and
+`port --no-write`, against the 16.19.8207193 copy and the history index of 757 builds, with the
+rule and without it (the build before). Every run ended as at the head: in the repair, 1 mod by
+`archive.no-skin`; in the port, 3 (`archive.no-skin` in one, `package.empty` in two).
+
+**A complex emitter's simple-particle fields removed** (#ADR-0068). 6 mods differ, in the repair
+and in the port, every difference on an emitter of a system's `complexEmitterDefinitionData`.
+Without the rule, 731 values of 4 mods moved into a `LegacySimple` of a complex emitter and the
+strip removed the old fields of 2 more. With it, `vfx-legacy-simple` removes 1,164 values from
+complex emitters in the 6 mods, and still moves 24 on simple emitters in 1. Two float animations
+`retype` left unconvertible in one mod were in those fields, and the type check counts fewer
+fields in 4. No emitter outside the two lists holds the old fields.

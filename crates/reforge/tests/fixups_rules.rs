@@ -2,9 +2,10 @@
 //! `FlexShapeDefinition`, `LegacySimple` and `textureMult`, as Riot's own conversions did.
 
 use ltk_meta::property::values;
-use ltk_meta::{BinObject, PropertyValueEnum as V};
+use ltk_meta::{BinObject, PropertyKind as Kind, PropertyValueEnum as V};
 use reforge::env::Env;
-use reforge::fixups::{After, Changed, FixupSet, Lost, rules};
+use reforge::fixups::layout::LegacySimple;
+use reforge::fixups::{After, Changed, FixupSet, Lost, Removed, rules};
 use reforge::game::Schema;
 use reforge::model::name_hash;
 use reforge::model::value::as_str;
@@ -147,11 +148,12 @@ fn archive(objects: Vec<BinObject>) -> ModArchive {
     skin_archive(objects).file(skins::WAD, DATED, dated_bytes())
 }
 
-/// The built-in table rules alone, so a fixup the standard set gains does not change what a
-/// test of them sees.
+/// The built-in table rules alone, with the fixup that runs the table of `LegacySimple`, so a
+/// fixup the standard set gains does not change what a test of them sees.
 fn the_rules() -> FixupSet {
     let rules = rules::all().into_iter();
-    rules.fold(FixupSet::empty(), FixupSet::with)
+    let set = rules.fold(FixupSet::empty(), FixupSet::with);
+    set.with(LegacySimple::new())
 }
 
 /// One emitter fixed by the rules, for a mod with no date.
@@ -352,6 +354,73 @@ fn an_emitters_simple_particle_fields_move_into_legacy_simple() {
     );
     assert_eq!(run.changes.len(), 2);
     assert_eq!(run.raised::<Changed>("vfx-legacy-simple").len(), 1);
+}
+
+/// A list of one emitter.
+fn one_emitter(fields: Vec<(&str, V)>) -> V {
+    let list = values::Container::new(Kind::Struct, vec![pointer(EMITTER, fields)]);
+    V::Container(list.expect("a list of pointers"))
+}
+
+#[test]
+fn a_complex_emitters_simple_particle_fields_are_removed_and_a_simple_ones_moved() {
+    let env = env(false);
+    let bind = V::Vector2(values::Vector2::default());
+    let old = |name: &str| {
+        vec![
+            ("emitterName", text(name)),
+            ("birthScale1", vector(4.0)),
+            ("particleBind", bind.clone()),
+            ("scaleUpFromOrigin", flag(true)),
+        ]
+    };
+    let system = object(
+        "S",
+        "VfxSystemDefinitionData",
+        vec![
+            ("complexEmitterDefinitionData", one_emitter(old("goo"))),
+            ("simpleEmitterDefinitionData", one_emitter(old("swirl"))),
+        ],
+    );
+    let run = FixRun::of(&env, &the_rules(), &archive(vec![system]));
+    // #ADR-0068: the client reads no `LegacySimple` on a complex emitter (#GAME-BEHAVIOR-0024),
+    // and Riot's hold none from 12.20 (#GAME-CHANGE-0004).
+    assert_eq!(
+        run.field("S", "complexEmitterDefinitionData"),
+        Some(&one_emitter(vec![("emitterName", text("goo"))]))
+    );
+    let simple = pointer(
+        "VfxEmitterLegacySimple",
+        vec![("birthScale", vector(4.0)), ("particleBind", bind.clone())],
+    );
+    assert_eq!(
+        run.field("S", "simpleEmitterDefinitionData"),
+        Some(&one_emitter(vec![
+            ("emitterName", text("swirl")),
+            ("scaleUpFromOrigin", flag(true)),
+            ("LegacySimple", simple),
+        ]))
+    );
+    let speller = run.speller();
+    let removed: Vec<String> = run
+        .changes
+        .of("vfx-legacy-simple")
+        .iter()
+        .filter(|change| matches!(change.after, After::Removed))
+        .map(|change| change.path.spelled(&speller))
+        .collect();
+    let complex = |field: &str| format!("complexEmitterDefinitionData[0].{field}");
+    assert_eq!(
+        removed,
+        [
+            complex("birthScale1"),
+            complex("particleBind"),
+            complex("scaleUpFromOrigin")
+        ]
+    );
+    assert_eq!(run.changes.of("vfx-legacy-simple").len(), 5);
+    assert_eq!(run.raised::<Removed>("vfx-legacy-simple").len(), 1);
+    assert!(run.raised::<Lost>("vfx-legacy-simple").is_empty());
 }
 
 #[test]
@@ -584,7 +653,6 @@ fn the_built_in_rules_name_their_records_and_builds() {
             row("vfx-filtering", "12.17", "#GAME-CHANGE-0002"),
             row("vfx-linger", "12.18", "#GAME-CHANGE-0003"),
             row("vfx-flex-shape", "12.6", "#GAME-CHANGE-0016"),
-            row("vfx-legacy-simple", "12.19", "#GAME-CHANGE-0004"),
             row("vfx-texture-mult", "13.1", "#GAME-CHANGE-0005"),
         ]
     );

@@ -67,7 +67,8 @@ pub fn flex_shape() -> Rule {
         .record(Record::game_change(16))
 }
 
-/// An emitter's simple-particle fields, in `LegacySimple` (#GAME-CHANGE-0004).
+/// An emitter's simple-particle fields, in `LegacySimple` (#GAME-CHANGE-0004). The fixup
+/// `layout::LegacySimple` runs it on an emitter no system lists as complex.
 pub fn legacy_simple() -> Rule {
     Rule::move_fields(EMITTER)
         .into_field("LegacySimple", "VfxEmitterLegacySimple")
@@ -122,13 +123,7 @@ pub fn texture_mult() -> Rule {
         .record(Record::game_change(5))
 }
 
-/// Every built-in table rule.
+/// Every built-in table rule that is a fixup of its own.
 pub fn all() -> Vec<Rule> {
-    vec![
-        filtering(),
-        linger(),
-        flex_shape(),
-        legacy_simple(),
-        texture_mult(),
-    ]
+    vec![filtering(), linger(), flex_shape(), texture_mult()]
 }

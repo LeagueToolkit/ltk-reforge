@@ -6,6 +6,7 @@ mod birth_translation;
 mod default_technique;
 mod emission_surface;
 mod health_bar;
+mod legacy_simple;
 mod mesh_align;
 mod sampler_fields;
 mod spawn_shape;
@@ -16,6 +17,7 @@ pub use self::birth_translation::BirthTranslation;
 pub use self::default_technique::DefaultTechnique;
 pub use self::emission_surface::EmissionSurface;
 pub use self::health_bar::HealthBarStyle;
+pub use self::legacy_simple::LegacySimple;
 pub use self::mesh_align::MeshAlign;
 pub use self::sampler_fields::SamplerFields;
 pub use self::spawn_shape::SpawnShape;
@@ -43,6 +45,7 @@ impl Stated {
 /// Every built-in fixup of this file, in no order: the set orders them by phase and build.
 pub fn all() -> Vec<Arc<dyn BinFixup>> {
     vec![
+        Arc::new(LegacySimple::new()),
         Arc::new(HealthBarStyle),
         Arc::new(DefaultTechnique),
         Arc::new(MeshAlign),

@@ -297,10 +297,11 @@ pub struct FixupInfo {
   A rule acts only on a field the target does not read where it is, so no rule a caller writes
   can change a value twice.
 
-- **The rest is Rust.** A fixup that combines values, chooses a class from the schema, recurses
-  or conforms a whole object to the schema implements the trait in code: mesh alignment, the
-  spawn shape, the emission surface, the sampler's fields, the default technique, the
-  texture-mult strays, the hoist and the wrap, retype, strip. Retype's conversions are a
+- **The rest is Rust.** A fixup that combines values, chooses a class from the schema, recurses,
+  reads where a struct is held or conforms a whole object to the schema implements the trait in
+  code: mesh alignment, the spawn shape, the emission surface, the sampler's fields, the default
+  technique, the texture-mult strays, the simple-particle fields (a table rule's move, and a
+  removal from a complex emitter), the hoist and the wrap, retype, strip. Retype's conversions are a
   catalogue of named items, one function each. A `Rule` grows a new shape only when a second
   fixup needs it. Both kinds are listed, ordered and
   turned on and off the same way.
