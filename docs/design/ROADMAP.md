@@ -81,7 +81,8 @@ In this order. Each item is one or more changes measured against the baseline.
    game at any build the history holds (#ADR-0042, #ADR-0043). The index holds what the typed
    questions need but vertex positions.
 4. **The author's change taken against the game at the mod's own build**, applied onto the
-   target build (#ADR-0043). `Base` is where the comparison says which build.
+   target build (#ADR-0043). `Base` is where the comparison says which build. A sub-character's
+   game value of the mod's build, the health bar style among them, is handled here (#ADR-0067).
 5. **What ltk-forge held for later**: sounds over the game's (#GAME-BEHAVIOR-0016); a name
    made to hash to a field no table names (#ADR-0031); event names without a list; the
    history's references and entry texts; mip chains; material overrides that name no submesh.
@@ -99,17 +100,9 @@ In this order. Each item is one or more changes measured against the baseline.
 
 Each is the user's. *fixer* marks the ones a repair depends on.
 
-- *fixer* A value no build since the mod's own read is removed, not revived. A policy of
-  ltk-forge's docs with no decision behind it.
-- *fixer* Whether an old complex emitter's simple-particle fields are moved into `LegacySimple`
-  or removed. A simple emitter is drawn only with them moved, and a complex one is drawn the same
-  either way (#GAME-BEHAVIOR-0024); Riot's complex emitters hold none from 12.20
-  (#GAME-CHANGE-0004).
 - *fixer* An object of a class the build dropped is left as it is
   (`ItemRecommendationContextList`, gone at 16.6, in 227 mods' root bins). Whether it is
   removed.
-- *fixer* A text bin at a bin's path is left as it is (#MOD-ARTIFACT-0015). Whether to parse it
-  and write the bin.
 - *fixer* A list whose items have no conversion is left as it is, where any other value with
   no conversion that the mod's own build did not read is removed. Which of the two a list
   gets.
@@ -167,9 +160,6 @@ record and no measurement of reforge's own says it is right.
 
 - *fixer* A list of floats where the build reads a list of vectors, and the reverse, has no
   conversion (46 mods).
-- *fixer* The health bar style of a unit other than a champion's skin entry keeps the number of
-  the mod's build (#GAME-CHANGE-0023): a sub-character's value does not say its numbering, and
-  the mod's date is a lower bound.
 - *fixer* A material keeps a link to a shader Riot removed, and the client crashes at load
   (#GAME-CHANGE-0024, #GAME-BEHAVIOR-0023). Riot's relinks are read, and Riot rewrote the
   material with its link, so the link alone is no conversion.
