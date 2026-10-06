@@ -1191,3 +1191,9 @@ alone with the build before and this one, take 48.8 s and 49.0 s.
 one slot, and the reduced corpus: one mod differs, `552d4d5e68c1`, of the reduced corpus. Its 18
 units of `teemomushroom` leave with `target.conflict` in place of 17 `target.superseded`, the unit
 of skin14 among them, whose patch goes; Teemo's unit ports to skin25 as before.
+
+**The outcomes no run reached.** `target.conflict` is raised by one mod since the tie leaves its
+units. The two reasons the build has for not writing a unit's audio follow from inputs the
+datasets do not hold: a sub-character's own audio at a skin whose game entry has no bank unit,
+and a layer of a unit whose bin is written whole. `Left::NoTarget` follows from no input, as
+measured above, and stays as the reason of a unit with no decision. No code changes.

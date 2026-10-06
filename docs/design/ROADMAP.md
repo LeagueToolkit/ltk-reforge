@@ -127,10 +127,6 @@ record and no measurement of reforge's own says it is right.
 - A repath tool's `.tft_set<N>` tag stays in a ported file's name (#MOD-ARTIFACT-0026): the
   rule takes `.tftset<N>`, which no mod was seen to carry. Dropping the tag changes the paths
   a port ships.
-- Four outcomes no run reaches, each tested with an input made by hand: `target.conflict`, a
-  unit with no decision, and the two reasons the build has for not writing a unit's audio
-  (the game's entry has no bank unit to model one on; a skin bin written whole takes no
-  layer).
 
 ### Known limits
 
