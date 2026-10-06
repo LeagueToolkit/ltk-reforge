@@ -13,7 +13,9 @@ use crate::model::{AudioBlock, BinHash, ContentId, SkinEntry, Slot, WadHash, val
 
 /// How many bins of one skin are read for the catalog, the skin bin included: the skin bin and
 /// what it links, breadth first.
-pub const MAX_CHAIN: usize = 16;
+// #ADR-0070, measured 2026-10-06: the longest chain of a skin at 16.19 is 41 bins, Evelynn's
+// skin0.
+pub const MAX_CHAIN: usize = 64;
 
 /// The number a skin entry's classification holds for a chroma.
 const CHROMA: u32 = 2;
@@ -128,9 +130,22 @@ pub struct SkinCatalog {
     entry_slots: HashMap<BinHash, BTreeSet<Slot>>,
     /// The slots at which the game has a skin bin.
     bins: BTreeSet<Slot>,
+    /// The skins whose bins link more than the [`MAX_CHAIN`] read.
+    capped: BTreeSet<Slot>,
 }
 
 impl SkinCatalog {
+    /// The skins whose bins link more than the [`MAX_CHAIN`] read: the rest are not in the
+    /// catalog.
+    pub fn capped(&self) -> &BTreeSet<Slot> {
+        &self.capped
+    }
+
+    /// Notes a skin whose bins link more than the [`MAX_CHAIN`] read.
+    pub fn note_capped(&mut self, slot: Slot) {
+        self.capped.insert(slot);
+    }
+
     /// The skin at a slot.
     pub fn skin(&self, slot: Slot) -> Option<&CatalogSkin> {
         self.skins.get(&slot)

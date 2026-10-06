@@ -43,12 +43,14 @@ pub use self::evidence::{
 pub use self::findings::{
     Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
     FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBin, NewBinFailed,
-    NotWritten, OtherSkin, OtherSkinName, Place, Ported, RecordSkipped, ResolverFrozen,
-    RoundTripFailed, RoundTripProblem, ShaderLink, ShaderMissing, Shape, SkinValue,
+    NotWritten, OtherSkin, OtherSkinName, OverlayCapped, Place, Ported, RecordSkipped,
+    ResolverFrozen, RoundTripFailed, RoundTripProblem, ShaderLink, ShaderMissing, Shape, SkinValue,
     TextureContained, ThumbnailDropped, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
 };
 pub use self::inplace::{BuildError, InPlaceBuilder};
-pub use self::overlay::{AppliedBin, AppliedPatch, Held, Loaded, Outcome, Overlay};
+pub use self::overlay::{
+    AppliedBin, AppliedPatch, Held, Loaded, MAX_OVERLAY_BINS, Outcome, Overlay,
+};
 pub use self::port::PortBuilder;
 pub use self::ptch::{PtchBuilder, Unnamed};
 pub use self::texture::{TexContainer, TexRefusal, dds_to_tex};
@@ -82,6 +84,7 @@ pub const CODES: &[Code] = &[
     ApplyFailed::CODE,
     RecordSkipped::CODE,
     LinkUnresolved::CODE,
+    OverlayCapped::CODE,
     NameUnresolved::CODE,
     FileMissing::CODE,
     OtherSkin::CODE,

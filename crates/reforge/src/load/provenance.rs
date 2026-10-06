@@ -25,8 +25,8 @@ use crate::model::{ContentId, FileKey, SideTable, Slot, Spell, WadHash, WadName}
 pub const CODES: &[Code] = &[OlderGameFiles::CODE, SameSizeCapped::CODE];
 
 /// How many game chunks of a file's size are read to look for its bytes under another path.
-// Measured 2026-10-06: a file of the datasets meets at most 1,167 chunks of its size in its
-// champion's WAD at 16.19.
+// #ADR-0070, measured 2026-10-06: a file of the datasets meets at most 1,167 chunks of its size
+// in its champion's WAD at 16.19.
 pub const MAX_SAME_SIZE_READS: usize = 2048;
 
 /// What the install holds at a file's own path.

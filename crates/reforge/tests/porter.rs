@@ -9,14 +9,15 @@ use camino::{Utf8Path, Utf8PathBuf};
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Stage};
 use reforge::env::Env;
 use reforge::facts::FactsError;
-use reforge::fixups::{FixError, FixupSet, MAX_CHAIN};
+use reforge::fixups::{FixError, FixupSet};
+use reforge::game::MAX_CHAIN;
 use reforge::history::NoHistory;
 use reforge::load::{Dating, Fault, LoadError, NoSkin, ReworkTable};
 use reforge::model::{ContentId, path_hash};
 use reforge::package::{
     Blocked, EVIDENCE_FORMAT, EvidenceBound, EvidenceDoc, EvidencePiece, EvidencePolicy,
-    EvidenceUnit, Made, Modpkg, PackageWriter, PieceKind, ProjectDir, README_FILE, REPORT_FILE,
-    WriteError, WriterKind, Written, dds_to_tex,
+    EvidenceUnit, MAX_OVERLAY_BINS, Made, Modpkg, OverlayCapped, PackageWriter, PieceKind,
+    ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
 use reforge::port::{AnimReuse, PlanError, Policy, SHADERS_BIN, TargetPolicy};
 use reforge::{Evidence, Porter, Repairer, Run, RunError};
@@ -616,6 +617,28 @@ fn a_game_bin_that_does_not_read_while_the_patches_are_applied_is_a_fault_of_che
     assert!(run.package().is_some() && run.overlay().is_none());
     let checks = run.log().iter().filter(|d| d.stage == Stage::Check);
     assert_eq!(checks.count(), 0);
+}
+
+#[test]
+fn a_patched_bin_whose_load_passes_the_overlays_cap_is_reported() {
+    let link = |n: usize| format!("data/characters/test/linked{n}.bin");
+    let mut game = skins::game();
+    let base = vec![entry(SKIN0, &skins::base_skin())];
+    game.insert(&skin_bin("test", 0), linked_bin(base, &[&link(1)]));
+    let last = MAX_OVERLAY_BINS + 2;
+    for n in 1..=last {
+        let next = link(n + 1);
+        let links: &[&str] = if n < last { &[&next] } else { &[] };
+        game.insert(&link(n), linked_bin(vec![], links));
+    }
+    let env = env(game, NoHistory);
+    let porter = Porter::new(&env);
+    let mut run = run_through(&porter, Stage::Build);
+    run.check().expect("the checks run");
+    let capped: Vec<&OverlayCapped> = run.log().of().collect();
+    assert_eq!(capped.len(), 1);
+    assert_eq!(capped[0].target.as_str(), skin_bin("test", 0));
+    assert_eq!(capped[0].cap, MAX_OVERLAY_BINS);
 }
 
 #[test]

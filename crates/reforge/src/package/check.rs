@@ -17,10 +17,11 @@ use serde::{Deserialize, Serialize};
 
 use super::findings::{
     Against, ApplyFailed, Coverage, Done, FieldUndeclared, FileMissing, LinkUnresolved,
-    ManifestUnreadable, NameUnresolved, OtherSkin, OtherSkinName, Place, RecordSkipped,
-    RoundTripFailed, RoundTripProblem, Shape, SkinValue, TypeMismatch, TypeRow, UndeclaredRow,
+    ManifestUnreadable, NameUnresolved, OtherSkin, OtherSkinName, OverlayCapped, Place,
+    RecordSkipped, RoundTripFailed, RoundTripProblem, Shape, SkinValue, TypeMismatch, TypeRow,
+    UndeclaredRow,
 };
-use super::overlay::{Loaded, Outcome, Overlay};
+use super::overlay::{Loaded, MAX_OVERLAY_BINS, Outcome, Overlay};
 use super::{Layer, Origin, Package, PatchOf, WrittenBin};
 use crate::diag::{Record, Sink};
 use crate::fixups::{TargetTypes, TypeSource};
@@ -506,6 +507,12 @@ impl Check for Apply {
                 sink.raise(LinkUnresolved {
                     target: patch.target.clone(),
                     links: loaded.missing_links.clone(),
+                });
+            }
+            if loaded.capped {
+                sink.raise(OverlayCapped {
+                    target: patch.target.clone(),
+                    cap: MAX_OVERLAY_BINS,
                 });
             }
             let Some(group) = port.unit(unit).map(|u| (u.champion, u.target)) else {

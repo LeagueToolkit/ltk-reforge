@@ -8,12 +8,9 @@ use std::collections::{BTreeSet, HashMap};
 use ltk_meta::{BinObject, PropertyKind as Kind};
 
 use crate::env::Env;
-use crate::game::{Build, FieldType, GameError, Schema};
+use crate::game::{Build, FieldType, GameError, MAX_CHAIN, Schema};
 use crate::model::hash::skin_paths;
 use crate::model::{BinHash, MAX_SLOT, Mod, Slot, Version, WadHash, path_hash, walk};
-
-/// How many bins of one game skin are read for their shapes, the skin bin included.
-pub const MAX_CHAIN: usize = 16;
 
 /// Where the type of a field comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]

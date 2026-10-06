@@ -64,8 +64,8 @@ use crate::model::known::{class, field};
 use crate::model::{ChunkPath, Mod, Spell, WadHash, WadName, bin, value};
 
 /// How many bins one root's load follows, the root included.
-// Measured 2026-10-06: the most bins one root of the datasets reaches is 89, and the next
-// mod's most is 24.
+// #ADR-0070, measured 2026-10-06: the most bins one root of the datasets reaches is 89, and the
+// next mod's most is 24.
 pub const MAX_LOAD_BINS: usize = 128;
 
 /// An input of the run that did not answer while a mod was judged against it: a fault of the

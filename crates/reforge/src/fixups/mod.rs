@@ -36,7 +36,7 @@ pub use self::scope::ObjectSet;
 pub use self::set::{
     FixError, FixInputs, FixedMod, FixupSelection, FixupSet, SelectionError, Unfixed,
 };
-pub use self::types::{MAX_CHAIN, TargetTypes, TypeSource};
+pub use self::types::{TargetTypes, TypeSource};
 use crate::diag::{Code, Diag};
 use crate::model::{BinHash, FixupInfo, StructMut, name_hash};
 

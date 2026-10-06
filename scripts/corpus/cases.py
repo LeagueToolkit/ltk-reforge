@@ -48,7 +48,7 @@ CODE_AREAS = {
     "archive": "archive", "inventory": "archive", "wad": "archive",
     "character": "load", "file": "load", "bin": "load", "rework": "load",
     "fixup": "fixups",
-    "copies": "facts", "origin": "facts", "rig": "facts",
+    "catalog": "facts", "copies": "facts", "origin": "facts", "rig": "facts",
     "target": "decision",
     "unit": "plan", "object": "plan", "ref": "plan", "hud": "plan",
     "audio": "audio",

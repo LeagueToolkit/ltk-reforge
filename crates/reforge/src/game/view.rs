@@ -145,6 +145,14 @@ impl GameView {
                 }
                 at += 1;
             }
+            if chain.len() >= MAX_CHAIN {
+                let held = |path: WadHash| chain.iter().any(|(at, _)| *at == path);
+                let links = chain.iter().flat_map(|(_, bin)| &bin.parsed.dependencies);
+                let mut unread = links.map(|link| path_hash(link));
+                if unread.any(|path| !held(path) && self.game.contains(path)) {
+                    catalog.note_capped(slot);
+                }
+            }
             let entry = name_hash(&skin_paths::skin_entry(character, slot));
             catalog.add(slot, entry, chain);
         }

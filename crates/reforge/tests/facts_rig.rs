@@ -4,7 +4,8 @@
 
 use reforge::facts::rig::GraphFrom;
 use reforge::facts::{
-    Aspect, FactsError, Outcome, RigPart, RigUnreadable, Source, SubmeshesCopied, Visibility, Why,
+    Aspect, CatalogCapped, FactsError, Outcome, RigPart, RigUnreadable, Source, SubmeshesCopied,
+    Visibility, Why,
 };
 use reforge::game::{Build, Game, GameError, GameView, MAX_CHAIN, SkinClass};
 use reforge::history::NoHistory;
@@ -562,6 +563,50 @@ fn a_skins_bins_are_read_breadth_first_up_to_the_cap() {
             .object(name_hash(&format!("Shared/Part{}", MAX_CHAIN)))
             .is_none()
     );
+    assert_eq!(
+        catalog.capped().iter().copied().collect::<Vec<_>>(),
+        [Slot(0)]
+    );
+
+    // The facts of a mod of the character say so.
+    let mut game = skins::game();
+    game.insert(
+        &skins::skin_bin("test", 0),
+        linked_bin(vec![entry(SKIN0, &skins::base_skin())], &links),
+    );
+    for path in &linked {
+        game.insert(path, bin(vec![]));
+    }
+    let env = env(game, NoHistory);
+    let files = vec![mod_skin("test", 0, SKIN0, &skins::base_skin(), vec![])];
+    let run = FactRun::of(&env, &archive(&files));
+    let capped: Vec<CatalogCapped> = run.found();
+    assert_eq!(capped.len(), 1, "{}", run.dump());
+    assert_eq!(
+        (&capped[0].slots[..], capped[0].cap),
+        (&[Slot(0)][..], MAX_CHAIN)
+    );
+}
+
+#[test]
+fn a_skin_whose_bins_fit_the_cap_is_not_noted() {
+    let mut game = skins::game();
+    let linked: Vec<String> = (0..MAX_CHAIN - 1)
+        .map(|i| format!("data/characters/test/shared/part{i}.bin"))
+        .collect();
+    let links: Vec<&str> = linked.iter().map(String::as_str).collect();
+    let skin = linked_bin(vec![entry(SKIN0, &skins::base_skin())], &links);
+    game.insert(&skins::skin_bin("test", 0), skin);
+    for path in &linked {
+        game.insert(path, bin(vec![]));
+    }
+    let view = GameView::new(Box::new(game));
+    let catalog = view.catalog("test").expect("the game reads");
+    assert_eq!(
+        catalog.skin(Slot(0)).map(|skin| skin.chain.len()),
+        Some(MAX_CHAIN)
+    );
+    assert!(catalog.capped().is_empty());
 }
 
 #[test]

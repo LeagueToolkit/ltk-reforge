@@ -468,6 +468,32 @@ impl Diag for LinkUnresolved {
     }
 }
 
+/// A patched bin whose load, as the overlay follows it, reached the cap on bins: names in the
+/// bins past it are not found by the check.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OverlayCapped {
+    /// The bin patched.
+    pub target: ChunkPath,
+    /// The cap on the bins the load of one patched bin follows.
+    pub cap: usize,
+}
+
+impl Diag for OverlayCapped {
+    const CODE: Code = code("check.load-capped", Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Chunk(self.target.clone())
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let _ = write!(
+            f,
+            "its load stops at {} bins; names in the bins past it are not checked",
+            self.cap
+        );
+    }
+}
+
 /// Names the patched entry of a unit reaches that resolve to nothing, and did resolve in the
 /// mod.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

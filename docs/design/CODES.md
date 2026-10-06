@@ -101,12 +101,13 @@ What the fixups did. Channel `output`. The fixup is in `by`.
 | `fixup.lost` | warning | values removed that the mod's own build read and the target cannot hold | `strip-undeclared.lost`, `material-default-technique.other` |
 | `fixup.unconvertible` | warning | values with no conversion, left as they are; the client skips them | `retype.unconvertible` |
 
-## copies, origin, rig, target
+## catalog, copies, origin, rig, target
 
-The facts and the decision. `copies` is channel `input`, the rest `decision`.
+The facts and the decision. `catalog` and `copies` are channel `input`, the rest `decision`.
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
+| `catalog.capped` | note | the game's skins of a character whose bins link more than the cap read of one skin; the rest are not read | none |
 | `copies.found` | note | the copies of a representative unit, with their slots | `copies.dropped` |
 | `copies.near` | note | a near copy: another build of the same work | `copies.near` |
 | `copies.distinct-units` | note | several distinct skin bins in one character | `copies.distinct-units` |
@@ -179,6 +180,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `check.apply-failed` | error | a patch does not apply to the game's bin | `verify.apply` |
 | `check.record-skipped` | error | records the overlay would skip | `verify.record-skipped` |
 | `check.link-unresolved` | error | links the package adds that resolve to nothing | `verify.link` |
+| `check.load-capped` | note | a patched bin whose load reached the overlay's cap on bins; names past it are not checked | none |
 | `check.name-unresolved` | error | names the patched entry reaches that resolve to nothing, and did resolve in the mod | `verify.unresolved` |
 | `check.file-missing` | error | files the package names that are neither shipped nor the game's | `verify.file` |
 | `check.other-skin` | warning | values of a champion's patched base skin that name another skin of the champion (#ADR-0062) | |

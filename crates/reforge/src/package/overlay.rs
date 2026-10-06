@@ -17,7 +17,9 @@ use crate::model::{BinHash, ChunkPath, WadHash, WadName, bin, path_hash};
 use crate::port::SHADERS_BIN;
 
 /// How many bins the load of one patched bin follows.
-const MAX_LOAD: usize = 64;
+// #ADR-0070: twice the bins read of one game skin, so a skin's chain and the package's own bins
+// fit. Measured 2026-10-06: a patched bin and the shader bin link at most 44 bins at 16.19.
+pub const MAX_OVERLAY_BINS: usize = 128;
 
 /// An object a patched bin loads.
 #[derive(Debug, Clone)]
@@ -48,6 +50,8 @@ pub struct Loaded {
     pub shipped: BTreeSet<BinHash>,
     /// The links the patch adds that lead to no bin.
     pub missing_links: Vec<String>,
+    /// Whether the load reached [`MAX_OVERLAY_BINS`] with bins left to follow.
+    pub capped: bool,
 }
 
 /// A bin after a patch.
@@ -248,9 +252,14 @@ impl Overlay {
         let mut visited: BTreeSet<WadHash> = BTreeSet::new();
         while let Some(link) = queue.pop_front() {
             let hash = path_hash(&link);
-            if !visited.insert(hash) || visited.len() > MAX_LOAD {
+            if visited.contains(&hash) {
                 continue;
             }
+            if visited.len() >= MAX_OVERLAY_BINS {
+                loaded.capped = true;
+                continue;
+            }
+            visited.insert(hash);
             if let Some(chunk) = package.by_hash(hash) {
                 let Some((objects, links)) = objects_of(&chunk.bytes) else {
                     continue;

@@ -13,6 +13,7 @@ use crate::model::{Slot, Spelled};
 
 /// Every diagnostic code the facts raise.
 pub const CODES: &[Code] = &[
+    CatalogCapped::CODE,
     CopiesFound::CODE,
     NearCopy::CODE,
     DistinctUnits::CODE,
@@ -23,6 +24,36 @@ pub const CODES: &[Code] = &[
     RigUnreadable::CODE,
     BankUnreadable::CODE,
 ];
+
+/// The game's skins of a character whose bins link more than the cap read of one skin: the
+/// bins past it are not known to the facts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CatalogCapped {
+    /// The character.
+    pub character: CharId,
+    /// The skins.
+    pub slots: Vec<Slot>,
+    /// The cap on the bins read of one skin.
+    pub cap: usize,
+}
+
+impl Diag for CatalogCapped {
+    const CODE: Code = Code::new("catalog.capped", Channel::Input, Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Character(self.character)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let slots: Vec<String> = self.slots.iter().map(Slot::to_string).collect();
+        let _ = write!(
+            f,
+            "the game's skin {} link more bins than the {} read of one skin; the rest are not read",
+            slots.join("/"),
+            self.cap
+        );
+    }
+}
 
 /// The copies of a representative unit, at other slots.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
