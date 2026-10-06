@@ -85,6 +85,7 @@ A bin of the mod, and what a champion's rework says of the mod. Channel `input`.
 | `bin.unreadable` | warning | a loaded bin that does not parse | `load.bin-unparsable` |
 | `bin.entry-duplicate` | warning | a bin lists one entry hash more than once; the first is kept | `load.duplicate-entry` |
 | `bin.link-missing` | note | linked paths neither the mod nor the game holds; the client skips them | `load.missing-link` |
+| `bin.load-capped` | note | a root's load reached the cap on bins; the mod's bins linked past it are not loaded from it | none |
 | `bin.taken-from-game` | note | a mod with no skin bin: the game's bins naming the files it overrides are taken as its own | `synthesize.game-bins` |
 | `rework.restoration` | note | a restoration of a champion's model from before its rework; its copies of older game bytes are its own | `synthesize.restoration` |
 

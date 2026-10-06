@@ -6,8 +6,8 @@
 use ltk_meta::BinObject;
 use reforge::env::Env;
 use reforge::load::{
-    BinUnreadable, EntryDuplicates, FormerPathFiles, LinksMissing, LoadOptions, MAX_LOAD_BINS,
-    UnusedFiles,
+    BinUnreadable, EntryDuplicates, FormerPathFiles, LinksMissing, LoadCapped, LoadOptions,
+    MAX_LOAD_BINS, UnusedFiles,
 };
 use reforge::model::bin::BinError;
 use reforge::model::entity::{FileUse, LinkTo};
@@ -334,7 +334,7 @@ fn a_bin_at_a_path_the_game_ships_is_loaded_with_no_unit() {
 }
 
 #[test]
-fn a_load_follows_no_more_bins_than_the_cap() {
+fn a_load_follows_no_more_bins_than_the_cap_and_says_so() {
     let chain = MAX_LOAD_BINS + 6;
     let name = |i: usize| format!("data/mod/link{i}.bin");
     let first = linked_bin(vec![], &[name(0).as_str()]);
@@ -348,4 +348,7 @@ fn a_load_follows_no_more_bins_than_the_cap() {
     let unit = &run.module().units[run.unit("test", 0)];
     assert_eq!(unit.loads.len(), MAX_LOAD_BINS);
     assert_eq!(run.file(&name(chain - 1)).1.used, FileUse::Unused);
+    // The last bin loaded links one more of the mod's.
+    let capped = run.only::<LoadCapped>();
+    assert_eq!((capped.cap, capped.left), (MAX_LOAD_BINS, 1));
 }

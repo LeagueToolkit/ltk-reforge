@@ -1126,3 +1126,9 @@ move by one. The reduced corpus holds one of them, and no other port differs.
 **The archive's counts of entries and chunks at 262,144.** No run differs.
 
 **One entry or chunk inflated, up to 1 GiB.** No run differs.
+
+**Bins followed from one root, up to 128, and `bin.load-capped` past it.** The reduced corpus does
+not differ. `2c2bd16ccd4a`, whose 100 units loaded 64 bins each: they load all of theirs, up to 89.
+Its shipped kled unit carries 85 objects where it carried 60: 25 names that resolved to the
+game's objects find the mod's past the old cap, and 11 files left behind as orphaned ship. No
+run raises the note.

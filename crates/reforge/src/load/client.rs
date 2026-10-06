@@ -12,8 +12,8 @@
 use std::collections::BTreeSet;
 
 use super::findings::{
-    BinUnreadable, EntryDuplicates, FormerPathFiles, LinksMissing, MissingLink, StaleFiles,
-    UnusedFiles,
+    BinUnreadable, EntryDuplicates, FormerPathFiles, LinksMissing, LoadCapped, MissingLink,
+    StaleFiles, UnusedFiles,
 };
 use super::stale::Staleness;
 use super::{Fault, MAX_LOAD_BINS, Run};
@@ -124,6 +124,24 @@ impl<'a> ClientLoad<'a> {
                 }
             }
             next += 1;
+        }
+        if order.len() >= MAX_LOAD_BINS {
+            let m = &self.run.module;
+            let linked = order.iter().flat_map(|&bin| &m.bins[bin].links);
+            let left: BTreeSet<FileId> = linked
+                .filter_map(|link| match link.to {
+                    LinkTo::Mod(file) => Some(file),
+                    LinkTo::Game | LinkTo::Missing => None,
+                })
+                .filter(|&file| m.bin_of(file).is_none_or(|bin| !order.contains(&bin)))
+                .collect();
+            if !left.is_empty() {
+                sink.raise(LoadCapped {
+                    bin: order[0],
+                    cap: MAX_LOAD_BINS,
+                    left: left.len(),
+                });
+            }
         }
         order.retain(|&bin| self.run.module.bins[bin].error.is_none());
         order

@@ -471,6 +471,32 @@ impl Diag for LinksMissing {
     }
 }
 
+/// A root whose load reached the cap on bins: the mod's bins linked past it are not loaded
+/// from it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LoadCapped {
+    /// The root.
+    pub bin: BinId,
+    /// The cap on bins one root's load follows.
+    pub cap: usize,
+    /// The mod's bins its loaded bins link that it does not load.
+    pub left: usize,
+}
+
+impl Diag for LoadCapped {
+    const CODE: Code = code("bin.load-capped", Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Bin(self.bin)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let _ = write!(f, "its load stops at {} bins; ", self.cap);
+        f.count(self.left, "linked bin")
+            .text(" of the mod not loaded from it");
+    }
+}
+
 /// A skin of the game whose bins were taken as a mod's own.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TakenSkin {
@@ -611,6 +637,7 @@ pub const CODES: &[Code] = &[
     BinUnreadable::CODE,
     EntryDuplicates::CODE,
     LinksMissing::CODE,
+    LoadCapped::CODE,
     TakenFromGame::CODE,
     Restoration::CODE,
 ];
