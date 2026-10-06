@@ -374,7 +374,7 @@ impl Planning<'_> {
         let locale = file.locale.as_deref();
         if let Some(locale) = locale {
             // The champion WAD's copy, when it has own clips, is carried from there for
-            // every locale.
+            // every locale, and a copy with other own clips is not (#ADR-0074).
             let mut copies = unit.files.iter();
             let champion = copies
                 .find(|copy| copy.locale.is_none() && copy.path == file.path && copy.own() > 0);

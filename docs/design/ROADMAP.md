@@ -133,8 +133,6 @@ record and no measurement of reforge's own says it is right.
   At another slot, a forced target, the check "the slot's joints" cannot hold.
 - The names a retarget moves from a unit's slot to its target are replaced in every object of
   the mod, not only in the objects that unit's group loads.
-- A locale WAD's copy of a bank whose own clips are not those of the champion WAD's copy is
-  not carried (`audio.not-carried`).
 - Of a unit's own events banks of the client's version, only the first is read. 64 units in
   18 mods have a second that plays their clips ([RUNS.md](RUNS.md), "Sound units of a mod's
   own").

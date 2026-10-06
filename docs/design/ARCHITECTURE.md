@@ -525,7 +525,8 @@ object takes a name of its own, which every link to it follows.
   Voice goes to the layer `voice`, and a voice bank of a locale WAD to `voice-<xx-xx>` in that
   WAD (#ADR-0028). A locale WAD's bank of a unit that is not voice goes where the champion WAD's
   would (#ADR-0073). A locale copy with the champion WAD's own clips is carried once, from the
-  champion's WAD. A clip the game shipped is never carried.
+  champion's WAD, and one with other own clips is not (#ADR-0074). A clip the game shipped is
+  never carried.
 - **Literal sound names.** Once `Reach` is found at the target, the event names the carried
   objects and the graph of a unit spell out are rewritten token by token: a tag the target's
   block does not hold becomes the mod's tag where the base layer's units kept that event

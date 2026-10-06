@@ -1169,3 +1169,6 @@ before resolve to the game's objects since the cap on a game skin's bins.
 corpus does not differ. In `b7dcacfd0617` the unit of `Yone_Base_SFX` moves from the layer
 `voice-en-us` and the en_US WAD to the base layer and the champion WAD: the base patch gains its
 audio record, and the layer's patch sets the block with the unit among the base's.
+
+**A locale copy with other own clips, not carried** (#ADR-0074). Kept as it was: no code changes
+but a comment, and no run is made.
