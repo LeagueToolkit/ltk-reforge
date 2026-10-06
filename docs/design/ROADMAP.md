@@ -73,8 +73,10 @@ rule, added with its record and its test.
 
 In this order. Each item is one or more changes measured against the baseline.
 
-1. **The behaviour carried over from ltk-forge** ([Carried over](#carried-over-from-ltk-forge)),
-   each item changed or removed as a change of its own.
+1. **The behaviour carried over from ltk-forge**: done. Each of its thirteen items was measured,
+   then kept with the measurement or changed as a rule of its own ([RUNS.md](RUNS.md), "The
+   behaviour carried over from ltk-forge"). What remains is under
+   [Carried over](#carried-over-from-ltk-forge).
 2. **Ports checked in game** where none was: done. A voice layer, a `hud` layer and a bank unit
    cut from the mod's own events bank were checked and work, the last with the mod's own buses
    carried (#ADR-0064) and the game unit it left out left out (#ADR-0063)
@@ -128,6 +130,11 @@ Each is the user's. *fixer* marks the ones a repair depends on.
 Behaviour reforge has because ltk-forge had it and the comparison held reforge to it. No
 record and no measurement of reforge's own says it is right.
 
+- A skin is looked for up to slot 120 (`MAX_SLOT`), ltk-forge's value. Champions reach 116 at
+  16.19, and the `jade_*` characters, which no group takes (#ADR-0071), have skin bins up to 305.
+- A file under 4,096 bytes and an object of fewer than 4 properties do not date a mod
+  (`MIN_FILE`, `MIN_PROPERTIES`): ltk-forge's thresholds, with a reason and no measurement
+  behind the values.
 
 ### Known limits
 
