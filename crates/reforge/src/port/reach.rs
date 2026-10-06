@@ -424,9 +424,10 @@ impl Reach {
         self.units.get(&unit)
     }
 
-    /// Raises what the walk found, unit by unit.
-    pub fn report(&self, sink: &mut Sink<'_>) {
-        for (&unit, reach) in &self.units {
+    /// Raises what the walk found, for each unit that ships (#ADR-0072).
+    pub fn report(&self, ships: &[UnitId], sink: &mut Sink<'_>) {
+        let shipping = self.units.iter().filter(|(unit, _)| ships.contains(unit));
+        for (&unit, reach) in shipping {
             if reach.carried_for_overrides > 0 {
                 sink.raise(GameCarried {
                     unit,

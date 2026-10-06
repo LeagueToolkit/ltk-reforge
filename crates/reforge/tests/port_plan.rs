@@ -542,6 +542,36 @@ fn the_games_own_skin_beside_the_mods_leaves_the_port() {
 }
 
 #[test]
+fn what_a_unit_that_leaves_reaches_is_not_reported() {
+    // #ADR-0072: the game's own skin 7 bin, with an object nothing reaches.
+    let mut files = own_mod(&[], vec![]);
+    files.push((
+        skin_bin("test", 7),
+        bin(vec![
+            entry("Characters/Test/Skins/Skin7", &skins::skin7()),
+            resolver("Characters/Test/Skins/Skin7/Resources"),
+            particle("Stray/Particle", "assets/mod/a/stray.tex"),
+        ]),
+    ));
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let left = run.unit("test", 7);
+    assert_eq!(
+        run.port.shipping.left[&left].why,
+        Left::GameSkin,
+        "{}",
+        run.dump()
+    );
+    assert!(!run.port.reach.of(left).expect("found").leftovers.is_empty());
+    let unreached: Vec<&Unreached> = run.found();
+    assert!(
+        unreached.iter().all(|found| found.unit != left),
+        "{unreached:?}"
+    );
+}
+
+#[test]
 fn a_chroma_that_is_its_parents_work_folds_into_it() {
     // The mod's rig at skin 3, and at skin 9, a chroma of 3, the same rig on the game's
     // texture.

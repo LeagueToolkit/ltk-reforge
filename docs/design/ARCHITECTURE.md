@@ -477,7 +477,8 @@ object takes a name of its own, which every link to it follows.
 4. **`FileRefs`**, per unit: each file a ported object names, as a `FileVerdict`: the game's at
    a path (in a WAD mounted with the champion, #GAME-BEHAVIOR-0007), the mod's own and
    shipped, held only by a WAD that is not mounted, or dangling. A stale copy is the game's
-   (#ADR-0023). Of a skin entry only the fields a port carries count.
+   (#ADR-0023). Of a skin entry only the fields a port carries count. What `Reach` and
+   `FileRefs` find is reported for the units that ship (#ADR-0072).
 5. **`Layout`**: the one owner of every output name and path (#ADR-0027). It gives the
    namespace, a unit's directory, a file's place by its first user, an object's name, the
    paths of the port's bins and patches, and keeps the names made for the hash tables. No path

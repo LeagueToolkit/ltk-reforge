@@ -133,9 +133,6 @@ record and no measurement of reforge's own says it is right.
   At another slot, a forced target, the check "the slot's joints" cannot hold.
 - The names a retarget moves from a unit's slot to its target are replaced in every object of
   the mod, not only in the objects that unit's group loads.
-- What a unit reaches is reported (`object.link-dangling`, `object.unreached`,
-  `object.game-carried`, `ref.dangling`, `ref.unmounted`) for every representative unit with
-  a target, the ones that then leave the port included.
 - A bank of a locale WAD goes to that locale's voice layer whether or not its unit is voice.
 - A locale WAD's copy of a bank whose own clips are not those of the champion WAD's copy is
   not carried (`audio.not-carried`).

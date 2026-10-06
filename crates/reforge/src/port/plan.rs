@@ -423,9 +423,9 @@ impl Port {
         if audio.rewrite_literals(inputs, &shipping, &reach, &mut objects, sink) {
             reach = Reach::find(inputs, &objects)?;
         }
-        reach.report(sink);
+        reach.report(&shipping.ships, sink);
         let refs = FileRefs::find(inputs, &objects, &reach)?;
-        refs.report(sink);
+        refs.report(&shipping.ships, sink);
 
         let mut linking = Linking {
             inputs,

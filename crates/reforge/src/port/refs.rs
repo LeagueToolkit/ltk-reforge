@@ -272,9 +272,11 @@ impl FileRefs {
         self.units.get(&unit)
     }
 
-    /// Raises the files that nothing holds and the ones no mounted WAD holds, unit by unit.
-    pub fn report(&self, sink: &mut Sink<'_>) {
-        for (&unit, refs) in &self.units {
+    /// Raises the files that nothing holds and the ones no mounted WAD holds, for each unit that
+    /// ships (#ADR-0072).
+    pub fn report(&self, ships: &[UnitId], sink: &mut Sink<'_>) {
+        let shipping = self.units.iter().filter(|(unit, _)| ships.contains(unit));
+        for (&unit, refs) in shipping {
             let of = |wanted: fn(&FileVerdict) -> bool| -> Vec<WadHash> {
                 let rows = refs.refs.iter().filter(|(_, verdict)| wanted(verdict));
                 rows.map(|(path, _)| *path).collect()

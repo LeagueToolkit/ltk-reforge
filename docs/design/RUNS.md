@@ -1158,3 +1158,9 @@ does not differ. The 2 Heimerdinger mods that ship the turrets' bins port them a
 each with a patch at skin0; in `c3e402036ead` the turrets' 146 skin bins are loaded, and the
 copies among them leave. The Xayah mod `8afd81d86710`, which ships `taliyahwallchunk` in
 Xayah's WAD, ports it as Xayah's, patched at skin4.
+
+**What a unit reaches, reported for the units that ship** (#ADR-0072). The 118 mods with findings
+on units that leave, and the reduced corpus: no repair differs, and the ports differ in those
+findings alone, 3,493 fewer in 118 mods (`object.unreached` 1,739, `object.link-dangling` 1,200,
+`ref.dangling` 412, `ref.unmounted` 118, `object.game-carried` 24). 36 of the 1,236 counted
+before resolve to the game's objects since the cap on a game skin's bins.
