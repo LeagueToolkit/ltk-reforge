@@ -27,6 +27,7 @@ use super::findings::{
 };
 use super::inplace::BuildError;
 use super::ptch::PtchBuilder;
+use super::shaders;
 use super::texture::TexContainer;
 use super::wired::{LeftBehind, LeftOut, Wired};
 use super::{BinWrite, Chunk, ChunkKey, Layer, Origin, Package, Patch, PatchOf, WrittenBin};
@@ -183,11 +184,16 @@ impl<'a> PortBuilder<'a> {
         self
     }
 
-    /// The package. A port that would hold nothing ends the run.
+    /// The package. A port that would hold nothing, or a material the client crashes on, ends
+    /// the run.
     pub fn build(self, sink: &mut Sink<'_>) -> Result<Package, BuildError> {
         let m: &Mod = self.fixed;
         let port = self.port;
         let _span = tracing::info_span!("build", units = port.units.len()).entered();
+        let game = self.env.game();
+        if let Some(missing) = shaders::missing(port.objects.values(), game).map_err(Fault::from)? {
+            return Err(sink.halt(missing).into());
+        }
         let mut package = Package::new(ProjectConfig::of(m, Made::Ported));
         let mut found = Ported {
             files: 0,

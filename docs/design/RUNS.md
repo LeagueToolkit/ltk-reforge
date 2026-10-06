@@ -950,3 +950,17 @@ of the datasets, against the shader bin of the 16.19.8207193 copy, the bins the 
 off the repair's baseline: 104 mods hold a material linking a shader the bin lacks, 15 shaders in
 all, each one a build removed (#GAME-CHANGE-0024 has them by shader). No mod defines a
 `CustomShaderDef`, in a loaded bin or in any other.
+
+**A material's removed shader relinked, or no package** (#ADR-0069). The rule of a mod's own
+`CustomShaderDef` was not built: no mod of the datasets has the case. Reduced corpus: 2 repairs
+and 1 port end with `package.shader-missing`, 6 mods have materials relinked, and every package
+embeds the new fixup's id in its evidence. The 112 mods whose bin links a missing shader,
+without the rule and with it:
+
+| command | mods | ended by `package.shader-missing` | relinked, of those with a package | other differences |
+|---|---:|---:|---:|---|
+| `repair --no-write --again` | 112 | 27 | 79 of 85 | 3 mods write a bin again that they kept, for a relinked material |
+| `port --no-write` | 112 | 19 | 85 of 93 | links that dangled resolve to a game shader: units of 59 mods lose a dangling link |
+
+A run ended keeps no package, check or summary of a package. Every other difference is the
+relinked links, the objects that hold them and the fixup's count.

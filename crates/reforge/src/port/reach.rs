@@ -23,8 +23,7 @@ use crate::model::{
     BinHash, ChunkPath, Dump, DumpCx, SkinEntry, Slot, WadHash, clean, name_hash, path_hash, value,
 };
 
-/// The bin of shader definitions, which the client loads whatever it plays.
-pub const SHADERS_BIN: &str = "data/shaders/shaders.bin";
+pub use crate::game::SHADERS_BIN;
 
 /// What becomes of an object the entry reaches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

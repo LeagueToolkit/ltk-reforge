@@ -9,6 +9,7 @@ mod health_bar;
 mod legacy_simple;
 mod mesh_align;
 mod sampler_fields;
+mod shader_relink;
 mod spawn_shape;
 
 use std::sync::Arc;
@@ -20,6 +21,7 @@ pub use self::health_bar::HealthBarStyle;
 pub use self::legacy_simple::LegacySimple;
 pub use self::mesh_align::MeshAlign;
 pub use self::sampler_fields::SamplerFields;
+pub use self::shader_relink::ShaderRelink;
 pub use self::spawn_shape::SpawnShape;
 use super::{BinFixup, FixCx};
 
@@ -45,6 +47,7 @@ impl Stated {
 /// Every built-in fixup of this file, in no order: the set orders them by phase and build.
 pub fn all() -> Vec<Arc<dyn BinFixup>> {
     vec![
+        Arc::new(ShaderRelink),
         Arc::new(LegacySimple::new()),
         Arc::new(HealthBarStyle),
         Arc::new(DefaultTechnique),

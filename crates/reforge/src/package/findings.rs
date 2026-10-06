@@ -579,6 +579,45 @@ impl Diag for Empty {
     }
 }
 
+/// A material's pass and the shader it links.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ShaderLink {
+    /// The material's entry hash.
+    #[serde(serialize_with = "hex")]
+    pub material: BinHash,
+    /// The shader's entry hash.
+    #[serde(serialize_with = "hex")]
+    pub shader: BinHash,
+}
+
+/// Materials of the package that link a shader the target's shader bin lacks. The client
+/// crashes while it loads them (#GAME-BEHAVIOR-0023): there is nothing to write (#ADR-0069).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ShaderMissing {
+    /// Each material and the shader it links, once, in hash order.
+    pub links: Vec<ShaderLink>,
+}
+
+impl Diag for ShaderMissing {
+    const CODE: Code = code("package.shader-missing", Severity::Fatal);
+    const RECORD: Option<Record> = Some(Record::game_behavior(23));
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.links.len(), "material")
+            .text(" linking a shader the target's shader bin lacks; the client crashes at load: ");
+        f.list(&self.links, |f, link| {
+            f.entry(link.material)
+                .text(" (")
+                .entry(link.shader)
+                .text(")");
+        });
+    }
+}
+
 /// The mod's image is not the package's thumbnail (#ADR-0051). The package is whole without
 /// one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

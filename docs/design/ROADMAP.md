@@ -161,11 +161,8 @@ record and no measurement of reforge's own says it is right.
 - *fixer* An emitter's vector written as a float, in mods that restore old effects, has no
   conversion (#MOD-ARTIFACT-0036, 36 mods): no build of the census history holds one, so no
   conversion of Riot's is read. `retype` leaves the value, and the client drops it.
-- *fixer* A material keeps a link to a shader Riot removed, and the client crashes at load
-  (#GAME-CHANGE-0024, #GAME-BEHAVIOR-0023). Riot's relinks are read, and Riot rewrote the
-  material with its link, so the link alone is no conversion.
 - *fixer* A mod's own `CustomShaderDef` is kept, and the client crashes at the first draw of a
-  material that uses it (#GAME-BEHAVIOR-0022).
+  material that uses it (#GAME-BEHAVIOR-0022). No mod of the datasets defines one.
 - *fixer* A repair keeps a skin bin's link to a shared bin at its path before 16.10, which the
   client skips (#GAME-CHANGE-0012). Riot's bins link the `_multi_` path from 16.10.
 - *fixer* A repair ships a mod's champion root bin whole, with the champion's gameplay data of

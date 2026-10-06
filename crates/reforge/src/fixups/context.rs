@@ -6,7 +6,9 @@ use ltk_meta::{PropertyKind as Kind, PropertyValueEnum};
 use super::changes::{After, Change, Changes, Snapshot};
 use super::set::FixError;
 use super::types::{TargetTypes, TypeSource};
-use crate::game::{FieldType, NameBook, Names, Speller};
+use std::sync::Arc;
+
+use crate::game::{FieldType, GameBin, GameView, NameBook, Names, Speller};
 use crate::model::entity::{Character, ObjectId, SkinUnit};
 use crate::model::value::kind_name;
 use crate::model::{Arena, BinHash, FieldPath, FixupId, WadHash};
@@ -14,6 +16,7 @@ use crate::model::{Arena, BinHash, FieldPath, FixupId, WadHash};
 /// The context of one fixup over one run: what it reads, and where it records its changes.
 pub struct FixCx<'a> {
     pub(super) types: &'a TargetTypes<'a>,
+    pub(super) game: &'a GameView,
     /// The number of the build the mod was made at or after.
     pub(super) source: Option<u64>,
     pub(super) characters: &'a Arena<Character>,
@@ -51,6 +54,15 @@ impl FixCx<'_> {
         field: BinHash,
     ) -> Option<(FieldType, TypeSource)> {
         self.types.type_of(class, field)
+    }
+
+    /// The target game's bin at a path. None when the game holds no bin there, or the game did
+    /// not read, which is a fault.
+    pub fn game_bin(&mut self, path: WadHash) -> Option<Arc<GameBin>> {
+        self.game.bin(path).unwrap_or_else(|error| {
+            self.fault(error);
+            None
+        })
     }
 
     /// The number of the build the mod was made at or after. None for a mod the history does

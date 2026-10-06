@@ -11,6 +11,7 @@ use ltk_meta::{Bin, BinDelta, BinObject, BinStream};
 
 use super::config::{Made, ProjectConfig};
 use super::findings::{Empty, InPlace};
+use super::shaders;
 use super::texture::TexContainer;
 use super::wired::LeftOut;
 use super::wired::{LeftBehind, Wired};
@@ -18,7 +19,7 @@ use super::{BinWrite, Chunk, ChunkKey, Layer, Origin, Package, WrittenBin};
 use crate::diag::{Halted, Sink};
 use crate::env::Env;
 use crate::fixups::{Changes, FixedMod};
-use crate::game::{NameBook, Names, Speller};
+use crate::game::{GameView, NameBook, Names, Speller};
 use crate::load::{Fault, LoadOptions, Staleness};
 use crate::model::entity::{BinId, FileId, FileKind, FileNode, FileSource};
 use crate::model::value::{self, FileRef};
@@ -41,6 +42,7 @@ pub struct InPlaceBuilder<'a> {
     changes: &'a Changes,
     names: Option<(&'a NameBook, &'a Names)>,
     stale: Option<Staleness<'a>>,
+    game: Option<&'a GameView>,
     keep_dds: bool,
 }
 
@@ -53,6 +55,7 @@ impl<'a> InPlaceBuilder<'a> {
             changes,
             names: None,
             stale: None,
+            game: None,
             keep_dds: false,
         }
     }
@@ -66,10 +69,12 @@ impl<'a> InPlaceBuilder<'a> {
 
     /// What the mod was loaded against, and under which options. A texture put in TEX's
     /// container is judged there as `load` judged the file: one that is a stale copy in
-    /// that container is left out (#ADR-0023, #ADR-0039). Without it no texture is judged.
+    /// that container is left out (#ADR-0023, #ADR-0039). A material's shader is judged
+    /// against the game's shader bin (#ADR-0069). Without it neither is judged.
     #[must_use]
     pub fn judged(mut self, env: &'a Env, options: &LoadOptions) -> Self {
         self.stale = Some(Staleness::new(env, options));
+        self.game = Some(env.game());
         self
     }
 
@@ -82,10 +87,17 @@ impl<'a> InPlaceBuilder<'a> {
     }
 
     /// The package: every file the client reaches, at its own WAD and path, in the base
-    /// layer. A package that would hold nothing ends the run.
+    /// layer. A package that would hold nothing, or a material the client crashes on, ends the
+    /// run.
     pub fn build(self, sink: &mut Sink<'_>) -> Result<Package, BuildError> {
         let m: &Mod = self.fixed;
         let _span = tracing::info_span!("build", files = m.files.len()).entered();
+        if let Some(game) = self.game {
+            let objects = m.objects.values().map(|object| &object.value);
+            if let Some(missing) = shaders::missing(objects, game).map_err(Fault::from)? {
+                return Err(sink.halt(missing).into());
+            }
+        }
         let mut package = Package::new(ProjectConfig::of(m, Made::Repaired));
         let wired = Wired::by(m.objects.values().map(|object| &object.value));
         let mut found = InPlace {

@@ -17,7 +17,8 @@ which the client loads whatever plays (#GAME-BEHAVIOR-0006). A shader is named b
 At a build Riot removes shaders from the bin, and their names resolve to nothing from that build.
 The bin held 84 shaders at 8.20 and 350 at 16.19, with 130 removals in between. A few names left
 and came back: `Flowmap_Diff` left at 12.6 and again at 16.17, `Diffuse_Alpha_vertex` at 14.14
-and 15.24, and `Sylas_DarkStar` left and came back within the builds of 14.21.
+and 15.24, `HKG_MatCap_Masked` left at 15.23 and came back at 15.24, and `Sylas_DarkStar` left
+and came back within the builds of 14.21.
 
 Three builds removed many at once:
 
@@ -106,6 +107,8 @@ Both relink such a material to the current shader of the same folder whose name 
   material links a removed shader at the build before, and the same file's shader links at the
   build, paired by position where the file holds as many links at both. A file absent at the
   build gives no pair.
+- The shader bin at 16.19.8230722 holds the target of every row of the table, and of the
+  sources only `HKG_MatCap_Masked`, which came back at 15.24.7287302 (read 2026-10-06).
 - The removals of the shaders mods link (below), read again over every WAD of the census history
   (2026-10-06), the entry texts paired as above: `MultiMask_Panner_Bloom` left the shader bin at
   15.12.6869776, and the 4 entry texts that linked it at 15.11.6855259, two materials each of

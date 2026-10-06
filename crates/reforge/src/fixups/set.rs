@@ -324,6 +324,7 @@ impl FixupSet {
             for &object in &ids {
                 let mut cx = FixCx {
                     types: &types,
+                    game: inputs.env.game(),
                     source: inputs.dating.build(),
                     characters: &m.characters,
                     units: &m.units,

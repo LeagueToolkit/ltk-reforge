@@ -5,8 +5,8 @@ use ltk_meta::property::values;
 use ltk_meta::{BinObject, PropertyValueEnum as V};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, layout};
-use reforge::game::Schema;
-use reforge_testkit::bins::{embedded, flag, float, object, pointer, text};
+use reforge::game::{SHADERS_BIN, Schema};
+use reforge_testkit::bins::{bin, embedded, flag, float, link, object, pointer, text};
 use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{embed, field, kind, pointer as to};
 use reforge_testkit::{FixRun, SchemaRows, skins};
@@ -15,7 +15,8 @@ use reforge_testkit::{FixRun, SchemaRows, skins};
 const ENTRY: &str = "Characters/Test/Skins/Skin0";
 
 /// The ids of the fixups of this file, in the order the set runs them.
-const IDS: [&str; 8] = [
+const IDS: [&str; 9] = [
+    "material-shader-relink",
     "vfx-legacy-simple",
     "health-bar-style",
     "material-default-technique",
@@ -42,14 +43,15 @@ fn the_layout_fixups_name_their_records_and_builds() {
     assert_eq!(
         rows,
         [
-            row(IDS[0], "12.19", "#GAME-CHANGE-0004"),
-            row(IDS[1], "13.4", "#GAME-CHANGE-0023"),
-            row(IDS[2], "13.5", "#GAME-CHANGE-0015"),
-            row(IDS[3], "13.8", "#GAME-CHANGE-0017"),
-            row(IDS[4], "14.1", "#GAME-CHANGE-0006"),
-            row(IDS[5], "14.1", "#MOD-ARTIFACT-0019"),
-            row(IDS[6], "15.3", "#GAME-CHANGE-0014"),
-            row(IDS[7], "15.18", "#GAME-CHANGE-0018"),
+            row(IDS[0], "12.7", "#GAME-CHANGE-0024"),
+            row(IDS[1], "12.19", "#GAME-CHANGE-0004"),
+            row(IDS[2], "13.4", "#GAME-CHANGE-0023"),
+            row(IDS[3], "13.5", "#GAME-CHANGE-0015"),
+            row(IDS[4], "13.8", "#GAME-CHANGE-0017"),
+            row(IDS[5], "14.1", "#GAME-CHANGE-0006"),
+            row(IDS[6], "14.1", "#MOD-ARTIFACT-0019"),
+            row(IDS[7], "15.3", "#GAME-CHANGE-0014"),
+            row(IDS[8], "15.18", "#GAME-CHANGE-0018"),
         ]
     );
 }
@@ -60,11 +62,20 @@ fn the_standard_set_runs_them_by_build_among_the_table_rules() {
     let ids = set.ids();
     let found: Vec<&str> = ids.iter().copied().filter(|id| IDS.contains(id)).collect();
     assert_eq!(found, IDS);
-    // 12.19 is between the table rules of 12.18 and 13.1, and 13.4 after the last of them.
+    // The table rules are of 12.6, 12.17, 12.18 and 13.1: 12.7 and 12.19 fall between them,
+    // and 13.4 after the last.
     let place = |id: &str| ids.iter().position(|held| *held == id).expect("held");
-    assert!(place("vfx-linger") < place(IDS[0]));
-    assert!(place(IDS[0]) < place("vfx-texture-mult"));
-    assert!(place("vfx-texture-mult") < place(IDS[1]));
+    let order = [
+        "vfx-flex-shape",
+        IDS[0],
+        "vfx-filtering",
+        "vfx-linger",
+        IDS[1],
+        "vfx-texture-mult",
+        IDS[2],
+    ];
+    let places: Vec<usize> = order.iter().map(|id| place(id)).collect();
+    assert!(places.is_sorted(), "{order:?} at {places:?}");
 }
 
 /// One class of each fixup, old up to build 120 and new from 121.
@@ -134,8 +145,13 @@ fn schema() -> Schema {
             "CharacterHealthBarDataRecord",
             &[field("unitHealthBarStyle", kind("U8"))],
         )
+        .class("StaticMaterialPassDef", &[field("shader", kind("Link"))])
         .build()
 }
+
+/// A shader Riot removed at 15.15, and the one its materials took.
+const REMOVED: &str = "Shaders/SkinnedMesh/MultiMask_Panner_Fresnel";
+const RELINKED: &str = "Shaders/SkinnedMesh/AlphaBlend_Additive_Scroll_Packed";
 
 fn vector(x: f32) -> V {
     embedded("ValueVector3", vec![("constantValue", float(x))])
@@ -165,6 +181,11 @@ fn old_mod() -> Vec<BinObject> {
             ENTRY,
             "SkinCharacterDataProperties",
             vec![("healthBarData", bar)],
+        ),
+        object(
+            "Pass",
+            "StaticMaterialPassDef",
+            vec![("shader", link(REMOVED))],
         ),
         object("Simple", emitter, vec![("birthScale1", vector(4.0))]),
         object("Old", emitter, vec![("shape", shape)]),
@@ -196,8 +217,11 @@ fn old_mod() -> Vec<BinObject> {
 
 #[test]
 fn one_mod_is_laid_out_by_every_layout_fixup_once() {
+    let mut game = skins::game_at("16.19.300");
+    let relinked = object(RELINKED, "CustomShaderDef", vec![]);
+    game.insert(SHADERS_BIN, bin(vec![relinked]));
     let env = Env::builder()
-        .game(skins::game_at("16.19.300"))
+        .game(game)
         .schema(schema())
         .build()
         .expect("an environment");
@@ -209,13 +233,15 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
         .with(layout::MeshAlign)
         .with(layout::DefaultTechnique)
         .with(layout::HealthBarStyle)
-        .with(layout::LegacySimple::new());
+        .with(layout::LegacySimple::new())
+        .with(layout::ShaderRelink);
     let once = FixRun::of(&env, &set, &skin_archive(old_mod()));
     let by_fixup: Vec<&str> = once.changes.by_fixup().map(|(id, _)| id.as_str()).collect();
     assert_eq!(by_fixup, IDS);
     let counts = once.changes.counts();
     // Lost: the technique a material chose.
-    assert_eq!((counts.changed, counts.removed, counts.lost), (10, 1, 1));
+    assert_eq!((counts.changed, counts.removed, counts.lost), (11, 1, 1));
+    assert_eq!(once.field("Pass", "shader"), Some(&link(RELINKED)));
     assert!(once.field("Simple", "LegacySimple").is_some());
     assert!(once.field("Old", "SpawnShape").is_some());
     assert!(once.field("Misplaced", "EmitterPosition").is_some());
@@ -226,6 +252,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
 
     let entries = [
         ENTRY,
+        "Pass",
         "Simple",
         "Old",
         "Misplaced",

@@ -272,7 +272,8 @@ pub struct FixupInfo {
 - **The engine owns the frame.** `FixupSet::apply` walks every loaded object once per fixup, in
   the set's order. `FixCx` gives the target build's types (`declares`, `type_of`), whether the
   mod's build read a field (`read_at_source`, from the mod's dating), the character whose skin
-  entry the object is (`entry_of`), the names, and the calls that record what a fixup did.
+  entry the object is (`entry_of`), the target game's bins (`game_bin`), the names, and the
+  calls that record what a fixup did.
 - **The target's types** are `TargetTypes`: the meta schema, else what the install's own bins
   hold for a class and field, and the install's version, `16.19`, which orders builds across
   hotfixes where a build's number does not.
@@ -301,7 +302,7 @@ pub struct FixupInfo {
   reads where a struct is held or conforms a whole object to the schema implements the trait in
   code: mesh alignment, the spawn shape, the emission surface, the sampler's fields, the default
   technique, the texture-mult strays, the simple-particle fields (a table rule's move, and a
-  removal from a complex emitter), the hoist and the wrap, retype, strip. Retype's conversions are a
+  removal from a complex emitter), the shader relink, the hoist and the wrap, retype, strip. Retype's conversions are a
   catalogue of named items, one function each. A `Rule` grows a new shape only when a second
   fixup needs it. Both kinds are listed, ordered and
   turned on and off the same way.
@@ -589,6 +590,9 @@ object takes a name of its own, which every link to it follows.
   copies every other object byte for byte, and whole where the delta writer refuses the bin's
   numbering. Every other file keeps its bytes. A file no table names goes under its hash at its
   WAD's root (#MOD-ARTIFACT-0007). A package that would hold nothing ends the run.
+- **A material the client crashes on ends the run.** A package of either kind in which a
+  material's pass links a shader the target's shader bin lacks is not built
+  (`package.shader-missing`, #ADR-0069). The fixups have relinked what Riot's materials relinked.
 - **A repaired package is not the whole evidence of the mod.** The files left behind are part
   of what `load` judged by: a mod's date, and that a WAD restores a model from before a rework.
   A package repaired again from its own bytes alone dates differently in about half the mods,

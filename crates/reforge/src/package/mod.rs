@@ -18,6 +18,7 @@ mod inplace;
 mod overlay;
 mod port;
 mod ptch;
+mod shaders;
 mod texture;
 mod thumbnail;
 mod wired;
@@ -43,8 +44,8 @@ pub use self::findings::{
     Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
     FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBinFailed,
     NotWritten, OtherSkin, OtherSkinName, Place, Ported, RecordSkipped, ResolverFrozen,
-    RoundTripFailed, RoundTripProblem, Shape, SkinValue, TextureContained, ThumbnailDropped,
-    TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
+    RoundTripFailed, RoundTripProblem, ShaderLink, ShaderMissing, Shape, SkinValue,
+    TextureContained, ThumbnailDropped, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
 };
 pub use self::inplace::{BuildError, InPlaceBuilder};
 pub use self::overlay::{AppliedBin, AppliedPatch, Held, Loaded, Outcome, Overlay};
@@ -74,6 +75,7 @@ pub const CODES: &[Code] = &[
     TextureContained::CODE,
     InPlace::CODE,
     Empty::CODE,
+    ShaderMissing::CODE,
     ThumbnailDropped::CODE,
     ManifestUnreadable::CODE,
     ApplyFailed::CODE,

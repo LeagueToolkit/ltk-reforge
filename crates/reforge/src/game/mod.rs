@@ -37,6 +37,9 @@ pub use self::view::{GameBin, GameSkin, GameView};
 use crate::diag::{Code, Diag};
 use crate::model::{Version, WadHash, WadName};
 
+/// The bin of shader definitions, which the client loads whatever it plays.
+pub const SHADERS_BIN: &str = "data/shaders/shaders.bin";
+
 /// Every diagnostic code this module raises.
 pub const CODES: &[Code] = &[
     WadsUnreadable::CODE,
