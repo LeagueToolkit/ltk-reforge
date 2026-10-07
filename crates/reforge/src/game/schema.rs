@@ -70,7 +70,7 @@ pub enum SchemaError {
 }
 
 /// The type a build reads for one field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FieldType {
     /// The value's kind.
     pub kind: Kind,

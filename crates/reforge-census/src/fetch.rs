@@ -183,7 +183,8 @@ impl<'a> Fetcher<'a> {
                         next.push((old, new, format!("{}/", name.path)));
                     }
                     let read = format::entry_file(&name.path).is_some()
-                        || format::object_file(&name.path).is_some();
+                        || format::object_file(&name.path).is_some()
+                        || format::is_wad_file(&name.path);
                     if let Some((old, new)) = name.blobs.filter(|_| read) {
                         files.extend([old, new]);
                     }

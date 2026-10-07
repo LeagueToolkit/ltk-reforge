@@ -1,5 +1,5 @@
-//! The walk over the history: every commit's changed files, oldest build first, folded into one
-//! life per key.
+//! The walk over the history: every commit's changed files, oldest build first, folded into the
+//! lives of each key: one hull per key, or of a table of spans one row per unbroken life.
 //!
 //! The walk reads each commit's diff against its parent, never whole trees: a build changes a
 //! few thousand entries out of a million, and the union of every record ever added is the set.
@@ -9,25 +9,26 @@
 //! names is a function of its blob, so it is read and parsed once, when the blob first appears,
 //! and kept while the tree holds it: the text a build removes or replaces is not read again.
 
-use std::collections::HashMap;
+use std::collections::hash_map::Entry as MapEntry;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rayon::prelude::*;
 use reforge::history::tables::{
-    Animation, Animations, At, BankAt, BankEvent, BankFacts, BankObjects, Clips, Contents,
-    EventBanks, EventWem, EventWems, Events, FileFacts, Files, Held, JointLists, Meshes, Naming,
-    ObjectFacts, Objects, Paths, Recorded, Refs, Row, Skeletons, Table, Tag, Tags, Textures, Unit,
-    UnitBank, UnitBanks, UnitEvent, UnitEvents, Units,
+    Animation, Animations, At, BankAt, BankEvent, BankFacts, BankObjects, BinEntry, BinFacts, Bins,
+    ClassedObject, Clips, EntryText, EntryTexts, EventBanks, EventWem, EventWems, Events,
+    FileFacts, Files, JointLists, Linking, Links, Meshes, Naming, ObjectFacts, Objects, Placement,
+    Placements, Recorded, Refs, Row, Shape, Skeletons, Table, Tag, Tags, TextSchema, Textures,
+    Unit, UnitBank, UnitBanks, UnitEvent, UnitEvents, Units, WadLife, WadLives,
 };
 use reforge::history::{BuildRow, EventsBank, Families, Family, FileKind, Life, Position};
-use reforge::model::{BinHash, WadHash};
+use reforge::model::{BinHash, FileKey, WadHash};
 use reforge_wwise::Object;
 
 use crate::error::CensusError;
-use crate::format::{self, BuildFile, Entry, ObjectText};
+use crate::format::{self, BuildFile, Entry, ObjectText, WadFile};
 
-/// A blob's id in the history: the same id is the same bytes.
-pub type BlobId = [u8; 20];
+pub use reforge::history::BlobId;
 
 /// One changed file between a commit and its parent.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +69,8 @@ struct Tally {
     first: Position,
     last: Position,
     alive: i64,
+    /// The build at which the count fell to zero, while it is zero.
+    gone: Option<Position>,
 }
 
 impl Tally {
@@ -76,15 +79,32 @@ impl Tally {
             first: at,
             last: at,
             alive: 0,
+            gone: None,
         }
     }
 
-    fn apply(&mut self, delta: i64, at: Position) {
+    /// Applies a change of the record count at a build. Of a table of spans, a key that comes
+    /// back at a later build than it went starts a new life, and the life it ended is returned.
+    /// A key that goes and comes back within one build keeps its life: an append sees only the
+    /// build's net change.
+    fn apply(&mut self, delta: i64, at: Position, spans: bool) -> Option<Life> {
         let before = self.alive;
         self.alive += delta;
         if before > 0 && self.alive <= 0 {
             self.last = Position(at.0.saturating_sub(1)).max(self.first);
+            self.gone = Some(at);
+        } else if before <= 0
+            && self.alive > 0
+            && self.gone.take().is_some_and(|gone| spans && gone != at)
+        {
+            let ended = Life {
+                first: self.first,
+                last: self.last,
+            };
+            self.first = at;
+            return Some(ended);
         }
+        None
     }
 
     fn life(&self, head: Position) -> Life {
@@ -95,10 +115,19 @@ impl Tally {
     }
 }
 
+/// A key's lives in one table: the one it is in, and of a table of spans the ones before.
+struct Lives<F> {
+    tally: Tally,
+    /// The facts of the record that started the life the key is in.
+    facts: F,
+    /// The lives that ended, each with the facts it started with.
+    past: Vec<(Life, F)>,
+}
+
 /// One table's lives so far: per key, its builds, its record count, and the facts of the
 /// record that started it.
 pub struct Fold<T: Table> {
-    lives: HashMap<T::Key, (Tally, T::Facts)>,
+    lives: HashMap<T::Key, Lives<T::Facts>>,
 }
 
 impl<T: Table> Default for Fold<T> {
@@ -127,10 +156,28 @@ impl<T: Table> Fold<T> {
                 delta.entry(key).or_insert((0, facts)).0 += sign;
             }
         }
+        let spans = T::DEF.shape == Shape::Spans;
         for (key, (net, facts)) in delta {
-            if net != 0 {
-                let life = self.lives.entry(key).or_insert((Tally::new(at), facts));
-                life.0.apply(net, at);
+            if net == 0 {
+                continue;
+            }
+            match self.lives.entry(key) {
+                MapEntry::Vacant(slot) => {
+                    let mut tally = Tally::new(at);
+                    tally.apply(net, at, spans);
+                    slot.insert(Lives {
+                        tally,
+                        facts,
+                        past: Vec::new(),
+                    });
+                }
+                MapEntry::Occupied(slot) => {
+                    let lives = slot.into_mut();
+                    if let Some(ended) = lives.tally.apply(net, at, spans) {
+                        let started = std::mem::replace(&mut lives.facts, facts);
+                        lives.past.push((ended, started));
+                    }
+                }
             }
         }
     }
@@ -145,29 +192,42 @@ impl<T: Table> Fold<T> {
         self.lives.is_empty()
     }
 
-    /// A key's life, for a history whose head is `head`.
+    /// A key's life, the last one of a table of spans, for a history whose head is `head`.
     pub fn life(&self, key: &T::Key, head: Position) -> Option<Life> {
-        self.lives.get(key).map(|(tally, _)| tally.life(head))
+        self.lives.get(key).map(|lives| lives.tally.life(head))
     }
 
-    /// The table's rows for a history whose head is `head`, in key order.
+    /// The table's rows for a history whose head is `head`, in key order, a key's lives oldest
+    /// first.
     pub fn rows(self, head: Position) -> Vec<Row<T>> {
-        let rows = self.lives.into_iter().map(|(key, (tally, facts))| Row {
-            key,
-            facts,
-            life: tally.life(head),
-            alive: u32::try_from(tally.alive.max(0)).unwrap_or(u32::MAX),
-        });
-        let mut rows: Vec<Row<T>> = rows.collect();
-        rows.sort_unstable_by(|a, b| a.key.cmp(&b.key));
+        let mut rows: Vec<Row<T>> = Vec::with_capacity(self.lives.len());
+        for (key, lives) in self.lives {
+            for (life, facts) in lives.past {
+                let key = key.clone();
+                rows.push(Row {
+                    key,
+                    facts,
+                    life,
+                    alive: 0,
+                });
+            }
+            let tally = lives.tally;
+            rows.push(Row {
+                key,
+                facts: lives.facts,
+                life: tally.life(head),
+                alive: u32::try_from(tally.alive.max(0)).unwrap_or(u32::MAX),
+            });
+        }
+        rows.sort_unstable_by(|a, b| a.key.cmp(&b.key).then(a.life.first.cmp(&b.life.first)));
         rows
     }
 
     /// Each key whose record count one commit changes, with the net change, in key order so
     /// that the file does not depend on hashing.
     pub(crate) fn net(self) -> Vec<(T::Key, T::Facts, i64)> {
-        let changed = self.lives.into_iter().filter(|(_, (t, _))| t.alive != 0);
-        let mut net: Vec<_> = changed.map(|(k, (t, f))| (k, f, t.alive)).collect();
+        let changed = self.lives.into_iter().filter(|(_, l)| l.tally.alive != 0);
+        let mut net: Vec<_> = changed.map(|(k, l)| (k, l.facts, l.tally.alive)).collect();
         net.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         net
     }
@@ -201,12 +261,20 @@ pub(crate) trait Visit {
 pub struct Folds {
     /// Every content.
     pub files: Fold<Files>,
-    /// Every path.
-    pub paths: Fold<Paths>,
-    /// Every content at every path.
-    pub contents: Fold<Contents>,
+    /// Every content at every path of every WAD.
+    pub placements: Fold<Placements>,
+    /// Every WAD.
+    pub wad_lives: Fold<WadLives>,
     /// Every object.
     pub objects: Fold<Objects>,
+    /// The blob of every bin entry's text in every WAD.
+    pub entry_texts: Fold<EntryTexts>,
+    /// Every bin, with its links and its objects.
+    pub bins: Fold<Bins>,
+    /// Every type of every field of every class.
+    pub schema: Fold<TextSchema>,
+    /// Every object an object links.
+    pub links: Fold<Links>,
     /// Every path an object names.
     pub refs: Fold<Refs>,
     /// Every audio tag of an object.
@@ -243,9 +311,13 @@ impl Folds {
     /// Hands each table's fold to `visit`, in the order of `reforge::history::tables::TABLES`.
     pub(crate) fn each(self, visit: &mut impl Visit) -> Result<(), CensusError> {
         visit.table(self.files)?;
-        visit.table(self.paths)?;
-        visit.table(self.contents)?;
+        visit.table(self.placements)?;
+        visit.table(self.wad_lives)?;
         visit.table(self.objects)?;
+        visit.table(self.entry_texts)?;
+        visit.table(self.bins)?;
+        visit.table(self.schema)?;
+        visit.table(self.links)?;
         visit.table(self.refs)?;
         visit.table(self.tags)?;
         visit.table(self.units)?;
@@ -296,20 +368,51 @@ impl BankRows {
 struct EntrySide {
     entry: Entry,
     bank: Option<BankRows>,
+    /// A bin's row: its links and its objects.
+    bin: Option<Arc<BinFacts>>,
 }
 
-/// A change read: an entry's file before and after, or a bin entry's text.
-enum Parsed {
+impl EntrySide {
+    /// The key and the facts of the side's row of `bins`, when it is a bin.
+    fn bin(&self) -> Option<(FileKey, &Arc<BinFacts>)> {
+        let facts = self.bin.as_ref()?;
+        Some((self.entry.content, facts))
+    }
+}
+
+/// A bin's row of `bins`, of an entry the census read as a bin.
+fn bin_facts(entry: &Entry) -> Option<Arc<BinFacts>> {
+    let links = entry.links.as_ref()?;
+    let objects = entry.objects.iter().map(|o| BinEntry {
+        entry: o.entry,
+        class: o.class,
+        object: o.object,
+        norm: o.norm,
+    });
+    let objects: Vec<BinEntry> = objects.collect();
+    Some(Arc::new(BinFacts::of(links, &objects)))
+}
+
+/// A change read, in the WAD whose directory holds it: an entry's file before and after, a bin
+/// entry's text, or the WAD's own file.
+enum Parsed<'c> {
     Entry {
+        wad: &'c str,
         path: WadHash,
         old: Option<Box<EntrySide>>,
         new: Option<Box<EntrySide>>,
     },
     Text {
+        wad: &'c str,
         bin: WadHash,
         entry: BinHash,
         old: TextSide,
         new: TextSide,
+    },
+    Wad {
+        wad: &'c str,
+        old: Option<WadFile>,
+        new: Option<WadFile>,
     },
 }
 
@@ -330,6 +433,8 @@ pub(crate) struct Walker {
     pub(crate) unparsed_texts: usize,
     /// What each entry text the tree holds names, and how many places hold it.
     texts: HashMap<BlobId, (u32, TextFacts)>,
+    /// Each WAD's path, held once for every row that names the WAD.
+    wads: HashSet<Arc<str>>,
 }
 
 impl Walker {
@@ -339,7 +444,18 @@ impl Walker {
             folds: Folds::default(),
             unparsed_texts: 0,
             texts: HashMap::new(),
+            wads: HashSet::new(),
         }
+    }
+
+    /// The WAD's path, held once.
+    fn wad(&mut self, path: &str) -> Arc<str> {
+        if let Some(held) = self.wads.get(path) {
+            return held.clone();
+        }
+        let held: Arc<str> = path.into();
+        self.wads.insert(held.clone());
+        held
     }
 
     /// Folds one commit's changes against its parent in at position `at`, and returns its
@@ -367,26 +483,46 @@ impl Walker {
     }
 
     /// Reads and parses one change, a text from the texts held when the tree already holds it.
-    fn parse(
+    fn parse<'c>(
         &self,
         source: &dyn ChangeSource,
-        change: &Change,
-    ) -> Result<Option<Parsed>, CensusError> {
+        change: &'c Change,
+    ) -> Result<Option<Parsed<'c>>, CensusError> {
         let read = |id: &BlobId| -> Result<String, CensusError> {
             Ok(String::from_utf8_lossy(&source.read(id)?).into_owned())
         };
+        let Some(wad) = format::wad_of(&change.path) else {
+            return Ok(None);
+        };
+        if format::is_wad_file(&change.path) {
+            if !self.families.has(Family::Files) {
+                return Ok(None);
+            }
+            let side = |id: &Option<BlobId>| -> Result<Option<WadFile>, CensusError> {
+                let text = id.as_ref().map(read).transpose()?;
+                Ok(text.map(|text| format::parse_wad(&text)))
+            };
+            return Ok(Some(Parsed::Wad {
+                wad,
+                old: side(&change.old)?,
+                new: side(&change.new)?,
+            }));
+        }
         if let Some(path) = format::entry_file(&change.path) {
             let banks = self.families.has(Family::Clips);
+            let bins = self.families.has(Family::Objects);
             let entry = |id: &Option<BlobId>| -> Result<Option<Box<EntrySide>>, CensusError> {
                 let text = id.as_ref().map(read).transpose()?;
                 let side = text.and_then(|t| format::parse_entry(&t)).map(|mut entry| {
                     // Digested here, on every core, and not where the folds take the rows.
                     let bank = entry.bank.take().filter(|_| banks).map(BankRows::of);
-                    Box::new(EntrySide { entry, bank })
+                    let bin = bin_facts(&entry).filter(|_| bins);
+                    Box::new(EntrySide { entry, bank, bin })
                 });
                 Ok(side)
             };
             return Ok(Some(Parsed::Entry {
+                wad,
                 path,
                 old: entry(&change.old)?,
                 new: entry(&change.new)?,
@@ -404,6 +540,7 @@ impl Walker {
             Ok(Some((*id, Arc::new(facts))))
         };
         Ok(Some(Parsed::Text {
+            wad,
             bin,
             entry,
             old: text(&change.old)?,
@@ -423,21 +560,62 @@ impl Walker {
         let parsed: Vec<Option<Parsed>> = parsed.collect::<Result<_, _>>()?;
         for change in parsed.iter().flatten() {
             match change {
-                Parsed::Entry { path, old, new } => {
-                    self.entry(at, *path, old.as_deref(), new.as_deref());
+                Parsed::Entry {
+                    wad,
+                    path,
+                    old,
+                    new,
+                } => {
+                    let wad = self.wad(wad);
+                    self.entry(at, &wad, *path, old.as_deref(), new.as_deref());
                 }
                 Parsed::Text {
+                    wad,
                     bin,
                     entry,
                     old,
                     new,
                 } => {
                     self.hold(old, new);
-                    self.text(at, *bin, *entry, named(old), named(new));
+                    let wad = self.wad(wad);
+                    let (bin, entry) = (*bin, *entry);
+                    let texts = &mut self.folds.entry_texts;
+                    texts.change_keys(at, old.as_ref(), new.as_ref(), |(blob, _)| {
+                        let wad = wad.clone();
+                        let blob = *blob;
+                        [EntryText {
+                            bin,
+                            entry,
+                            wad,
+                            blob,
+                        }]
+                    });
+                    self.text(at, bin, entry, named(old), named(new));
+                }
+                Parsed::Wad { wad, old, new } => {
+                    let wad = self.wad(wad);
+                    self.wad_file(at, &wad, old.as_ref(), new.as_ref());
                 }
             }
         }
         Ok(())
+    }
+
+    fn wad_file(
+        &mut self,
+        at: Position,
+        wad: &Arc<str>,
+        old: Option<&WadFile>,
+        new: Option<&WadFile>,
+    ) {
+        self.folds.wad_lives.change_keys(at, old, new, |file| {
+            [WadLife {
+                wad: wad.clone(),
+                version: file.version.clone(),
+                file_id: file.file_id,
+                tags: file.tags.join(","),
+            }]
+        });
     }
 
     /// Keeps what a text that appears names, and drops what a text no place holds any more
@@ -462,6 +640,7 @@ impl Walker {
     fn entry(
         &mut self,
         at: Position,
+        wad: &Arc<str>,
         path: WadHash,
         old: Option<&EntrySide>,
         new: Option<&EntrySide>,
@@ -469,33 +648,43 @@ impl Walker {
         let folds = &mut self.folds;
         let old_bank = old.and_then(|side| side.bank.as_ref());
         let new_bank = new.and_then(|side| side.bank.as_ref());
+        let (old_bin, new_bin) = (old.and_then(EntrySide::bin), new.and_then(EntrySide::bin));
         let (old, new) = (old.map(|side| &side.entry), new.map(|side| &side.entry));
         if self.families.has(Family::Files) {
-            let kind = |e: &Entry| FileKind::of(&e.kind);
             folds.files.change(at, old, new, |e| {
                 let facts = FileFacts {
-                    kind: kind(e),
+                    kind: FileKind::of(&e.kind),
                     path,
                 };
                 [(e.content, facts)]
             });
-            folds.paths.change(at, old, new, |e| [(path, kind(e))]);
-            folds.contents.change_keys(at, old, new, |e| {
-                let key = e.content;
-                [Held { path, key }]
+            folds.placements.change_keys(at, old, new, |e| {
+                [Placement {
+                    path,
+                    wad: wad.clone(),
+                    key: e.content,
+                    checksum: e.checksum,
+                }]
             });
         }
         if self.families.has(Family::Objects) {
             folds.objects.change(at, old, new, |e| {
                 e.objects.iter().map(|o| {
+                    let key = ClassedObject {
+                        key: o.object,
+                        class: o.class,
+                    };
                     let facts = ObjectFacts {
                         entry: o.entry,
-                        class: o.class,
                         bin: path,
                         norm: o.norm,
                     };
-                    (o.object, facts)
+                    (key, facts)
                 })
+            });
+            let (old_bin, new_bin) = (old_bin.as_ref(), new_bin.as_ref());
+            folds.bins.change(at, old_bin, new_bin, |(key, facts)| {
+                [(*key, Arc::clone(facts))]
             });
         }
         if self.families.has(Family::Clips) {
@@ -562,6 +751,17 @@ impl Walker {
         new: Option<&ObjectText>,
     ) {
         let folds = &mut self.folds;
+        folds
+            .schema
+            .change_keys(at, old, new, |t| t.schema.iter().copied());
+        folds.links.change_keys(at, old, new, |t| {
+            let links = t.links.iter();
+            links.map(|linked| Linking {
+                bin,
+                entry,
+                linked: *linked,
+            })
+        });
         folds.refs.change_keys(at, old, new, |t| {
             let paths = t.paths.iter();
             paths.map(|path| Naming {
@@ -632,6 +832,7 @@ pub(crate) fn build_row(at: Position, commit: &str, file: BuildFile) -> BuildRow
         build: file.build,
         manifest: file.manifest,
         date: file.date,
+        details: file.details,
     }
 }
 
@@ -711,12 +912,25 @@ mod tests {
     #[test]
     fn a_life_ends_at_the_build_before_its_count_falls_to_zero() {
         let mut tally = Tally::new(Position(3));
-        tally.apply(2, Position(3));
-        tally.apply(-1, Position(5));
+        tally.apply(2, Position(3), false);
+        tally.apply(-1, Position(5), false);
         assert_eq!(tally.life(Position(9)), Life::new(3, 9));
-        tally.apply(-1, Position(7));
+        tally.apply(-1, Position(7), false);
         assert_eq!(tally.life(Position(9)), Life::new(3, 6));
-        tally.apply(1, Position(8));
+        assert_eq!(tally.apply(1, Position(8), false), None);
         assert_eq!(tally.life(Position(9)), Life::new(3, 9));
+    }
+
+    #[test]
+    fn a_span_that_comes_back_at_a_later_build_is_a_new_life() {
+        let mut tally = Tally::new(Position(3));
+        tally.apply(1, Position(3), true);
+        tally.apply(-1, Position(7), true);
+        assert_eq!(tally.apply(1, Position(8), true), Some(Life::new(3, 6)));
+        assert_eq!(tally.life(Position(9)), Life::new(8, 9));
+        // Gone and back within one build: the build's net change is none.
+        tally.apply(-1, Position(9), true);
+        assert_eq!(tally.apply(1, Position(9), true), None);
+        assert_eq!(tally.life(Position(9)), Life::new(8, 9));
     }
 }

@@ -12,11 +12,12 @@ use std::error::Error;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use gix::ObjectId;
+use reforge::history::{BlobId, Family, History, Position};
 use reforge::model::{BinHash, WadHash};
 
 use crate::error::CensusError;
 use crate::format::{self, BuildFile};
-use crate::walk::{BlobId, Change, ChangeSource};
+use crate::walk::{Change, ChangeSource};
 
 /// Carries a gix error into this crate's with what was being read.
 pub(crate) trait Gx<T> {
@@ -139,6 +140,33 @@ impl GitRepo {
                 prefix,
                 count: more + 1,
             }),
+        }
+    }
+
+    /// A bin entry's text by the blob `History::text_blob` names.
+    pub fn text_of(&self, blob: &BlobId) -> Result<String, CensusError> {
+        Ok(String::from_utf8_lossy(&self.read(blob)?).into_owned())
+    }
+
+    /// A bin entry's text at the build at `at`, read by the blob the index names. An index
+    /// without the objects family names no blob, and the text is searched for in the build's tree
+    /// as `entry_text` does. None when the build holds no such entry, or the index no such
+    /// build.
+    pub fn entry_text_at(
+        &self,
+        history: &dyn History,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Option<String>, CensusError> {
+        let texts = history.stamp().map(|stamp| stamp.families);
+        if texts.is_some_and(|families| families.has(Family::Objects)) {
+            let held = history.text_blob(bin, entry, at)?;
+            return held.map(|held| self.text_of(&held.blob)).transpose();
+        }
+        match history.build(at) {
+            Some(build) => self.entry_text(bin, entry, &build.commit),
+            None => Ok(None),
         }
     }
 

@@ -5,6 +5,7 @@
 #![cfg(feature = "fetch")]
 
 mod common;
+mod repo;
 
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicBool;
@@ -74,45 +75,9 @@ impl Server {
 
     /// Commits a build on top of the branch.
     fn push(&mut self, build: &BuildFile, files: &BTreeMap<String, String>) {
-        let empty = gix::ObjectId::empty_tree(gix::hash::Kind::Sha1);
-        let mut tree = self.repo.edit_tree(empty).unwrap();
-        let mut put = |path: &str, text: &str| {
-            let blob = self.repo.write_blob(text).unwrap().detach();
-            tree.upsert(path, gix::object::tree::EntryKind::Blob, blob)
-                .unwrap();
-        };
-        put("census.yaml", "format: 2\n");
-        let yaml = format!(
-            "version: \"{}\"\nmanifest: \"{}\"\ndate: \"{}\"\n",
-            build.build, build.manifest, build.date
-        );
-        put("build.yaml", &yaml);
-        for (path, text) in files {
-            put(path, text);
-        }
-        let tree = tree.write().unwrap().detach();
-        let census = gix::actor::SignatureRef {
-            name: "census".into(),
-            email: "census@localhost".into(),
-            time: "1700000000 +0000",
-        };
-        let branch = "refs/heads/history-v2";
-        let parents = self
-            .commits
-            .last()
-            .map(|c| gix::ObjectId::from_hex(c.as_bytes()).unwrap());
-        let commit = self
-            .repo
-            .commit_as(
-                census,
-                census,
-                branch,
-                build.build.to_string(),
-                tree,
-                parents,
-            )
-            .unwrap();
-        self.commits.push(commit.to_string());
+        let parent = self.commits.last().map(String::as_str);
+        let commit = repo::commit(&self.repo, parent, build, files);
+        self.commits.push(commit);
     }
 
     fn url(&self) -> &str {

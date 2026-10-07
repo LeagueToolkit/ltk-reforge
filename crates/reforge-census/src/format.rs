@@ -7,14 +7,15 @@
 //! text here, or is not known.
 
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
 use ltk_meta::PropertyValueEnum as P;
 use ltk_meta::property::values::Struct;
-use reforge::game::Build;
-use reforge::history::tables::JointList;
-use reforge::history::{EventsBank, Joint, Mesh, Skeleton, Submesh, Texture};
+use reforge::game::{Build, FieldType};
+use reforge::history::tables::{ClassField, JointList};
+use reforge::history::{BuildDetails, EventsBank, Joint, Mesh, Skeleton, Submesh, Texture};
 use reforge::model::value::{items, looks_like_path, walk};
 use reforge::model::{
     BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
@@ -37,17 +38,34 @@ pub struct BuildFile {
     pub manifest: String,
     /// The day it went live.
     pub date: String,
+    /// The rest of the file.
+    pub details: BuildDetails,
 }
 
 /// A commit's `build.yaml`. None when it states no version that is a build.
 pub fn parse_build(text: &str) -> Option<BuildFile> {
     let (mut version, mut manifest, mut date) = (None, String::new(), String::new());
-    for line in text.lines().filter_map(Line::of).filter(|l| l.indent == 0) {
-        let value = || unquote(line.value).map(Cow::into_owned).unwrap_or_default();
+    let mut details = BuildDetails::default();
+    let mut section = "";
+    for line in text.lines().filter_map(Line::of) {
+        if line.indent > 0 {
+            if section == "realms" && line.item {
+                details.realms.push(line.text());
+            }
+            continue;
+        }
+        section = line.key;
+        let value = || line.text();
         match line.key {
             "version" => version = Build::parse(&value()),
+            "patch" => details.patch = value(),
             "manifest" => manifest = value(),
+            "source" => details.source = value(),
+            "solution" => details.solution = value(),
+            "release" => details.release = value(),
+            "exe" => details.exe = value(),
             "date" => date = value(),
+            "legacyBins" => details.legacy_bins = line.value == "true",
             _ => {}
         }
     }
@@ -55,6 +73,7 @@ pub fn parse_build(text: &str) -> Option<BuildFile> {
         build: version?,
         manifest,
         date,
+        details,
     })
 }
 
@@ -66,13 +85,48 @@ pub fn census_format(text: &str) -> Option<u32> {
         .and_then(|l| l.value.parse().ok())
 }
 
+/// A WAD, from `_wad.yaml`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WadFile {
+    /// The WAD format's `major.minor`.
+    pub version: String,
+    /// The manifest's id for this version of the file.
+    pub file_id: u64,
+    /// The manifest's tags for the file, sorted.
+    pub tags: Vec<String>,
+}
+
+/// A WAD's `_wad.yaml`.
+pub fn parse_wad(text: &str) -> WadFile {
+    let mut wad = WadFile::default();
+    let mut section = "";
+    for line in text.lines().filter_map(Line::of) {
+        if line.indent == 0 {
+            section = line.key;
+            match line.key {
+                "version" => wad.version = line.text(),
+                "fileId" => wad.file_id = line.hash(),
+                _ => {}
+            }
+        } else if section == "tags" && line.item {
+            wad.tags.push(line.text());
+        }
+    }
+    wad
+}
+
 /// What a WAD entry's file says that the index keeps.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Entry {
     /// The key of the entry's bytes.
     pub content: FileKey,
+    /// The checksum the WAD's table holds for the entry, 0 in a WAD without them.
+    pub checksum: u64,
     /// What the bytes are by their magic (`bin`, `tex`, ...), empty when unknown.
     pub kind: String,
+    /// The path hash of each bin a bin links. None for an entry that is no bin, and for a bin
+    /// the census could not read (a `PTCH`), which has no `links` key.
+    pub links: Option<Vec<WadHash>>,
     /// A bin's objects.
     pub objects: Vec<ObjectRecord>,
     /// A bank's wems.
@@ -286,7 +340,9 @@ pub fn parse_entry(text: &str) -> Option<Entry> {
             (section, list) = (line.key, "");
             match line.key {
                 "sha256" => content = unquoted(line.value).and_then(FileKey::parse),
+                "checksum" => entry.checksum = line.hash(),
                 "kind" => entry.kind = line.text(),
+                "links" => entry.links = Some(Vec::new()),
                 // An entry is one file, so a later section of a rig replaces an earlier one.
                 "skeleton" => {
                     (entry.skeleton, entry.mesh) = (Some(Skeleton::default()), None);
@@ -299,6 +355,10 @@ pub fn parse_entry(text: &str) -> Option<Entry> {
         }
         let id = || u32::from_str_radix(line.key, 16).ok();
         match (section, line.indent) {
+            ("links", 1) if line.item => {
+                let links = entry.links.get_or_insert_default();
+                links.push(path_hash(&line.text()));
+            }
             ("objects", 1) => objects.extend(id().map(|entry| PartialObject {
                 entry,
                 class: None,
@@ -463,6 +523,10 @@ pub struct ObjectText {
     pub tags: Vec<String>,
     /// Its bank units, in order.
     pub units: Vec<UnitRecord>,
+    /// The type each field of its object and of every struct in it had, sorted, each once.
+    pub schema: Vec<ClassField>,
+    /// The entry hash of each object it links, sorted, each once.
+    pub links: Vec<BinHash>,
 }
 
 /// One bank unit of an entry.
@@ -506,11 +570,13 @@ pub fn parse_object_text(text: &str) -> Option<ObjectText> {
     let bin = cst.build_bin(text).into_result().ok()?;
     let mut out = ObjectText::default();
     for object in bin.objects.values() {
+        fields(object.class_hash, &object.properties, &mut out.schema);
         tags_of(&object.properties, &mut out.tags);
         for value in object.properties.values() {
             walk(value, &mut |v| match v {
                 P::String(s) if looks_like_path(&s.value) => out.paths.push(path_hash(&s.value)),
                 P::WadChunkLink(l) if l.value.0 != 0 => out.paths.push(l.value),
+                P::ObjectLink(l) if l.value.0 != 0 => out.links.push(l.value),
                 P::Struct(s) => structure(s, &mut out),
                 P::Embedded(e) => structure(&e.0, &mut out),
                 _ => {}
@@ -521,7 +587,64 @@ pub fn parse_object_text(text: &str) -> Option<ObjectText> {
     out.paths.dedup();
     out.tags.sort_unstable();
     out.tags.dedup();
+    out.schema.sort_unstable();
+    out.schema.dedup();
+    out.links.sort_unstable();
+    out.links.dedup();
     Some(out)
+}
+
+/// The type of each field of a struct of a class, and of the fields of every struct its values
+/// hold.
+fn fields(class: BinHash, properties: &IndexMap<BinHash, P>, out: &mut Vec<ClassField>) {
+    for (field, value) in properties {
+        let field = *field;
+        out.extend(types(value).map(|ty| ClassField { class, field, ty }));
+        nested(value, out);
+    }
+}
+
+/// The fields of the structs a value holds.
+fn nested(value: &P, out: &mut Vec<ClassField>) {
+    match value {
+        P::Struct(s) => fields(s.class_hash, &s.properties, out),
+        P::Embedded(e) => fields(e.0.class_hash, &e.0.properties, out),
+        P::Container(c) => c.items().iter().for_each(|item| nested(item, out)),
+        P::UnorderedContainer(c) => c.0.items().iter().for_each(|item| nested(item, out)),
+        P::Optional(o) => o.value().into_iter().for_each(|item| nested(item, out)),
+        P::Map(m) => m.entries().iter().for_each(|(_, item)| nested(item, out)),
+        _ => {}
+    }
+}
+
+/// The types a value has: one, or of a list, an option or a map of structs one per class its
+/// items have.
+fn types(value: &P) -> impl Iterator<Item = FieldType> {
+    let ty = FieldType::of(value);
+    let items: Vec<&P> = match value {
+        P::Container(c) => c.items().iter().collect(),
+        P::UnorderedContainer(c) => c.0.items().iter().collect(),
+        P::Optional(o) => o.value().into_iter().collect(),
+        P::Map(m) => m.entries().iter().map(|(_, item)| item).collect(),
+        _ => return vec![ty].into_iter(),
+    };
+    let class_of = |item: &&P| match item {
+        P::Embedded(e) => Some(e.0.class_hash),
+        P::Struct(s) => Some(s.class_hash),
+        _ => None,
+    };
+    let classes: BTreeSet<BinHash> = items.iter().filter_map(class_of).collect();
+    let classes = classes.into_iter().filter(|class| class.0 != 0);
+    let mut typed: Vec<FieldType> = classes
+        .map(|class| FieldType {
+            class: Some(class),
+            ..ty
+        })
+        .collect();
+    if typed.is_empty() {
+        typed.push(FieldType { class: None, ..ty });
+    }
+    typed.into_iter()
 }
 
 fn structure(s: &Struct, out: &mut ObjectText) {
@@ -579,6 +702,33 @@ pub fn object_file(path: &str) -> Option<(WadHash, BinHash)> {
     Some((bin_dir(parts.next()?)?, BinHash(entry)))
 }
 
+/// The WAD's file, `files/<manifest path>/_wad.yaml`.
+const WAD_FILE: &str = "_wad.yaml";
+
+/// The WAD a file of the history is in, as its path in the manifest: the directory under `files/`
+/// that holds a WAD's `_wad.yaml`, its entries' files and its bins' entry texts.
+pub fn wad_of(path: &str) -> Option<&str> {
+    let depth = if is_wad_file(path) {
+        1
+    } else if object_file(path).is_some() {
+        4
+    } else if entry_file(path).is_some() {
+        2
+    } else {
+        return None;
+    };
+    let mut dir = path;
+    for _ in 0..depth {
+        dir = dir.rsplit_once('/')?.0;
+    }
+    dir.strip_prefix("files/")
+}
+
+/// Whether a file of the history is a WAD's `_wad.yaml`.
+pub fn is_wad_file(path: &str) -> bool {
+    path.rsplit('/').next() == Some(WAD_FILE)
+}
+
 /// The bin path a bin's directory of entry texts, `<path hash>.bin`, is named for.
 pub fn bin_dir(name: &str) -> Option<WadHash> {
     let stem = hex_name(name.strip_suffix(".bin")?, 16)?;
@@ -629,5 +779,23 @@ mod tests {
             object_path(WadHash(0x014c_a4df_836b_3e73), BinHash(0x3537_586f)),
             "01/014ca4df836b3e73.bin/35/3537586f.rito"
         );
+    }
+
+    #[test]
+    fn a_file_is_in_the_wad_whose_directory_holds_it() {
+        assert_eq!(
+            wad_of("files/data/x.wad.client/0a/0a1b2c3d4e5f6071.yaml"),
+            Some("data/x.wad.client")
+        );
+        assert_eq!(
+            wad_of("files/data/x.wad.client/01/014ca4df836b3e73.bin/35/3537586f.rito"),
+            Some("data/x.wad.client")
+        );
+        assert_eq!(
+            wad_of("files/data/x.wad.client/_wad.yaml"),
+            Some("data/x.wad.client")
+        );
+        assert_eq!(wad_of("build.yaml"), None);
+        assert!(is_wad_file("files/data/x.wad.client/_wad.yaml"));
     }
 }

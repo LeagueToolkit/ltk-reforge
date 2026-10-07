@@ -4,7 +4,7 @@
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use reforge::history::{DB_FILE, STAMP_FILE};
+use reforge::history::{DB_FILE, FORMAT, STAMP_FILE};
 use reforge_app::archive::Clones;
 use reforge_app::storage::{KeptIndex, Storage};
 use tempfile::TempDir;
@@ -12,7 +12,7 @@ use tempfile::TempDir;
 fn stamp(builds: usize) -> String {
     format!(
         r#"{{
-  "format": 0,
+  "format": {FORMAT},
   "repo": "https://github.com/LeagueToolkit/ltk-census-history.git",
   "head": "5b121f51ad752b06ce0cb0ea17d5859f4b20c645",
   "newest_build": "16.19.8207193",

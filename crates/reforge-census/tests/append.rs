@@ -4,6 +4,7 @@
 mod common;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use reforge::history::tables::{TABLES, table_names};
 use reforge::history::{Families, History, Life, SqliteHistory};
 use reforge::model::{FileKey, WadHash};
 use reforge_census::{CensusError, Indexer};
@@ -22,14 +23,41 @@ fn dump(dir: &Utf8Path) -> Vec<(String, Vec<String>)> {
             "files",
             "SELECT hex(key), first, last, kind, path, alive FROM files",
         ),
-        ("paths", "SELECT path, first, last, kind, alive FROM paths"),
         (
-            "contents",
-            "SELECT path, hex(key), first, last, alive FROM contents",
+            "placements",
+            "SELECT p.path, w.path, hex(p.key), p.checksum, p.first, p.last, p.alive \
+             FROM placements p JOIN wads w ON w.id = p.wad",
+        ),
+        (
+            "wad_lives",
+            "SELECT w.path, v.name, l.file_id, t.name, l.first, l.last, l.alive FROM wad_lives l \
+             JOIN wads w ON w.id = l.wad JOIN names v ON v.id = l.version \
+             JOIN names t ON t.id = l.tags",
         ),
         (
             "objects",
             "SELECT hex(key), entry, class, bin, norm, first, last, alive FROM objects",
+        ),
+        (
+            "bins",
+            "SELECT hex(b.key), hex(b.links), b.first, b.last, b.alive, \
+             (SELECT group_concat(e.entry || ':' || o.class || ':' || hex(o.key), ',' \
+              ORDER BY e.entry) FROM bin_entries e JOIN objects o ON o.id = e.object \
+              WHERE e.bin = b.id) FROM bins b",
+        ),
+        (
+            "links",
+            "SELECT bin, entry, linked, first, last, alive FROM links",
+        ),
+        (
+            "schema",
+            "SELECT class, field, kind, key_kind, item_kind, value_class, first, last, alive \
+             FROM schema",
+        ),
+        (
+            "entry_texts",
+            "SELECT t.bin, t.entry, w.path, hex(t.blob), t.first, t.last, t.alive \
+             FROM entry_texts t JOIN wads w ON w.id = t.wad",
         ),
         (
             "refs",
@@ -103,7 +131,20 @@ fn dump(dir: &Utf8Path) -> Vec<(String, Vec<String>)> {
              alive FROM event_banks",
         ),
         ("names", "SELECT name FROM names"),
+        ("wads", "SELECT path FROM wads"),
     ];
+    // Every table is compared: its own rows, or its parts with its owner's.
+    let mut dumped: Vec<&str> = queries.iter().map(|(table, _)| *table).collect();
+    dumped.extend(
+        TABLES
+            .iter()
+            .filter_map(|table| table.parts)
+            .map(|parts| parts.name),
+    );
+    dumped.sort_unstable();
+    let mut tables = table_names();
+    tables.sort_unstable();
+    assert_eq!(dumped, tables, "the dump leaves a table out");
     let rows = |(table, sql): &(&str, &str)| {
         let mut statement = db.prepare(sql).unwrap();
         let columns = statement.column_count();
@@ -120,13 +161,33 @@ fn dump(dir: &Utf8Path) -> Vec<(String, Vec<String>)> {
 }
 
 /// The fixture and two more builds: the fourth drops path 3, one of the two places holding
-/// bytes A, a mesh appears at path 5, and the events bank and the animation clip are the first
-/// build's; the fifth is the third again.
+/// bytes A, a mesh appears at path 5, the events bank and the animation clip are the first
+/// build's, the WAD is another version of its file, and the object's text names another tag;
+/// the fifth is the third again.
 fn five_builds() -> Memory {
     let mut history = memory();
     let third = history.commits[2].1.clone();
     let mut fourth = third.clone();
     fourth.retain(|path, _| !path.ends_with("/0000000000000003.yaml"));
+    let wad = "version: \"3.4\"\nfileId: \"0000000000000002\"\ntags: []\n";
+    fourth.insert("files/data/x.wad.client/_wad.yaml".into(), wad.into());
+    for (path, text) in &mut fourth {
+        if path.ends_with(".rito") {
+            *text = text.replace("\"Test\"", "\"Other\"");
+            // The icon is a file, a field of another kind, and the object links another.
+            let string = format!("string = \"{}\"", common::NAMED);
+            *text = text.replace(&string, "file = 0x0000000000000005");
+            *text = text.replace(
+                "    0x00000001 = 0x00000002 {\n",
+                "    0x00000001 = 0x00000002 {\n        0x0000abcd: link = 0x00000007\n",
+            );
+        }
+        // The bin links another bin, so it is another content.
+        if path.ends_with("/0000000000000002.yaml") {
+            *text = text.replace("links: []\n", "links:\n - \"DATA/Other.bin\"\n");
+            *text = text.replace(&"9".repeat(64), &"8".repeat(64));
+        }
+    }
     let mesh = "sha256: \"1111111111111111111111111111111111111111111111111111111111111111\"\n\
                 kind: \"skn\"\nmesh:\n vertexType: \"basic\"\n vertices: 30\n indices: 60\n \
                 submeshes:\n  - name: \"Body\"\n    vertices: 30\n    indices: 60\n    \

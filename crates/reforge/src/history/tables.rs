@@ -10,7 +10,9 @@
 //! names a rig repeats in every version and every skin are interned in `names`.
 //!
 //! Every table of lives keeps `first`, `last` and `alive`: the life, and how many records hold
-//! the key at the head (none once it is gone), which an append starts from.
+//! the key at the head (none once it is gone), which an append starts from. A table of spans
+//! keeps one row per unbroken life, so a question at one build is exact; the others keep the
+//! hull of a key's lives in one row.
 
 use std::fmt;
 use std::hash::Hash;
@@ -21,7 +23,10 @@ use reforge_wwise::Object;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use ltk_meta::PropertyKind as Kind;
+
 use super::HistoryError;
+use crate::game::FieldType;
 pub use crate::model::EventsBank;
 use crate::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 
@@ -55,13 +60,21 @@ impl Life {
     }
 }
 
+impl Life {
+    /// Whether the life holds the build at a position.
+    pub fn holds(&self, at: Position) -> bool {
+        self.first <= at && at <= self.last
+    }
+}
+
 /// A group of tables the walk fills together.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Family {
-    /// Contents, paths, and every path a content lived at.
+    /// Contents, the WADs, and where each WAD held each content.
     Files,
-    /// Objects, and from their texts the files they name, their audio tags and bank units.
+    /// Objects, the bins that hold them, their texts' blobs, and from their texts the files and
+    /// the objects they name, the types of their fields, their audio tags and bank units.
     Objects,
     /// Clips, the events that play them, and the events banks' headers and objects.
     Clips,
@@ -249,12 +262,16 @@ pub enum Storage {
     OptionalName,
     /// Bytes as stored, a blob of any length.
     Bytes,
+    /// A WAD's path in the manifest, as the id of its row in `wads`.
+    Wad,
+    /// An object, as the id of its row in `objects`.
+    Object,
 }
 
 impl Storage {
     fn sql(self) -> &'static str {
         match self {
-            Storage::Integer | Storage::Name => "INTEGER NOT NULL",
+            Storage::Integer | Storage::Name | Storage::Wad | Storage::Object => "INTEGER NOT NULL",
             Storage::Key | Storage::Bytes => "BLOB NOT NULL",
             Storage::OptionalName => "INTEGER",
         }
@@ -298,15 +315,32 @@ const fn bytes(name: &'static str) -> Column {
     }
 }
 
+const fn wad(name: &'static str) -> Column {
+    Column {
+        name,
+        storage: Storage::Wad,
+    }
+}
+
+const fn object(name: &'static str) -> Column {
+    Column {
+        name,
+        storage: Storage::Object,
+    }
+}
+
 /// How a table's rows are found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     /// The key columns are the primary key.
     Keyed,
-    /// A row has an `id` of its own and is found by its key columns through a unique index
-    /// made after the rows are in. The key's last column is the digest of the row's whole
-    /// record, so a changed record at a path is a new row.
+    /// A row has an `id` of its own, which its parts and other tables' rows store, and is found
+    /// by its key columns through a unique index. The key of a rig, a texture or an events bank
+    /// ends with the digest of its whole record, so a changed record at a path is a new row.
     Recorded,
+    /// A row is one unbroken life of its key: the key columns and `first` are the primary key,
+    /// and a key that comes back after a build without it gets a row of its own.
+    Spans,
 }
 
 /// The table that holds the ordered parts of another table's rows: a skeleton's joints, a
@@ -319,6 +353,9 @@ pub struct PartsDef {
     pub name: &'static str,
     /// The column that holds the owner's id.
     pub owner: &'static str,
+    /// The column of `columns` that orders the parts and tells them apart, or none for an
+    /// `ordinal` column of their own after the owner.
+    pub by: Option<&'static str>,
     /// The columns after the owner and the ordinal.
     pub columns: &'static [Column],
 }
@@ -380,18 +417,25 @@ impl TableDef {
                 columns.join(", "),
                 key.join(", ")
             ),
+            (Shape::Spans, _) => format!(
+                "CREATE TABLE {} ({}, PRIMARY KEY ({}, first)) WITHOUT ROWID;\n",
+                self.name,
+                columns.join(", "),
+                key.join(", ")
+            ),
         };
         if let Some(parts) = &self.parts {
-            let mut columns = vec![
-                format!("{} INTEGER NOT NULL", parts.owner),
-                "ordinal INTEGER NOT NULL".to_string(),
-            ];
+            let mut columns = vec![format!("{} INTEGER NOT NULL", parts.owner)];
+            if parts.by.is_none() {
+                columns.push("ordinal INTEGER NOT NULL".to_string());
+            }
             columns_sql(parts.columns, &mut columns);
             sql.push_str(&format!(
-                "CREATE TABLE {} ({}, PRIMARY KEY ({}, ordinal)) WITHOUT ROWID;\n",
+                "CREATE TABLE {} ({}, PRIMARY KEY ({}, {})) WITHOUT ROWID;\n",
                 parts.name,
                 columns.join(", "),
-                parts.owner
+                parts.owner,
+                parts.by.unwrap_or("ordinal")
             ));
         }
         sql
@@ -423,15 +467,20 @@ impl TableDef {
 pub const NAMES_SQL: &str =
     "CREATE TABLE names (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);\n";
 
+/// The table every WAD is held in once, by its path in the manifest.
+pub const WADS_SQL: &str =
+    "CREATE TABLE wads (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE);\n";
+
 /// The statements that create every table of an empty index.
 pub fn schema_sql() -> String {
     let mut sql: String = TABLES.iter().map(|table| table.create_sql()).collect();
     sql.push_str(NAMES_SQL);
+    sql.push_str(WADS_SQL);
     sql
 }
 
-/// The statements that index every table. A whole write runs them after the rows are in, which
-/// is faster than keeping the indexes up to date per insert.
+/// The statements that index every table. A whole write runs a table's after its rows are in,
+/// which is faster than keeping the indexes up to date per insert.
 pub fn index_sql() -> String {
     TABLES.iter().map(|table| table.index_sql()).collect()
 }
@@ -449,6 +498,10 @@ pub enum Cell<'a> {
     NoName,
     /// Bytes as stored.
     Bytes(&'a [u8]),
+    /// A WAD's path, which the writer interns.
+    Wad(&'a str),
+    /// An object by its key and its class, which the writer finds in `objects`.
+    Object(ObjectKey, BinHash),
 }
 
 impl From<u64> for Cell<'_> {
@@ -525,8 +578,8 @@ pub trait Table: 'static {
     fn cells<'a>(key: &'a Self::Key, facts: &'a Self::Facts) -> impl Iterator<Item = Cell<'a>>;
 
     /// The row's parts in order, each as the cells of `DEF.parts`' columns.
-    fn parts(key: &Self::Key) -> Vec<Vec<Cell<'_>>> {
-        let _ = key;
+    fn parts<'a>(key: &'a Self::Key, facts: &'a Self::Facts) -> Vec<Vec<Cell<'a>>> {
+        let _ = (key, facts);
         Vec::new()
     }
 }
@@ -573,57 +626,102 @@ impl Table for Files {
     }
 }
 
-/// `paths`: every path some WAD of the game held a file at, with the kind of the first file
-/// seen there.
-pub struct Paths;
-
-impl Table for Paths {
-    type Key = WadHash;
-    type Facts = FileKind;
-    const DEF: TableDef = TableDef {
-        name: "paths",
-        family: Family::Files,
-        key: &[integer("path")],
-        facts: &[integer("kind")],
-        shape: Shape::Keyed,
-        lookups: &[],
-        parts: None,
-    };
-
-    fn cells<'a>(key: &'a WadHash, facts: &'a FileKind) -> impl Iterator<Item = Cell<'a>> {
-        [(*key).into(), (*facts).into()].into_iter()
-    }
-}
-
-/// A content at a path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Held {
+/// A content at a path in one WAD.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Placement {
     /// The path.
     pub path: WadHash,
+    /// The WAD's path in the manifest.
+    pub wad: Arc<str>,
     /// The content.
     pub key: FileKey,
+    /// The checksum the WAD's table holds for the file, 0 for a WAD that holds none.
+    pub checksum: u64,
 }
 
-/// `contents`: every path a content lived at, where `files` keeps only the first. Indexed by
-/// content too, so every path of a content is one query.
-pub struct Contents;
+/// `placements`: every content a WAD held at a path, one row per unbroken life, so the file at a
+/// path at one build is one query. A path whose bytes go and come back has a row per life.
+/// The path leads the key, and the content is indexed too, so every path of a content is one
+/// query.
+pub struct Placements;
 
-impl Table for Contents {
-    type Key = Held;
+impl Table for Placements {
+    type Key = Placement;
     type Facts = ();
     const DEF: TableDef = TableDef {
-        name: "contents",
+        name: "placements",
         family: Family::Files,
-        key: &[integer("path"), key("key")],
+        key: &[integer("path"), wad("wad"), key("key"), integer("checksum")],
         facts: &[],
-        shape: Shape::Keyed,
+        shape: Shape::Spans,
         lookups: &["key"],
         parts: None,
     };
 
-    fn cells<'a>(key: &'a Held, (): &'a ()) -> impl Iterator<Item = Cell<'a>> {
-        [key.path.into(), key.key.into()].into_iter()
+    fn cells<'a>(key: &'a Placement, (): &'a ()) -> impl Iterator<Item = Cell<'a>> {
+        [
+            key.path.into(),
+            Cell::Wad(&key.wad),
+            key.key.into(),
+            key.checksum.into(),
+        ]
+        .into_iter()
     }
+}
+
+/// A WAD as its manifest described it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WadLife {
+    /// The WAD's path in the manifest.
+    pub wad: Arc<str>,
+    /// The WAD format's `major.minor`.
+    pub version: String,
+    /// The manifest's id for this version of the file. It changes whenever the WAD's bytes do.
+    pub file_id: u64,
+    /// The manifest's tags for the file, sorted, joined by commas; empty for none.
+    pub tags: String,
+}
+
+/// `wad_lives`: every WAD of the game as its manifest described it, one row per unbroken life.
+pub struct WadLives;
+
+impl Table for WadLives {
+    type Key = WadLife;
+    type Facts = ();
+    const DEF: TableDef = TableDef {
+        name: "wad_lives",
+        family: Family::Files,
+        key: &[
+            wad("wad"),
+            name("version"),
+            integer("file_id"),
+            name("tags"),
+        ],
+        facts: &[],
+        shape: Shape::Spans,
+        lookups: &[],
+        parts: None,
+    };
+
+    fn cells<'a>(key: &'a WadLife, (): &'a ()) -> impl Iterator<Item = Cell<'a>> {
+        [
+            Cell::Wad(&key.wad),
+            Cell::Name(&key.version),
+            key.file_id.into(),
+            Cell::Name(&key.tags),
+        ]
+        .into_iter()
+    }
+}
+
+/// An object's bytes under one class. The key covers the bytes from the entry hash on, and a bin
+/// stores the class apart, so the same bytes under two classes are two objects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ClassedObject {
+    /// The object's key.
+    pub key: ObjectKey,
+    /// The object's class.
+    pub class: BinHash,
 }
 
 /// What a row of `objects` keeps: the first place the object was seen.
@@ -631,42 +729,265 @@ impl Table for Contents {
 pub struct ObjectFacts {
     /// The object's entry hash.
     pub entry: BinHash,
-    /// The object's class.
-    pub class: BinHash,
     /// The path of the first bin the object was seen in.
     pub bin: WadHash,
     /// The object's norm key.
     pub norm: NormKey,
 }
 
-/// `objects`: every object the game shipped, by its key. Indexed by norm key too.
+/// `objects`: every object the game shipped, by its key and its class. Indexed by norm key too.
+/// A row's id is what `bin_entries` stores of the object: an integer of a few bytes, where the
+/// key and the class are twenty.
 pub struct Objects;
 
 impl Table for Objects {
-    type Key = ObjectKey;
+    type Key = ClassedObject;
     type Facts = ObjectFacts;
     const DEF: TableDef = TableDef {
         name: "objects",
         family: Family::Objects,
-        key: &[key("key")],
-        facts: &[
-            integer("entry"),
-            integer("class"),
-            integer("bin"),
-            integer("norm"),
-        ],
-        shape: Shape::Keyed,
+        key: &[key("key"), integer("class")],
+        facts: &[integer("entry"), integer("bin"), integer("norm")],
+        shape: Shape::Recorded,
         lookups: &["norm"],
         parts: None,
     };
 
-    fn cells<'a>(key: &'a ObjectKey, facts: &'a ObjectFacts) -> impl Iterator<Item = Cell<'a>> {
+    fn cells<'a>(key: &'a ClassedObject, facts: &'a ObjectFacts) -> impl Iterator<Item = Cell<'a>> {
         [
-            (*key).into(),
+            key.key.into(),
+            key.class.into(),
             facts.entry.into(),
-            facts.class.into(),
             facts.bin.into(),
             facts.norm.into(),
+        ]
+        .into_iter()
+    }
+}
+
+/// One object of a bin, as the bin holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BinEntry {
+    /// The object's entry hash.
+    pub entry: BinHash,
+    /// The object's class.
+    pub class: BinHash,
+    /// The object's key.
+    pub object: ObjectKey,
+    /// The object's norm key.
+    pub norm: NormKey,
+}
+
+/// What a row of `bins` keeps: the bins a bin links, and its objects.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BinFacts {
+    /// The path hash of each bin it links, in the order the census history lists them, eight
+    /// bytes each, little endian.
+    pub links: Arc<[u8]>,
+    /// Its objects, by entry hash. An entry hash the bin repeats keeps its first object.
+    pub entries: Arc<[BinEntry]>,
+}
+
+/// The bytes one link takes in `bins.links`.
+pub const LINK_BYTES: usize = 8;
+
+impl BinFacts {
+    /// A bin's facts from the paths it links and its objects.
+    pub fn of(links: &[WadHash], entries: &[BinEntry]) -> Self {
+        let packed: Vec<u8> = links.iter().flat_map(|link| link.0.to_le_bytes()).collect();
+        let mut entries = entries.to_vec();
+        entries.sort_by_key(|e| e.entry);
+        entries.dedup_by_key(|e| e.entry);
+        Self {
+            links: packed.into(),
+            entries: entries.into(),
+        }
+    }
+
+    /// The paths of the bins `bins.links` holds, in order.
+    pub fn links(packed: &[u8]) -> impl Iterator<Item = WadHash> {
+        let (links, _) = packed.as_chunks::<LINK_BYTES>();
+        links.iter().map(|link| WadHash(u64::from_le_bytes(*link)))
+    }
+}
+
+/// `bins` and `bin_entries`: every bin the game shipped, by its content, with the bins it links
+/// and its objects. A bin at a path at a build is its row in `placements`, then this.
+///
+/// The links are one value: a bin links a few bins, and its links are read whole. An object is
+/// the id of its row in `objects`, which holds its key, its class and its norm key: a changed bin
+/// repeats every object it holds, 21 a bin on average (2026-10-07, the first ten builds), so a
+/// byte of an object's row here costs every one of them.
+pub struct Bins;
+
+impl Table for Bins {
+    type Key = FileKey;
+    type Facts = Arc<BinFacts>;
+    const DEF: TableDef = TableDef {
+        name: "bins",
+        family: Family::Objects,
+        key: &[key("key")],
+        facts: &[bytes("links")],
+        shape: Shape::Recorded,
+        lookups: &[],
+        parts: Some(PartsDef {
+            name: "bin_entries",
+            owner: "bin",
+            by: Some("entry"),
+            columns: &[integer("entry"), object("object")],
+        }),
+    };
+
+    fn cells<'a>(key: &'a FileKey, facts: &'a Arc<BinFacts>) -> impl Iterator<Item = Cell<'a>> {
+        [(*key).into(), Cell::Bytes(&facts.links)].into_iter()
+    }
+
+    fn parts<'a>(_: &'a FileKey, facts: &'a Arc<BinFacts>) -> Vec<Vec<Cell<'a>>> {
+        let entries = facts.entries.iter();
+        entries
+            .map(|e| vec![e.entry.into(), Cell::Object(e.object, e.class)])
+            .collect()
+    }
+}
+
+/// A file's id in the census history, the git object id of its bytes: the same id is the same
+/// bytes.
+pub type BlobId = [u8; 20];
+
+/// A bin entry's text in one WAD's bin.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EntryText {
+    /// The object's entry hash.
+    pub entry: BinHash,
+    /// The path of the bin.
+    pub bin: WadHash,
+    /// The WAD's path in the manifest.
+    pub wad: Arc<str>,
+    /// The text's blob in the census history.
+    pub blob: BlobId,
+}
+
+/// `entry_texts`: the blob of every bin entry's text in every WAD, one row per unbroken life, so
+/// an object's text at a build is read from the census history by its id, with no search of
+/// the build's tree. The text itself stays in the history.
+///
+/// The entry leads the key, so the bins that held an entry at a build are one query with no
+/// index beside the table: an index of a table without row ids repeats the whole key, which
+/// took half of this table's bytes (2026-10-07, the first ten builds).
+pub struct EntryTexts;
+
+impl Table for EntryTexts {
+    type Key = EntryText;
+    type Facts = ();
+    const DEF: TableDef = TableDef {
+        name: "entry_texts",
+        family: Family::Objects,
+        key: &[integer("entry"), integer("bin"), wad("wad"), bytes("blob")],
+        facts: &[],
+        shape: Shape::Spans,
+        lookups: &[],
+        parts: None,
+    };
+
+    fn cells<'a>(key: &'a EntryText, (): &'a ()) -> impl Iterator<Item = Cell<'a>> {
+        [
+            key.entry.into(),
+            key.bin.into(),
+            Cell::Wad(&key.wad),
+            Cell::Bytes(&key.blob),
+        ]
+        .into_iter()
+    }
+}
+
+/// An object an object links, by its entry hash.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Linking {
+    /// The path of the linking object's bin.
+    pub bin: WadHash,
+    /// The linking object's entry hash.
+    pub entry: BinHash,
+    /// The entry hash of the object linked.
+    pub linked: BinHash,
+}
+
+/// `links`: every `link` value a game object held, one row per unbroken life. With
+/// `entry_texts`, which says which bin holds an entry at a build, the objects an object reaches
+/// at a build are one recursive query.
+pub struct Links;
+
+impl Table for Links {
+    type Key = Linking;
+    type Facts = ();
+    const DEF: TableDef = TableDef {
+        name: "links",
+        family: Family::Objects,
+        key: &[integer("bin"), integer("entry"), integer("linked")],
+        facts: &[],
+        shape: Shape::Spans,
+        lookups: &[],
+        parts: None,
+    };
+
+    fn cells<'a>(key: &'a Linking, (): &'a ()) -> impl Iterator<Item = Cell<'a>> {
+        [key.bin.into(), key.entry.into(), key.linked.into()].into_iter()
+    }
+}
+
+/// How `schema` stores a kind slot that does not apply, a map's key kind of a list.
+pub const NO_KIND: u8 = u8::MAX;
+
+/// A kind as `schema` stores it: its number in `ltk_meta`.
+fn kind_cell<'a>(kind: Option<Kind>) -> Cell<'a> {
+    Cell::Integer(i64::from(kind.map_or(NO_KIND, u8::from)))
+}
+
+/// A field of a class with one type its values had in a text of the game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ClassField {
+    /// The class.
+    pub class: BinHash,
+    /// The field.
+    pub field: BinHash,
+    /// The type: the value's kind, a map's key kind, an item's kind, and the class of an embed
+    /// or a pointer, or of the structs a list, an option or a map holds.
+    pub ty: FieldType,
+}
+
+/// `schema`: every type a field of a class had in the game's texts, one row per unbroken life,
+/// so the field's kind at a build is one query. A field whose values had two kinds at one build
+/// has two rows alive there, and a list of pointers a row per class its items had.
+pub struct TextSchema;
+
+impl Table for TextSchema {
+    type Key = ClassField;
+    type Facts = ();
+    const DEF: TableDef = TableDef {
+        name: "schema",
+        family: Family::Objects,
+        key: &[
+            integer("class"),
+            integer("field"),
+            integer("kind"),
+            integer("key_kind"),
+            integer("item_kind"),
+            integer("value_class"),
+        ],
+        facts: &[],
+        shape: Shape::Spans,
+        lookups: &[],
+        parts: None,
+    };
+
+    fn cells<'a>(key: &'a ClassField, (): &'a ()) -> impl Iterator<Item = Cell<'a>> {
+        let ty = &key.ty;
+        [
+            key.class.into(),
+            key.field.into(),
+            kind_cell(Some(ty.kind)),
+            kind_cell(ty.key),
+            kind_cell(ty.item),
+            ty.class.unwrap_or(BinHash(0)).into(),
         ]
         .into_iter()
     }
@@ -1050,6 +1371,7 @@ impl Table for Skeletons {
         parts: Some(PartsDef {
             name: "joints",
             owner: "skeleton",
+            by: None,
             columns: &[
                 name("name"),
                 Column {
@@ -1069,7 +1391,7 @@ impl Table for Skeletons {
         .into_iter()
     }
 
-    fn parts(key: &At<Skeleton>) -> Vec<Vec<Cell<'_>>> {
+    fn parts<'a>(key: &'a At<Skeleton>, (): &'a ()) -> Vec<Vec<Cell<'a>>> {
         let joints = key.record.joints.iter();
         joints
             .map(|joint| {
@@ -1112,6 +1434,7 @@ impl Table for JointLists {
         parts: Some(PartsDef {
             name: "list_joints",
             owner: "list",
+            by: None,
             columns: &[integer("joint")],
         }),
     };
@@ -1120,7 +1443,7 @@ impl Table for JointLists {
         [key.digest().into(), (key.0.len() as u64).into()].into_iter()
     }
 
-    fn parts(key: &JointList) -> Vec<Vec<Cell<'_>>> {
+    fn parts<'a>(key: &'a JointList, (): &'a ()) -> Vec<Vec<Cell<'a>>> {
         key.0.iter().map(|joint| vec![(*joint).into()]).collect()
     }
 }
@@ -1349,6 +1672,7 @@ impl Table for Meshes {
         parts: Some(PartsDef {
             name: "submeshes",
             owner: "mesh",
+            by: None,
             columns: &[
                 integer("vertices"),
                 integer("indices"),
@@ -1371,7 +1695,7 @@ impl Table for Meshes {
         .into_iter()
     }
 
-    fn parts(key: &At<Mesh>) -> Vec<Vec<Cell<'_>>> {
+    fn parts<'a>(key: &'a At<Mesh>, (): &'a ()) -> Vec<Vec<Cell<'a>>> {
         let submeshes = key.record.submeshes.iter();
         submeshes
             .map(|s| {
@@ -1455,9 +1779,13 @@ impl Table for Textures {
 /// order, so the same history gives the same file.
 pub const TABLES: &[TableDef] = &[
     Files::DEF,
-    Paths::DEF,
-    Contents::DEF,
+    Placements::DEF,
+    WadLives::DEF,
     Objects::DEF,
+    EntryTexts::DEF,
+    Bins::DEF,
+    TextSchema::DEF,
+    Links::DEF,
     Refs::DEF,
     Tags::DEF,
     Units::DEF,
@@ -1475,14 +1803,14 @@ pub const TABLES: &[TableDef] = &[
     Textures::DEF,
 ];
 
-/// The name of every table of the index: the tables of lives, their parts, and `names`.
+/// The name of every table of the index: the tables of lives, their parts, `names` and `wads`.
 pub fn table_names() -> Vec<&'static str> {
     let mut names = Vec::new();
     for table in TABLES {
         names.push(table.name);
         names.extend(table.parts.map(|parts| parts.name));
     }
-    names.push("names");
+    names.extend(["names", "wads"]);
     names
 }
 
@@ -1493,19 +1821,26 @@ mod tests {
     #[test]
     fn a_table_is_created_by_the_shape_of_its_key() {
         assert_eq!(
-            Paths::DEF.create_sql(),
-            "CREATE TABLE paths (path INTEGER PRIMARY KEY, kind INTEGER NOT NULL, first INTEGER \
-             NOT NULL, last INTEGER NOT NULL, alive INTEGER NOT NULL);\n"
+            Clips::DEF.create_sql(),
+            "CREATE TABLE clips (key INTEGER PRIMARY KEY, first INTEGER NOT NULL, last INTEGER \
+             NOT NULL, alive INTEGER NOT NULL);\n"
         );
         assert_eq!(
-            Contents::DEF.create_sql(),
-            "CREATE TABLE contents (path INTEGER NOT NULL, key BLOB NOT NULL, first INTEGER NOT \
-             NULL, last INTEGER NOT NULL, alive INTEGER NOT NULL, PRIMARY KEY (path, key)) \
+            Events::DEF.create_sql(),
+            "CREATE TABLE events (bank INTEGER NOT NULL, event INTEGER NOT NULL, first INTEGER \
+             NOT NULL, last INTEGER NOT NULL, alive INTEGER NOT NULL, PRIMARY KEY (bank, event)) \
              WITHOUT ROWID;\n"
         );
         assert_eq!(
-            Contents::DEF.index_sql(),
-            "CREATE INDEX contents_key ON contents (key);\n"
+            Placements::DEF.create_sql(),
+            "CREATE TABLE placements (path INTEGER NOT NULL, wad INTEGER NOT NULL, key BLOB NOT \
+             NULL, checksum INTEGER NOT NULL, first INTEGER NOT NULL, last INTEGER NOT NULL, \
+             alive INTEGER NOT NULL, PRIMARY KEY (path, wad, key, checksum, first)) WITHOUT \
+             ROWID;\n"
+        );
+        assert_eq!(
+            Placements::DEF.index_sql(),
+            "CREATE INDEX placements_key ON placements (key);\n"
         );
         assert_eq!(
             Skeletons::DEF.create_sql(),
@@ -1525,6 +1860,18 @@ mod tests {
              INTEGER NOT NULL, last INTEGER NOT NULL, alive INTEGER NOT NULL);\nCREATE TABLE \
              list_joints (list INTEGER NOT NULL, ordinal INTEGER NOT NULL, joint INTEGER NOT \
              NULL, PRIMARY KEY (list, ordinal)) WITHOUT ROWID;\n"
+        );
+        assert_eq!(
+            Bins::DEF.create_sql(),
+            "CREATE TABLE bins (id INTEGER PRIMARY KEY, key BLOB NOT NULL, links BLOB NOT NULL, \
+             first INTEGER NOT NULL, last INTEGER NOT NULL, alive INTEGER NOT NULL);\nCREATE \
+             TABLE bin_entries (bin INTEGER NOT NULL, entry INTEGER NOT NULL, object INTEGER NOT \
+             NULL, PRIMARY KEY (bin, entry)) WITHOUT ROWID;\n"
+        );
+        assert_eq!(
+            Objects::DEF.index_sql(),
+            "CREATE UNIQUE INDEX objects_key ON objects (key, class);\nCREATE INDEX objects_norm \
+             ON objects (norm);\n"
         );
         assert_eq!(
             BankObjects::DEF.create_sql(),
@@ -1553,6 +1900,27 @@ mod tests {
         let bank = EventsBank::new(facts.header.to_vec(), vec![object(1)]).unwrap();
         assert_eq!((bank.version(), bank.bank_id()), (145, 7));
         assert_eq!(EventsBank::new(vec![145, 0, 0, 0], Vec::new()), None);
+    }
+
+    #[test]
+    fn a_bins_links_are_read_back_in_order_and_its_entries_once_each() {
+        let entry = |entry, class| BinEntry {
+            entry: BinHash(entry),
+            class: BinHash(class),
+            object: ObjectKey([entry as u8; 16]),
+            norm: NormKey(u64::from(entry)),
+        };
+        let links = [WadHash(9), WadHash(u64::MAX), WadHash(1)];
+        let facts = BinFacts::of(&links, &[entry(5, 1), entry(2, 1), entry(5, 2)]);
+        assert_eq!(BinFacts::links(&facts.links).collect::<Vec<_>>(), links);
+        assert_eq!(facts.entries[..], [entry(2, 1), entry(5, 1)]);
+    }
+
+    #[test]
+    fn a_life_holds_the_builds_from_its_first_to_its_last() {
+        let life = Life::new(2, 4);
+        assert!(life.holds(Position(2)) && life.holds(Position(4)));
+        assert!(!life.holds(Position(1)) && !life.holds(Position(5)));
     }
 
     #[test]

@@ -1229,3 +1229,84 @@ and compared with the baselines they replace.
   only mod to show a case. Run twice per command, the port in 15 s and 16 s and the repair in
   16 s twice, as the baselines ended them. `compare.py` reports no difference between the two
   runs, nor between a run and the baseline's reports of the 64 mods.
+
+## The history index, format 1, on the first ten builds (2026-10-07)
+
+`reforge history index` over the census history's `history-v2` branch up to its tenth build,
+8.20.2483196 to 9.1.2577563, on 24 threads, into a scratch directory. The index a run reads was
+not rebuilt (#ADR-0077).
+
+- **Time.** The ten builds in 20.6 s. The first five in 15.7 s, and the next five appended to
+  them in 4.5 s.
+- **Size.** 282 MB.
+- **Append.** The index of five builds with five appended equals the index of ten, every row of
+  every table, names and WADs compared as text, and `builds.tsv` byte for byte.
+- **Against the clone's trees** at builds 4 and 9 (`an_index_agrees_with_the_trees_of_its_builds`,
+  `reforge-census`): the placements alive are the tree's entry files, 151,048 and 167,513, by
+  path, WAD, file key and checksum; the entry texts alive are the tree's texts, 54,165 and 57,686,
+  by bin, entry, WAD and blob; every bin is the first WAD's, with its links and its objects. Every
+  97th text read by its blob is the text the search of the tree finds, and parses: 559 and 595
+  texts, read in 0.11 ms and 0.13 ms by blob against 3.3 ms and 3.9 ms by search (medians).
+- **Objects reached.** The 3,976 skin entries of 9.1.2577563 reach 35 objects at the median and
+  260 at most.
+
+| table | rows | bytes a row, its indexes included |
+|---|---:|---:|
+| `placements` | 205,068 | 88.7 |
+| `wad_lives` | 7,825 | 25.1 |
+| `wads` | 2,649 | 114.4 |
+| `entry_texts` | 70,718 | 47.0 |
+| `bins`, `bin_entries` | 11,781 and 157,272 | 82.7 and 16.6 |
+| `schema` | 3,234 | 38.0 |
+| `links` | 158,380 | 29.3 |
+| `objects` | 68,088 | 106.2 |
+
+The 4,895 bins the nine builds after the first changed hold 21.3 objects each, and a changed bin
+is a row of `bins` with all its objects again.
+
+## The history index, format 1, every build (2026-10-08)
+
+`reforge history index` over the census history's `history-v2` branch at `f68de01e049c`: 757
+builds, 8.20.2483196 to 16.19.8230722, every family, on 24 threads, into a scratch directory.
+
+- **Time.** 3,231 s: the walk 2,956 s, the write 275 s. The format 0 index of every family was
+  written in 2,263 s on 32 threads (2026-10-04).
+- **Memory.** 19.4 GiB at the peak of the process's working set, 20.9 GiB of private bytes.
+- **Size.** 3,665,747,968 bytes, against 2,748,997,632 for format 0 of the same commit. With
+  `zstd --ultra -22 --long=31 -T1`, as the release's database: 1,007,913,337 bytes, 27.5%, in
+  2,979 s; format 0's was 767 MB (2026-10-05).
+- **Append.** The index of the first 752 builds, written in 3,276 s, with the last five
+  appended: 14.1 s for the process, 12.0 s by its own count, about 7 s of it 16.19.8207193, at
+  1.96 GiB of working set. It equals the whole index of 757 builds, every row of every table,
+  names, WADs and objects compared by what they hold, and `builds.tsv` byte for byte.
+- **Against the clone's trees** at builds 378 and 756 (`an_index_agrees_with_the_trees_of_its_builds`):
+  606,247 and 948,353 placements, 260,432 and 459,675 entry texts and every bin agree. Every 97th
+  text read by its blob is the one the search of the tree finds, and parses: 2,685 and 4,739
+  texts, in 0.22 ms and 0.27 ms by blob against 8.5 ms and 10.2 ms by search (medians).
+- **`path`**, from `placements`, timed in Python's `sqlite3` over 20,000 paths of the history
+  and 20,000 hashes it never held: 13.0 µs and 7.4 µs at the median, 82.9 µs and 16.9 µs at the
+  99th percentile. The `paths` read of format 0 took 5.3 µs and 4.0 µs, 154.0 µs and 16.8 µs.
+  Every step is a search of a key, and the kind of the first file is ordered in a small
+  temporary tree: a path has 2.19 placements on average and 2,759 at most.
+- **Objects reached.** The 21,024 skin entries of 16.19.8230722 reach 61 objects at the median
+  and 487 at most, under `MAX_REACHED` (4,096). The recursive query takes 0.61 ms at the median
+  and 7.7 ms at most, in Python's `sqlite3`.
+
+| table | rows | MB, its indexes included | bytes a row |
+|---|---:|---:|---:|
+| `placements` | 4,694,830 | 435.1 | 92.7 |
+| `wad_lives` | 147,360 | 3.9 | 26.3 |
+| `wads` | 5,133 | 0.6 | 111.7 |
+| `entry_texts` | 3,888,062 | 191.7 | 49.3 |
+| `bins` | 773,674 | 72.6 | 93.8 |
+| `bin_entries` | 19,841,522 | 356.8 | 18.0 |
+| `schema` | 22,065 | 0.8 | 34.5 |
+| `links` | 1,831,427 | 58.3 | 31.8 |
+| `objects` | 3,277,555 | 359.4 | 109.7 |
+
+- A bin holds 25.6 objects on average. As an object key and a class, `bin_entries` would take
+  about 36 bytes a row, 710 MB; as the id of its row in `objects`, it takes 18 bytes, and
+  `objects` takes 72 MB more than format 0's 287 MB for the id and its index.
+- 1,238 object keys are held under two classes: `objects` has 3,277,555 rows against format
+  0's 3,276,317.
+- The tables format 1 drops took 226 MB (`contents`) and 49 MB (`paths`) in format 0.

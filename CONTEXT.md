@@ -39,6 +39,9 @@ commit takes the term here, not a synonym.
 | position | a build's number in the history, in the order builds arrived |
 | head | the build the history took in last; the newest build is the one of the highest version |
 | life | the first and the last position at which the game held a key |
+| span | a life with no gap: the game held the key at every build of it |
+| placement | a file a WAD held at a path, over one span |
+| entry text | one bin object as ritobin text in the history, found by its blob |
 | key | what the index finds a file, an object or a clip by: the head of a SHA-256 of its bytes |
 | norm key | an object's key with its entry name left out: the same object under another name |
 | schema | the type the target build reads for each field of each class |

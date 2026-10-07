@@ -6,16 +6,22 @@
     reason = "this test reads the fixture's texts and not its history"
 )]
 mod common;
+mod link;
 
-use reforge::history::tables::JointList;
+use ltk_meta::PropertyKind as Kind;
+use reforge::game::FieldType;
+use reforge::history::tables::{ClassField, JointList};
 use reforge::history::{Joint, Skeleton, Submesh, Texture};
-use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, path_hash};
+use reforge::model::{
+    BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
+};
 use reforge_census::format::{
     ClipRecord, EventRecord, ObjectRecord, census_format, parse_build, parse_entry,
-    parse_object_text,
+    parse_object_text, parse_wad,
 };
 
 use self::common::{A, B, BANK, NAMED, object_text};
+use self::link::linking;
 
 #[test]
 fn a_build_file_gives_its_version_manifest_and_date() {
@@ -26,11 +32,33 @@ fn a_build_file_gives_its_version_manifest_and_date() {
     assert_eq!(build.build.as_str(), "16.19.8207193");
     assert_eq!(build.manifest, "ad6896ce5cf475a1");
     assert_eq!(build.date, "2026-09-21");
+    let details = &build.details;
+    assert_eq!(
+        (details.patch.as_str(), details.source.as_str()),
+        ("16.19", "rman")
+    );
+    assert_eq!(details.realms, ["BR1", "EUW1"]);
+    assert!(!details.legacy_bins && details.solution.is_empty() && details.exe.is_empty());
     assert_eq!(parse_build("patch: \"16.19\"\n"), None);
     assert_eq!(parse_build("version: \"soon\"\n"), None);
     // A second manifest of one version: two builds of the history are written so.
     let second = parse_build("version: \"14.8.5756478__2\"\n").unwrap();
     assert_eq!(second.build.as_str(), "14.8.5756478__2");
+}
+
+#[test]
+fn a_build_read_from_rads_gives_its_solution_release_and_executable() {
+    let text = "version: \"8.20.2483196\"\npatch: \"8.20\"\nmanifest: \"e39c38647162cf28\"\n\
+                source: \"rads\"\nsolution: \"lol_game_client_sln\"\nrelease: \"0.0.1.250\"\n\
+                exe: \"8.20.249.4223\"\ndate: \"2018-10-03\"\nlegacyBins: true\nrealms:\n - \
+                \"rads:live\"\n";
+    let details = parse_build(text).unwrap().details;
+    assert_eq!(details.source, "rads");
+    assert_eq!(details.solution, "lol_game_client_sln");
+    assert_eq!(details.release, "0.0.1.250");
+    assert_eq!(details.exe, "8.20.249.4223");
+    assert!(details.legacy_bins);
+    assert_eq!(details.realms, ["rads:live"]);
 }
 
 #[test]
@@ -73,6 +101,29 @@ fn a_bins_entry_gives_its_objects() {
     // The third object lacks its keys and is left out.
     assert_eq!(entry.objects, [first, second]);
     assert!(entry.clips.is_empty() && entry.skeleton.is_none() && entry.texture.is_none());
+    assert_eq!(entry.checksum, 1);
+    assert_eq!(entry.links, Some(vec![path_hash("data/x.bin")]));
+}
+
+#[test]
+fn a_bin_that_links_nothing_has_links_and_an_entry_that_is_no_bin_has_none() {
+    let bin = format!("sha256: \"{A}\"\nkind: \"bin\"\nlinks: []\n");
+    let bin = parse_entry(&bin).unwrap();
+    assert_eq!((bin.links, bin.checksum), (Some(Vec::new()), 0));
+    let patch = parse_entry(&format!("sha256: \"{A}\"\nkind: \"bin\"\n")).unwrap();
+    assert_eq!(patch.links, None);
+}
+
+#[test]
+fn a_wads_file_gives_its_version_file_id_and_tags() {
+    let text =
+        "version: \"3.4\"\nfileId: \"27f7f49ff6d41bc4\"\ntags:\n - \"en_AU\"\n - \"en_GB\"\n";
+    let wad = parse_wad(text);
+    assert_eq!(wad.version, "3.4");
+    assert_eq!(wad.file_id, 0x27f7_f49f_f6d4_1bc4);
+    assert_eq!(wad.tags, ["en_AU", "en_GB"]);
+    let none = parse_wad("version: \"3.1\"\nfileId: \"0000000000000001\"\ntags: []\n");
+    assert!(none.tags.is_empty());
 }
 
 #[test]
@@ -290,6 +341,51 @@ fn an_entrys_text_gives_what_the_object_names() {
     assert!(unit.voice);
     assert_eq!(unit.banks, [path_hash(BANK)]);
     assert_eq!(unit.events, [reforge_wwise::id_of("Play_vo_Test")]);
+}
+
+#[test]
+fn a_texts_schema_is_the_type_of_every_field_of_every_struct_in_it() {
+    let text = parse_object_text(&object_text()).unwrap();
+    let ty = |kind, item, class: Option<&str>| FieldType {
+        kind,
+        key: None,
+        item,
+        class: class.map(name_hash),
+    };
+    let field = |class: BinHash, field: &str, ty| ClassField {
+        class,
+        field: name_hash(field),
+        ty,
+    };
+    let (object, unit) = (BinHash(2), name_hash("BankUnit"));
+    let list = |item| ty(Kind::Container, Some(item), None);
+    let mut expected = vec![
+        field(object, "tagEventList", list(Kind::String)),
+        field(object, "texture", ty(Kind::WadChunkLink, None, None)),
+        field(object, "iconSquare", ty(Kind::String, None, None)),
+        field(
+            object,
+            "bankUnits",
+            ty(
+                Kind::UnorderedContainer,
+                Some(Kind::Embedded),
+                Some("BankUnit"),
+            ),
+        ),
+        field(unit, "name", ty(Kind::String, None, None)),
+        field(unit, "bankPath", list(Kind::String)),
+        field(unit, "events", list(Kind::String)),
+        field(unit, "voiceOver", ty(Kind::Bool, None, None)),
+    ];
+    expected.sort_unstable();
+    assert_eq!(text.schema, expected);
+}
+
+#[test]
+fn a_texts_links_are_every_link_it_holds_once() {
+    let text = parse_object_text(&linking(0x11, &[0x13, 0x12, 0])).unwrap();
+    assert_eq!(text.links, [BinHash(0x12), BinHash(0x13)]);
+    assert!(text.paths.is_empty());
 }
 
 #[test]

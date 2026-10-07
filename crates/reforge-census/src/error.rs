@@ -122,6 +122,15 @@ pub enum CensusError {
         /// How many the index counts.
         held: i64,
     },
+    /// A bin holds an object the index has no row of. The walk writes a bin's objects from the
+    /// records that write its row, so the index or the walk is broken.
+    #[error("a bin holds object {key} of class {class:08x}, which the index lacks")]
+    NoObject {
+        /// The object's key.
+        key: String,
+        /// The object's class.
+        class: u32,
+    },
     /// The index beside the tables does not read or write.
     #[error(transparent)]
     Index(#[from] HistoryError),

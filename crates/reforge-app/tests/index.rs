@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use reforge::history::{History, SqliteHistory};
+use reforge::history::{FORMAT, History, SqliteHistory};
 use reforge_app::error::AppError;
 use reforge_app::index::{
     self, Asset, IndexRelease, InstallProgress, InstallStep, Installer, Ranged, Source,
@@ -21,7 +21,7 @@ const COMMIT: &str = "5b121f51ad752b06ce0cb0ea17d5859f4b20c645";
 fn stamp() -> String {
     format!(
         r#"{{
-  "format": 0,
+  "format": {FORMAT},
   "repo": "https://github.com/LeagueToolkit/ltk-census-history.git",
   "head": "{COMMIT}",
   "newest_build": "16.19.8207193",
@@ -35,7 +35,7 @@ fn stamp() -> String {
 }
 
 fn builds() -> String {
-    format!("0\t{COMMIT}\t16.19.8207193\te39c38647162cf28\t2026-09-30\n")
+    format!("0\t{COMMIT}\t16.19.8207193\te39c38647162cf28\t2026-09-30\t16.19\trman\t\t\t\t0\tNA1\n")
 }
 
 /// An empty database, as `.zst`: SQLite reads an empty file as a database of no tables.

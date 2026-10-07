@@ -7,7 +7,8 @@
 //!
 //! An append applies each new commit's net record counts to the rows they touch. A row keeps
 //! its record count at the head (`alive`). A key a commit only removes was held by its parent,
-//! so its row is there. A count that falls to zero ends the row at the build before. Rows still
+//! so its row is there. A count that falls to zero ends the row at the build before. A key that
+//! comes back takes up its row again, or of a table of spans starts a row of its own. Rows still
 //! held at the end last to the new head. An index appended to holds the rows a build of the
 //! same commits writes.
 
@@ -15,8 +16,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use reforge::history::tables::{self, Cell, Table, TableDef};
+use reforge::history::tables::{self, Cell, Shape, Table, TableDef};
 use reforge::history::{BuildRow, DB_FILE, FORMAT, Families, Life, Position, Stamp, version_order};
+use reforge::model::{BinHash, ObjectKey};
 use rusqlite::types::{Null, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OptionalExtension, Statement, ToSql, Transaction, params};
 
@@ -42,42 +44,90 @@ impl ToSql for Bound {
     }
 }
 
-/// The ids of the names interned so far.
+/// A table that holds each of its texts once, by an id the other tables store.
+#[derive(Clone, Copy)]
+enum Interned {
+    /// `names`: joints, materials, formats, tags, units.
+    Names,
+    /// `wads`: the WADs' paths.
+    Wads,
+}
+
+impl Interned {
+    /// The table and the column of its text.
+    fn table(self) -> (&'static str, &'static str) {
+        match self {
+            Interned::Names => ("names", "name"),
+            Interned::Wads => ("wads", "path"),
+        }
+    }
+}
+
+/// The ids of the names and the WADs interned so far, and of the objects found so far.
 struct Names<'tx> {
     tx: &'tx Transaction<'tx>,
-    ids: HashMap<String, i64>,
+    names: HashMap<String, i64>,
+    wads: HashMap<String, i64>,
+    objects: HashMap<(ObjectKey, BinHash), i64>,
 }
 
 impl<'tx> Names<'tx> {
     fn new(tx: &'tx Transaction<'tx>) -> Self {
         Self {
             tx,
-            ids: HashMap::new(),
+            names: HashMap::new(),
+            wads: HashMap::new(),
+            objects: HashMap::new(),
         }
     }
 
-    /// The id of a name, interned on first use. A new name takes the next id, so the names of
-    /// a whole build are numbered by first appearance.
-    fn id(&mut self, name: &str) -> Result<i64, CensusError> {
-        if let Some(id) = self.ids.get(name) {
+    /// The id of an object's row in `objects`, which the table's unique index finds. A changed
+    /// bin holds most of the objects its last version held, so most are found once.
+    fn object(&mut self, key: ObjectKey, class: BinHash) -> Result<i64, CensusError> {
+        if let Some(id) = self.objects.get(&(key, class)) {
             return Ok(*id);
         }
         let mut find = self
             .tx
-            .prepare_cached("SELECT id FROM names WHERE name = ?1")?;
-        let found: Option<i64> = find.query_row(params![name], |r| r.get(0)).optional()?;
+            .prepare_cached("SELECT id FROM objects WHERE key = ?1 AND class = ?2")?;
+        let found: Option<i64> = find
+            .query_row(params![&key.0[..], class.0], |r| r.get(0))
+            .optional()?;
+        let id = found.ok_or_else(|| CensusError::NoObject {
+            key: key.to_string(),
+            class: class.0,
+        })?;
+        self.objects.insert((key, class), id);
+        Ok(id)
+    }
+
+    /// The id of a text, interned on first use. A new text takes the next id, so the texts of
+    /// a whole build are numbered by first appearance.
+    fn id(&mut self, of: Interned, text: &str) -> Result<i64, CensusError> {
+        let ids = match of {
+            Interned::Names => &mut self.names,
+            Interned::Wads => &mut self.wads,
+        };
+        if let Some(id) = ids.get(text) {
+            return Ok(*id);
+        }
+        let (table, column) = of.table();
+        let mut find = self
+            .tx
+            .prepare_cached(&format!("SELECT id FROM {table} WHERE {column} = ?1"))?;
+        let found: Option<i64> = find.query_row(params![text], |r| r.get(0)).optional()?;
         let id = match found {
             Some(id) => id,
             None => {
-                let mut insert = self.tx.prepare_cached(
-                    "INSERT INTO names (id, name) \
-                     VALUES ((SELECT IFNULL(MAX(id), 0) + 1 FROM names), ?1)",
-                )?;
-                insert.execute(params![name])?;
+                let mut insert = self.tx.prepare_cached(&format!(
+                    "INSERT INTO {table} (id, {column}) \
+                     VALUES ((SELECT IFNULL(MAX(id), 0) + 1 FROM {table}), ?1)"
+                ))?;
+                insert.execute(params![text])?;
                 self.tx.last_insert_rowid()
             }
         };
-        self.ids.insert(name.to_string(), id);
+        ids.insert(text.to_string(), id);
         Ok(id)
     }
 
@@ -85,9 +135,11 @@ impl<'tx> Names<'tx> {
         Ok(match cell {
             Cell::Integer(n) => Bound::Integer(n),
             Cell::Key(key) => Bound::Key(key),
-            Cell::Name(name) => Bound::Integer(self.id(name)?),
+            Cell::Name(name) => Bound::Integer(self.id(Interned::Names, name)?),
             Cell::NoName => Bound::Null,
             Cell::Bytes(bytes) => Bound::Bytes(bytes.to_vec()),
+            Cell::Wad(path) => Bound::Integer(self.id(Interned::Wads, path)?),
+            Cell::Object(key, class) => Bound::Integer(self.object(key, class)?),
         })
     }
 }
@@ -132,23 +184,31 @@ impl<'tx, 'n> TableWriter<'tx, 'n> {
             columns.join(", "),
             slots(columns.len())
         );
+        // Of a table of spans, only the row of the life a key is in can change; one that ended
+        // stays as it is.
+        let open = if def.shape == Shape::Spans {
+            " AND alive > 0"
+        } else {
+            ""
+        };
         let find = format!(
-            "SELECT last, alive FROM {} WHERE {}",
+            "SELECT last, alive FROM {} WHERE {}{open}",
             def.name,
             where_key(&def, 1)
         );
         // The update sets the life in its first two slots, so its key starts at the third.
         let update = format!(
-            "UPDATE {} SET last = ?1, alive = ?2 WHERE {}",
+            "UPDATE {} SET last = ?1, alive = ?2 WHERE {}{open}",
             def.name,
             where_key(&def, 3)
         );
         let part = match &def.parts {
             Some(parts) => {
+                let ordinal = usize::from(parts.by.is_none());
                 let sql = format!(
                     "INSERT INTO {} VALUES ({})",
                     parts.name,
-                    slots(parts.columns.len() + 2)
+                    slots(1 + ordinal + parts.columns.len())
                 );
                 Some(tx.prepare(&sql)?)
             }
@@ -180,6 +240,7 @@ impl<'tx, 'n> TableWriter<'tx, 'n> {
     fn insert_bound<T: Table>(
         &mut self,
         key: &T::Key,
+        facts: &T::Facts,
         life: Life,
         alive: i64,
     ) -> Result<(), CensusError> {
@@ -188,12 +249,15 @@ impl<'tx, 'n> TableWriter<'tx, 'n> {
         self.cells.push(Bound::Integer(alive));
         self.insert
             .execute(rusqlite::params_from_iter(self.cells.iter()))?;
-        let Some(part) = &mut self.part else {
+        let (Some(part), Some(def)) = (&mut self.part, &self.def.parts) else {
             return Ok(());
         };
         let owner = self.tx.last_insert_rowid();
-        for (ordinal, cells) in (0i64..).zip(T::parts(key)) {
-            let mut row = vec![Bound::Integer(owner), Bound::Integer(ordinal)];
+        for (ordinal, cells) in (0i64..).zip(T::parts(key, facts)) {
+            let mut row = vec![Bound::Integer(owner)];
+            if def.by.is_none() {
+                row.push(Bound::Integer(ordinal));
+            }
             for cell in cells {
                 row.push(self.names.bind(cell)?);
             }
@@ -205,11 +269,12 @@ impl<'tx, 'n> TableWriter<'tx, 'n> {
     /// Adds a row of a whole build.
     fn insert<T: Table>(&mut self, row: &tables::Row<T>) -> Result<(), CensusError> {
         self.bind::<T>(&row.key, &row.facts)?;
-        self.insert_bound::<T>(&row.key, row.life, i64::from(row.alive))
+        self.insert_bound::<T>(&row.key, &row.facts, row.life, i64::from(row.alive))
     }
 
     /// Applies one commit's net record count of a key to its row. A key new to the index gets
-    /// a row from that build, and a key that comes back keeps its row's first build.
+    /// a row from that build. A key that comes back keeps its row's first build, and of a table
+    /// of spans gets a row from that build.
     fn apply<T: Table>(
         &mut self,
         key: &T::Key,
@@ -237,7 +302,7 @@ impl<'tx, 'n> TableWriter<'tx, 'n> {
                 first: at,
                 last: at,
             };
-            return self.insert_bound::<T>(key, life, net);
+            return self.insert_bound::<T>(key, facts, life, net);
         };
         let now = alive + net;
         if now < 0 {
@@ -269,11 +334,15 @@ struct Whole<'tx> {
 }
 
 impl Visit for Whole<'_> {
+    /// Fills a table, then indexes it: faster than keeping an index up to date per insert, and
+    /// done before the next table, whose rows may find this one's by its index.
     fn table<T: Table>(&mut self, fold: Fold<T>) -> Result<(), CensusError> {
         let mut writer = TableWriter::new(T::DEF, self.tx, &mut self.names)?;
         for row in fold.rows(self.head) {
             writer.insert(&row)?;
         }
+        drop(writer);
+        self.tx.execute_batch(&T::DEF.index_sql())?;
         Ok(())
     }
 }
@@ -368,7 +437,6 @@ pub(crate) fn write(
         walked.folds.each(&mut whole)?;
         drop(whole);
         tx.commit()?;
-        db.execute_batch(&tables::index_sql())?;
         // Rewritten whole, the composite-key tables pack tighter: 1.41 GB to 1.29 GB in 6 s
         // (2026-10-01).
         db.execute_batch("VACUUM;")?;

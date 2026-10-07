@@ -6,15 +6,19 @@
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
-use reforge::game::Build;
+use reforge::game::{Build, FieldType};
 use reforge::history::{
-    BuildRow, ClipJoints, EventsBank, EventsBankHit, FORMAT, Families, FileHit, FileKind, HeldAt,
-    History, HistoryError, Life, MeshHit, NamedBy, ObjectHit, PathHit, PlayedBy, Position,
-    SkeletonHit, Stamp, UnitHit, WemPlayed, version_order,
+    BinHit, BuildDetails, BuildRow, ClipJoints, EventsBank, EventsBankHit, FORMAT, Families,
+    FileHit, FileKind, HeldAt, History, HistoryError, Life, MeshHit, NamedBy, ObjectHit, PathHit,
+    Placed, PlayedBy, Position, Reached, SkeletonHit, Stamp, TextBlob, UnitHit, WemPlayed,
+    version_order,
 };
 use reforge::model::{
-    ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
+    BinHash, ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
 };
+
+/// The one WAD a history in memory holds its contents in.
+pub const MEMORY_WAD: &str = "data/memory.wad.client";
 
 /// A history with no file behind it.
 pub struct MemoryHistory {
@@ -22,7 +26,7 @@ pub struct MemoryHistory {
     builds: Vec<BuildRow>,
     paths: BTreeMap<WadHash, Life>,
     contents: BTreeMap<(WadHash, FileKey), Life>,
-    objects: BTreeMap<ObjectKey, ObjectHit>,
+    objects: BTreeMap<(ObjectKey, BinHash), ObjectHit>,
     clips: BTreeMap<ClipKey, Life>,
     animations: BTreeMap<(WadHash, FileKey), (Life, Vec<u32>)>,
     banks: BTreeMap<WadHash, Vec<EventsBankHit>>,
@@ -64,6 +68,7 @@ impl MemoryHistory {
             build: build(version),
             manifest: "0000000000000000".into(),
             date: "2026-01-01".into(),
+            details: BuildDetails::default(),
         });
         let builds: Vec<BuildRow> = rows.collect();
         let newest = builds.iter().map(|row| &row.build);
@@ -128,7 +133,7 @@ impl MemoryHistory {
             bin: path_hash(bin),
             norm,
         };
-        let held = self.objects.entry(key).or_insert(hit);
+        let held = self.objects.entry((key, hit.class)).or_insert(hit);
         held.life = hull(held.life, hit.life);
         self
     }
@@ -241,8 +246,35 @@ impl History for MemoryHistory {
             .collect())
     }
 
+    fn placed(&self, path: WadHash, at: Position) -> Result<Vec<Placed>, HistoryError> {
+        let held = self.contents.iter();
+        let at_path = held.filter(|((p, _), life)| *p == path && life.holds(at));
+        Ok(at_path
+            .map(|((_, key), life)| Placed {
+                wad: MEMORY_WAD.into(),
+                key: *key,
+                checksum: 0,
+                life: *life,
+            })
+            .collect())
+    }
+
+    fn bin(&self, _: WadHash, _: Position) -> Result<Option<BinHit>, HistoryError> {
+        Ok(None)
+    }
+
     fn object(&self, key: ObjectKey) -> Result<Option<ObjectHit>, HistoryError> {
-        Ok(self.objects.get(&key).copied())
+        let lives = self.object_lives(key)?;
+        Ok(lives.into_iter().max_by_key(|hit| hit.life.last))
+    }
+
+    fn object_lives(&self, key: ObjectKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        let of_key = self
+            .objects
+            .range((key, BinHash(0))..=(key, BinHash(u32::MAX)));
+        let mut hits: Vec<ObjectHit> = of_key.map(|(_, hit)| *hit).collect();
+        hits.sort_by_key(|hit| (hit.life.first, hit.class));
+        Ok(hits)
     }
 
     fn objects_by_norm(&self, norm: NormKey) -> Result<Vec<ObjectHit>, HistoryError> {
@@ -250,6 +282,32 @@ impl History for MemoryHistory {
         let mut hits: Vec<ObjectHit> = of_norm.copied().collect();
         hits.sort_by_key(|hit| (hit.life.first, hit.bin, hit.entry));
         Ok(hits)
+    }
+
+    fn text_blob(
+        &self,
+        _: WadHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Option<TextBlob>, HistoryError> {
+        Ok(None)
+    }
+
+    fn links(&self, _: WadHash, _: BinHash, _: Position) -> Result<Vec<BinHash>, HistoryError> {
+        Ok(Vec::new())
+    }
+
+    fn reached(&self, _: WadHash, _: BinHash, _: Position) -> Result<Reached, HistoryError> {
+        Ok(Reached::default())
+    }
+
+    fn field_types(
+        &self,
+        _: BinHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Vec<FieldType>, HistoryError> {
+        Ok(Vec::new())
     }
 
     fn clip(&self, key: ClipKey) -> Result<Option<Life>, HistoryError> {
@@ -339,11 +397,49 @@ impl History for BrokenHistory {
         Self::fault()
     }
 
+    fn placed(&self, _: WadHash, _: Position) -> Result<Vec<Placed>, HistoryError> {
+        Self::fault()
+    }
+
+    fn bin(&self, _: WadHash, _: Position) -> Result<Option<BinHit>, HistoryError> {
+        Self::fault()
+    }
+
     fn object(&self, _: ObjectKey) -> Result<Option<ObjectHit>, HistoryError> {
         Self::fault()
     }
 
     fn objects_by_norm(&self, _: NormKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn object_lives(&self, _: ObjectKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        Self::fault()
+    }
+
+    fn text_blob(
+        &self,
+        _: WadHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Option<TextBlob>, HistoryError> {
+        Self::fault()
+    }
+
+    fn links(&self, _: WadHash, _: BinHash, _: Position) -> Result<Vec<BinHash>, HistoryError> {
+        Self::fault()
+    }
+
+    fn reached(&self, _: WadHash, _: BinHash, _: Position) -> Result<Reached, HistoryError> {
+        Self::fault()
+    }
+
+    fn field_types(
+        &self,
+        _: BinHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Vec<FieldType>, HistoryError> {
         Self::fault()
     }
 

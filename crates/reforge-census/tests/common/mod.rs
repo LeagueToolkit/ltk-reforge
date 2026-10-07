@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use reforge::game::Build;
+use reforge::history::BuildDetails;
 use reforge::model::{WadHash, name_hash, path_hash};
 use reforge_census::format::BuildFile;
 use reforge_census::{BlobId, CensusError, Change, ChangeSource};
@@ -17,7 +18,7 @@ pub struct Memory {
 }
 
 /// A text's blob id in memory: the leading twenty bytes of its SHA-256.
-fn blob_id(text: &str) -> BlobId {
+pub fn blob_id(text: &str) -> BlobId {
     let digest: [u8; 32] = Sha256::digest(text.as_bytes()).into();
     let mut id = [0; 20];
     id.copy_from_slice(&digest[..20]);
@@ -79,12 +80,20 @@ impl ChangeSource for Memory {
     }
 }
 
-/// The `build.yaml` of a build at this version.
+/// The `build.yaml` of a build at this version, of patch `1.<n>`, read from a manifest and
+/// shipped to `NA1`.
 pub fn build(version: &str) -> BuildFile {
+    let patch: Vec<&str> = version.split('.').take(2).collect();
     BuildFile {
         build: Build::parse(version).unwrap(),
         manifest: "0000000000000000".into(),
         date: "2026-01-01".into(),
+        details: BuildDetails {
+            patch: patch.join("."),
+            source: "rman".into(),
+            realms: vec!["NA1".into()],
+            ..BuildDetails::default()
+        },
     }
 }
 

@@ -302,6 +302,10 @@ pub struct ShowEntry {
     /// A commit id or prefix, or a build version (default: the head).
     #[arg(long)]
     at: Option<String>,
+    /// The index of the history, which names the text's blob at the build so that the build's
+    /// tree is not searched for it.
+    #[arg(long)]
+    index: Option<Utf8PathBuf>,
 }
 
 impl ShowEntry {
@@ -313,9 +317,19 @@ impl ShowEntry {
             Some(at) => repo.resolve(at)?,
             None => repo.head(),
         };
-        let text = repo
-            .entry_text(bin, entry, &commit)?
-            .with_context(|| format!("no entry {entry:08x} in bin {bin:016x} at {commit}"))?;
+        let text = match &self.index {
+            Some(index) => {
+                let history = SqliteHistory::open(index)?;
+                let build = history.builds().iter().find(|row| row.commit == commit);
+                let at = build
+                    .with_context(|| format!("the index at {index} holds no build {commit}"))?
+                    .at;
+                repo.entry_text_at(&history, bin, entry, at)?
+            }
+            None => repo.entry_text(bin, entry, &commit)?,
+        };
+        let text =
+            text.with_context(|| format!("no entry {entry:08x} in bin {bin:016x} at {commit}"))?;
         out!("{text}");
         Ok(())
     }

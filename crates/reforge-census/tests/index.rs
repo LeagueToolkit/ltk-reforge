@@ -2,19 +2,25 @@
 //! absent keys absent, the stamp checked against a history's head and an install's build.
 
 mod common;
+mod link;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use ltk_meta::PropertyKind as Kind;
 use reforge::diag::{Diagnostics, Stage};
 use reforge::game::Build;
+use reforge::game::FieldType;
 use reforge::history::{
-    ClipJoints, Families, FileKind, History, IndexStale, InstallNewer, Joint, Life, NamedBy,
-    PlayedBy, Position, SqliteHistory, UnitHit, WemPlayed,
+    BinEntry, ClipJoints, Families, FileKind, History, IndexStale, InstallNewer, Joint, Life,
+    NamedBy, PlayedBy, Position, SqliteHistory, UnitHit, WemPlayed,
 };
-use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
+use reforge::model::{
+    BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
+};
 use reforge_census::Indexer;
 use tempfile::TempDir;
 
-use self::common::{A, B, HEADER, JOINTS, bank, build, entry, memory};
+use self::common::{A, B, HEADER, JOINTS, NAMED, bank, build, entry, memory, object_text};
+use self::link::linking;
 
 fn scratch() -> (TempDir, Utf8PathBuf) {
     let dir = TempDir::new().unwrap();
@@ -35,8 +41,11 @@ fn round_trip() {
     assert_eq!(stamp.repo, "memory");
     let tables = [
         "files",
-        "paths",
-        "contents",
+        "placements",
+        "wad_lives",
+        "wads",
+        "bins",
+        "bin_entries",
         "objects",
         "refs",
         "clips",
@@ -50,10 +59,13 @@ fn round_trip() {
         "event_banks",
     ];
     let counts = tables.map(|table| stamp.rows_of(table));
-    assert_eq!(counts, [9, 6, 10, 1, 3, 2, 2, 3, 2, 1, 2, 2, 3, 2]);
+    assert_eq!(counts, [9, 11, 1, 1, 1, 1, 1, 3, 2, 2, 3, 2, 1, 2, 2, 3, 2]);
 
     let index = SqliteHistory::open(&out).unwrap();
     assert_eq!(index.stamp(), Some(&stamp));
+    // Every field of `build.yaml` is the build's.
+    assert_eq!(index.builds()[1].details, history.commits[1].0.details);
+    assert_eq!(index.builds()[1].details.patch, "1.2");
     let (ka, kb) = (FileKey::parse(A).unwrap(), FileKey::parse(B).unwrap());
     let a = index.file(ka).unwrap().unwrap();
     assert_eq!(a.life, Life::new(0, 2));
@@ -155,6 +167,236 @@ fn round_trip() {
     );
     assert_eq!(log.of::<IndexStale>().count(), 1);
     assert_eq!(log.of::<InstallNewer>().count(), 1);
+}
+
+#[test]
+fn a_path_whose_bytes_go_and_come_back_has_a_placement_per_life() {
+    let (_dir, out) = scratch();
+    Indexer::new(&memory(), "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let index = SqliteHistory::open(&out).unwrap();
+    let (ka, kb) = (FileKey::parse(A).unwrap(), FileKey::parse(B).unwrap());
+    // Path 1 holds bytes A, then B, then A again.
+    let at = |build: u16| {
+        let placed = index.placed(WadHash(1), Position(build)).unwrap();
+        let placed = placed
+            .into_iter()
+            .map(|p| (p.wad, p.key, p.checksum, p.life));
+        placed.collect::<Vec<_>>()
+    };
+    let wad = "data/x.wad.client".to_string();
+    assert_eq!(at(0), [(wad.clone(), ka, 1, Life::new(0, 0))]);
+    assert_eq!(at(1), [(wad.clone(), kb, 1, Life::new(1, 1))]);
+    assert_eq!(at(2), [(wad, ka, 1, Life::new(2, 2))]);
+    assert!(index.placed(WadHash(3), Position(1)).unwrap().is_empty());
+    // The hull of the lives answers as the content's path did before.
+    assert_eq!(index.held(WadHash(1), ka).unwrap(), Some(Life::new(0, 2)));
+}
+
+#[test]
+fn a_bin_at_a_path_is_read_back_with_its_links_and_its_objects() {
+    let (_dir, out) = scratch();
+    let mut history = memory();
+    // From the second build the bin at path 2 links another bin and holds a second object.
+    let bin = format!(
+        "sha256: \"{}\"\nkind: \"bin\"\nlinks:\n - \"DATA/Characters/Test/Test.bin\"\nobjects:\n \
+         \"00000001\":\n  class: \"00000002\"\n  content: \"{A}\"\n  norm: \
+         \"0000000000000007\"\n \"00000003\":\n  class: \"00000004\"\n  content: \"{B}\"\n  \
+         norm: \"0000000000000008\"\n",
+        "8".repeat(64)
+    );
+    for (_, files) in &mut history.commits[1..] {
+        files.extend([entry(2, bin.clone())]);
+    }
+    Indexer::new(&history, "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let index = SqliteHistory::open(&out).unwrap();
+    let object = |entry, class, key: &str, norm| BinEntry {
+        entry: BinHash(entry),
+        class: BinHash(class),
+        object: ObjectKey::parse(key).unwrap(),
+        norm: NormKey(norm),
+    };
+
+    let first = index.bin(WadHash(2), Position(0)).unwrap().unwrap();
+    assert_eq!(first.wad, "data/x.wad.client");
+    assert_eq!(first.key, FileKey::parse(&"9".repeat(64)).unwrap());
+    assert_eq!(first.life, Life::new(0, 0));
+    assert!(first.links.is_empty());
+    assert_eq!(first.entries, [object(1, 2, A, 7)]);
+
+    let later = index.bin(WadHash(2), Position(2)).unwrap().unwrap();
+    assert_eq!(later.life, Life::new(1, 2));
+    assert_eq!(later.links, [path_hash("DATA/Characters/Test/Test.bin")]);
+    assert_eq!(later.entries, [object(1, 2, A, 7), object(3, 4, B, 8)]);
+    // A texture is no bin.
+    assert_eq!(index.bin(WadHash(1), Position(0)).unwrap(), None);
+}
+
+#[test]
+fn an_object_a_bin_holds_under_another_class_has_a_row_per_class() {
+    let (_dir, out) = scratch();
+    let mut history = memory();
+    // From the second build a bin at path 6 holds object A's bytes under class 5.
+    let bin = format!(
+        "sha256: \"{}\"\nkind: \"bin\"\nlinks: []\nobjects:\n \"00000001\":\n  class: \
+         \"00000005\"\n  content: \"{A}\"\n  norm: \"0000000000000007\"\n",
+        "7".repeat(64)
+    );
+    for (_, files) in &mut history.commits[1..] {
+        files.extend([entry(6, bin.clone())]);
+    }
+    Indexer::new(&history, "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let index = SqliteHistory::open(&out).unwrap();
+    let key = ObjectKey::parse(A).unwrap();
+    let lives = index.object_lives(key).unwrap();
+    let lives: Vec<(BinHash, WadHash, Life)> =
+        lives.iter().map(|h| (h.class, h.bin, h.life)).collect();
+    let expected = [
+        (BinHash(2), WadHash(2), Life::new(0, 2)),
+        (BinHash(5), WadHash(6), Life::new(1, 2)),
+    ];
+    assert_eq!(lives, expected);
+    // Both reach the head, and the older answers.
+    assert_eq!(index.object(key).unwrap().unwrap().class, BinHash(2));
+}
+
+#[test]
+fn a_fields_kinds_at_a_build_are_the_ones_its_texts_held_then() {
+    let (_dir, out) = scratch();
+    let mut history = memory();
+    let text = "files/data/x.wad.client/00/0000000000000002.bin/00/00000001.rito";
+    let string = format!("string = \"{NAMED}\"");
+    // The object's icon is a file from the second build. In the third a second object of the
+    // class holds it as a string.
+    let file = object_text().replace(&string, "file = 0x0000000000000005");
+    for (_, files) in &mut history.commits[1..] {
+        files.insert(text.into(), file.clone());
+    }
+    let second = object_text().replace("0x00000001 = 0x00000002", "0x00000003 = 0x00000002");
+    let second_text = text.replace("00000001.rito", "00000003.rito");
+    history.commits[2].1.insert(second_text, second);
+    Indexer::new(&history, "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let index = SqliteHistory::open(&out).unwrap();
+    let plain = |kind| FieldType {
+        kind,
+        key: None,
+        item: None,
+        class: None,
+    };
+    let icon = |build| {
+        let types = index.field_types(BinHash(2), name_hash("iconSquare"), Position(build));
+        types.unwrap()
+    };
+    assert_eq!(icon(0), [plain(Kind::String)]);
+    assert_eq!(icon(1), [plain(Kind::WadChunkLink)]);
+    assert_eq!(icon(2), [plain(Kind::String), plain(Kind::WadChunkLink)]);
+
+    let units = index.field_types(BinHash(2), name_hash("bankUnits"), Position(0));
+    let embedded = FieldType {
+        kind: Kind::UnorderedContainer,
+        key: None,
+        item: Some(Kind::Embedded),
+        class: Some(name_hash("BankUnit")),
+    };
+    assert_eq!(units.unwrap(), [embedded]);
+    let voice = index.field_types(name_hash("BankUnit"), name_hash("voiceOver"), Position(2));
+    assert_eq!(voice.unwrap(), [plain(Kind::Bool)]);
+    let unknown = index.field_types(BinHash(2), name_hash("unknown"), Position(0));
+    assert!(unknown.unwrap().is_empty());
+}
+
+#[test]
+fn an_object_reaches_what_it_links_and_what_those_link_at_a_build() {
+    let (_dir, out) = scratch();
+    let mut history = memory();
+    let text = |bin: u64, entry: u32| {
+        format!("files/data/x.wad.client/00/{bin:016x}.bin/00/{entry:08x}.rito")
+    };
+    // 0x11 of bin 2 links 0x12, which links 0x21 of bin 6, which links 0x11 again. From the
+    // second build 0x12 links nothing.
+    for (at, (_, files)) in history.commits.iter_mut().enumerate() {
+        let onward: &[u32] = if at == 0 { &[0x21] } else { &[] };
+        files.insert(text(2, 0x11), linking(0x11, &[0x12]));
+        files.insert(text(2, 0x12), linking(0x12, onward));
+        files.insert(text(6, 0x21), linking(0x21, &[0x11]));
+    }
+    Indexer::new(&history, "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let index = SqliteHistory::open(&out).unwrap();
+    let (bin, other) = (WadHash(2), WadHash(6));
+    let entry = BinHash(0x12);
+    assert_eq!(
+        index.links(bin, entry, Position(0)).unwrap(),
+        [BinHash(0x21)]
+    );
+    assert!(index.links(bin, entry, Position(1)).unwrap().is_empty());
+
+    let reached = |build| index.reached(bin, BinHash(0x11), Position(build)).unwrap();
+    let all = [
+        (bin, BinHash(0x11)),
+        (bin, BinHash(0x12)),
+        (other, BinHash(0x21)),
+    ];
+    let first = reached(0);
+    assert_eq!((first.objects.as_slice(), first.capped), (&all[..], false));
+    assert_eq!(reached(1).objects, all[..2]);
+    let none = index.reached(bin, BinHash(0x99), Position(0)).unwrap();
+    assert!(none.objects.is_empty() && !none.capped);
+}
+
+#[test]
+fn a_wad_whose_manifest_changes_it_has_a_life_per_version() {
+    let (_dir, out) = scratch();
+    let mut history = memory();
+    let wad = "files/data/x.wad.client/_wad.yaml";
+    let changed = "version: \"3.4\"\nfileId: \"0000000000000002\"\ntags:\n - \"en_US\"\n";
+    history.commits[1].1.insert(wad.into(), changed.into());
+    Indexer::new(&history, "memory")
+        .build(&out, Families::ALL)
+        .unwrap();
+    let db = rusqlite::Connection::open(out.join("history.sqlite")).unwrap();
+    let mut rows = db
+        .prepare(
+            "SELECT w.path, v.name, l.file_id, t.name, l.first, l.last FROM wad_lives l \
+             JOIN wads w ON w.id = l.wad JOIN names v ON v.id = l.version \
+             JOIN names t ON t.id = l.tags ORDER BY l.first",
+        )
+        .unwrap();
+    let lives: Vec<(String, String, i64, String, u16, u16)> = rows
+        .query_map([], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    let life = |file_id, tags: &str, first, last| {
+        let wad = "data/x.wad.client".to_string();
+        (
+            wad,
+            "3.4".to_string(),
+            file_id,
+            tags.to_string(),
+            first,
+            last,
+        )
+    };
+    let expected = [life(1, "", 0, 0), life(2, "en_US", 1, 1), life(1, "", 2, 2)];
+    assert_eq!(lives, expected);
 }
 
 #[test]

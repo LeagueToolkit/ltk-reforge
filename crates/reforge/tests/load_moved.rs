@@ -7,10 +7,11 @@ use std::collections::BTreeMap;
 use fs_err as fs;
 use reforge::archive::file_kind;
 use reforge::diag::{Channel, Diag, Diagnostics, Render, Stage};
-use reforge::game::{NameBook, Names};
+use reforge::game::{FieldType, NameBook, Names};
 use reforge::history::{
-    BuildRow, ClipJoints, EventsBankHit, FileHit, HeldAt, History, HistoryError, Life, MeshHit,
-    NamedBy, NoHistory, ObjectHit, PathHit, PlayedBy, SkeletonHit, Stamp, UnitHit, WemPlayed,
+    BinHit, BuildRow, ClipJoints, EventsBankHit, FileHit, HeldAt, History, HistoryError, Life,
+    MeshHit, NamedBy, NoHistory, ObjectHit, PathHit, Placed, PlayedBy, Position, Reached,
+    SkeletonHit, Stamp, TextBlob, UnitHit, WemPlayed,
 };
 use reforge::load::files::{FileFixCx, FileFixup, one_record};
 use reforge::load::legacy::{Conversion, ConvertError, LegacyFormats};
@@ -22,8 +23,8 @@ use reforge::model::entity::{
     WadRole,
 };
 use reforge::model::{
-    ChunkPath, ClipKey, ContentId, FileKey, Mod, NoNames, NormKey, ObjectKey, Spelled, WadHash,
-    WadName, path_hash,
+    BinHash, ChunkPath, ClipKey, ContentId, FileKey, Mod, NoNames, NormKey, ObjectKey, Spelled,
+    WadHash, WadName, path_hash,
 };
 use reforge_testkit::{MemoryGame, MemoryHistory};
 
@@ -731,11 +732,47 @@ impl History for BrokenHistory {
     fn paths_of(&self, key: FileKey) -> Result<Vec<HeldAt>, HistoryError> {
         self.0.paths_of(key)
     }
+    fn placed(&self, path: WadHash, at: Position) -> Result<Vec<Placed>, HistoryError> {
+        self.0.placed(path, at)
+    }
+    fn bin(&self, path: WadHash, at: Position) -> Result<Option<BinHit>, HistoryError> {
+        self.0.bin(path, at)
+    }
     fn object(&self, key: ObjectKey) -> Result<Option<ObjectHit>, HistoryError> {
         self.0.object(key)
     }
+    fn object_lives(&self, key: ObjectKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        self.0.object_lives(key)
+    }
     fn objects_by_norm(&self, norm: NormKey) -> Result<Vec<ObjectHit>, HistoryError> {
         self.0.objects_by_norm(norm)
+    }
+    fn text_blob(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Option<TextBlob>, HistoryError> {
+        self.0.text_blob(bin, entry, at)
+    }
+    fn links(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Vec<BinHash>, HistoryError> {
+        self.0.links(bin, entry, at)
+    }
+    fn reached(&self, bin: WadHash, entry: BinHash, at: Position) -> Result<Reached, HistoryError> {
+        self.0.reached(bin, entry, at)
+    }
+    fn field_types(
+        &self,
+        class: BinHash,
+        field: BinHash,
+        at: Position,
+    ) -> Result<Vec<FieldType>, HistoryError> {
+        self.0.field_types(class, field, at)
     }
     fn clip(&self, key: ClipKey) -> Result<Option<Life>, HistoryError> {
         self.0.clip(key)

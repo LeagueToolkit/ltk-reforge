@@ -10,11 +10,11 @@ use reforge::diag::{Diagnostics, Stage};
 use reforge::game::Build;
 use reforge::history::tables::{index_sql, schema_sql, table_names};
 use reforge::history::{
-    self, BuildRow, ClipJoints, DB_FILE, FORMAT, Families, FileKind, History, HistoryAbsent,
-    HistoryError, IndexMissing, IndexStale, InstallNewer, Joint, Life, Position, STAMP_FILE,
-    SqliteHistory, Stamp,
+    self, BuildDetails, BuildRow, ClipJoints, DB_FILE, FORMAT, Families, FileKind, History,
+    HistoryAbsent, HistoryError, IndexMissing, IndexStale, InstallNewer, Joint, Life, MAX_REACHED,
+    Position, STAMP_FILE, SqliteHistory, Stamp,
 };
-use reforge::model::{ClipKey, FileKey, NormKey, ObjectKey, WadHash};
+use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 use rusqlite::Connection;
 use tempfile::TempDir;
 
@@ -29,6 +29,7 @@ fn rows(versions: &[&str]) -> Vec<BuildRow> {
         build: build(version),
         manifest: "0000000000000000".into(),
         date: "2026-01-01".into(),
+        details: BuildDetails::default(),
     });
     rows.collect()
 }
@@ -75,6 +76,22 @@ fn an_empty_index_answers_every_question_with_nothing() {
     assert_eq!(history.path(path).unwrap(), None);
     assert_eq!(history.held(path, key).unwrap(), None);
     assert!(history.paths_of(key).unwrap().is_empty());
+    assert!(history.placed(path, Position(0)).unwrap().is_empty());
+    assert_eq!(history.bin(path, Position(0)).unwrap(), None);
+    let entry = BinHash(7);
+    assert_eq!(history.text_blob(path, entry, Position(0)).unwrap(), None);
+    assert!(history.links(path, entry, Position(0)).unwrap().is_empty());
+    assert_eq!(
+        history.reached(path, entry, Position(0)).unwrap(),
+        Default::default()
+    );
+    assert!(
+        history
+            .field_types(entry, entry, Position(0))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(history.object_lives(ObjectKey([7; 16])).unwrap().is_empty());
     assert_eq!(history.object(ObjectKey([7; 16])).unwrap(), None);
     assert!(history.objects_by_norm(NormKey(7)).unwrap().is_empty());
     assert_eq!(history.clip(ClipKey(7)).unwrap(), None);
@@ -113,9 +130,11 @@ fn rows_are_read_back_as_the_questions_spell_them() {
     let (_scratch, dir) = index(
         "INSERT INTO files (key, kind, path, first, last, alive) \
            VALUES (x'07070707070707070707070707070707', 2, -1152921504606846975, 0, 2, 1);
-         INSERT INTO contents (path, key, first, last, alive) \
-           VALUES (-1152921504606846975, x'07070707070707070707070707070707', 0, 1, 0), \
-                  (3, x'07070707070707070707070707070707', 2, 2, 1);
+         INSERT INTO wads (id, path) VALUES (1, 'data/b.wad.client'), (2, 'data/a.wad.client');
+         INSERT INTO placements (path, wad, key, checksum, first, last, alive) \
+           VALUES (-1152921504606846975, 1, x'07070707070707070707070707070707', 0, 0, 1, 0), \
+                  (3, 1, x'07070707070707070707070707070707', 0, 2, 2, 1), \
+                  (3, 2, x'07070707070707070707070707070707', 5, 2, 2, 1);
          INSERT INTO names (id, name) VALUES (1, 'Root'), (2, 'Hip');
          INSERT INTO skeletons (id, path, record, influences, first, last, alive) \
            VALUES (1, 4, 11, 4, 0, 1, 0), (2, 4, 12, 4, 2, 2, 1);
@@ -136,6 +155,19 @@ fn rows_are_read_back_as_the_questions_spell_them() {
         .map(|at| at.path)
         .collect();
     assert_eq!(paths, [high, WadHash(3)]);
+    let path = history.path(high).unwrap().unwrap();
+    assert_eq!(
+        (path.life, path.kind),
+        (Life::new(0, 1), FileKind::of("tex"))
+    );
+    // Two WADs held the bytes at path 3 at the last build, listed in WAD path order.
+    let placed = history.placed(WadHash(3), Position(2)).unwrap();
+    let wads: Vec<(&str, u64)> = placed
+        .iter()
+        .map(|p| (p.wad.as_str(), p.checksum))
+        .collect();
+    assert_eq!(wads, [("data/a.wad.client", 5), ("data/b.wad.client", 0)]);
+    assert!(history.placed(WadHash(3), Position(1)).unwrap().is_empty());
 
     let skeletons = history.skeletons(WadHash(4)).unwrap();
     assert_eq!(skeletons.len(), 2);
@@ -148,6 +180,54 @@ fn rows_are_read_back_as_the_questions_spell_them() {
     };
     assert_eq!(skeletons[1].skeleton.joints[1], hip);
     assert_eq!(skeletons[1].skeleton.joints[0].parent, None);
+}
+
+#[test]
+fn an_object_under_two_classes_answers_the_life_that_reaches_furthest() {
+    let (_scratch, dir) = index(
+        "INSERT INTO objects (key, class, entry, bin, norm, first, last, alive) \
+           VALUES (x'07070707070707070707070707070707', 2, 1, 5, 7, 0, 1, 0), \
+                  (x'07070707070707070707070707070707', 3, 1, 6, 7, 1, 2, 1);",
+    );
+    let history = SqliteHistory::open(&dir).unwrap();
+    let key = ObjectKey([7; 16]);
+    let hit = history.object(key).unwrap().unwrap();
+    assert_eq!((hit.class, hit.life), (BinHash(3), Life::new(1, 2)));
+    let lives = history.object_lives(key).unwrap();
+    let lives: Vec<(BinHash, WadHash, Life)> =
+        lives.iter().map(|h| (h.class, h.bin, h.life)).collect();
+    let expected = [
+        (BinHash(2), WadHash(5), Life::new(0, 1)),
+        (BinHash(3), WadHash(6), Life::new(1, 2)),
+    ];
+    assert_eq!(lives, expected);
+    assert!(history.object_lives(ObjectKey([8; 16])).unwrap().is_empty());
+}
+
+#[test]
+fn a_chain_of_links_longer_than_the_bound_is_cut_and_said_to_be() {
+    // Objects 1 to 4,200 of bin 2, each linking the next.
+    let (_scratch, dir) = index(
+        "INSERT INTO wads (id, path) VALUES (1, 'data/x.wad.client');
+         WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 4200)
+           INSERT INTO entry_texts (bin, entry, wad, blob, first, last, alive)
+           SELECT 2, i, 1, zeroblob(20), 0, 2, 1 FROM n;
+         WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 4200)
+           INSERT INTO links (bin, entry, linked, first, last, alive)
+           SELECT 2, i, i + 1, 0, 2, 1 FROM n;",
+    );
+    let history = SqliteHistory::open(&dir).unwrap();
+    let all = history
+        .reached(WadHash(2), BinHash(1), Position(1))
+        .unwrap();
+    assert!(all.capped);
+    assert_eq!(all.objects.len(), MAX_REACHED);
+    let tail = history
+        .reached(WadHash(2), BinHash(4191), Position(1))
+        .unwrap();
+    assert!(!tail.capped);
+    assert_eq!(tail.objects.len(), 10);
+    assert_eq!(tail.objects[0], (WadHash(2), BinHash(4191)));
 }
 
 #[test]
@@ -228,11 +308,11 @@ fn an_index_stamped_for_other_builds_than_it_lists_is_refused() {
             ..
         })
     ));
-    fs::write(
-        dir.join("builds.tsv"),
-        "0\tc0\t1.1.1\tm\td\n2\tc1\t1.2.1\tm\td\n",
-    )
-    .unwrap();
+    // The second line is numbered for another position.
+    let mut out_of_place = rows(&["1.1.1", "1.2.1"]);
+    out_of_place[1].at = Position(2);
+    let text: String = out_of_place.iter().map(BuildRow::line).collect();
+    fs::write(dir.join("builds.tsv"), text).unwrap();
     assert!(matches!(
         SqliteHistory::open(&dir),
         Err(HistoryError::Builds { line: 2, .. })

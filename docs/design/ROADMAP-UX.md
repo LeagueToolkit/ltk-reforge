@@ -185,7 +185,8 @@ release older than the index is not offered. For the two builds after 16.19.8207
 read 616 KB and the append took 4 to 7 s, most of it the copy of the database (2026-10-05).
 
 Not settled: how one bin entry's text at a build before the head is fetched with no whole
-clone. A whole clone holds it (`GitRepo::entry_text`), and no view asks for it yet.
+clone. The index names the text's blob (`History::text_blob`) and a whole clone holds it
+(`GitRepo::entry_text_at`). No view asks for it yet.
 
 ## The hash tables and the schema database
 

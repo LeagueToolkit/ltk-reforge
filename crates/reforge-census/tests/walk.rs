@@ -1,5 +1,5 @@
-//! The walk over a history in memory: lives are hulls, families filter, texts that do not parse
-//! are counted.
+//! The walk over a history in memory: lives are hulls or spans, families filter, texts that
+//! do not parse are counted.
 
 mod common;
 
@@ -33,12 +33,13 @@ fn lives_are_hulls() {
 
     let objects = walked.folds.objects.rows(head);
     assert_eq!(objects.len(), 1);
-    assert_eq!(objects[0].key, ObjectKey::parse(A).unwrap());
+    assert_eq!(objects[0].key.key, ObjectKey::parse(A).unwrap());
+    assert_eq!(objects[0].key.class, BinHash(2));
     assert_eq!(objects[0].life, Life::new(0, 2));
     assert_eq!(objects[0].alive, 1);
     let facts = objects[0].facts;
     assert_eq!((facts.bin, facts.norm), (WadHash(2), NormKey(7)));
-    assert_eq!((facts.entry, facts.class), (BinHash(1), BinHash(2)));
+    assert_eq!(facts.entry, BinHash(1));
 }
 
 #[test]

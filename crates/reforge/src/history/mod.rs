@@ -15,18 +15,22 @@ mod sqlite;
 mod stamp;
 pub mod tables;
 
+use std::cmp::Ordering;
 use std::error::Error;
 
 use camino::{Utf8Path, Utf8PathBuf};
 
 pub use self::findings::{HistoryAbsent, IndexMissing, IndexStale, InstallNewer};
 pub use self::sqlite::SqliteHistory;
-pub use self::stamp::{BUILDS_FILE, BuildRow, DB_FILE, FORMAT, STAMP_FILE, Stamp, version_order};
+pub use self::stamp::{
+    BUILDS_FILE, BuildDetails, BuildRow, DB_FILE, FORMAT, STAMP_FILE, Stamp, version_order,
+};
 pub use self::tables::{
-    EventsBank, Families, Family, FileKind, Joint, Life, Mesh, Position, Skeleton, Submesh, Texture,
+    BinEntry, BlobId, EventsBank, Families, Family, FileKind, Joint, Life, Mesh, Position,
+    Skeleton, Submesh, Texture,
 };
 use crate::diag::{Code, Diag, Sink};
-use crate::game::Build;
+use crate::game::{Build, FieldType};
 use crate::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 
 /// Every diagnostic code this module raises.
@@ -132,6 +136,66 @@ pub struct HeldAt {
     pub life: Life,
 }
 
+/// A content a WAD of the game held at a path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placed {
+    /// The WAD's path in the manifest.
+    pub wad: String,
+    /// The content.
+    pub key: FileKey,
+    /// The checksum the WAD's table held for the file, 0 for a WAD that holds none.
+    pub checksum: u64,
+    /// The builds the WAD held the content there without a break.
+    pub life: Life,
+}
+
+/// A bin a WAD of the game held at a path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BinHit {
+    /// The WAD's path in the manifest.
+    pub wad: String,
+    /// The bin's content.
+    pub key: FileKey,
+    /// The builds the WAD held the bin there without a break.
+    pub life: Life,
+    /// The path of each bin it links, in the order the census history lists them.
+    pub links: Vec<WadHash>,
+    /// Its objects, by entry hash.
+    pub entries: Vec<BinEntry>,
+}
+
+/// The objects a game object reaches by its links at one build.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Reached {
+    /// Each object reached, by its bin's path and its entry hash, the object asked about among
+    /// them, in that order.
+    pub objects: Vec<(WadHash, BinHash)>,
+    /// Whether [`MAX_REACHED`] stopped the search, so that the object reaches more than these.
+    pub capped: bool,
+}
+
+/// How many objects [`History::reached`] answers at most.
+// #ADR-0070. The 21,024 skin entries of 16.19.8230722 reach 487 objects at most, and the 3,976
+// of 9.1.2577563 reach 260 (2026-10-08).
+pub const MAX_REACHED: usize = 4096;
+
+/// The blob of a bin entry's text in one WAD's bin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextBlob {
+    /// The WAD's path in the manifest.
+    pub wad: String,
+    /// The text's blob in the census history.
+    pub blob: BlobId,
+    /// The builds the WAD's bin held the text without a break.
+    pub life: Life,
+}
+
+/// Orders two WADs by their paths, directory by directory, as the census history's tree lists
+/// them: the first WAD in this order is the one `GitRepo::entry_text` reads.
+pub fn wad_order(a: &str, b: &str) -> Ordering {
+    a.split('/').cmp(b.split('/'))
+}
+
 /// An object the game shipped: its life, and the first place it was seen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObjectHit {
@@ -233,8 +297,9 @@ pub struct EventsBankHit {
 
 /// The build history, as the stages ask it. One method per question.
 ///
-/// A life is a hull: a key that left the game and came back is present, as far as the history
-/// says, at every build between.
+/// A question at one build (`placed`, `bin`, `text_blob`, `links`, `reached`, `field_types`)
+/// reads a table of spans, whose lives have no gap. Every other life is a hull: a key that left
+/// the game and came back is present, as far as the history says, at every build between.
 pub trait History: Send + Sync {
     /// What the index was derived from. None without a history.
     fn stamp(&self) -> Option<&Stamp>;
@@ -255,12 +320,60 @@ pub trait History: Send + Sync {
     /// Every path the game held these bytes at, in path order.
     fn paths_of(&self, key: FileKey) -> Result<Vec<HeldAt>, HistoryError>;
 
-    /// Whether the game ever shipped this object, and when.
+    /// The contents the game's WADs held at this path at the build at `at`, in `wad_order`.
+    fn placed(&self, path: WadHash, at: Position) -> Result<Vec<Placed>, HistoryError>;
+
+    /// The bin the game held at this path at the build at `at`, with its links and its objects:
+    /// the first of `placed` that is a bin.
+    fn bin(&self, path: WadHash, at: Position) -> Result<Option<BinHit>, HistoryError>;
+
+    /// Whether the game ever shipped this object, and when. Of an object the game held under two
+    /// classes, the one whose life reaches furthest.
     fn object(&self, key: ObjectKey) -> Result<Option<ObjectHit>, HistoryError>;
+
+    /// Every life of this object, one per class the game held it under, oldest first. Dating a
+    /// mod by its objects is a batch of these: the builds from the latest first to the earliest
+    /// last.
+    fn object_lives(&self, key: ObjectKey) -> Result<Vec<ObjectHit>, HistoryError>;
 
     /// Every game object of this norm key: the same object under any entry name. The key
     /// leaves the class out, so a hit of another class is another object.
     fn objects_by_norm(&self, norm: NormKey) -> Result<Vec<ObjectHit>, HistoryError>;
+
+    /// The blob of the text of the entry `entry` of the bin at `bin` at the build at `at`, in
+    /// the first WAD in `wad_order` whose bin holds it. `reforge-census` reads the text from the
+    /// census history by the blob.
+    fn text_blob(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Option<TextBlob>, HistoryError>;
+
+    /// The entry hashes the object `entry` of the bin at `bin` linked at the build at `at`, in
+    /// hash order.
+    fn links(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Vec<BinHash>, HistoryError>;
+
+    /// The objects the object `entry` of the bin at `bin` reaches by its links at the build at
+    /// `at`, and the objects those reach: a linked entry is followed into every bin that held
+    /// it at that build. One recursive query, bounded by [`MAX_REACHED`]. No object when the
+    /// build holds no such object.
+    fn reached(&self, bin: WadHash, entry: BinHash, at: Position) -> Result<Reached, HistoryError>;
+
+    /// The types the game's texts gave the field `field` of the class `class` at the build at
+    /// `at`: the field's kind at that build, for `retype`. A field whose values had two kinds at
+    /// one build has both, and a list of pointers one per class its items had.
+    fn field_types(
+        &self,
+        class: BinHash,
+        field: BinHash,
+        at: Position,
+    ) -> Result<Vec<FieldType>, HistoryError>;
 
     /// Whether the game ever shipped this clip, and when.
     fn clip(&self, key: ClipKey) -> Result<Option<Life>, HistoryError>;
@@ -369,11 +482,49 @@ impl History for NoHistory {
         Ok(Vec::new())
     }
 
+    fn placed(&self, _: WadHash, _: Position) -> Result<Vec<Placed>, HistoryError> {
+        Ok(Vec::new())
+    }
+
+    fn bin(&self, _: WadHash, _: Position) -> Result<Option<BinHit>, HistoryError> {
+        Ok(None)
+    }
+
     fn object(&self, _: ObjectKey) -> Result<Option<ObjectHit>, HistoryError> {
         Ok(None)
     }
 
+    fn object_lives(&self, _: ObjectKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        Ok(Vec::new())
+    }
+
     fn objects_by_norm(&self, _: NormKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        Ok(Vec::new())
+    }
+
+    fn text_blob(
+        &self,
+        _: WadHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Option<TextBlob>, HistoryError> {
+        Ok(None)
+    }
+
+    fn links(&self, _: WadHash, _: BinHash, _: Position) -> Result<Vec<BinHash>, HistoryError> {
+        Ok(Vec::new())
+    }
+
+    fn reached(&self, _: WadHash, _: BinHash, _: Position) -> Result<Reached, HistoryError> {
+        Ok(Reached::default())
+    }
+
+    fn field_types(
+        &self,
+        _: BinHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Vec<FieldType>, HistoryError> {
         Ok(Vec::new())
     }
 

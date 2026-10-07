@@ -15,7 +15,7 @@ use crate::diag::Sink;
 use crate::game::Build;
 
 /// The format of the index. An index of another format is rebuilt, never migrated (#ADR-0036).
-pub const FORMAT: u32 = 0;
+pub const FORMAT: u32 = 1;
 
 /// The SQLite file of an index, in its directory.
 pub const DB_FILE: &str = "history.sqlite";
@@ -37,6 +37,25 @@ pub fn version_order(a: &Build, b: &Build) -> Ordering {
         .unwrap_or(Ordering::Equal)
 }
 
+/// What `build.yaml` says of a build beside its version, manifest and date.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct BuildDetails {
+    /// Its season and patch, `16.19`.
+    pub patch: String,
+    /// Where the census read it: `rman`, or `rads` for the builds before 9.2.
+    pub source: String,
+    /// A `rads` build's solution, empty for another.
+    pub solution: String,
+    /// A `rads` build's release, empty for another.
+    pub release: String,
+    /// The version of a `rads` build's client executable, empty for another.
+    pub exe: String,
+    /// Whether its bins number property kinds as the builds before 10.8 do.
+    pub legacy_bins: bool,
+    /// The live realms that shipped it, sorted.
+    pub realms: Vec<String>,
+}
+
 /// One build of the history: a line of `builds.tsv`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BuildRow {
@@ -50,28 +69,62 @@ pub struct BuildRow {
     pub manifest: String,
     /// The day the build went live.
     pub date: String,
+    /// The rest of the build's `build.yaml`.
+    pub details: BuildDetails,
 }
 
 impl BuildRow {
-    /// The row as its line of `builds.tsv`.
+    /// The row as its line of `builds.tsv`: position, commit, version, manifest, date, patch,
+    /// source, solution, release, exe, legacy bins (0 or 1), and the realms joined by spaces.
     pub fn line(&self) -> String {
+        // The history is untrusted: a tab or a line break in a value would end it.
+        let cell = |text: &str| text.replace(['\t', '\n', '\r'], " ");
+        let d = &self.details;
         format!(
-            "{}\t{}\t{}\t{}\t{}\n",
-            self.at, self.commit, self.build, self.manifest, self.date
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
+            self.at,
+            cell(&self.commit),
+            self.build,
+            cell(&self.manifest),
+            cell(&self.date),
+            cell(&d.patch),
+            cell(&d.source),
+            cell(&d.solution),
+            cell(&d.release),
+            cell(&d.exe),
+            u8::from(d.legacy_bins),
+            cell(&d.realms.join(" "))
         )
     }
 
     /// The row a line of `builds.tsv` holds.
     pub fn parse(line: &str) -> Option<Self> {
         let mut parts = line.split('\t');
-        let row = Self {
-            at: Position(parts.next()?.parse().ok()?),
-            commit: parts.next()?.to_string(),
-            build: Build::parse(parts.next()?)?,
-            manifest: parts.next()?.to_string(),
-            date: parts.next()?.to_string(),
+        let mut text = || parts.next().map(str::to_string);
+        let (at, commit, build) = (text()?, text()?, text()?);
+        let (manifest, date) = (text()?, text()?);
+        let details = BuildDetails {
+            patch: text()?,
+            source: text()?,
+            solution: text()?,
+            release: text()?,
+            exe: text()?,
+            legacy_bins: match text()?.as_str() {
+                "0" => false,
+                "1" => true,
+                _ => return None,
+            },
+            realms: text()?.split_whitespace().map(str::to_string).collect(),
         };
-        parts.next().is_none().then_some(row)
+        let row = Self {
+            at: Position(at.parse().ok()?),
+            commit,
+            build: Build::parse(&build)?,
+            manifest,
+            date,
+            details,
+        };
+        text().is_none().then_some(row)
     }
 
     /// The builds of the index in `dir`, by position.
@@ -217,11 +270,28 @@ mod tests {
             build: Build::parse("16.19.8207193").unwrap(),
             manifest: "ad6896ce5cf475a1".into(),
             date: "2026-09-21".into(),
+            details: BuildDetails {
+                patch: "16.19".into(),
+                source: "rman".into(),
+                realms: vec!["BR1".into(), "NA1".into()],
+                ..BuildDetails::default()
+            },
         };
         let line = row.line();
-        assert_eq!(line, "3\tc3\t16.19.8207193\tad6896ce5cf475a1\t2026-09-21\n");
+        assert_eq!(
+            line,
+            "3\tc3\t16.19.8207193\tad6896ce5cf475a1\t2026-09-21\t16.19\trman\t\t\t\t0\tBR1 NA1\n"
+        );
         assert_eq!(BuildRow::parse(line.trim_end_matches('\n')), Some(row));
+        let rads = "0\tc0\t8.20.2483196\te39c38647162cf28\t2018-10-03\t8.20\trads\tlol_game_client_sln\t\
+                    0.0.1.250\t8.20.249.4223\t1\trads:live";
+        let rads = BuildRow::parse(rads).unwrap();
+        assert!(rads.details.legacy_bins);
+        assert_eq!(rads.details.exe, "8.20.249.4223");
+        assert_eq!(rads.details.realms, ["rads:live"]);
         assert_eq!(BuildRow::parse("3\tc3\t16.19.8207193"), None);
-        assert_eq!(BuildRow::parse("3\tc3\tsoon\tm\td"), None);
+        assert_eq!(BuildRow::parse("3\tc3\t16.19.8207193\tm\td"), None);
+        assert_eq!(BuildRow::parse("3\tc3\tsoon\tm\td\tp\ts\t\t\t\t0\t"), None);
+        assert_eq!(BuildRow::parse("3\tc3\t1.1.1\tm\td\tp\ts\t\t\t\t2\t"), None);
     }
 }

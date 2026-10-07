@@ -4,17 +4,21 @@
 use std::sync::{Mutex, PoisonError};
 
 use camino::{Utf8Path, Utf8PathBuf};
+use ltk_meta::PropertyKind as Kind;
 use reforge_wwise::Object;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 
 use super::stamp::{BuildRow, DB_FILE, Stamp};
 use super::tables::{
-    BankFacts, EventsBank, Joint, Life, Mesh, Position, Skeleton, Submesh, loaded, stored,
+    BankFacts, BinEntry, BinFacts, EventsBank, Joint, Life, Mesh, NO_KIND, Position, Skeleton,
+    Submesh, loaded, stored,
 };
 use super::{
-    ClipJoints, EventsBankHit, FileHit, FileKind, HeldAt, History, HistoryError, MeshHit, NamedBy,
-    ObjectHit, PathHit, PlayedBy, SkeletonHit, UnitHit, WemPlayed,
+    BinHit, ClipJoints, EventsBankHit, FileHit, FileKind, HeldAt, History, HistoryError,
+    MAX_REACHED, MeshHit, NamedBy, ObjectHit, PathHit, Placed, PlayedBy, Reached, SkeletonHit,
+    TextBlob, UnitHit, WemPlayed, wad_order,
 };
+use crate::game::FieldType;
 use crate::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 
 /// The index on disk, read through SQLite.
@@ -33,12 +37,29 @@ fn life(row: &Row<'_>, first: usize) -> rusqlite::Result<Life> {
     })
 }
 
+/// The hull of a key's lives, in two aggregate columns that are null when no row holds the key.
+fn hull(row: &Row<'_>, at: usize) -> rusqlite::Result<Option<Life>> {
+    let first: Option<u16> = row.get(at)?;
+    let last: Option<u16> = row.get(at + 1)?;
+    Ok(first.zip(last).map(|(first, last)| Life::new(first, last)))
+}
+
 fn path_hash(row: &Row<'_>, at: usize) -> rusqlite::Result<WadHash> {
     Ok(WadHash(loaded(row.get(at)?)))
 }
 
 fn bin_hash(row: &Row<'_>, at: usize) -> rusqlite::Result<BinHash> {
     Ok(BinHash(row.get(at)?))
+}
+
+/// A kind as `schema` stores it, none for `NO_KIND`.
+fn stored_kind(row: &Row<'_>, at: usize) -> rusqlite::Result<Option<Kind>> {
+    let stored: u8 = row.get(at)?;
+    if stored == NO_KIND {
+        return Ok(None);
+    }
+    let unknown = |_| rusqlite::Error::IntegralValueOutOfRange(at, i64::from(stored));
+    Kind::try_from(stored).map(Some).map_err(unknown)
 }
 
 /// A row of `entry, class, bin, norm, first, last`.
@@ -142,29 +163,36 @@ impl History for SqliteHistory {
     }
 
     fn path(&self, path: WadHash) -> Result<Option<PathHit>, HistoryError> {
-        self.one(
-            "SELECT first, last, kind FROM paths WHERE path = ?1",
+        let hit = self.one(
+            "SELECT MIN(p.first), MAX(p.last), (SELECT f.kind FROM placements q \
+             JOIN wads w ON w.id = q.wad JOIN files f ON f.key = q.key WHERE q.path = ?1 \
+             ORDER BY q.first, w.path LIMIT 1) FROM placements p WHERE p.path = ?1",
             params![stored(path.0)],
             |r| {
-                Ok(PathHit {
-                    life: life(r, 0)?,
-                    kind: FileKind(r.get(2)?),
-                })
+                let hull = hull(r, 0)?;
+                let kind: Option<u8> = r.get(2)?;
+                Ok(hull.map(|life| PathHit {
+                    life,
+                    kind: kind.map_or(FileKind::OTHER, FileKind),
+                }))
             },
-        )
+        )?;
+        Ok(hit.flatten())
     }
 
     fn held(&self, path: WadHash, key: FileKey) -> Result<Option<Life>, HistoryError> {
-        self.one(
-            "SELECT first, last FROM contents WHERE path = ?1 AND key = ?2",
+        let hull = self.one(
+            "SELECT MIN(first), MAX(last) FROM placements WHERE path = ?1 AND key = ?2",
             params![stored(path.0), &key.0[..]],
-            |r| life(r, 0),
-        )
+            |r| hull(r, 0),
+        )?;
+        Ok(hull.flatten())
     }
 
     fn paths_of(&self, key: FileKey) -> Result<Vec<HeldAt>, HistoryError> {
         self.all(
-            "SELECT path, first, last FROM contents WHERE key = ?1 ORDER BY path",
+            "SELECT path, MIN(first), MAX(last) FROM placements WHERE key = ?1 GROUP BY path \
+             ORDER BY path",
             params![&key.0[..]],
             |r| {
                 Ok(HeldAt {
@@ -175,9 +203,70 @@ impl History for SqliteHistory {
         )
     }
 
+    fn placed(&self, path: WadHash, at: Position) -> Result<Vec<Placed>, HistoryError> {
+        let mut placed = self.all(
+            "SELECT w.path, p.key, p.checksum, p.first, p.last FROM placements p \
+             JOIN wads w ON w.id = p.wad WHERE p.path = ?1 AND p.first <= ?2 AND p.last >= ?2",
+            params![stored(path.0), at.0],
+            |r| {
+                Ok(Placed {
+                    wad: r.get(0)?,
+                    key: FileKey(r.get(1)?),
+                    checksum: loaded(r.get(2)?),
+                    life: life(r, 3)?,
+                })
+            },
+        )?;
+        placed.sort_by(|a, b| wad_order(&a.wad, &b.wad));
+        Ok(placed)
+    }
+
+    fn bin(&self, path: WadHash, at: Position) -> Result<Option<BinHit>, HistoryError> {
+        for placed in self.placed(path, at)? {
+            let row: Option<(i64, Vec<u8>)> = self.one(
+                "SELECT id, links FROM bins WHERE key = ?1",
+                params![&placed.key.0[..]],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            let Some((id, links)) = row else { continue };
+            // The same records write a bin's objects and their rows of `objects`.
+            let entries = self.all(
+                "SELECT e.entry, o.class, o.key, o.norm FROM bin_entries e \
+                 JOIN objects o ON o.id = e.object WHERE e.bin = ?1 ORDER BY e.entry",
+                params![id],
+                |r| {
+                    Ok(BinEntry {
+                        entry: bin_hash(r, 0)?,
+                        class: bin_hash(r, 1)?,
+                        object: ObjectKey(r.get(2)?),
+                        norm: NormKey(loaded(r.get(3)?)),
+                    })
+                },
+            )?;
+            return Ok(Some(BinHit {
+                wad: placed.wad,
+                key: placed.key,
+                life: placed.life,
+                links: BinFacts::links(&links).collect(),
+                entries,
+            }));
+        }
+        Ok(None)
+    }
+
     fn object(&self, key: ObjectKey) -> Result<Option<ObjectHit>, HistoryError> {
         self.one(
-            "SELECT entry, class, bin, norm, first, last FROM objects WHERE key = ?1",
+            "SELECT entry, class, bin, norm, first, last FROM objects WHERE key = ?1 \
+             ORDER BY last DESC, first, class LIMIT 1",
+            params![&key.0[..]],
+            object_hit,
+        )
+    }
+
+    fn object_lives(&self, key: ObjectKey) -> Result<Vec<ObjectHit>, HistoryError> {
+        self.all(
+            "SELECT entry, class, bin, norm, first, last FROM objects WHERE key = ?1 \
+             ORDER BY first, class",
             params![&key.0[..]],
             object_hit,
         )
@@ -189,6 +278,89 @@ impl History for SqliteHistory {
              ORDER BY first, bin, entry",
             params![stored(norm.0)],
             object_hit,
+        )
+    }
+
+    fn text_blob(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Option<TextBlob>, HistoryError> {
+        let held = self.all(
+            "SELECT w.path, t.blob, t.first, t.last FROM entry_texts t JOIN wads w ON w.id = t.wad \
+             WHERE t.bin = ?1 AND t.entry = ?2 AND t.first <= ?3 AND t.last >= ?3",
+            params![stored(bin.0), entry.0, at.0],
+            |r| {
+                Ok(TextBlob {
+                    wad: r.get(0)?,
+                    blob: r.get(1)?,
+                    life: life(r, 2)?,
+                })
+            },
+        )?;
+        Ok(held.into_iter().min_by(|a, b| wad_order(&a.wad, &b.wad)))
+    }
+
+    fn links(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Vec<BinHash>, HistoryError> {
+        self.all(
+            "SELECT linked FROM links WHERE bin = ?1 AND entry = ?2 AND first <= ?3 \
+             AND last >= ?3 ORDER BY linked",
+            params![stored(bin.0), entry.0, at.0],
+            |r| bin_hash(r, 0),
+        )
+    }
+
+    fn reached(&self, bin: WadHash, entry: BinHash, at: Position) -> Result<Reached, HistoryError> {
+        // One more than the bound, so that a search the bound stops is told from one that ends
+        // at it.
+        let limit = i64::try_from(MAX_REACHED + 1).unwrap_or(i64::MAX);
+        let mut objects = self.all(
+            "WITH RECURSIVE reach(bin, entry) AS ( \
+               SELECT bin, entry FROM entry_texts \
+                 WHERE bin = ?1 AND entry = ?2 AND first <= ?3 AND last >= ?3 \
+               UNION \
+               SELECT t.bin, t.entry FROM reach r \
+                 JOIN links l ON l.bin = r.bin AND l.entry = r.entry \
+                   AND l.first <= ?3 AND l.last >= ?3 \
+                 JOIN entry_texts t ON t.entry = l.linked AND t.first <= ?3 AND t.last >= ?3 \
+               LIMIT ?4) \
+             SELECT bin, entry FROM reach",
+            params![stored(bin.0), entry.0, at.0, limit],
+            |r| Ok((path_hash(r, 0)?, bin_hash(r, 1)?)),
+        )?;
+        let capped = objects.len() > MAX_REACHED;
+        objects.truncate(MAX_REACHED);
+        objects.sort_unstable();
+        Ok(Reached { objects, capped })
+    }
+
+    fn field_types(
+        &self,
+        class: BinHash,
+        field: BinHash,
+        at: Position,
+    ) -> Result<Vec<FieldType>, HistoryError> {
+        self.all(
+            "SELECT kind, key_kind, item_kind, value_class FROM schema WHERE class = ?1 \
+             AND field = ?2 AND first <= ?3 AND last >= ?3 \
+             ORDER BY kind, key_kind, item_kind, value_class",
+            params![class.0, field.0, at.0],
+            |r| {
+                // A value always has a kind: only the slots of a map and an item may be empty.
+                let none = rusqlite::Error::IntegralValueOutOfRange(0, i64::from(NO_KIND));
+                Ok(FieldType {
+                    kind: stored_kind(r, 0)?.ok_or(none)?,
+                    key: stored_kind(r, 1)?,
+                    item: stored_kind(r, 2)?,
+                    class: Some(bin_hash(r, 3)?).filter(|class| class.0 != 0),
+                })
+            },
         )
     }
 

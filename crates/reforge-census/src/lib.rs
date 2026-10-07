@@ -1,7 +1,7 @@
 //! The census history read with gix, and the writer of the history index.
 //!
 //! The census history holds one commit per live build and one file per WAD entry (format 2).
-//! This crate walks it, folds every build into one life per key, and writes the index
+//! This crate walks it, folds every build into the lives of each key, and writes the index
 //! `reforge::history` defines and reads (#ADR-0005). The repository is the source. The index
 //! is exact, stamped with the commit it came from, and disposable: deleting it loses nothing.
 
