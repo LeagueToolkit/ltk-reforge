@@ -12,7 +12,7 @@ use reforge::history::tables::{index_sql, schema_sql, table_names};
 use reforge::history::{
     self, BuildDetails, BuildRow, ClipJoints, DB_FILE, FORMAT, Families, FileKind, History,
     HistoryAbsent, HistoryError, IndexMissing, IndexStale, InstallNewer, Joint, Life, MAX_REACHED,
-    Position, STAMP_FILE, SqliteHistory, Stamp,
+    ObjectCodec, Position, STAMP_FILE, SqliteHistory, Stamp,
 };
 use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 use rusqlite::Connection;
@@ -45,6 +45,8 @@ fn stamp(builds: &[BuildRow]) -> Stamp {
         writer: "test".into(),
         rows: BTreeMap::new(),
         unparsed_texts: 0,
+        objectless_texts: 0,
+        objects: ObjectCodec::current(),
     }
 }
 
@@ -80,6 +82,10 @@ fn an_empty_index_answers_every_question_with_nothing() {
     assert_eq!(history.bin(path, Position(0)).unwrap(), None);
     let entry = BinHash(7);
     assert_eq!(history.text_blob(path, entry, Position(0)).unwrap(), None);
+    assert_eq!(
+        history.object_bytes(path, entry, Position(0)).unwrap(),
+        None
+    );
     assert!(history.links(path, entry, Position(0)).unwrap().is_empty());
     assert_eq!(
         history.reached(path, entry, Position(0)).unwrap(),
@@ -326,6 +332,75 @@ fn a_run_with_no_index_is_told_so_and_asks_no_history() {
     assert!(history.stamp().is_none());
     assert_eq!(log.of::<HistoryAbsent>().count(), 1);
     assert_eq!(log.len(), 1);
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// An object's bytes from its entry hash on: entry 7 with `fields` u32 fields, each its index.
+fn object(fields: u16) -> Vec<u8> {
+    let mut bytes = 7u32.to_le_bytes().to_vec();
+    bytes.extend(fields.to_le_bytes());
+    for field in 0..u32::from(fields) {
+        bytes.extend(field.to_le_bytes());
+        bytes.push(7);
+        bytes.extend(field.to_le_bytes());
+    }
+    bytes
+}
+
+#[test]
+fn an_objects_bytes_at_a_build_decode_from_its_keyframe_and_its_own_frame() {
+    let (dict, keyframe, version) = (object(40), object(64), object(65));
+    let mut with_dict = zstd::bulk::Compressor::with_dictionary(19, &dict).unwrap();
+    let mut with_keyframe = zstd::bulk::Compressor::with_dictionary(19, &keyframe).unwrap();
+    let (key_frame, delta) = (
+        with_dict.compress(&keyframe).unwrap(),
+        with_keyframe.compress(&version).unwrap(),
+    );
+    // Entry 7 of the bin at path 3: the keyframe at build 0, the version after it at build 1,
+    // and at build 2 a text that held no object. Row 3 names a keyframe the index lacks.
+    let (_scratch, dir) = index(&format!(
+        "INSERT INTO wads (id, path) VALUES (1, 'data/a.wad.client');
+         INSERT INTO entry_texts (entry, bin, wad, blob, first, last, alive) \
+           VALUES (7, 3, 1, x'{a}', 0, 0, 0), (7, 3, 1, x'{b}', 1, 1, 0), \
+                  (7, 3, 1, x'{c}', 2, 2, 1), (8, 3, 1, x'{d}', 0, 2, 1);
+         INSERT INTO object_dicts (id, class, dict) VALUES (1, 2, x'{dict}');
+         INSERT INTO object_bytes (id, keyframe, dict, frame) \
+           VALUES (1, 1, 1, x'{key_frame}'), (2, 1, NULL, x'{delta}'), (3, 9, NULL, x'{delta}');
+         INSERT INTO text_bytes (blob, class, object) \
+           VALUES (x'{a}', 2, 1), (x'{b}', 2, 2), (x'{d}', 2, 3);",
+        a = hex(&[0xa; 20]),
+        b = hex(&[0xb; 20]),
+        c = hex(&[0xc; 20]),
+        d = hex(&[0xd; 20]),
+        dict = hex(&dict),
+        key_frame = hex(&key_frame),
+        delta = hex(&delta),
+    ));
+    let history = SqliteHistory::open(&dir).unwrap();
+    let bytes_at = |entry: u32, at: u16| {
+        let found = history.object_bytes(WadHash(3), BinHash(entry), Position(at));
+        found.unwrap().map(|object| (object.class, object.bytes))
+    };
+    assert_eq!(bytes_at(7, 0), Some((BinHash(2), keyframe.clone())));
+    assert_eq!(bytes_at(7, 1), Some((BinHash(2), version.clone())));
+    assert_eq!(bytes_at(7, 2), None);
+    let at_one = history.object_bytes(WadHash(3), BinHash(7), Position(1));
+    let at_one = at_one.unwrap().unwrap();
+    assert_eq!(
+        (at_one.wad.as_str(), at_one.life),
+        ("data/a.wad.client", Life::new(1, 1))
+    );
+    let stored = history.stored_object(&[0xb; 20]).unwrap().unwrap();
+    assert_eq!((stored.row, stored.keyframe), (2, Some(keyframe)));
+    assert_eq!(history.stored_object(&[0xc; 20]).unwrap(), None);
+    let broken = history.object_bytes(WadHash(3), BinHash(8), Position(0));
+    assert!(
+        matches!(broken, Err(HistoryError::ObjectRow { object: 3, .. })),
+        "{broken:?}"
+    );
 }
 
 #[test]

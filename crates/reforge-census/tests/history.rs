@@ -159,9 +159,14 @@ fn alive<T: Ord>(
     rows.map(Result::unwrap).collect()
 }
 
-fn median(mut times: Vec<Duration>) -> Duration {
+fn median(times: Vec<Duration>) -> Duration {
+    percentile(times, 50)
+}
+
+fn percentile(mut times: Vec<Duration>, percent: usize) -> Duration {
     times.sort_unstable();
-    times.get(times.len() / 2).copied().unwrap_or_default()
+    let at = (times.len().saturating_sub(1) * percent) / 100;
+    times.get(at).copied().unwrap_or_default()
 }
 
 #[test]
@@ -236,8 +241,9 @@ fn an_index_agrees_with_the_trees_of_its_builds() {
             assert_eq!((bin.wad, bin.links, bin.entries), (wad, links, entries));
         }
 
-        // Every 97th text, read by its blob and by a search of the build's tree.
-        let (mut by_blob, mut by_search) = (Vec::new(), Vec::new());
+        // Every 97th text, read by its blob and by a search of the build's tree, and its object
+        // from the index alone.
+        let (mut by_blob, mut by_search, mut by_bytes) = (Vec::new(), Vec::new(), Vec::new());
         let sample: BTreeSet<(u64, u32)> = texts.iter().map(|t| (t.0, t.1)).step_by(97).collect();
         for (bin, entry) in &sample {
             let (bin, entry) = (WadHash(*bin), BinHash(*entry));
@@ -247,23 +253,35 @@ fn an_index_agrees_with_the_trees_of_its_builds() {
             let started = Instant::now();
             let searched = repo.entry_text(bin, entry, &commit).unwrap();
             by_search.push(started.elapsed());
+            let started = Instant::now();
+            let object = index.object_bytes(bin, entry, at).unwrap();
+            by_bytes.push(started.elapsed());
             let read = read.unwrap_or_else(|| panic!("no text of {entry:?} of {bin:?} at {at}"));
             assert_eq!(
                 Some(&read),
                 searched.as_ref(),
                 "{entry:?} of {bin:?} at {at}"
             );
-            let parsed = format::parse_object_text(&read);
-            assert!(parsed.is_some(), "{entry:?} of {bin:?} at {at} parses");
+            let (_, objects) = format::read_object_text(&read)
+                .unwrap_or_else(|| panic!("{entry:?} of {bin:?} at {at} does not parse"));
+            let written = objects.first().filter(|_| objects.len() == 1);
+            let written = written.map(|o| (o.class, o.bytes.clone()));
+            let object = object.map(|o| (o.class, o.bytes));
+            assert!(
+                object == written,
+                "the object bytes of {entry:?} of {bin:?} at {at} are the text's"
+            );
         }
         eprintln!(
-            "build {at}: {} placements, {} texts, {} read both ways: {:?} by blob, {:?} by \
-             search (medians)",
+            "build {at}: {} placements, {} texts, {} read three ways: {:?} by blob, {:?} by \
+             search (medians); object bytes {:?} median, {:?} at the 99th percentile",
             placements.len(),
             texts.len(),
             sample.len(),
             median(by_blob),
-            median(by_search)
+            median(by_search),
+            median(by_bytes.clone()),
+            percentile(by_bytes, 99)
         );
     }
 }

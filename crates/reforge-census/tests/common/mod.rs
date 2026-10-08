@@ -1,6 +1,7 @@
 //! A census history in memory, shared by the integration tests.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{LazyLock, Mutex, PoisonError};
 
 use reforge::game::Build;
 use reforge::history::BuildDetails;
@@ -73,12 +74,22 @@ impl ChangeSource for Memory {
     }
 
     fn read(&self, id: &BlobId) -> Result<Vec<u8>, CensusError> {
-        let mut texts = self.commits.iter().flat_map(|(_, files)| files.values());
-        let text = texts.find(|text| blob_id(text) == *id);
+        // Every text of a history is hashed once: a blob is its text in every history.
+        let mut held = TEXTS.lock().unwrap_or_else(PoisonError::into_inner);
+        if !held.contains_key(id) {
+            for text in self.commits.iter().flat_map(|(_, files)| files.values()) {
+                held.entry(blob_id(text)).or_insert_with(|| text.clone());
+            }
+        }
+        let text = held.get(id);
         let text = text.unwrap_or_else(|| panic!("no blob {id:02x?} in the history in memory"));
         Ok(text.clone().into_bytes())
     }
 }
+
+/// The text of every blob a history in memory was read for.
+static TEXTS: LazyLock<Mutex<HashMap<BlobId, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// The `build.yaml` of a build at this version, of patch `1.<n>`, read from a manifest and
 /// shipped to `NA1`.

@@ -73,8 +73,9 @@ impl Life {
 pub enum Family {
     /// Contents, the WADs, and where each WAD held each content.
     Files,
-    /// Objects, the bins that hold them, their texts' blobs, and from their texts the files and
-    /// the objects they name, the types of their fields, their audio tags and bank units.
+    /// Objects, the bins that hold them, their texts' blobs, the bytes of the texts' objects,
+    /// and from their texts the files and the objects they name, the types of their fields,
+    /// their audio tags and bank units.
     Objects,
     /// Clips, the events that play them, and the events banks' headers and objects.
     Clips,
@@ -471,11 +472,36 @@ pub const NAMES_SQL: &str =
 pub const WADS_SQL: &str =
     "CREATE TABLE wads (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE);\n";
 
+/// `object_bytes`: each distinct object of an entry text, once, as a zstd frame of its bytes
+/// from the entry hash on (`objects.rs`). `keyframe` is the row whose bytes the frame was
+/// compressed against, the row itself for a keyframe. `dict` is the row of `object_dicts` a
+/// keyframe was compressed with, none for another row or a keyframe compressed with none.
+pub const OBJECT_BYTES_SQL: &str = "CREATE TABLE object_bytes (id INTEGER PRIMARY KEY, \
+     keyframe INTEGER NOT NULL, dict INTEGER, frame BLOB NOT NULL);\n";
+
+/// `text_bytes`: the object of each entry text, by the text's blob, with the object's class. The
+/// class is the text's: two texts whose objects write the same bytes under two classes share a
+/// row of `object_bytes`.
+pub const TEXT_BYTES_SQL: &str = "CREATE TABLE text_bytes (blob BLOB PRIMARY KEY, \
+     class INTEGER NOT NULL, object INTEGER NOT NULL) WITHOUT ROWID;\n";
+
+/// `object_dicts`: the dictionaries keyframes were compressed with, one per class that earned
+/// one and a general one, of no class, for every other class. A whole build trains them, and an
+/// append uses them as they are.
+pub const OBJECT_DICTS_SQL: &str = "CREATE TABLE object_dicts (id INTEGER PRIMARY KEY, \
+     class INTEGER, dict BLOB NOT NULL);\n";
+
+/// The tables of the object bytes, which hold no lives: `entry_texts` holds a text's.
+pub const OBJECT_TABLES: [&str; 3] = ["object_bytes", "text_bytes", "object_dicts"];
+
 /// The statements that create every table of an empty index.
 pub fn schema_sql() -> String {
     let mut sql: String = TABLES.iter().map(|table| table.create_sql()).collect();
     sql.push_str(NAMES_SQL);
     sql.push_str(WADS_SQL);
+    sql.push_str(OBJECT_BYTES_SQL);
+    sql.push_str(TEXT_BYTES_SQL);
+    sql.push_str(OBJECT_DICTS_SQL);
     sql
 }
 
@@ -1803,7 +1829,8 @@ pub const TABLES: &[TableDef] = &[
     Textures::DEF,
 ];
 
-/// The name of every table of the index: the tables of lives, their parts, `names` and `wads`.
+/// The name of every table of the index: the tables of lives, their parts, `names`, `wads` and
+/// the tables of the object bytes.
 pub fn table_names() -> Vec<&'static str> {
     let mut names = Vec::new();
     for table in TABLES {
@@ -1811,6 +1838,7 @@ pub fn table_names() -> Vec<&'static str> {
         names.extend(table.parts.map(|parts| parts.name));
     }
     names.extend(["names", "wads"]);
+    names.extend(OBJECT_TABLES);
     names
 }
 

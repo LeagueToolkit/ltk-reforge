@@ -1,6 +1,7 @@
 # ADR-0077: The history index stays one SQLite file beside the census clone
 
-- **Status:** Accepted (2026-10-07)
+- **Status:** Accepted (2026-10-07); its clone as the only store of entry content superseded by
+  #ADR-0078
 - **Related:** #ADR-0005, #ADR-0036, #ADR-0037, #ADR-0043, #ADR-0057, #ADR-0060, #ADR-0067;
   `docs/design/HISTORY.md`
 

@@ -7,7 +7,8 @@
 //! Entry texts are most of the bytes a build changes: 3.5 and 3.9 GB, both sides, for the first
 //! builds of 12.20 and 12.21, against 63 and 73 MB of entries' files (2026-10-03). What a text
 //! names is a function of its blob, so it is read and parsed once, when the blob first appears,
-//! and kept while the tree holds it: the text a build removes or replaces is not read again.
+//! and kept while the tree holds it: the text a build removes or replaces is not read again. Its
+//! object is kept until the object bytes are written (`objects.rs`).
 
 use std::collections::hash_map::Entry as MapEntry;
 use std::collections::{HashMap, HashSet};
@@ -27,6 +28,7 @@ use reforge_wwise::Object;
 
 use crate::error::CensusError;
 use crate::format::{self, BuildFile, Entry, ObjectText, WadFile};
+use crate::objects::{Fresh, Store};
 
 pub use reforge::history::BlobId;
 
@@ -408,6 +410,8 @@ enum Parsed<'c> {
         entry: BinHash,
         old: TextSide,
         new: TextSide,
+        /// What the new side holds, when it was read here for the first time.
+        fresh: Option<Fresh>,
     },
     Wad {
         wad: &'c str,
@@ -431,6 +435,8 @@ pub(crate) struct Walker {
     pub(crate) folds: Folds,
     /// Entry texts that appeared and did not parse, so name nothing.
     pub(crate) unparsed_texts: usize,
+    /// The object of each text read, kept until it is written.
+    pub(crate) objects: Store,
     /// What each entry text the tree holds names, and how many places hold it.
     texts: HashMap<BlobId, (u32, TextFacts)>,
     /// Each WAD's path, held once for every row that names the WAD.
@@ -443,6 +449,7 @@ impl Walker {
             families,
             folds: Folds::default(),
             unparsed_texts: 0,
+            objects: Store::default(),
             texts: HashMap::new(),
             wads: HashSet::new(),
         }
@@ -482,10 +489,12 @@ impl Walker {
         Ok(build)
     }
 
-    /// Reads and parses one change, a text from the texts held when the tree already holds it.
+    /// Reads and parses one change of the build at `at`, a text from the texts held when the
+    /// tree already holds it.
     fn parse<'c>(
         &self,
         source: &dyn ChangeSource,
+        at: Position,
         change: &'c Change,
     ) -> Result<Option<Parsed<'c>>, CensusError> {
         let read = |id: &BlobId| -> Result<String, CensusError> {
@@ -531,20 +540,37 @@ impl Walker {
         let Some((bin, entry)) = format::object_file(&change.path) else {
             return Ok(None);
         };
-        let text = |id: &Option<BlobId>| -> Result<TextSide, CensusError> {
-            let Some(id) = id else { return Ok(None) };
-            if let Some((_, facts)) = self.texts.get(id) {
-                return Ok(Some((*id, facts.clone())));
-            }
-            let facts = format::parse_object_text(&read(id)?);
-            Ok(Some((*id, Arc::new(facts))))
+        let old = match &change.old {
+            Some(id) => match self.texts.get(id) {
+                Some((_, facts)) => Some((*id, facts.clone())),
+                None => Some((*id, Arc::new(format::parse_object_text(&read(id)?)))),
+            },
+            None => None,
+        };
+        // A new side the tree does not hold is read whole: what it names, and its object.
+        let (new, fresh) = match &change.new {
+            Some(id) => match self.texts.get(id) {
+                Some((_, facts)) => (Some((*id, facts.clone())), None),
+                None => {
+                    let read = format::read_object_text(&read(id)?);
+                    let (facts, fresh) = match read {
+                        Some((names, objects)) => {
+                            (Some(names), Some(Fresh::of(entry, at, objects)))
+                        }
+                        None => (None, None),
+                    };
+                    (Some((*id, Arc::new(facts))), fresh)
+                }
+            },
+            None => (None, None),
         };
         Ok(Some(Parsed::Text {
             wad,
             bin,
             entry,
-            old: text(&change.old)?,
-            new: text(&change.new)?,
+            old,
+            new,
+            fresh,
         }))
     }
 
@@ -556,9 +582,9 @@ impl Walker {
         changes: &[Change],
     ) -> Result<(), CensusError> {
         let this = &*self;
-        let parsed = changes.par_iter().map(|c| this.parse(source, c));
+        let parsed = changes.par_iter().map(|c| this.parse(source, at, c));
         let parsed: Vec<Option<Parsed>> = parsed.collect::<Result<_, _>>()?;
-        for change in parsed.iter().flatten() {
+        for change in parsed.into_iter().flatten() {
             match change {
                 Parsed::Entry {
                     wad,
@@ -567,7 +593,7 @@ impl Walker {
                     new,
                 } => {
                     let wad = self.wad(wad);
-                    self.entry(at, &wad, *path, old.as_deref(), new.as_deref());
+                    self.entry(at, &wad, path, old.as_deref(), new.as_deref());
                 }
                 Parsed::Text {
                     wad,
@@ -575,10 +601,14 @@ impl Walker {
                     entry,
                     old,
                     new,
+                    fresh,
                 } => {
+                    let (old, new) = (&old, &new);
                     self.hold(old, new);
+                    if let (Some((blob, _)), Some(fresh)) = (new, fresh) {
+                        self.objects.add(*blob, entry, fresh);
+                    }
                     let wad = self.wad(wad);
-                    let (bin, entry) = (*bin, *entry);
                     let texts = &mut self.folds.entry_texts;
                     texts.change_keys(at, old.as_ref(), new.as_ref(), |(blob, _)| {
                         let wad = wad.clone();
@@ -844,6 +874,8 @@ pub struct Walked {
     pub folds: Folds,
     /// Entry texts read that did not parse, so name nothing.
     pub unparsed_texts: usize,
+    /// The object of each text read.
+    pub(crate) objects: Store,
 }
 
 impl Walked {
@@ -883,6 +915,7 @@ pub fn walk(
         builds,
         folds: walker.folds,
         unparsed_texts: walker.unparsed_texts,
+        objects: walker.objects,
     })
 }
 

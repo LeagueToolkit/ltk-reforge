@@ -5,11 +5,13 @@
 //! `reforge::history` defines and reads (#ADR-0005). The repository is the source. The index
 //! is exact, stamped with the commit it came from, and disposable: deleting it loses nothing.
 
+mod check;
 mod error;
 #[cfg(feature = "fetch")]
 mod fetch;
 pub mod format;
 mod git;
+mod objects;
 mod seed;
 mod walk;
 mod write;
@@ -17,6 +19,7 @@ mod write;
 use camino::Utf8Path;
 use reforge::history::{Families, Stamp};
 
+pub use self::check::{ObjectCheck, Unkeyed, check_objects};
 pub use self::error::CensusError;
 #[cfg(feature = "fetch")]
 pub use self::fetch::{Fetcher, Received};

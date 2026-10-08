@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::HistoryError;
 use super::findings::{IndexStale, InstallNewer};
+use super::objects::ObjectCodec;
 use super::tables::{Families, Position};
 use crate::diag::Sink;
 use crate::game::Build;
@@ -177,6 +178,11 @@ pub struct Stamp {
     pub rows: BTreeMap<String, u64>,
     /// Entry texts read that did not parse, so name nothing in `refs`, `tags` or `units`.
     pub unparsed_texts: usize,
+    /// Entry texts that parse and hold no object or several, so have no object bytes: a run has
+    /// no other source for them.
+    pub objectless_texts: usize,
+    /// How the object bytes were compressed.
+    pub objects: ObjectCodec,
 }
 
 /// The one field read before the rest, so that a stamp of another format is refused for its

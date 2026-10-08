@@ -4705,6 +4705,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "zip",
+ "zstd",
 ]
 
 [[package]]
@@ -4762,6 +4763,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
+ "zstd",
 ]
 
 [[package]]

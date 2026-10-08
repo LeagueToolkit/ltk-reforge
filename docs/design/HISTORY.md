@@ -4,7 +4,7 @@ The install is one build. A mod is made against another, often a year older, and
 files that build had and this one does not. Against the install's bytes those files look like
 the author's own. A run asks the build history: has the game ever shipped these bytes, this
 object, this clip, and when. The porter asks it what the game held at one build: the file at a
-path, the bin there and its objects, an object's text, what a skin entry reaches by its links,
+path, the bin there and its objects, an object's bytes, what a skin entry reaches by its links,
 and the kind of a field.
 
 ## The source
@@ -36,8 +36,9 @@ build of its own at its own position, and it orders with the version it repeats.
 
 ## The index
 
-#ADR-0077. The index is one SQLite file, and the census clone is the only store of entry texts:
-the index names a text's blob and `reforge-census` reads the text from the clone.
+#ADR-0077, #ADR-0078. The index is one SQLite file. It names every entry text's blob and holds
+the bytes of the text's object, so a run reads an object at any build from the index alone, as
+bytes and never as text. The census clone is what an append reads, and nothing else.
 
 `reforge history index --repo <clone> [--until <commit or build>]`:
 
@@ -62,7 +63,8 @@ an append sees.
 
 Entry texts are most of the bytes a build changes. What a text names is a function of its blob,
 so the walk reads and parses a text once, when the blob first appears, and keeps the result
-while the tree holds the blob.
+while the tree holds the blob. The text's object, as `ltk_meta` writes it, is kept from then
+until the object bytes are written ("Object bytes").
 
 An entry's text gives what its object names: every chunk link and every string shaped like a
 path, every object it links by a `link`, the type of each field of each struct in it, the tags
@@ -76,7 +78,7 @@ The index is three files:
 |---|---|
 | `history.sqlite` | a table per kind of key (below) |
 | `builds.tsv` | per build: position, commit, version, manifest, date, patch, source, solution, release, exe, legacy bins (0 or 1), and the realms joined by spaces |
-| `stamp.json` | format, repository, head commit, newest build, build count, families, the row count of every table (the tables of lives, their parts, `names` and `wads`), unparsed texts, the writer |
+| `stamp.json` | format, repository, head commit, newest build, build count, families, the row count of every table (the tables of lives, their parts, `names`, `wads` and the tables of the object bytes), unparsed texts, texts that hold no object or several, how the object bytes were compressed, the writer |
 
 | table | key | facts |
 |---|---|---|
@@ -105,6 +107,9 @@ The index is three files:
 | `textures` | path hash, record | format, width, height, mips, the top mip's hash |
 | `names` | id | each joint, material, format, vertex-type, tag, unit, WAD version and WAD tag set once |
 | `wads` | id | each WAD's path in the manifest once |
+| `object_bytes` | id | each distinct object of an entry text once: the keyframe it was compressed against (itself for a keyframe), a keyframe's dictionary, the zstd frame |
+| `text_bytes` | blob | the text's object: its class and its row of `object_bytes` |
+| `object_dicts` | id | a dictionary keyframes were compressed with: its class, none for the general one, and its bytes |
 
 Every table of lives also has `first`, `last` and `alive`. `alive` is how many records hold the
 key at the head, none once it is gone; an append starts from it. A `record` is the head of a
@@ -152,11 +157,55 @@ writer's statements and the list of tables in the stamp come from that definitio
 queries are checked against it by a test.
 
 `--families` limits the index to some of: files (with `placements`, `wad_lives` and `wads`),
-objects (with `entry_texts`, `bins`, `schema`, `links`, `refs`, the tags and the units), clips
+objects (with `entry_texts`, the object bytes, `bins`, `schema`, `links`, `refs`, the tags and
+the units), clips
 (with the events, the events banks and their objects), rigs (with the animation clips and their
 joint lists), textures. Every table exists in every index; one of a family not built is empty.
 
 The index is built beside its place and renamed into it.
+
+## Object bytes
+
+#ADR-0078. An entry text's object is stored as `ltk_meta` writes it from its entry hash on, with
+no size before it: the bytes its object key digests. A bin stores an object's class apart, and
+so does `text_bytes`.
+
+- **Once.** Each distinct object is one row of `object_bytes`. Two texts whose objects write the
+  same bytes under two classes share the row, and `text_bytes` holds each text's class.
+- **Versions.** An entry's versions are its distinct objects, ordered by the build each first
+  appeared at, then by the SHA-256 of its bytes. Every eighth from the first is a keyframe, and
+  each other version is in the block of the keyframe before it.
+- **Frames.** A keyframe is a zstd frame compressed with its class's dictionary, or the general
+  one when its class has none, or with none. Every other version is a frame compressed with its
+  keyframe's bytes as raw content. A keyframe's own keyframe is itself, so a read decodes two
+  frames at most.
+- **Dictionaries.** A whole build trains them once every text is in. A class whose keyframes
+  hold 1.6 MB or more gets one of its own, and the other classes share the general one. A
+  dictionary is a hundredth of its keyframes' bytes, between 16 KiB and the cap, trained on
+  samples taken at even steps through the keyframes, a hundred times its size. A group zstd does
+  not train on has none. An append uses the dictionaries as they are, and a class with none of
+  its own uses the general one.
+- **Parameters.** The stamp records the zstd level (19), the keyframe interval (8), the
+  dictionary cap (1 MiB) and the zstd library's version: what makes the frames again. Another
+  version of zstd may write other frames of the same bytes.
+
+The walk keeps each new text's object packed at zstd's fastest level until every text is in. A
+whole build then orders the versions, trains the dictionaries and compresses on every core. An
+append writes each text a build adds that the index lacks: to the row of the entry that holds
+the same bytes, or as a version against the entry's current keyframe, or as a keyframe once the
+keyframe's block holds eight. It reads the entry's rows through `entry_texts`, so the count comes
+from the tables. Both give the same order and the same blocks, so an appended index holds the
+bytes a whole build of the same commits holds. Their frames differ where their dictionaries do.
+
+A text that does not parse, or holds no object or several, has no row of `text_bytes`. The stamp
+counts the texts that hold no object or several apart from the unparsed ones.
+
+`reforge history check-objects` reads every text's object and looks the digest of its bytes up
+in `objects` under the text's class. An object first held at a build whose bins number property
+kinds the old way (`legacy_bins`, the builds before 10.8), and that holds a kind this numbering
+writes as another byte (`WadChunkLink` or a kind after it, of a value, an item or a map's key),
+has no key there: the census digested the game's bytes, and `ltk_meta` writes the current
+numbering only. The check names each such text with its bin, its entry and its first build.
 
 ## Keys
 
@@ -221,10 +270,11 @@ comparison of two trees, so the clone holds every object the append reads. It ho
 commit, so an append from it checks each build of the index as one from a full clone does. A
 whole build from it stops at the first object it lacks.
 
-A clone can instead start whole (#ADR-0060): `Seed` makes a bare clone, the caller writes whole
-packs into it, and the builds' branch is set where `Fetcher` keeps it, at a commit the packs
-hold. A fetch into it then asks only for the commits after that one and for what the append
-reads that the packs lack.
+This clone is the only one a user's machine needs (#ADR-0078): a run reads every object from the
+index. `Seed` makes a bare clone from whole packs, as the app's bootstrap from a release's
+archive (#ADR-0060, superseded) does, with the builds' branch set where `Fetcher` keeps it, at a
+commit the packs hold. A fetch into it then asks only for the commits after that one and for
+what the append reads that the packs lack.
 
 ## The questions
 
@@ -243,6 +293,7 @@ reads that the packs lack.
 | every life of this object, one per class? | `object_lives` | `objects` |
 | is this object a game object under another entry name? | `objects_by_norm` | `objects`, by norm key |
 | which blob holds this object's text at B? | `text_blob` | `entry_texts` |
+| what were this object's bytes at B? | `object_bytes` | `entry_texts`, `text_bytes`, `object_bytes`, `object_dicts` |
 | which objects does this object link at B? | `links` | `links` |
 | which objects does this object reach by its links at B? | `reached` | `links` and `entry_texts`, one recursive query |
 | which types did this field of this class have at B? | `field_types` | `schema` |
@@ -265,9 +316,9 @@ class out.
 Dating a mod by its objects is a batch of `object_lives`: the builds from the latest `first` to
 the earliest `last`.
 
-Where two WADs held a path at one build, the first in `wad_order` answers `bin` and `text_blob`:
-the WADs' paths compared directory by directory, which is the order of the census history's
-tree.
+Where two WADs held a path at one build, the first in `wad_order` answers `bin`, `text_blob` and
+`object_bytes`: the WADs' paths compared directory by directory, which is the order of the
+census history's tree.
 
 `reached` follows each `link` an object held at B into every bin that held the linked entry at
 B, and on from there, and answers each object reached once, the object asked about among them.
@@ -279,10 +330,12 @@ with its type, its id and its body. `Bank::new_bnk` takes the header and the obj
 A bank the bank reader refuses (a header too short for a version and a bank id, an object too
 short for an id) is not in the index.
 
-`GitRepo::entry_text_at` reads what an object looked like at a build: the text by the blob
-`text_blob` names, one object of the clone. An index without the objects family names no blob,
-and `GitRepo::entry_text` finds the text by a search of the build's tree, from the first WAD in
-path order whose bin holds it.
+`object_bytes` is what a run reads of an object at a build: its bytes from the index, decoded from
+two frames at most, with its class and its WAD. A run links no ritobin parser (#ADR-0005).
+`GitRepo::entry_text_at`, in `reforge-census`, reads the object's text instead, by the blob
+`text_blob` names, one object of a clone that holds it: what the writer reads, and the CLI's
+`show-entry`. An index without the objects family names no blob, and `GitRepo::entry_text` finds
+the text by a search of the build's tree, from the first WAD in path order whose bin holds it.
 
 ## The commands
 
@@ -292,15 +345,20 @@ path order whose bin holds it.
 | `reforge history status` | prints the stamp, and raises the stamp's diagnostics against a repository and an install |
 | `reforge history probe <path> --game <install>` | hashes a game file and looks it up, with a bin's objects, a bank's clips, an events bank's header and objects, or an animation clip's joints; `--strict` fails when one is missing |
 | `reforge history show-entry <entry> --bin <path> --repo <clone> [--index <index>]` | prints an entry's text at a build, by the blob the index names when one is given |
+| `reforge history check-objects [--index <index>] [--unkeyed <file>]` | counts the texts that have their object, checks each object's digest against `objects` under its text's class, and writes each text that has no key there, with its bin, entry and first build |
 
 ## Limits
 
 - The history covers live builds only. Bytes that existed only on the test realm pass as the
   mod's own.
-- It carries no file bytes. What a file held at a build is known only by what the census
-  recorded of it.
-- An entry text is read from the clone. A clone that `Fetcher` filled for an append holds the
-  texts of the builds after the index's head, and not those before.
+- It carries no file bytes but its entry texts' objects. What another file held at a build is
+  known only by what the census recorded of it.
+- An entry text that does not parse, or holds no object or several, has no object bytes, and a
+  run has no other source for it. A clone that `Fetcher` filled for an append holds the texts of
+  the builds after the index's head, and not those before.
+- An object first held at a build of legacy bins is stored in the current numbering of property
+  kinds. One that holds a kind this numbering writes as another byte is not the game's bytes of
+  that build, and its digest is not the object key the census recorded.
 - Of an events bank it holds the header and the objects. A bank that holds clips or another
   section beside them is not rebuilt whole from the history.
 - A life of a table that is not a table of spans is a hull. Two events banks, or two clips,

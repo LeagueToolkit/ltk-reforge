@@ -1,6 +1,6 @@
 # ADR-0060: The app bootstraps its census clone from a released archive when asked
 
-- **Status:** Accepted (2026-10-05)
+- **Status:** Superseded by #ADR-0078
 - **Related:** #ADR-0047, #ADR-0057, #ADR-0059; `docs/design/ROADMAP-UX.md`, "The history
   index"; `docs/design/HISTORY.md`, "Fetching"
 

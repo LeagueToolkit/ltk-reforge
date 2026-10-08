@@ -1,164 +1,17 @@
 //! Appending to an index: the index of the first builds with the rest appended is the index of
-//! every build, row for row.
+//! every build, row for row, and its object bytes decoded.
 
 mod common;
+mod dump;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use reforge::history::tables::{TABLES, table_names};
 use reforge::history::{Families, History, Life, SqliteHistory};
 use reforge::model::{FileKey, WadHash};
 use reforge_census::{CensusError, Indexer};
-use rusqlite::Connection;
-use rusqlite::types::Value;
 use tempfile::TempDir;
 
 use self::common::{A, Memory, build, memory};
-
-/// Every table as sorted rows, names and rig ids resolved, so that two indexes compare by what
-/// they say and not by the order they were written in.
-fn dump(dir: &Utf8Path) -> Vec<(String, Vec<String>)> {
-    let db = Connection::open(dir.join("history.sqlite")).unwrap();
-    let queries = [
-        (
-            "files",
-            "SELECT hex(key), first, last, kind, path, alive FROM files",
-        ),
-        (
-            "placements",
-            "SELECT p.path, w.path, hex(p.key), p.checksum, p.first, p.last, p.alive \
-             FROM placements p JOIN wads w ON w.id = p.wad",
-        ),
-        (
-            "wad_lives",
-            "SELECT w.path, v.name, l.file_id, t.name, l.first, l.last, l.alive FROM wad_lives l \
-             JOIN wads w ON w.id = l.wad JOIN names v ON v.id = l.version \
-             JOIN names t ON t.id = l.tags",
-        ),
-        (
-            "objects",
-            "SELECT hex(key), entry, class, bin, norm, first, last, alive FROM objects",
-        ),
-        (
-            "bins",
-            "SELECT hex(b.key), hex(b.links), b.first, b.last, b.alive, \
-             (SELECT group_concat(e.entry || ':' || o.class || ':' || hex(o.key), ',' \
-              ORDER BY e.entry) FROM bin_entries e JOIN objects o ON o.id = e.object \
-              WHERE e.bin = b.id) FROM bins b",
-        ),
-        (
-            "links",
-            "SELECT bin, entry, linked, first, last, alive FROM links",
-        ),
-        (
-            "schema",
-            "SELECT class, field, kind, key_kind, item_kind, value_class, first, last, alive \
-             FROM schema",
-        ),
-        (
-            "entry_texts",
-            "SELECT t.bin, t.entry, w.path, hex(t.blob), t.first, t.last, t.alive \
-             FROM entry_texts t JOIN wads w ON w.id = t.wad",
-        ),
-        (
-            "refs",
-            "SELECT path, bin, entry, first, last, alive FROM refs",
-        ),
-        ("clips", "SELECT key, first, last, alive FROM clips"),
-        (
-            "events",
-            "SELECT bank, event, first, last, alive FROM events",
-        ),
-        (
-            "event_wems",
-            "SELECT bank, event, wem, first, last, alive FROM event_wems",
-        ),
-        (
-            "tags",
-            "SELECT t.bin, t.entry, n.name, t.first, t.last, t.alive FROM tags t \
-             JOIN names n ON n.id = t.tag",
-        ),
-        (
-            "units",
-            "SELECT u.bin, u.entry, n.name, u.voice, u.first, u.last, u.alive FROM units u \
-             JOIN names n ON n.id = u.unit",
-        ),
-        (
-            "unit_banks",
-            "SELECT u.bin, u.entry, n.name, u.bank, u.first, u.last, u.alive FROM unit_banks u \
-             JOIN names n ON n.id = u.unit",
-        ),
-        (
-            "unit_events",
-            "SELECT u.bin, u.entry, n.name, u.event, u.first, u.last, u.alive \
-             FROM unit_events u JOIN names n ON n.id = u.unit",
-        ),
-        (
-            "skeletons",
-            "SELECT s.path, s.record, s.first, s.last, s.influences, s.alive, \
-             (SELECT group_concat(n.name || '>' || IFNULL(p.name, '-'), ',' ORDER BY j.ordinal) \
-              FROM joints j JOIN names n ON n.id = j.name LEFT JOIN names p ON p.id = j.parent \
-              WHERE j.skeleton = s.id) FROM skeletons s",
-        ),
-        (
-            "meshes",
-            "SELECT m.path, m.record, m.first, m.last, v.name, m.vertices, m.indices, m.alive, \
-             (SELECT group_concat(n.name, ',' ORDER BY s.ordinal) FROM submeshes s \
-              JOIN names n ON n.id = s.material WHERE s.mesh = m.id) \
-             FROM meshes m JOIN names v ON v.id = m.vertex_type",
-        ),
-        (
-            "textures",
-            "SELECT t.path, t.record, t.first, t.last, n.name, t.width, t.height, t.mips, t.top, \
-             t.alive FROM textures t JOIN names n ON n.id = t.format",
-        ),
-        (
-            "joint_lists",
-            "SELECT l.record, l.count, l.first, l.last, l.alive, \
-             (SELECT group_concat(j.joint, ',' ORDER BY j.ordinal) FROM list_joints j \
-              WHERE j.list = l.record) FROM joint_lists l",
-        ),
-        (
-            "animations",
-            "SELECT path, hex(key), joints, first, last, alive FROM animations",
-        ),
-        (
-            "bank_objects",
-            "SELECT record, kind, id, hex(body), first, last, alive FROM bank_objects",
-        ),
-        (
-            "event_banks",
-            "SELECT path, record, version, bank_id, hex(header), hex(objects), first, last, \
-             alive FROM event_banks",
-        ),
-        ("names", "SELECT name FROM names"),
-        ("wads", "SELECT path FROM wads"),
-    ];
-    // Every table is compared: its own rows, or its parts with its owner's.
-    let mut dumped: Vec<&str> = queries.iter().map(|(table, _)| *table).collect();
-    dumped.extend(
-        TABLES
-            .iter()
-            .filter_map(|table| table.parts)
-            .map(|parts| parts.name),
-    );
-    dumped.sort_unstable();
-    let mut tables = table_names();
-    tables.sort_unstable();
-    assert_eq!(dumped, tables, "the dump leaves a table out");
-    let rows = |(table, sql): &(&str, &str)| {
-        let mut statement = db.prepare(sql).unwrap();
-        let columns = statement.column_count();
-        let row = |r: &rusqlite::Row<'_>| {
-            let values = (0..columns).map(|i| r.get::<_, Value>(i));
-            values.collect::<rusqlite::Result<Vec<Value>>>()
-        };
-        let rows = statement.query_map([], row).unwrap();
-        let mut rows: Vec<String> = rows.map(|r| format!("{:?}", r.unwrap())).collect();
-        rows.sort();
-        (table.to_string(), rows)
-    };
-    queries.iter().map(rows).collect()
-}
+use self::dump::dump;
 
 /// The fixture and two more builds: the fourth drops path 3, one of the two places holding
 /// bytes A, a mesh appears at path 5, the events bank and the animation clip are the first

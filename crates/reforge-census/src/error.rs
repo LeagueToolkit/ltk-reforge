@@ -1,6 +1,7 @@
 //! Why the census history does not read, or an index is not written.
 
 use camino::Utf8PathBuf;
+use reforge::history::objects::FrameError;
 use reforge::history::{HistoryError, Position};
 
 use crate::format::FORMAT;
@@ -131,6 +132,26 @@ pub enum CensusError {
         /// The object's class.
         class: u32,
     },
+    /// A row of the object bytes an append reads names a keyframe the entry's rows lack.
+    #[error("row {object} of the object bytes names keyframe {keyframe}, which its entry lacks")]
+    ObjectKeyframe {
+        /// The row of `object_bytes`.
+        object: i64,
+        /// The keyframe it names.
+        keyframe: i64,
+    },
+    /// A frame of the object bytes an append reads does not decode.
+    #[error("row {object} of the object bytes does not decode")]
+    ObjectFrame {
+        /// The row of `object_bytes`.
+        object: i64,
+        /// Why.
+        #[source]
+        source: FrameError,
+    },
+    /// A dictionary of the index does not load into zstd.
+    #[error("dictionary {0} of the object bytes does not load")]
+    ObjectDict(i64),
     /// The index beside the tables does not read or write.
     #[error(transparent)]
     Index(#[from] HistoryError),

@@ -8,15 +8,16 @@ use ltk_meta::PropertyKind as Kind;
 use reforge_wwise::Object;
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Row, params};
 
+use super::objects::Decoder;
 use super::stamp::{BuildRow, DB_FILE, Stamp};
 use super::tables::{
-    BankFacts, BinEntry, BinFacts, EventsBank, Joint, Life, Mesh, NO_KIND, Position, Skeleton,
-    Submesh, loaded, stored,
+    BankFacts, BinEntry, BinFacts, BlobId, EventsBank, Joint, Life, Mesh, NO_KIND, Position,
+    Skeleton, Submesh, loaded, stored,
 };
 use super::{
     BinHit, ClipJoints, EventsBankHit, FileHit, FileKind, HeldAt, History, HistoryError,
-    MAX_REACHED, MeshHit, NamedBy, ObjectHit, PathHit, Placed, PlayedBy, Reached, SkeletonHit,
-    TextBlob, UnitHit, WemPlayed, wad_order,
+    MAX_REACHED, MeshHit, NamedBy, ObjectBytes, ObjectHit, PathHit, Placed, PlayedBy, Reached,
+    SkeletonHit, TextBlob, UnitHit, WemPlayed, wad_order,
 };
 use crate::game::FieldType;
 use crate::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
@@ -27,6 +28,35 @@ pub struct SqliteHistory {
     stamp: Stamp,
     builds: Vec<BuildRow>,
     db: Mutex<Connection>,
+    decoder: Mutex<Decoder>,
+}
+
+/// An entry text's object as the index stores it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredObject {
+    /// The object's class.
+    pub class: BinHash,
+    /// Its row of `object_bytes`.
+    pub row: i64,
+    /// Its bytes from its entry hash on.
+    pub bytes: Vec<u8>,
+    /// The bytes of the keyframe it was compressed against, none for a keyframe.
+    pub keyframe: Option<Vec<u8>>,
+}
+
+/// A row of `object_bytes`.
+struct FrameRow {
+    keyframe: i64,
+    dict: Option<i64>,
+    frame: Vec<u8>,
+}
+
+fn frame_row(row: &Row<'_>, at: usize) -> rusqlite::Result<FrameRow> {
+    Ok(FrameRow {
+        keyframe: row.get(at)?,
+        dict: row.get(at + 1)?,
+        frame: row.get(at + 2)?,
+    })
 }
 
 /// The life in two columns of a row, `first` then `last`.
@@ -95,6 +125,7 @@ impl SqliteHistory {
             stamp,
             builds,
             db: Mutex::new(db),
+            decoder: Mutex::new(Decoder::default()),
         })
     }
 
@@ -137,7 +168,92 @@ impl SqliteHistory {
             |r| r.get(0),
         )
     }
+
+    /// The bytes of the keyframe at row `id`, its dictionary read and held on first use.
+    fn keyframe_bytes(&self, id: i64, row: &FrameRow) -> Result<Vec<u8>, HistoryError> {
+        // A reader that panicked left the decoder whole: it holds dictionaries and no frame.
+        let mut decoder = self.decoder.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(dict) = row.dict
+            && !decoder.holds(dict)
+        {
+            let bytes: Option<Vec<u8>> = self.one(
+                "SELECT dict FROM object_dicts WHERE id = ?1",
+                params![dict],
+                |r| r.get(0),
+            )?;
+            let missing = || HistoryError::ObjectRow {
+                object: id,
+                what: format!("dictionary {dict}"),
+            };
+            decoder.hold(dict, &bytes.ok_or_else(missing)?);
+        }
+        let bytes = decoder.keyframe(row.dict, &row.frame);
+        bytes.map_err(|source| HistoryError::Frame { object: id, source })
+    }
+
+    /// The bytes of the row `id` of `object_bytes`, and those of its keyframe when it is not
+    /// one, `keyframe` the keyframe's row. A keyframe's own keyframe is itself, so no read
+    /// decodes more than two frames.
+    fn decode(
+        &self,
+        id: i64,
+        row: &FrameRow,
+        keyframe: Option<FrameRow>,
+    ) -> Result<StoredBytes, HistoryError> {
+        if row.keyframe == id {
+            return Ok((self.keyframe_bytes(id, row)?, None));
+        }
+        let keyframe = keyframe.filter(|k| k.keyframe == row.keyframe);
+        let keyframe = keyframe.ok_or_else(|| HistoryError::ObjectRow {
+            object: id,
+            what: format!("keyframe {}", row.keyframe),
+        })?;
+        let base = self.keyframe_bytes(row.keyframe, &keyframe)?;
+        let mut decoder = self.decoder.lock().unwrap_or_else(PoisonError::into_inner);
+        let bytes = decoder.delta(&base, &row.frame);
+        let bytes = bytes.map_err(|source| HistoryError::Frame { object: id, source })?;
+        Ok((bytes, Some(base)))
+    }
+
+    /// The object of the entry text of this blob, as the index stores it. None for a text with
+    /// no object bytes.
+    pub fn stored_object(&self, blob: &BlobId) -> Result<Option<StoredObject>, HistoryError> {
+        // The keyframe's row comes with the object's, so a read is one query and two frames.
+        let row = self.one(
+            "SELECT t.class, t.object, o.keyframe, o.dict, o.frame, k.keyframe, k.dict, k.frame \
+             FROM text_bytes t JOIN object_bytes o ON o.id = t.object \
+             LEFT JOIN object_bytes k ON k.id = o.keyframe AND o.keyframe <> o.id \
+             WHERE t.blob = ?1",
+            params![&blob[..]],
+            |r| {
+                let keyframe: Option<i64> = r.get(5)?;
+                let keyframe = match keyframe {
+                    Some(_) => Some(frame_row(r, 5)?),
+                    None => None,
+                };
+                Ok((
+                    bin_hash(r, 0)?,
+                    r.get::<_, i64>(1)?,
+                    frame_row(r, 2)?,
+                    keyframe,
+                ))
+            },
+        )?;
+        let Some((class, id, frame, keyframe)) = row else {
+            return Ok(None);
+        };
+        let (bytes, keyframe) = self.decode(id, &frame, keyframe)?;
+        Ok(Some(StoredObject {
+            class,
+            row: id,
+            bytes,
+            keyframe,
+        }))
+    }
 }
+
+/// An object's bytes, and its keyframe's when it is not one.
+type StoredBytes = (Vec<u8>, Option<Vec<u8>>);
 
 impl History for SqliteHistory {
     fn stamp(&self) -> Option<&Stamp> {
@@ -300,6 +416,24 @@ impl History for SqliteHistory {
             },
         )?;
         Ok(held.into_iter().min_by(|a, b| wad_order(&a.wad, &b.wad)))
+    }
+
+    fn object_bytes(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Option<ObjectBytes>, HistoryError> {
+        let Some(text) = self.text_blob(bin, entry, at)? else {
+            return Ok(None);
+        };
+        let stored = self.stored_object(&text.blob)?;
+        Ok(stored.map(|stored| ObjectBytes {
+            wad: text.wad,
+            class: stored.class,
+            bytes: stored.bytes,
+            life: text.life,
+        }))
     }
 
     fn links(

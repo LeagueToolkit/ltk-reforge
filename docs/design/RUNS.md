@@ -1310,3 +1310,96 @@ builds, 8.20.2483196 to 16.19.8230722, every family, on 24 threads, into a scrat
 - 1,238 object keys are held under two classes: `objects` has 3,277,555 rows against format
   0's 3,276,317.
 - The tables format 1 drops took 226 MB (`contents`) and 49 MB (`paths`) in format 0.
+
+## Entry objects stored apart from the index (2026-10-08)
+
+Every distinct entry text that `entry_texts` names in the format 1 index of 757 builds (head
+`f68de01e049c`), read from the clone, parsed, and written as `ltk_meta` writes its object from
+the entry hash on: 3,165,814 texts, 100.96 GB of text, 22.42 GB of objects, in 1,788 s on 24
+threads. Every text parsed and held one object. The largest object is 545,257 bytes. 1,238
+pairs of texts write the same bytes under two classes.
+
+- **Against `objects`.** 2,955,843 of the objects' digests are object keys. The other 209,971
+  are all of texts first held at builds of legacy bins: 51,282 of 64,071 in season 8, 150,587 of
+  203,758 in season 9, 8,102 of 126,812 in season 10, none after.
+- **Layouts.** Each read checked every 97th object against its uncompressed bytes, and none
+  differed. The payload counts the dictionaries. A read is single-threaded, the file in the
+  system's cache.
+
+| layout | payload | file | read, median and p99 | frames a read |
+|---|---:|---:|---:|---:|
+| the objects in one file and 32-byte records in another, each compressed whole (`--ultra -22 --long=31`) | 288.2 and 72.0 MB | | | |
+| one row per object, uncompressed | 22.42 GB | 25.29 GB | | 1 |
+| sqlite-zstd's layout: each row alone, a dictionary for each of the six largest classes and one for the rest, a ten-thousandth of their bytes | 2,130 MB | 2,615 MB | 36 and 92 µs | 1 |
+| the same, dictionaries 3e-5 and 1e-3 of their bytes | 2,364 and 2,174 MB | 2,901 and 2,676 MB | | 1 |
+| each row alone, a dictionary for each of the 38 classes with 1.6 MB or more, up to 1 MiB | 2,068 MB | 2,543 MB | 34 and 60 µs | 1 |
+| each version against the one before, a keyframe every 16, no dictionary | 882 MB | 1,200 MB | 144 and 526 µs | 16 |
+| the same, keyframes with a dictionary per class up to 1 MiB | 545 MB | 797 MB | 125 and 438 µs | 16 |
+| the same, dictionaries up to 256 KiB, up to 8 MiB | 574 and 562 MB | 831 and 815 MB | | 16 |
+| the same at level 22 | 544 MB | 795 MB | | 16 |
+| the same, a keyframe every 8 | 630 MB | 893 MB | 90 and 246 µs | 8 |
+| the same, the first version the only keyframe | 514 MB | 762 MB | 124 and 1,069 µs | 162 |
+| each version against its block's keyframe, a keyframe every 8 | 866 MB | 1,149 MB | 58 and 101 µs | 2 |
+| the same, a keyframe every 16 | 946 MB | 1,236 MB | 68 and 154 µs | 2 |
+| the same, the first version the only keyframe | 1,060 MB | 1,371 MB | 64 and 129 µs | 2 |
+
+- **sqlite-zstd's maintenance** compresses rows in place a chunk at a time, and finds each chunk
+  by a scan of the table from its start. On these rows, three runs read 150 GB to 1.1 TB and
+  wrote about 85 GB each in 15 minutes without finishing a group, and were stopped. Its layout,
+  written in one pass, read through its own view.
+- **Similar objects together.** On the first 200,000 rows, 1.39 GB: a dictionary per group of
+  rows ordered by a MinHash of their bytes over 8-byte windows, groups of 32 KiB to 1 MiB with
+  dictionaries of 2% to 25% of a group, took 129 to 170 MB, against 128 MB with a dictionary per
+  class and 35.5 MB for each version against the one before.
+- **The 16-byte blob key** and its index took 153 MB of the 797 MB file of versions against the
+  one before.
+
+## The history index with every object's bytes (2026-10-08)
+
+`reforge history index` over the census history's `history-v2` branch at `f68de01e049c`: 757
+builds, 8.20.2483196 to 16.19.8230722, every family, the object bytes in it (#ADR-0078), into a
+scratch directory.
+
+- **Coverage.** 3,165,814 entry texts, each with its object. None failed to parse, and none held
+  no object or several. 3,164,576 rows of `object_bytes`: 1,238 texts share a row with a text of
+  another class. 687,647 keyframes, and 20 dictionaries, 19 of a class and the general one,
+  6,191,309 bytes.
+- **Against `objects`** (`reforge history check-objects`, 105 s): 2,955,843 objects' digests are
+  object keys under their text's class. The other 209,971 were all first held at builds of legacy
+  bins and hold a kind legacy numbering writes as another byte. None is unexplained.
+- **Against the clone's trees** at builds 378 and 756: every 97th text's object, 2,685 and 4,739,
+  is what `ltk_meta` writes of the text the search of the tree finds. `object_bytes` takes 81.9
+  and 82.7 µs at the median and 185 µs at the 99th percentile, the text by its blob through the
+  clone 128 and 162 µs, and by a search 7.3 and 9.2 ms. Before the keyframe's row came with the
+  object's, in one query, `object_bytes` took 98.8 and 103.5 µs.
+- **Size.** 4,769,964,032 bytes, against 3,665,747,968 without the object bytes: 1,104,216,064
+  more. The payload is 866,156,174 bytes: the frames, 859,964,865 (keyframes 392,041,369, the
+  other versions 467,923,496), and the dictionaries. `text_bytes` holds 85 MB of blob ids,
+  classes and rows. With `zstd --ultra -22 --long=31 -T1`: 1,730,947,676 bytes in 3,241 s,
+  against 1,007,913,337 without; the frames are zstd already.
+- **Pages.** The same file rewritten by `VACUUM` at 4, 16 and 32 KiB pages: 4,824,715,264,
+  4,707,926,016 and 4,666,130,432 bytes. Without the object bytes at 32 KiB: 3,620,503,552. At
+  32 KiB the growth is 1,045,626,880 bytes, 179 MB over the payload against 238 MB at 8 KiB, and
+  `object_bytes` reads as fast: 101.8 and 102.3 µs at the median with two queries, against 98.8
+  and 103.5 µs at 8 KiB. The writer keeps 8 KiB.
+- **Time and memory.** Every build took 3,837 s on 23 threads, beside a zstd on one: the walk
+  2,656 s and the write 1,179 s, the tables of lives about 240 s on one core and the object bytes
+  about 900 s on five to six. The peak was 25.5 GiB of working set and 26.0 GiB of private bytes.
+  The index of the first 752 builds took 4,696 s, the walk
+  3,416 s and the write 1,277 s, at 25.4 GiB of working set and 26.0 GiB of private bytes. Every
+  build without the object bytes took 3,231 s at 19.4 GiB. A first build of all 757, which made
+  an allocation for each object and each frame, took 9,553 s at 39.3 GiB of private bytes, 24
+  minutes of it on one core before the dictionaries were trained; its objects, written again in a
+  fresh process by the writer of the batches, gave the same 3,164,576 frames in 286 s.
+- **Dictionaries.** Trained in 0.04 to 3.7 s each, 20 s in all on one core: the largest from
+  11,181 samples, 106 MB of the class of 368,970 keyframes and 3.48 GB.
+- **Append.** The last five builds appended to the index of 752: 32.5 s for the process, at 2.20
+  GiB of working set and 6.43 GiB of private bytes, against 14.1 s without the object bytes. It
+  equals the whole index of 757 in every table, the object bytes compared decoded with their
+  keyframes and their texts (344 s).
+- **Determinism.** Two whole builds of the first ten builds write the same file, byte for byte,
+  and so do two of all 757, the first by the writer of an allocation per object:
+  `history.sqlite`, `stamp.json` and `builds.tsv`.
+- **The first ten builds**: 40 s to write, 68,088 texts and as many rows of object bytes. 3,033
+  are keyed; the other 65,055 are all of legacy bins and hold a renumbered kind. The first five
+  with the next five appended equal the ten built whole.

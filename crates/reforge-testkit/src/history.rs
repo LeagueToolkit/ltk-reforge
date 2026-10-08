@@ -9,9 +9,9 @@ use std::ops::RangeInclusive;
 use reforge::game::{Build, FieldType};
 use reforge::history::{
     BinHit, BuildDetails, BuildRow, ClipJoints, EventsBank, EventsBankHit, FORMAT, Families,
-    FileHit, FileKind, HeldAt, History, HistoryError, Life, MeshHit, NamedBy, ObjectHit, PathHit,
-    Placed, PlayedBy, Position, Reached, SkeletonHit, Stamp, TextBlob, UnitHit, WemPlayed,
-    version_order,
+    FileHit, FileKind, HeldAt, History, HistoryError, Life, MeshHit, NamedBy, ObjectBytes,
+    ObjectCodec, ObjectHit, PathHit, Placed, PlayedBy, Position, Reached, SkeletonHit, Stamp,
+    TextBlob, UnitHit, WemPlayed, version_order,
 };
 use reforge::model::{
     BinHash, ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
@@ -86,6 +86,8 @@ impl MemoryHistory {
             writer: "memory".into(),
             rows: BTreeMap::new(),
             unparsed_texts: 0,
+            objectless_texts: 0,
+            objects: ObjectCodec::current(),
         };
         Self {
             stamp,
@@ -293,6 +295,15 @@ impl History for MemoryHistory {
         Ok(None)
     }
 
+    fn object_bytes(
+        &self,
+        _: WadHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Option<ObjectBytes>, HistoryError> {
+        Ok(None)
+    }
+
     fn links(&self, _: WadHash, _: BinHash, _: Position) -> Result<Vec<BinHash>, HistoryError> {
         Ok(Vec::new())
     }
@@ -423,6 +434,15 @@ impl History for BrokenHistory {
         _: BinHash,
         _: Position,
     ) -> Result<Option<TextBlob>, HistoryError> {
+        Self::fault()
+    }
+
+    fn object_bytes(
+        &self,
+        _: WadHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Option<ObjectBytes>, HistoryError> {
         Self::fault()
     }
 

@@ -10,8 +10,8 @@ use reforge::diag::{Channel, Diag, Diagnostics, Render, Stage};
 use reforge::game::{FieldType, NameBook, Names};
 use reforge::history::{
     BinHit, BuildRow, ClipJoints, EventsBankHit, FileHit, HeldAt, History, HistoryError, Life,
-    MeshHit, NamedBy, NoHistory, ObjectHit, PathHit, Placed, PlayedBy, Position, Reached,
-    SkeletonHit, Stamp, TextBlob, UnitHit, WemPlayed,
+    MeshHit, NamedBy, NoHistory, ObjectBytes, ObjectHit, PathHit, Placed, PlayedBy, Position,
+    Reached, SkeletonHit, Stamp, TextBlob, UnitHit, WemPlayed,
 };
 use reforge::load::files::{FileFixCx, FileFixup, one_record};
 use reforge::load::legacy::{Conversion, ConvertError, LegacyFormats};
@@ -754,6 +754,14 @@ impl History for BrokenHistory {
         at: Position,
     ) -> Result<Option<TextBlob>, HistoryError> {
         self.0.text_blob(bin, entry, at)
+    }
+    fn object_bytes(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Option<ObjectBytes>, HistoryError> {
+        self.0.object_bytes(bin, entry, at)
     }
     fn links(
         &self,

@@ -20,7 +20,9 @@ fn stamp(builds: usize) -> String {
   "families": ["files", "objects", "clips", "rigs", "textures"],
   "writer": "0.1.0",
   "rows": {{}},
-  "unparsed_texts": 0
+  "unparsed_texts": 0,
+  "objectless_texts": 0,
+  "objects": {{ "level": 19, "keyframe_every": 8, "dict_cap": 1048576, "zstd": "1.5.7" }}
 }}"#
     )
 }

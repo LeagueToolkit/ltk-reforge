@@ -4,7 +4,8 @@ The plan for the first release of reforge as a desktop app, and what a person st
 work needs to know of the library. The decisions are #ADR-0046 (a standalone app on LTK
 Manager's stack), #ADR-0047 (the history index, distributed and grown on the user's machine),
 #ADR-0057 (the census history fetched as far as an append reads it), #ADR-0060 (the census
-history bootstrapped from a released archive), #ADR-0059 (the League Toolkit caches updated
+history bootstrapped from a released archive, superseded by #ADR-0078: the index holds every
+entry's object bytes, so a run needs no clone), #ADR-0059 (the League Toolkit caches updated
 when asked and marked when behind), #ADR-0061 (what the app downloaded removed when asked,
 proposed), #ADR-0049 (an AI agent as a caller, proposed),
 #ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
@@ -152,8 +153,9 @@ others are off while one runs. A page left and come back to shows the work still
 3. **The builds after the index's head added** on the user's machine, from the census history
    fetched as far as the append reads it (#ADR-0057).
 4. **The census history cloned whole by the app** at the user's choice, bootstrapped from a
-   release's archive (#ADR-0060), to read an entry's text at any build and to build an index
-   with no download.
+   release's archive (#ADR-0060), to build an index with no download. A run reads an object at
+   any build from the index (#ADR-0078), so the whole clone serves no run, and #ADR-0078
+   supersedes the bootstrap.
 
 The census history is public, `https://github.com/LeagueToolkit/ltk-census-history`, and the
 index is published as a release of it: `stamp.json`, `builds.tsv` and `history.sqlite.zst`,

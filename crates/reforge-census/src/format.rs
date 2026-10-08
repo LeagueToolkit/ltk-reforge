@@ -8,11 +8,13 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
+use std::io::Cursor;
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
 use ltk_meta::PropertyValueEnum as P;
 use ltk_meta::property::values::Struct;
+use ltk_meta::{Bin, BinObject};
 use reforge::game::{Build, FieldType};
 use reforge::history::tables::{ClassField, JointList};
 use reforge::history::{BuildDetails, EventsBank, Joint, Mesh, Skeleton, Submesh, Texture};
@@ -560,14 +562,56 @@ static AUDIO: LazyLock<AudioNames> = LazyLock::new(|| AudioNames {
     tag_event_list: name_hash("tagEventList"),
 });
 
-/// A bin entry's `.rito` text. None when it does not parse.
-pub fn parse_object_text(text: &str) -> Option<ObjectText> {
+/// One object of a bin entry's text, as `ltk_meta` writes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextObject {
+    /// The object's class.
+    pub class: BinHash,
+    /// The object from its entry hash on, with no size before it: the bytes its object key
+    /// digests.
+    pub bytes: Vec<u8>,
+}
+
+/// A bin entry's `.rito` text as a bin. None when it does not parse.
+fn text_bin(text: &str) -> Option<Bin> {
     // Syntax errors stay in the tree. Only type errors reach the built bin's diagnostics.
     let cst = ltk_ritobin::Cst::parse(text);
     if !cst.errors.is_empty() {
         return None;
     }
-    let bin = cst.build_bin(text).into_result().ok()?;
+    cst.build_bin(text).into_result().ok()
+}
+
+/// An object as `ltk_meta` writes it, from its entry hash on. None when it does not write.
+fn object_bytes(object: &BinObject) -> Option<Vec<u8>> {
+    let mut out = Cursor::new(Vec::new());
+    object.to_writer(&mut out).ok()?;
+    let mut bytes = out.into_inner();
+    // The size before the object: a bin's table of contents holds it, and the key leaves it out.
+    bytes.drain(..4.min(bytes.len()));
+    Some(bytes)
+}
+
+/// A bin entry's `.rito` text: what it names, and its objects as `ltk_meta` writes them. None
+/// when it does not parse. An object that does not write is left out.
+pub fn read_object_text(text: &str) -> Option<(ObjectText, Vec<TextObject>)> {
+    let bin = text_bin(text)?;
+    let objects = bin.objects.values().filter_map(|object| {
+        let bytes = object_bytes(object)?;
+        let class = object.class_hash;
+        Some(TextObject { class, bytes })
+    });
+    let objects = objects.collect();
+    Some((names(&bin), objects))
+}
+
+/// A bin entry's `.rito` text. None when it does not parse.
+pub fn parse_object_text(text: &str) -> Option<ObjectText> {
+    text_bin(text).map(|bin| names(&bin))
+}
+
+/// What a bin's objects name.
+fn names(bin: &Bin) -> ObjectText {
     let mut out = ObjectText::default();
     for object in bin.objects.values() {
         fields(object.class_hash, &object.properties, &mut out.schema);
@@ -591,7 +635,7 @@ pub fn parse_object_text(text: &str) -> Option<ObjectText> {
     out.schema.dedup();
     out.links.sort_unstable();
     out.links.dedup();
-    Some(out)
+    out
 }
 
 /// The type of each field of a struct of a class, and of the fields of every struct its values

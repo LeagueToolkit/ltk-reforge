@@ -11,7 +11,7 @@ use reforge::history::{EventsBankHit, Families, History, SqliteHistory, Stamp};
 use reforge::model::{
     BinHash, ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, bin, name_hash, path_hash,
 };
-use reforge_census::{GitRepo, Indexer};
+use reforge_census::{GitRepo, Indexer, Unkeyed, check_objects};
 use reforge_wwise::Bank;
 
 /// Where the index is when no option says.
@@ -29,6 +29,9 @@ pub enum HistoryCommand {
     Probe(Probe),
     /// Print a bin entry's text at a build.
     ShowEntry(ShowEntry),
+    /// Check the index's object bytes: which texts have their object, and whether each
+    /// object's digest is an object key of the index under its text's class.
+    CheckObjects(CheckObjects),
 }
 
 impl HistoryCommand {
@@ -38,6 +41,7 @@ impl HistoryCommand {
             HistoryCommand::Status(command) => command.run(),
             HistoryCommand::Probe(command) => command.run(),
             HistoryCommand::ShowEntry(command) => command.run(),
+            HistoryCommand::CheckObjects(command) => command.run(),
         }
     }
 }
@@ -141,6 +145,20 @@ impl Status {
         if stamp.unparsed_texts > 0 {
             outln!("unparsed {} entry texts name nothing", stamp.unparsed_texts);
         }
+        if stamp.objectless_texts > 0 {
+            outln!(
+                "objectless {} entry texts hold no object or several",
+                stamp.objectless_texts
+            );
+        }
+        let codec = &stamp.objects;
+        outln!(
+            "objects  zstd {} level {}, a keyframe every {} versions, dictionaries up to {} bytes",
+            codec.zstd,
+            codec.level,
+            codec.keyframe_every,
+            codec.dict_cap
+        );
 
         let head = match &self.repo {
             Some(repo) => Some(GitRepo::open(repo)?.head()),
@@ -350,5 +368,73 @@ impl ShowEntry {
                 .with_context(|| format!("{} is not a hash", self.bin)),
             None => Ok(path_hash(&self.bin)),
         }
+    }
+}
+
+#[derive(Args)]
+pub struct CheckObjects {
+    /// The index.
+    #[arg(long, default_value = INDEX_DIR)]
+    index: Utf8PathBuf,
+    /// Where to write each text whose object's digest is no object key, one per line: blob,
+    /// class, digest, bin, entry, first build, whether that build's bins are legacy, and
+    /// whether the object holds a kind legacy numbering writes as another byte.
+    #[arg(long)]
+    unkeyed: Option<Utf8PathBuf>,
+}
+
+impl CheckObjects {
+    fn run(&self) -> Result<()> {
+        let started = Instant::now();
+        let history = SqliteHistory::open(&self.index)?;
+        let check = check_objects(&self.index)?;
+        let renumbered = |u: &&Unkeyed| u.legacy && u.renumbered;
+        let explained = check.unkeyed.iter().filter(renumbered).count();
+        outln!(
+            "texts    {} with their object, {} of {} without",
+            check.stored,
+            check.texts - check.stored,
+            check.texts
+        );
+        outln!("orphans  {} objects of no text", check.orphans);
+        outln!("objects  {} rows of object bytes", check.objects);
+        outln!(
+            "keyed    {} of {} objects' digests are object keys; {} are not",
+            check.keyed,
+            check.stored,
+            check.unkeyed.len()
+        );
+        outln!(
+            "unkeyed  {explained} first held at a build of legacy bins and holding a kind legacy \
+             numbering writes otherwise, {} not",
+            check.unkeyed.len() - explained
+        );
+        if let Some(path) = &self.unkeyed {
+            let hex =
+                |bytes: &[u8]| -> String { bytes.iter().map(|b| format!("{b:02x}")).collect() };
+            let lines: String = check
+                .unkeyed
+                .iter()
+                .map(|u| {
+                    let first = history
+                        .version(u.first)
+                        .map_or_else(|| format!("#{}", u.first), ToString::to_string);
+                    format!(
+                        "{}\t{:08x}\t{}\t{:016x}\t{:08x}\t{first}\t{}\t{}\n",
+                        hex(&u.blob),
+                        u.class.0,
+                        u.key,
+                        u.bin.0,
+                        u.entry.0,
+                        u8::from(u.legacy),
+                        u8::from(u.renumbered)
+                    )
+                })
+                .collect();
+            fs_err::write(path, lines)?;
+            outln!("unkeyed  written to {path}");
+        }
+        errln!("checked in {:.1?}", started.elapsed());
+        Ok(())
     }
 }

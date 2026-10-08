@@ -17,12 +17,15 @@ use std::collections::{BTreeMap, HashMap};
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use reforge::history::tables::{self, Cell, Shape, Table, TableDef};
-use reforge::history::{BuildRow, DB_FILE, FORMAT, Families, Life, Position, Stamp, version_order};
+use reforge::history::{
+    BuildRow, DB_FILE, FORMAT, Families, Life, ObjectCodec, Position, Stamp, version_order,
+};
 use reforge::model::{BinHash, ObjectKey};
 use rusqlite::types::{Null, ToSqlOutput, ValueRef};
 use rusqlite::{Connection, OptionalExtension, Statement, ToSql, Transaction, params};
 
 use crate::error::CensusError;
+use crate::objects::{self, Appender};
 use crate::walk::{ChangeSource, Fold, Progress, Visit, Walked, Walker, build_row, position};
 
 /// A cell as SQLite takes it: a name is its id.
@@ -421,6 +424,8 @@ pub(crate) fn write(
         return Err(CensusError::Empty);
     };
     let tmp = scratch(out)?;
+    let codec = ObjectCodec::current();
+    let objectless_texts = walked.objects.objectless();
     let rows = {
         let mut db = Connection::open(tmp.join(DB_FILE))?;
         // A file written once and renamed into place: no journal, no syncing.
@@ -436,6 +441,7 @@ pub(crate) fn write(
         };
         walked.folds.each(&mut whole)?;
         drop(whole);
+        objects::write_whole(&tx, walked.objects, &codec)?;
         tx.commit()?;
         // Rewritten whole, the composite-key tables pack tighter: 1.41 GB to 1.29 GB in 6 s
         // (2026-10-01).
@@ -452,6 +458,8 @@ pub(crate) fn write(
         writer: WRITER.to_string(),
         rows,
         unparsed_texts: walked.unparsed_texts,
+        objectless_texts,
+        objects: codec,
     };
     install(&tmp, out, &walked.builds, &stamp)?;
     Ok(stamp)
@@ -493,7 +501,9 @@ pub(crate) fn append(
     db.execute_batch("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;")?;
     let tx = db.transaction()?;
     let mut names = Names::new(&tx);
+    let mut objects = Appender::load(&tx, &stamp.objects)?;
     let (mut newest, mut unparsed) = (stamp.newest_build.clone(), stamp.unparsed_texts);
+    let mut objectless = stamp.objectless_texts;
     for i in builds.len()..commits.len() {
         let at = position(i)?;
         let parent = i.checked_sub(1).map(|p| commits[p].as_str());
@@ -507,6 +517,8 @@ pub(crate) fn append(
             at,
         };
         walker.folds.each(&mut appended)?;
+        // After the commit's texts are in `entry_texts`, which tells a text new to the index.
+        objectless += objects.commit(&tx, &walker.objects, at)?;
         if version_order(&build.build, &newest).is_gt() {
             newest = build.build.clone();
         }
@@ -532,6 +544,7 @@ pub(crate) fn append(
         writer: WRITER.to_string(),
         rows: row_counts(&db)?,
         unparsed_texts: unparsed,
+        objectless_texts: objectless,
         ..stamp
     };
     drop(db);

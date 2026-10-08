@@ -11,6 +11,7 @@
 //! no filter stands before a table that could call an own file the game's.
 
 mod findings;
+pub mod objects;
 mod sqlite;
 mod stamp;
 pub mod tables;
@@ -21,7 +22,8 @@ use std::error::Error;
 use camino::{Utf8Path, Utf8PathBuf};
 
 pub use self::findings::{HistoryAbsent, IndexMissing, IndexStale, InstallNewer};
-pub use self::sqlite::SqliteHistory;
+pub use self::objects::ObjectCodec;
+pub use self::sqlite::{SqliteHistory, StoredObject};
 pub use self::stamp::{
     BUILDS_FILE, BuildDetails, BuildRow, DB_FILE, FORMAT, STAMP_FILE, Stamp, version_order,
 };
@@ -105,6 +107,23 @@ pub enum HistoryError {
         /// The record of the object.
         record: u64,
     },
+    /// A row of the object bytes names a keyframe or a dictionary the index lacks.
+    #[error("row {object} of the object bytes names {what}, which the index lacks")]
+    ObjectRow {
+        /// The row of `object_bytes`.
+        object: i64,
+        /// What it names: its keyframe or its dictionary.
+        what: String,
+    },
+    /// A frame of the object bytes does not decode.
+    #[error("row {object} of the object bytes does not decode")]
+    Frame {
+        /// The row of `object_bytes`.
+        object: i64,
+        /// Why.
+        #[source]
+        source: objects::FrameError,
+    },
 }
 
 /// A content the game shipped: its life, and the first file seen with it.
@@ -187,6 +206,20 @@ pub struct TextBlob {
     /// The text's blob in the census history.
     pub blob: BlobId,
     /// The builds the WAD's bin held the text without a break.
+    pub life: Life,
+}
+
+/// A game object's bytes at one build, in one WAD's bin.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectBytes {
+    /// The WAD's path in the manifest.
+    pub wad: String,
+    /// The object's class, which a bin stores apart from the object.
+    pub class: BinHash,
+    /// The object as `ltk_meta` writes it from its entry hash on, with no size before it: the
+    /// bytes its object key digests.
+    pub bytes: Vec<u8>,
+    /// The builds the WAD's bin held the object's text without a break.
     pub life: Life,
 }
 
@@ -350,6 +383,16 @@ pub trait History: Send + Sync {
         at: Position,
     ) -> Result<Option<TextBlob>, HistoryError>;
 
+    /// The bytes of the object `entry` of the bin at `bin` at the build at `at`, in the WAD
+    /// `text_blob` names, decoded from two frames at most. None when the build holds no such
+    /// object, or its text held no object or several.
+    fn object_bytes(
+        &self,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
+    ) -> Result<Option<ObjectBytes>, HistoryError>;
+
     /// The entry hashes the object `entry` of the bin at `bin` linked at the build at `at`, in
     /// hash order.
     fn links(
@@ -508,6 +551,15 @@ impl History for NoHistory {
         _: BinHash,
         _: Position,
     ) -> Result<Option<TextBlob>, HistoryError> {
+        Ok(None)
+    }
+
+    fn object_bytes(
+        &self,
+        _: WadHash,
+        _: BinHash,
+        _: Position,
+    ) -> Result<Option<ObjectBytes>, HistoryError> {
         Ok(None)
     }
 
