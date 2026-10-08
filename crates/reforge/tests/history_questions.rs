@@ -3,7 +3,7 @@
 //! reaches the head.
 
 use reforge::history::{ClipJoints, EventsBank, History, Life, NoHistory, Position};
-use reforge::model::{ClipKey, NormKey, ObjectKey, name_hash, path_hash};
+use reforge::model::{ClipKey, FileKey, NormKey, ObjectKey, name_hash, path_hash};
 
 use reforge_testkit::history::{MemoryHistory, file_key};
 
@@ -137,14 +137,16 @@ fn a_history_in_memory_answers_a_clips_joints_and_an_events_bank() {
     const CLIP: &str = "assets/characters/lux/skins/base/animations/lux_idle1.anm";
     const BANK: &str =
         "assets/sounds/wwise2016/sfx/characters/lux/skins/base/lux_base_sfx_events.bnk";
+    const WAD: &str = "data/final/champions/lux.wad.client";
+    const OTHER_WAD: &str = "data/final/champions/lux2.wad.client";
     let bank = |id: u8| EventsBank::new(vec![145, 0, 0, 0, id, 0, 0, 0], Vec::new()).unwrap();
     let history = builds()
         .with_animation(CLIP, b"idle", &[1, 2], 0..=1)
         .with_animation(CLIP, b"idle", &[1, 2], 3..=3)
         .with_animation(CLIP, b"new idle", &[1, 2, 3], 4..=4)
-        .with_events_bank(BANK, bank(5), 0..=2)
-        .with_events_bank(BANK, bank(6), 3..=4)
-        .with_events_bank(BANK, bank(5), 4..=4);
+        .with_events_bank(WAD, BANK, &[5], bank(5), 0..=2)
+        .with_events_bank(OTHER_WAD, BANK, &[6], bank(6), 3..=4)
+        .with_events_bank(WAD, BANK, &[5], bank(5), 4..=4);
 
     let clip = |bytes: &[u8], life, joints: &[u32]| ClipJoints {
         life,
@@ -165,11 +167,18 @@ fn a_history_in_memory_answers_a_clips_joints_and_an_events_bank() {
     assert_eq!(held, Some(Life::new(0, 3)));
 
     let banks = history.events_banks(path_hash(BANK)).unwrap();
-    let ids: Vec<(u32, Life)> = banks
+    let ids: Vec<(u32, Life, FileKey, Vec<&str>)> = banks
         .iter()
-        .map(|hit| (hit.bank.bank_id(), hit.life))
+        .map(|hit| {
+            let wads = hit.placed.iter().map(|p| p.wad.as_str());
+            (hit.bank.bank_id(), hit.life, hit.key, wads.collect())
+        })
         .collect();
-    assert_eq!(ids, [(5, Life::new(0, 4)), (6, Life::new(3, 4))]);
+    let expected = [
+        (5, Life::new(0, 4), file_key(&[5]), vec![WAD]),
+        (6, Life::new(3, 4), file_key(&[6]), vec![OTHER_WAD]),
+    ];
+    assert_eq!(ids, expected);
     assert!(history.events_banks(path_hash(SKIN)).unwrap().is_empty());
 }
 

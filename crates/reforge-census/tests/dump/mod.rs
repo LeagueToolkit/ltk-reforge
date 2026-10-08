@@ -121,8 +121,8 @@ const QUERIES: &[(&str, &str)] = &[
     ),
     (
         "event_banks",
-        "SELECT path, record, version, bank_id, hex(header), hex(objects), first, last, \
-         alive FROM event_banks",
+        "SELECT path, hex(key), record, version, bank_id, hex(header), hex(objects), first, \
+         last, alive FROM event_banks",
     ),
     ("names", "SELECT name FROM names"),
     ("wads", "SELECT path FROM wads"),

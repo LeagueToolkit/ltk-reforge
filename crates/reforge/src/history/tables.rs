@@ -336,8 +336,9 @@ pub enum Shape {
     /// The key columns are the primary key.
     Keyed,
     /// A row has an `id` of its own, which its parts and other tables' rows store, and is found
-    /// by its key columns through a unique index. The key of a rig, a texture or an events bank
-    /// ends with the digest of its whole record, so a changed record at a path is a new row.
+    /// by its key columns through a unique index. The key of a rig or a texture ends with the
+    /// digest of its whole record, and an events bank's with its file's key, so a changed record
+    /// at a path is a new row.
     Recorded,
     /// A row is one unbroken life of its key: the key columns and `first` are the primary key,
     /// and a key that comes back after a build without it gets a row of its own.
@@ -1550,19 +1551,21 @@ fn u32_at(bytes: &[u8], at: usize) -> u32 {
     four.copied().map_or(0, u32::from_le_bytes)
 }
 
-/// An events bank at a path, by its record: the digest of its header and of its objects'
-/// records in order.
+/// An events bank at a path, by the file that held it (#ADR-0081).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BankAt {
     /// The path.
     pub path: WadHash,
-    /// The bank's record.
-    pub record: u64,
+    /// The key of the file.
+    pub key: FileKey,
 }
 
-/// What a row of `event_banks` keeps: the header, and the records of the bank's objects.
+/// What a row of `event_banks` keeps: the bank's record, the header, and the records of the
+/// bank's objects.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BankFacts {
+    /// The digest of its header and of its objects' records in order.
+    pub record: u64,
     /// The body of the bank's `BKHD` section.
     pub header: Arc<[u8]>,
     /// The record of each object in `bank_objects`, in stored order, eight bytes each, little
@@ -1574,9 +1577,8 @@ pub struct BankFacts {
 pub const RECORD_BYTES: usize = 8;
 
 impl BankFacts {
-    /// A bank's record and the facts of its row, from its header and the records of its
-    /// objects in order.
-    pub fn of(header: &[u8], records: &[u64]) -> (u64, Self) {
+    /// The facts of a bank's row, from its header and the records of its objects in order.
+    pub fn of(header: &[u8], records: &[u64]) -> Self {
         let mut d = Digester::new("events-bank");
         d.bytes(header);
         let mut objects = Vec::with_capacity(records.len() * RECORD_BYTES);
@@ -1584,11 +1586,11 @@ impl BankFacts {
             d.int(*record);
             objects.extend_from_slice(&record.to_le_bytes());
         }
-        let facts = Self {
+        Self {
+            record: d.finish(),
             header: header.into(),
             objects: objects.into(),
-        };
-        (d.finish(), facts)
+        }
     }
 
     /// The records of the bank's objects, in stored order.
@@ -1598,8 +1600,9 @@ impl BankFacts {
     }
 }
 
-/// `event_banks`: each distinct events bank the game held at a path: its version, its bank id,
-/// its header, and its objects as their records in `bank_objects`.
+/// `event_banks`: each events bank the game held at a path, by the file that held it: its
+/// record, its version, its bank id, its header, and its objects as their records in
+/// `bank_objects`. `placements` on the path and the key says which WADs held it (#ADR-0081).
 ///
 /// The objects are one value and not rows of a parts table: the 162,930 banks of the history
 /// list 49,000,478 objects (2026-10-04), and a parts row holds its owner and its ordinal beside
@@ -1612,8 +1615,9 @@ impl Table for EventBanks {
     const DEF: TableDef = TableDef {
         name: "event_banks",
         family: Family::Clips,
-        key: &[integer("path"), integer("record")],
+        key: &[integer("path"), key("key")],
         facts: &[
+            integer("record"),
             integer("version"),
             integer("bank_id"),
             bytes("header"),
@@ -1627,7 +1631,8 @@ impl Table for EventBanks {
     fn cells<'a>(key: &'a BankAt, facts: &'a BankFacts) -> impl Iterator<Item = Cell<'a>> {
         [
             key.path.into(),
-            key.record.into(),
+            key.key.into(),
+            facts.record.into(),
             u32_at(&facts.header, 0).into(),
             u32_at(&facts.header, 4).into(),
             Cell::Bytes(&facts.header),
@@ -1918,13 +1923,13 @@ mod tests {
         };
         let records = [object(1).digest(), object(2).digest()];
         assert_ne!(records[0], records[1]);
-        let (record, facts) = BankFacts::of(&[145, 0, 0, 0, 7, 0, 0, 0], &records);
+        let facts = BankFacts::of(&[145, 0, 0, 0, 7, 0, 0, 0], &records);
         let back: Vec<u64> = BankFacts::records(&facts.objects).collect();
         assert_eq!(back, records);
-        let (reversed, _) = BankFacts::of(&[145, 0, 0, 0, 7, 0, 0, 0], &[records[1], records[0]]);
-        let (other_header, _) = BankFacts::of(&[145, 0, 0, 0, 8, 0, 0, 0], &records);
-        assert_ne!(record, reversed);
-        assert_ne!(record, other_header);
+        let reversed = BankFacts::of(&[145, 0, 0, 0, 7, 0, 0, 0], &[records[1], records[0]]);
+        let other_header = BankFacts::of(&[145, 0, 0, 0, 8, 0, 0, 0], &records);
+        assert_ne!(facts.record, reversed.record);
+        assert_ne!(facts.record, other_header.record);
         let bank = EventsBank::new(facts.header.to_vec(), vec![object(1)]).unwrap();
         assert_eq!((bank.version(), bank.bank_id()), (145, 7));
         assert_eq!(EventsBank::new(vec![145, 0, 0, 0], Vec::new()), None);

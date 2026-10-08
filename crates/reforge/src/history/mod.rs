@@ -319,11 +319,16 @@ pub struct ClipJoints {
     pub joints: Vec<u32>,
 }
 
-/// An events bank the game held at a path.
+/// An events bank the game held at a path, by the file that held it (#ADR-0081).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventsBankHit {
-    /// The builds the game held it there.
+    /// The key of the file.
+    pub key: FileKey,
+    /// The builds a WAD of the game held the file there.
     pub life: Life,
+    /// Each WAD that held the file there, with the builds it did, in `wad_order` and then
+    /// oldest first: a reader of one locale's WAD takes the bank that WAD held.
+    pub placed: Vec<Placed>,
     /// The bank's header and objects.
     pub bank: EventsBank,
 }
@@ -447,8 +452,8 @@ pub trait History: Send + Sync {
     /// game never shipped the bytes as a clip.
     fn joints_of(&self, key: FileKey) -> Result<Option<Vec<u32>>, HistoryError>;
 
-    /// Every events bank the game held at this path, with its header and its objects as
-    /// stored, oldest first.
+    /// Every events bank the game held at this path, one per file, with the WADs that held it
+    /// and its header and its objects as stored, oldest first.
     fn events_banks(&self, path: WadHash) -> Result<Vec<EventsBankHit>, HistoryError>;
 
     /// The head: the position of the build appended last, which every key still present lasts

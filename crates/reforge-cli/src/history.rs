@@ -236,7 +236,7 @@ impl Probe {
             missing += self.objects(&history, &bytes)?;
         }
         if reforge_wwise::is_bnk(&bytes) || reforge_wwise::is_wpk(&bytes) {
-            missing += self.clips(&history, &bytes)?;
+            missing += self.clips(&history, &bytes, key)?;
         }
         if self.strict && missing > 0 {
             bail!("{missing} keys of {} are not in the history", self.path);
@@ -260,7 +260,7 @@ impl Probe {
     }
 
     /// Prints how many of a bank's clips the history holds, and returns how many it lacks.
-    fn clips(&self, history: &dyn History, bytes: &[u8]) -> Result<usize> {
+    fn clips(&self, history: &dyn History, bytes: &[u8], key: FileKey) -> Result<usize> {
         let bank = Bank::read(bytes).with_context(|| format!("reading {}", self.path))?;
         let mut found = 0usize;
         for wem in &bank.media {
@@ -271,25 +271,30 @@ impl Probe {
         outln!("clips in the history: {found} of {of}");
         let mut missing = of - found;
         if bank.has_hirc() {
-            missing += self.events_bank(history, &bank)?;
+            missing += self.events_bank(history, &bank, key)?;
         }
         Ok(missing)
     }
 
-    /// Prints whether the history holds an events bank's header and objects at its path, and
-    /// returns one when it does not.
-    fn events_bank(&self, history: &dyn History, bank: &Bank) -> Result<usize> {
+    /// Prints whether the history holds the header and objects of the events bank of these
+    /// bytes at its path, and which WADs held it, and returns one when it does not.
+    fn events_bank(&self, history: &dyn History, bank: &Bank, key: FileKey) -> Result<usize> {
         let held = history.events_banks(path_hash(&self.path))?;
         let same = |hit: &&EventsBankHit| {
-            hit.bank.header == bank.header && hit.bank.objects == bank.objects
+            hit.key == key && hit.bank.header == bank.header && hit.bank.objects == bank.objects
         };
         let of = bank.objects.len();
         let found = held.iter().find(same);
         match found {
-            Some(hit) => outln!(
-                "header and {of} objects in the history: {}",
-                history.span(hit.life)
-            ),
+            Some(hit) => {
+                let mut wads: Vec<&str> = hit.placed.iter().map(|p| p.wad.as_str()).collect();
+                wads.dedup();
+                outln!(
+                    "header and {of} objects in the history: {}, in {}",
+                    history.span(hit.life),
+                    wads.join(", ")
+                );
+            }
             None => outln!(
                 "header and {of} objects not in the history ({} other banks at this path)",
                 held.len()

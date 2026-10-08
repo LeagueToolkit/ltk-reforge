@@ -220,7 +220,8 @@ immutable and built once by `Env::builder()`.
     position, and the highest joint index a vertex binds to;
   - `clip_joints(path)`: the hashes of the joints a clip animates;
   - `events_bank(path)`: an `EventsBank`, the header and the objects of the events bank at a
-    path. The history's `events_banks` answers with the same type, per build;
+    path. The history's `events_banks` answers with the same type, per file, with the WADs
+    that held it;
   - `bank_clips(path)`: the clips of the bank or the package at a path, each by its id, its
     size and the key of its bytes, which is what the census records of a bank's clips.
 

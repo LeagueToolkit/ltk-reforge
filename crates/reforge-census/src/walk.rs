@@ -347,7 +347,6 @@ type TextSide = Option<(BlobId, TextFacts)>;
 /// The rows an events bank makes: its own, and one per object. An object is shared with the
 /// fold that holds it, so a bank the walk has seen costs its records only.
 struct BankRows {
-    record: u64,
     facts: BankFacts,
     objects: Vec<(u64, Arc<Object>)>,
 }
@@ -357,10 +356,8 @@ impl BankRows {
         let objects = bank.objects.into_iter();
         let objects: Vec<(u64, Arc<Object>)> = objects.map(|o| (o.digest(), Arc::new(o))).collect();
         let records: Vec<u64> = objects.iter().map(|(record, _)| *record).collect();
-        let (record, facts) = BankFacts::of(&bank.header, &records);
         Self {
-            record,
-            facts,
+            facts: BankFacts::of(&bank.header, &records),
             objects,
         }
     }
@@ -379,6 +376,12 @@ impl EntrySide {
     fn bin(&self) -> Option<(FileKey, &Arc<BinFacts>)> {
         let facts = self.bin.as_ref()?;
         Some((self.entry.content, facts))
+    }
+
+    /// The key of the side's file and the rows of its events bank, when it holds one.
+    fn bank(&self) -> Option<(FileKey, &BankRows)> {
+        let bank = self.bank.as_ref()?;
+        Some((self.entry.content, bank))
     }
 }
 
@@ -676,8 +679,7 @@ impl Walker {
         new: Option<&EntrySide>,
     ) {
         let folds = &mut self.folds;
-        let old_bank = old.and_then(|side| side.bank.as_ref());
-        let new_bank = new.and_then(|side| side.bank.as_ref());
+        let (old_bank, new_bank) = (old.and_then(EntrySide::bank), new.and_then(EntrySide::bank));
         let (old_bin, new_bin) = (old.and_then(EntrySide::bin), new.and_then(EntrySide::bin));
         let (old, new) = (old.map(|side| &side.entry), new.map(|side| &side.entry));
         if self.families.has(Family::Files) {
@@ -736,14 +738,17 @@ impl Walker {
                     })
                 })
             });
-            folds.bank_objects.change(at, old_bank, new_bank, |b| {
+            let (old_bank, new_bank) = (old_bank.as_ref(), new_bank.as_ref());
+            folds.bank_objects.change(at, old_bank, new_bank, |(_, b)| {
                 let objects = b.objects.iter();
                 objects.map(|(record, object)| (*record, object.clone()))
             });
-            folds.event_banks.change(at, old_bank, new_bank, |b| {
-                let record = b.record;
-                [(BankAt { path, record }, b.facts.clone())]
-            });
+            // #ADR-0081: each locale's WAD holds its own voice bank at one path.
+            folds
+                .event_banks
+                .change(at, old_bank, new_bank, |(key, b)| {
+                    [(BankAt { path, key: *key }, b.facts.clone())]
+                });
         }
         if self.families.has(Family::Rigs) {
             // A rig is keyed by its path and its whole record, so a changed rig is a new life.

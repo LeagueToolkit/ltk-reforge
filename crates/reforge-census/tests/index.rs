@@ -430,6 +430,20 @@ fn an_events_bank_is_read_back_with_its_header_and_its_objects_in_order() {
     let banks = index.events_banks(bank()).unwrap();
     let lives: Vec<Life> = banks.iter().map(|hit| hit.life).collect();
     assert_eq!(lives, [Life::new(0, 0), Life::new(1, 2)]);
+    // #ADR-0081: each bank is its file's, and says which WAD held it.
+    let key = |bytes: char| FileKey::parse(&bytes.to_string().repeat(64)).unwrap();
+    let files: Vec<(FileKey, Vec<(&str, Life)>)> = banks
+        .iter()
+        .map(|hit| {
+            let wads = hit.placed.iter().map(|p| (p.wad.as_str(), p.life));
+            (hit.key, wads.collect())
+        })
+        .collect();
+    let expected = [
+        (key('e'), vec![("data/x.wad.client", Life::new(0, 0))]),
+        (key('f'), vec![("data/x.wad.client", Life::new(1, 2))]),
+    ];
+    assert_eq!(files, expected);
     for (hit, sound) in banks.iter().zip([1u8, 2]) {
         assert_eq!(hit.bank.header, HEADER);
         assert_eq!((hit.bank.version(), hit.bank.bank_id()), (145, 5));

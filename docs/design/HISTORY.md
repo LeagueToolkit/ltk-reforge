@@ -99,7 +99,7 @@ The index is three files:
 | `events` | bank path hash, event id | none: an events bank defined that event |
 | `event_wems` | bank path hash, event id, clip id | none: the event played that clip |
 | `bank_objects` | record | type, id, body: one object of an events bank's hierarchy |
-| `event_banks` | bank path hash, record | version, bank id, header, and its objects in order, each as its record in `bank_objects` |
+| `event_banks` | bank path hash, file key | record, version, bank id, header, and its objects in order, each as its record in `bank_objects` |
 | `skeletons` | path hash, record | influences, and its joints in `joints` (name and parent) |
 | `meshes` | path hash, record | vertex type, vertex and index counts, and its submeshes in `submeshes` |
 | `joint_lists` | record | joint count, and its joints in `list_joints` (joint hash) |
@@ -113,14 +113,20 @@ The index is three files:
 
 Every table of lives also has `first`, `last` and `alive`. `alive` is how many records hold the
 key at the head, none once it is gone; an append starts from it. A `record` is the head of a
-SHA-256 over the record's fields, by which an append finds the row of a rig, a texture or an
-events bank at a path.
+SHA-256 over the record's fields, by which an append finds the row of a rig or a texture at a
+path. A mesh's row holds its submeshes' counts and digests, and no vertex position: nothing asks
+what a mesh's positions were at an earlier build (#ADR-0080).
 
 A joint list and a bank object are found by their record alone and held once. The clips of a
 skin animate the same joints. A bank changes few objects from one build to the next, and the
 voice banks of two languages share most. `event_banks.objects` is one value, eight bytes for
 each object in stored order: the object's record, little endian. A bank's record is over its
 header and those records.
+
+#ADR-0081. `event_banks` keys a bank by its path and the key of its file, as `animations` keys a
+clip, and `placements` on the path and the key gives the WADs that held it. Every locale's WAD
+holds its own voice bank at one path: 707 paths at 16.19.8207193, each with a file per locale.
+A file two WADs hold is one row, whose `alive` counts both.
 
 `placements` holds every file a WAD held at a path. A path leads its key, so the files at a path
 are one query, and the file key is indexed, so the paths of a content are another. A checksum is
@@ -229,7 +235,9 @@ Nothing is loaded whole, and a script reads the same file with `sqlite3`.
   behind the clone is appended to or rebuilt. One whose builds the history does not have is
   rebuilt. A change of the index's format is a rebuild too (#ADR-0036).
 - **Format 1** (#ADR-0005, #ADR-0077). An index of another format, format 0 among them, is
-  refused by its stamp before anything else of it is read, and is rebuilt.
+  refused by its stamp before anything else of it is read, and is rebuilt. A format 1 index
+  written before #ADR-0081 keys `event_banks` by record: `events_banks` and an append fail on
+  it, and `scripts/history/bank_files.py` rewrites the table in place.
 - **Untrusted.** The history is input like a mod: a value that would break a line of
   `builds.tsv` (a tab, a line break) is written as a space.
 
@@ -330,7 +338,7 @@ directory.
 | what skeleton and mesh did the game hold at this path, per build? | `skeletons`, `meshes` | `skeletons`, `meshes` |
 | which joints does the animation clip at this path animate, per build? | `clip_joints` | `animations`, `joint_lists` |
 | which joints does the animation clip of these bytes animate? | `joints_of` | `animations`, by file key |
-| what header and objects did the events bank at this path hold, per build? | `events_banks` | `event_banks`, `bank_objects` |
+| what header and objects did the events banks at this path hold, which WADs held each, per build? | `events_banks` | `event_banks`, `bank_objects`, `placements` |
 | which version is the build at this position, and what else did `build.yaml` say? | `version`, `build` | the builds |
 | which is the first build of this patch? | `first_of_patch` | the builds |
 | does this life reach the head? | `reaches_head` | the builds |
@@ -349,8 +357,10 @@ census history's tree.
 B, and on from there, and answers each object reached once, the object asked about among them.
 It stops at `MAX_REACHED` objects (#ADR-0070) and says so.
 
-An events bank is answered as `reforge-wwise` holds one: the header's bytes and the objects, each
-with its type, its id and its body. `Bank::new_bnk` takes the header and the objects go in
+An events bank is answered one per file, with each WAD that held the file at the path and the
+builds it did: a reader of one locale's WAD takes the bank that WAD held at its build. The bank
+is answered as `reforge-wwise` holds one: the header's bytes and the objects, each with its
+type, its id and its body. `Bank::new_bnk` takes the header and the objects go in
 `Bank::objects`, so the bank is cut (`Bank::cut_to`) and written as one read from an install.
 A bank the bank reader refuses (a header too short for a version and a bank id, an object too
 short for an id) is not in the index.
@@ -368,7 +378,7 @@ the text by a search of the build's tree, from the first WAD in path order whose
 |---|---|
 | `reforge history index` | builds the index, or appends to it |
 | `reforge history status` | prints the stamp, and raises the stamp's diagnostics against a repository and an install |
-| `reforge history probe <path> --game <install>` | hashes a game file and looks it up, with a bin's objects, a bank's clips, an events bank's header and objects, or an animation clip's joints; `--strict` fails when one is missing |
+| `reforge history probe <path> --game <install>` | hashes a game file and looks it up, with a bin's objects, a bank's clips, an events bank's header and objects and the WADs that held its file, or an animation clip's joints; `--strict` fails when one is missing |
 | `reforge history show-entry <entry> --bin <path> --repo <clone> [--index <index>]` | prints an entry's text at a build, by the blob the index names when one is given |
 | `reforge history check-objects [--index <index>] [--unkeyed <file>]` | counts the texts that have their object, checks each object's digest against `objects` under its text's class, and writes each text that has no key there, with its bin, entry and first build |
 
@@ -386,7 +396,7 @@ the text by a search of the build's tree, from the first WAD in path order whose
   that build, and its digest is not the object key the census recorded.
 - Of an events bank it holds the header and the objects. A bank that holds clips or another
   section beside them is not rebuilt whole from the history.
-- A life of a table that is not a table of spans is a hull. Two events banks, or two clips,
-  whose lives at one path overlap are told apart by which of them reaches the head, and not at
-  a build between.
+- A life of a table that is not a table of spans is a hull. Two clips whose lives at one path
+  overlap are told apart by which of them reaches the head, and not at a build between. Two
+  events banks are told apart at any build by the placements of their files.
 - It starts at 8.20. A file the game dropped before then passes as the mod's own.

@@ -659,14 +659,31 @@ impl History for SqliteHistory {
     }
 
     fn events_banks(&self, path: WadHash) -> Result<Vec<EventsBankHit>, HistoryError> {
-        let heads: Vec<(Life, Vec<u8>, Vec<u8>)> = self.all(
-            "SELECT first, last, header, objects FROM event_banks WHERE path = ?1 \
+        let heads: Vec<(FileKey, Life, Vec<u8>, Vec<u8>)> = self.all(
+            "SELECT key, first, last, header, objects FROM event_banks WHERE path = ?1 \
              ORDER BY first, id",
             params![stored(path.0)],
-            |r| Ok((life(r, 0)?, r.get(2)?, r.get(3)?)),
+            |r| Ok((FileKey(r.get(0)?), life(r, 1)?, r.get(3)?, r.get(4)?)),
         )?;
+        if heads.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut placed = self.all(
+            "SELECT w.path, p.key, p.checksum, p.first, p.last FROM placements p \
+             JOIN wads w ON w.id = p.wad WHERE p.path = ?1",
+            params![stored(path.0)],
+            |r| {
+                Ok(Placed {
+                    wad: r.get(0)?,
+                    key: FileKey(r.get(1)?),
+                    checksum: loaded(r.get(2)?),
+                    life: life(r, 3)?,
+                })
+            },
+        )?;
+        placed.sort_by(|a, b| wad_order(&a.wad, &b.wad).then(a.life.first.cmp(&b.life.first)));
         let mut out = Vec::with_capacity(heads.len());
-        for (life, header, records) in heads {
+        for (key, life, header, records) in heads {
             let mut objects = Vec::with_capacity(records.len() / 8);
             for record in BankFacts::records(&records) {
                 let object = self.one(
@@ -684,7 +701,13 @@ impl History for SqliteHistory {
                 objects.push(object.ok_or(HistoryError::BankObject { path, record })?);
             }
             let bank = EventsBank { header, objects };
-            out.push(EventsBankHit { life, bank });
+            let held = placed.iter().filter(|p| p.key == key).cloned().collect();
+            out.push(EventsBankHit {
+                key,
+                life,
+                placed: held,
+                bank,
+            });
         }
         Ok(out)
     }

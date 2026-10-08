@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use rayon::prelude::*;
+use reforge::history::tables::{BankFacts, Recorded};
 use reforge::history::{BinEntry, DB_FILE, History, Position, SqliteHistory, wad_order};
 use reforge::model::{BinHash, ClipKey, FileKey, WadHash};
 use reforge_census::format;
@@ -118,9 +119,12 @@ type Text = (u64, u32, String, [u8; 20]);
 /// A bin's links and its objects, by entry hash.
 type BinRow = (Vec<WadHash>, Vec<BinEntry>);
 
+/// An events bank at a path, by its file: the path, the file's key and the bank's record.
+type BankRow = (u64, [u8; 16], u64);
+
 /// What one file of a build's tree is, as the index holds it.
 enum InTree {
-    Placement(Placement, Option<BinRow>),
+    Placement(Placement, Option<BinRow>, Option<BankRow>),
     Text(Text),
 }
 
@@ -143,8 +147,13 @@ fn in_tree(repo: &GitRepo, path: &str, blob: &[u8; 20]) -> Option<InTree> {
         objects.dedup_by_key(|o| o.entry);
         (links, objects)
     });
+    let bank = entry.bank.as_ref().map(|bank| {
+        let records: Vec<u64> = bank.objects.iter().map(Recorded::digest).collect();
+        let record = BankFacts::of(&bank.header, &records).record;
+        (at.0, entry.content.0, record)
+    });
     let placement = (at.0, wad, entry.content.0, entry.checksum);
-    Some(InTree::Placement(placement, bin))
+    Some(InTree::Placement(placement, bin, bank))
 }
 
 /// The rows of a table of spans alive at a build, as `select` reads them.
@@ -192,13 +201,15 @@ fn an_index_agrees_with_the_trees_of_its_builds() {
             .collect();
         let (mut placements, mut texts) = (BTreeSet::new(), BTreeSet::new());
         let mut bins: BTreeMap<u64, Vec<(String, BinRow)>> = BTreeMap::new();
+        let mut banks = BTreeSet::new();
         for file in read {
             match file {
-                InTree::Placement(placement, bin) => {
+                InTree::Placement(placement, bin, bank) => {
                     if let Some(bin) = bin {
                         let wad = placement.1.clone();
                         bins.entry(placement.0).or_default().push((wad, bin));
                     }
+                    banks.extend(bank);
                     placements.insert(placement);
                 }
                 InTree::Text(text) => {
@@ -232,6 +243,25 @@ fn an_index_agrees_with_the_trees_of_its_builds() {
         );
         assert_eq!(indexed.len(), texts.len(), "entry texts at {at}");
         assert!(indexed == texts, "the entry texts at {at} are the tree's");
+        // #ADR-0081: an events bank is its file's, which a placement at the build joins.
+        let held_banks = alive(
+            &db,
+            "SELECT DISTINCT e.path, e.key, e.record FROM event_banks e JOIN placements p \
+             ON p.path = e.path AND p.key = e.key WHERE p.first <= ?1 AND p.last >= ?1",
+            at,
+            |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as u64,
+                    r.get(1)?,
+                    r.get::<_, i64>(2)? as u64,
+                ))
+            },
+        );
+        assert_eq!(held_banks.len(), banks.len(), "events banks at {at}");
+        assert!(
+            held_banks == banks,
+            "the events banks at {at} are the tree's"
+        );
 
         // A bin at a path is the first WAD's, with its links and its objects.
         for (path, mut held) in bins {
@@ -273,9 +303,11 @@ fn an_index_agrees_with_the_trees_of_its_builds() {
             );
         }
         eprintln!(
-            "build {at}: {} placements, {} texts, {} read three ways: {:?} by blob, {:?} by \
-             search (medians); object bytes {:?} median, {:?} at the 99th percentile",
+            "build {at}: {} placements, {} events banks, {} texts, {} read three ways: {:?} by \
+             blob, {:?} by search (medians); object bytes {:?} median, {:?} at the 99th \
+             percentile",
             placements.len(),
+            banks.len(),
             texts.len(),
             sample.len(),
             median(by_blob),

@@ -3,6 +3,8 @@
 
 mod common;
 
+use std::collections::BTreeMap;
+
 use reforge::history::tables::{
     Animation, BankEvent, BankFacts, JointList, Naming, Recorded, UnitEvent,
 };
@@ -10,7 +12,7 @@ use reforge::history::{Families, Life};
 use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash, path_hash};
 use reforge_census::{Walked, walk};
 
-use self::common::{A, B, HEADER, JOINTS, NAMED, bank, memory};
+use self::common::{A, B, HEADER, JOINTS, Memory, NAMED, bank, build, events_bank, memory};
 
 fn walked(families: Families) -> Walked {
     walk(&memory(), families, &mut |_| {}).unwrap()
@@ -189,7 +191,42 @@ fn an_events_bank_is_its_header_and_the_records_of_its_objects() {
         let stored = [record(2, 1, &[sound]), record(4, 0xe1, &[1, 1, 0, 0, 0])];
         assert_eq!(records, stored);
     }
-    assert_ne!(banks[0].key.record, banks[1].key.record);
+    assert_ne!(banks[0].facts.record, banks[1].facts.record);
+}
+
+// #ADR-0081: every locale's WAD holds its own voice bank at one path.
+#[test]
+fn an_events_bank_is_a_row_per_file_and_one_for_a_file_two_wads_hold() {
+    let in_wad = |wad: &str, text: String| {
+        let path = bank().0;
+        let file = format!(
+            "files/data/final/champions/{wad}/{:02x}/{path:016x}.yaml",
+            path >> 56
+        );
+        (file, text)
+    };
+    // Two locales' banks of the same objects in other bytes, and a third WAD with the first's.
+    let tree = BTreeMap::from([
+        in_wad("test.en_us.wad.client", events_bank('e', 1)),
+        in_wad("test.fr_fr.wad.client", events_bank('f', 1)),
+        in_wad("test2.en_us.wad.client", events_bank('e', 1)),
+    ]);
+    let history = Memory {
+        commits: vec![(build("1.1.1"), tree)],
+    };
+    let walked = walk(&history, Families::ALL, &mut |_| {}).unwrap();
+    let head = walked.head();
+    let rows = walked.folds.event_banks.rows(head);
+    let key = |digit: char| FileKey::parse(&digit.to_string().repeat(64)).unwrap();
+    let held: Vec<(WadHash, FileKey, u32)> = rows
+        .iter()
+        .map(|row| (row.key.path, row.key.key, row.alive))
+        .collect();
+    assert_eq!(held, [(bank(), key('e'), 2), (bank(), key('f'), 1)]);
+    assert_eq!(
+        rows[0].facts, rows[1].facts,
+        "one bank's header and objects"
+    );
 }
 
 #[test]

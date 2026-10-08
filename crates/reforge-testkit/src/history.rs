@@ -1,7 +1,7 @@
-//! A history in memory, for tests: built from facts (a path, a content, an object, a clip, an
-//! animation clip's joints, an events bank or a bank unit at builds a to b), with no SQLite file
-//! behind it. It answers the questions about those. The families no stage reads yet answer
-//! nothing.
+//! A history in memory, for tests: built from facts (a path, a content in a WAD, an object, a
+//! clip, an animation clip's joints, an events bank or a bank unit at builds a to b), with no
+//! SQLite file behind it. It answers the questions about those. The families no stage reads yet
+//! answer nothing.
 
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
@@ -11,13 +11,13 @@ use reforge::history::{
     BinHit, BuildDetails, BuildRow, ClipJoints, EventsBank, EventsBankHit, FORMAT, Families,
     FileHit, FileKind, HeldAt, History, HistoryError, Life, MeshHit, NamedBy, ObjectBytes,
     ObjectCodec, ObjectHit, PathHit, Placed, PlayedBy, Position, Reached, SkeletonHit, Stamp,
-    TextBlob, UnitHit, WemPlayed, version_order,
+    TextBlob, UnitHit, WemPlayed, version_order, wad_order,
 };
 use reforge::model::{
     BinHash, ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
 };
 
-/// The one WAD a history in memory holds its contents in.
+/// The WAD a history in memory holds a content in when no WAD is named.
 pub const MEMORY_WAD: &str = "data/memory.wad.client";
 
 /// A history with no file behind it.
@@ -26,10 +26,11 @@ pub struct MemoryHistory {
     builds: Vec<BuildRow>,
     paths: BTreeMap<WadHash, Life>,
     contents: BTreeMap<(WadHash, FileKey), Life>,
+    placements: BTreeMap<(WadHash, String, FileKey), Life>,
     objects: BTreeMap<(ObjectKey, BinHash), ObjectHit>,
     clips: BTreeMap<ClipKey, Life>,
     animations: BTreeMap<(WadHash, FileKey), (Life, Vec<u32>)>,
-    banks: BTreeMap<WadHash, Vec<EventsBankHit>>,
+    banks: BTreeMap<(WadHash, FileKey), EventsBank>,
     units: BTreeMap<WadHash, Vec<UnitHit>>,
 }
 
@@ -94,6 +95,7 @@ impl MemoryHistory {
             builds,
             paths: BTreeMap::new(),
             contents: BTreeMap::new(),
+            placements: BTreeMap::new(),
             objects: BTreeMap::new(),
             clips: BTreeMap::new(),
             animations: BTreeMap::new(),
@@ -109,12 +111,25 @@ impl MemoryHistory {
         self
     }
 
-    /// The game held `bytes` at `path` at these builds.
+    /// The game held `bytes` at `path` at these builds, in [`MEMORY_WAD`].
     #[must_use]
-    pub fn with_content(mut self, path: &str, bytes: &[u8], builds: RangeInclusive<u16>) -> Self {
+    pub fn with_content(self, path: &str, bytes: &[u8], builds: RangeInclusive<u16>) -> Self {
+        self.with_content_in(MEMORY_WAD, path, bytes, builds)
+    }
+
+    /// The WAD at `wad`, its path in the manifest, held `bytes` at `path` at these builds.
+    #[must_use]
+    pub fn with_content_in(
+        mut self,
+        wad: &str,
+        path: &str,
+        bytes: &[u8],
+        builds: RangeInclusive<u16>,
+    ) -> Self {
         let (path, key, life) = (path_hash(path), file_key(bytes), life(builds));
         widen(&mut self.paths, path, life);
         widen(&mut self.contents, (path, key), life);
+        widen(&mut self.placements, (path, wad.to_string(), key), life);
         self
     }
 
@@ -163,21 +178,19 @@ impl MemoryHistory {
         self.with_content(path, bytes, builds)
     }
 
-    /// The game held this events bank at `path` at these builds.
+    /// The WAD at `wad` held the events bank `bank`, a file of `bytes`, at `path` at these
+    /// builds.
     #[must_use]
     pub fn with_events_bank(
         mut self,
+        wad: &str,
         path: &str,
+        bytes: &[u8],
         bank: EventsBank,
         builds: RangeInclusive<u16>,
     ) -> Self {
-        let (held, with) = (self.banks.entry(path_hash(path)).or_default(), life(builds));
-        match held.iter_mut().find(|hit| hit.bank == bank) {
-            Some(hit) => hit.life = hull(hit.life, with),
-            None => held.push(EventsBankHit { life: with, bank }),
-        }
-        held.sort_by_key(|hit| hit.life.first);
-        self
+        self.banks.insert((path_hash(path), file_key(bytes)), bank);
+        self.with_content_in(wad, path, bytes, builds)
     }
 
     /// The game's bank unit `unit`, of the skin entry `entry` in the bin at `bin`, loaded the
@@ -201,6 +214,21 @@ impl MemoryHistory {
         held.push(hit);
         held.sort_by_key(|hit| hit.life.first);
         self
+    }
+
+    /// Every content a WAD held at the path, in `wad_order` and then oldest first.
+    fn placed_at(&self, path: WadHash) -> Vec<Placed> {
+        let held = self.placements.iter().filter(|((p, ..), _)| *p == path);
+        let mut placed: Vec<Placed> = held
+            .map(|((_, wad, key), life)| Placed {
+                wad: wad.clone(),
+                key: *key,
+                checksum: 0,
+                life: *life,
+            })
+            .collect();
+        placed.sort_by(|a, b| wad_order(&a.wad, &b.wad).then(a.life.first.cmp(&b.life.first)));
+        placed
     }
 }
 
@@ -249,16 +277,9 @@ impl History for MemoryHistory {
     }
 
     fn placed(&self, path: WadHash, at: Position) -> Result<Vec<Placed>, HistoryError> {
-        let held = self.contents.iter();
-        let at_path = held.filter(|((p, _), life)| *p == path && life.holds(at));
-        Ok(at_path
-            .map(|((_, key), life)| Placed {
-                wad: MEMORY_WAD.into(),
-                key: *key,
-                checksum: 0,
-                life: *life,
-            })
-            .collect())
+        let mut placed = self.placed_at(path);
+        placed.retain(|held| held.life.holds(at));
+        Ok(placed)
     }
 
     fn bin(&self, _: WadHash, _: Position) -> Result<Option<BinHit>, HistoryError> {
@@ -367,7 +388,21 @@ impl History for MemoryHistory {
     }
 
     fn events_banks(&self, path: WadHash) -> Result<Vec<EventsBankHit>, HistoryError> {
-        Ok(self.banks.get(&path).cloned().unwrap_or_default())
+        let placed = self.placed_at(path);
+        let at_path = self.banks.iter().filter(|((p, _), _)| *p == path);
+        let mut hits: Vec<EventsBankHit> = at_path
+            .map(|((_, key), bank)| {
+                let held = placed.iter().filter(|held| held.key == *key);
+                EventsBankHit {
+                    key: *key,
+                    life: self.contents[&(path, *key)],
+                    placed: held.cloned().collect(),
+                    bank: bank.clone(),
+                }
+            })
+            .collect();
+        hits.sort_by_key(|hit| (hit.life.first, hit.key));
+        Ok(hits)
     }
 }
 

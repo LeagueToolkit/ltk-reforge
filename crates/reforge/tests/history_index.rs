@@ -12,7 +12,7 @@ use reforge::history::tables::{index_sql, schema_sql, table_names};
 use reforge::history::{
     self, BuildDetails, BuildRow, ClipJoints, DB_FILE, FORMAT, Families, FileKind, History,
     HistoryAbsent, HistoryError, IndexMissing, IndexStale, InstallNewer, Joint, Life, MAX_REACHED,
-    ObjectCodec, Position, STAMP_FILE, SqliteHistory, Stamp,
+    ObjectCodec, Placed, Position, STAMP_FILE, SqliteHistory, Stamp,
 };
 use reforge::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 use rusqlite::Connection;
@@ -249,10 +249,11 @@ fn a_clips_joints_and_a_banks_objects_are_read_back_through_their_records() {
          INSERT INTO bank_objects (record, kind, id, body, first, last, alive) \
            VALUES (-2, 2, 4026531841, x'0a0b', 0, 2, 1), (3, 4, 225, x'', 0, 2, 1);
          INSERT INTO event_banks \
-           (id, path, record, version, bank_id, header, objects, first, last, alive) \
-           VALUES (1, 9, 11, 145, 5, x'9100000005000000', \
+           (id, path, key, record, version, bank_id, header, objects, first, last, alive) \
+           VALUES (1, 9, x'09090909090909090909090909090909', 11, 145, 5, x'9100000005000000', \
                    x'0300000000000000feffffffffffffff', 0, 2, 1), \
-                  (2, 10, 12, 145, 5, x'9100000005000000', x'0900000000000000', 0, 2, 1);",
+                  (2, 10, x'0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a', 12, 145, 5, \
+                   x'9100000005000000', x'0900000000000000', 0, 2, 1);",
     );
     let history = SqliteHistory::open(&dir).unwrap();
     let joints = vec![0xf000_0001, 7];
@@ -289,6 +290,64 @@ fn a_clips_joints_and_a_banks_objects_are_read_back_through_their_records() {
             record: 9
         })
     ));
+}
+
+// #ADR-0081: every locale's WAD holds its own voice bank at one path.
+#[test]
+fn each_events_bank_at_a_path_names_the_wads_that_held_its_file() {
+    const FR: &str = "data/final/champions/test.fr_fr.wad.client";
+    const FR_TOO: &str = "data/final/champions/test2.fr_fr.wad.client";
+    const EN: &str = "data/final/champions/test.en_us.wad.client";
+    // French bytes throughout, in two WADs; English bytes that change at the second build.
+    let (_scratch, dir) = index(&format!(
+        "INSERT INTO wads (id, path) VALUES (1, '{FR}'), (2, '{EN}'), (3, '{FR_TOO}');
+         INSERT INTO placements (path, wad, key, checksum, first, last, alive) \
+           VALUES (9, 1, x'0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f', 0, 0, 2, 1), \
+                  (9, 3, x'0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f', 0, 1, 2, 1), \
+                  (9, 2, x'0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e', 0, 0, 0, 0), \
+                  (9, 2, x'0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d', 0, 1, 2, 1);
+         INSERT INTO bank_objects (record, kind, id, body, first, last, alive) \
+           VALUES (3, 4, 225, x'', 0, 2, 3);
+         INSERT INTO event_banks \
+           (id, path, key, record, version, bank_id, header, objects, first, last, alive) \
+           VALUES (1, 9, x'0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f', 11, 145, 5, x'9100000005000000', \
+                   x'0300000000000000', 0, 2, 2), \
+                  (2, 9, x'0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e', 12, 145, 6, x'9100000006000000', \
+                   x'0300000000000000', 0, 0, 0), \
+                  (3, 9, x'0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d', 13, 145, 7, x'9100000007000000', \
+                   x'0300000000000000', 1, 2, 1);"
+    ));
+    let history = SqliteHistory::open(&dir).unwrap();
+    let banks = history.events_banks(WadHash(9)).unwrap();
+    // A bank's id, its file, and each WAD that held the file with its builds.
+    type Held<'a> = (u32, FileKey, Vec<(&'a str, Life)>);
+    let held: Vec<Held> = banks
+        .iter()
+        .map(|hit| {
+            let wads = hit.placed.iter().map(|p| (p.wad.as_str(), p.life));
+            (hit.bank.bank_id(), hit.key, wads.collect())
+        })
+        .collect();
+    let expected = [
+        (
+            5,
+            FileKey([0x0f; 16]),
+            vec![(FR, Life::new(0, 2)), (FR_TOO, Life::new(1, 2))],
+        ),
+        (6, FileKey([0x0e; 16]), vec![(EN, Life::new(0, 0))]),
+        (7, FileKey([0x0d; 16]), vec![(EN, Life::new(1, 2))]),
+    ];
+    assert_eq!(held, expected);
+
+    // A reader of one locale's WAD takes the bank that WAD held at its build.
+    let in_wad = |wad: &str, at: u16| {
+        let holds = |p: &Placed| p.wad == wad && p.life.holds(Position(at));
+        let hit = banks.iter().find(|hit| hit.placed.iter().any(&holds));
+        hit.map(|hit| hit.bank.bank_id())
+    };
+    assert_eq!(in_wad(EN, 0), Some(6));
+    assert_eq!(in_wad(EN, 2), Some(7));
+    assert_eq!(in_wad(FR, 2), Some(5));
 }
 
 #[test]

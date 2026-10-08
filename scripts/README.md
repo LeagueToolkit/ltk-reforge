@@ -24,6 +24,19 @@ mise run build-windows
 The workflow `.github/workflows/build.yml` installs the same packages and tools, and runs the
 commands of the two tasks as steps of its own.
 
+## history
+
+What is done to a history index in place, outside the census writer.
+
+| script | what it is for |
+|---|---|
+| `history/bank_files.py` | `fill` keys each events bank of an index written before #ADR-0081 by the file that held it, reading one entry file of the census history per file; `check` reads the table back, and checks one locale's banks at a build against an install |
+
+```
+python scripts/history/bank_files.py fill --db <history.sqlite> --builds <builds.tsv> --repo <clone> [--dry-run]
+python scripts/history/bank_files.py check --db <history.sqlite> --game <install>/Game --at <position>
+```
+
 ## corpus
 
 The corpus tooling (#ADR-0044, #ADR-0045): a run of reforge over the mods of the datasets, the
