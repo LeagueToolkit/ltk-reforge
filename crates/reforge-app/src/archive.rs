@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::download::Download;
 use crate::error::{AppError, chain};
 use crate::index::{
-    Counted, IndexRelease, InstallProgress, InstallStep, Source, folder_name, zst_reader,
+    Counted, IndexRelease, InstallProgress, InstallStep, Source, path_safe, zst_reader,
 };
 
 /// The file a clone bootstrapped from an archive notes it in.
@@ -151,7 +151,7 @@ impl<'a> Bootstrap<'a> {
     ) -> Result<ArchiveNote, AppError> {
         let census = clones.whole.as_path();
         let asset = release.archive.as_ref().ok_or(AppError::NoArchive)?;
-        let file = downloads.join(format!("{}-{}", folder_name(&release.tag), asset.name));
+        let file = downloads.join(format!("{}-{}", path_safe(&release.tag), asset.name));
         let progress = &mut *self.progress;
         let mut heard = |seen: InstallProgress| {
             progress(ArchiveProgress {

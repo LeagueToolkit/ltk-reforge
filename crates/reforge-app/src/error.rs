@@ -65,8 +65,8 @@ pub enum AppError {
     /// A download or an update of the index is under way already.
     #[error("the index is downloading or updating already")]
     IndexBusy,
-    /// No release of the census history holds an index.
-    #[error("no release holds an index")]
+    /// No release of the census history holds an index of the app's format.
+    #[error("no release holds an index of the app's format")]
     NoIndexRelease,
     /// No history index is chosen to update.
     #[error("no history index is chosen")]

@@ -6,6 +6,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use reforge::history::{DB_FILE, FORMAT, STAMP_FILE};
 use reforge_app::archive::Clones;
+use reforge_app::index::folder_name;
 use reforge_app::storage::{KeptIndex, Storage};
 use tempfile::TempDir;
 
@@ -95,7 +96,7 @@ fn nothing_on_disk_measures_as_nothing() {
 fn the_index_chosen_is_measured_and_owned_when_the_app_installed_it() {
     let data = Data::new();
     let (indexes, downloads) = (data.indexes(), data.downloads());
-    let chosen = data.index(&indexes, "history-v2-snapshot-0", 2, 1000);
+    let chosen = data.index(&indexes, &folder_name("history-v2-snapshot-0"), 2, 1000);
     let storage = Storage {
         indexes: &indexes,
         clones: &data.clones,
@@ -130,10 +131,11 @@ fn an_index_in_a_folder_the_user_chose_is_not_the_apps() {
 fn the_index_kept_is_the_one_with_the_most_builds_the_settings_do_not_choose() {
     let data = Data::new();
     let (indexes, downloads) = (data.indexes(), data.downloads());
-    data.index(&indexes, "history-v2-snapshot-0", 2, 10);
-    let newer = data.index(&indexes, "head-0123456789ab", 5, 20);
+    data.index(&indexes, &folder_name("history-v2-snapshot-0"), 2, 10);
+    let newer = data.index(&indexes, &folder_name("head-0123456789ab"), 5, 20);
     // An install that stopped holds a stamp and no whole database.
-    data.index(&indexes, "history-v2-snapshot-1.partial", 9, 5);
+    let stopped = format!("{}.partial", folder_name("history-v2-snapshot-1"));
+    data.index(&indexes, &stopped, 9, 5);
     let storage = Storage {
         indexes: &indexes,
         clones: &data.clones,
@@ -179,8 +181,8 @@ fn the_clones_and_the_downloads_are_measured_with_all_they_hold() {
 fn removing_the_indexes_leaves_the_clones_the_downloads_and_a_chosen_folder() {
     let data = Data::new();
     let (indexes, downloads) = (data.indexes(), data.downloads());
-    data.index(&indexes, "history-v2-snapshot-0", 2, 10);
-    data.index(&indexes, "head-0123456789ab", 5, 20);
+    data.index(&indexes, &folder_name("history-v2-snapshot-0"), 2, 10);
+    data.index(&indexes, &folder_name("head-0123456789ab"), 5, 20);
     let elsewhere = data.index(&data.root.join("elsewhere"), "index", 2, 10);
     data.file(data.clones.whole.join("HEAD"), 20);
     data.file(downloads.join("a.zst.partial"), 70);
@@ -203,7 +205,7 @@ fn removing_the_indexes_leaves_the_clones_the_downloads_and_a_chosen_folder() {
 fn removing_the_clones_leaves_the_indexes_and_the_downloads() {
     let data = Data::new();
     let (indexes, downloads) = (data.indexes(), data.downloads());
-    let chosen = data.index(&indexes, "history-v2-snapshot-0", 2, 10);
+    let chosen = data.index(&indexes, &folder_name("history-v2-snapshot-0"), 2, 10);
     data.file(data.clones.whole.join("HEAD"), 20);
     data.file(data.clones.partial.join("HEAD"), 20);
     data.file(data.root.join("census-history.new/HEAD"), 4);
@@ -228,7 +230,7 @@ fn removing_the_clones_leaves_the_indexes_and_the_downloads() {
 fn removing_the_downloads_leaves_the_indexes_and_the_clones() {
     let data = Data::new();
     let (indexes, downloads) = (data.indexes(), data.downloads());
-    let chosen = data.index(&indexes, "history-v2-snapshot-0", 2, 10);
+    let chosen = data.index(&indexes, &folder_name("history-v2-snapshot-0"), 2, 10);
     data.file(data.clones.whole.join("HEAD"), 20);
     data.file(downloads.join("a.zst.partial"), 70);
     let storage = Storage {

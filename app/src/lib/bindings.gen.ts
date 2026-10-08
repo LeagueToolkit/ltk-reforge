@@ -28,7 +28,10 @@ export const commands = {
 	saveSelection: (path: string, choice: FixupChoice) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("save_selection", { path, choice }),
 	/**  The choice of fixups a selection file holds. */
 	loadSelection: (path: string) => __TAURI_INVOKE<({ ok: true; value: FixupChoice }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("load_selection", { path }),
-	/**  The newest release of the census history that holds an index. None when none does. */
+	/**
+	 *  The newest release of the census history that holds an index of the app's format. None when
+	 *  none does.
+	 */
 	indexRelease: () => __TAURI_INVOKE<({ ok: true; value: IndexReleaseView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("index_release"),
 	/**
 	 *  Downloads the newest index, installs it, and makes it the history the runs read. Answers
@@ -167,7 +170,7 @@ export type AppError =
 { code: "INDEX_UNWRITABLE"; detail: string } | 
 /**  A download or an update of the index is under way already. */
 { code: "INDEX_BUSY" } | 
-/**  No release of the census history holds an index. */
+/**  No release of the census history holds an index of the app's format. */
 { code: "NO_INDEX_RELEASE" } | 
 /**  No history index is chosen to update. */
 { code: "NO_INDEX" } | 

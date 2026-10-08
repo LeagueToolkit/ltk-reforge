@@ -276,6 +276,31 @@ archive (#ADR-0060, superseded) does, with the builds' branch set where `Fetcher
 commit the packs hold. A fetch into it then asks only for the commits after that one and for
 what the append reads that the packs lack.
 
+## Distribution
+
+#ADR-0047, "fetches the one made for it". The census history's repository has one GitHub release
+for each head an index is published at, `history-v2-snapshot-<n>`. A release holds the three
+files of an index once for each format published. A file takes its name in the index's
+directory with `-v<format>` before its extension, and the database is compressed with zstd at
+`--long=31`:
+
+| file | in a release |
+|---|---|
+| `stamp.json` | `stamp-v<format>.json` |
+| `builds.tsv` | `builds-v<format>.tsv` |
+| `history.sqlite` | `history-v<format>.sqlite.zst` |
+
+The files with no format in their names, `stamp.json`, `builds.tsv` and `history.sqlite.zst`,
+are format 0's. `reforge_app::index::ReleaseNames` builds the names from `FORMAT`. The app takes
+the newest release that holds the three files of its own format, each with the SHA-256 GitHub
+lists for it. A release that holds other formats only holds no index for the app, which reads
+none of their files.
+
+The app installs an index in its data folder, in `history-indexes/<tag>-v<format>`, and an index
+it takes forward in `history-indexes/head-<commit>-v<format>`. Two versions of the app that read
+two formats write no folder in common. In the folder the files take their names in the index's
+directory.
+
 ## The questions
 
 `History` is a trait with one method per question. `SqliteHistory` reads the index,

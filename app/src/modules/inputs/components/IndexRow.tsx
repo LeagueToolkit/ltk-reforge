@@ -21,10 +21,11 @@ function originOf(dir: string, storage: StorageView | undefined): string | null 
     return m.inputs_index_origin_chosen_label();
   }
   const folder = dir.split(/[\\/]/).pop() ?? "";
-  // An update names its folder for the commit it reached, a download for its release.
+  // An update names its folder for the commit it reached, a download for its release, and
+  // both end in the index's format, `-v<format>`.
   return folder.startsWith("head-")
     ? m.inputs_index_origin_updated_label()
-    : m.inputs_index_origin_release_label({ tag: folder });
+    : m.inputs_index_origin_release_label({ tag: folder.replace(/-v\d+$/, "") });
 }
 
 function Badge({ chosen, opened }: { chosen: boolean; opened: boolean }) {

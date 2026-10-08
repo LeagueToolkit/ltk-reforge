@@ -158,17 +158,20 @@ others are off while one runs. A page left and come back to shows the work still
    supersedes the bootstrap.
 
 The census history is public, `https://github.com/LeagueToolkit/ltk-census-history`, and the
-index is published as a release of it: `stamp.json`, `builds.tsv` and `history.sqlite.zst`,
-and beside them the census history as an archive, `ltk-census-history.git.tar.zst`, at the
-index's head (`history-v2-snapshot-<n>`). The stamp names the public repository. The app takes
-the newest release that holds the index's three files and checks each against the SHA-256
-GitHub lists for it. The database downloads into `downloads` in the app's data folder, where a
-download that stops is kept and the next one resumes it while GitHub sends the same file
-(`reforge_app::download`); it is unpacked once it is whole, with a window of up to 2 GiB of
-memory as `--long=31` writes it. The app opens the index and installs it in its data folder, a
-folder per release (`reforge_app::index`). The settings then name it, and a folder they no
-longer name is removed at the next start. The published database of 767 MB downloaded and
-unpacked in 42 s on this machine (2026-10-05).
+index is published as a release of it, the files of each format under names of their own
+([HISTORY.md](HISTORY.md), "Distribution"), and beside them the census history as an archive,
+`ltk-census-history.git.tar.zst`, at the index's head (`history-v2-snapshot-<n>`). The stamp
+names the public repository. The app takes the newest release that holds its format's files
+and checks each against the SHA-256 GitHub lists for it. With no such release the index row
+offers no download, and with no index it reads as none: a mod is judged against the game
+alone. The database downloads into `downloads` in the app's data folder, under the release's
+tag and the file's name, where a download that stops is kept and the next one resumes it while
+GitHub sends the same file (`reforge_app::download`); it is unpacked once it is whole, with a
+window of up to 2 GiB of memory as `--long=31` writes it. The app opens the index and installs
+it in its data folder, a folder per release and format (`reforge_app::index`). The settings
+then name it, and a folder they no longer name is removed at the next start. On this machine
+the published database of format 0, 767 MB, downloaded and unpacked in 42 s (2026-10-05), and
+that of format 1, 1,731 MB and 4.77 GB unpacked, in 159 s (2026-10-08).
 
 The census history's row offers the archive as a download of its own, which makes the app's
 whole clone, `census-history` in its data folder, or makes it again (`reforge_app::archive`). The archive

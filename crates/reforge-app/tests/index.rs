@@ -1,6 +1,7 @@
-//! The prebuilt history index: the release picked from GitHub's list, its files downloaded and
-//! checked against their digests, the database unpacked, and the index installed only whole.
-//! The files are read from a test's folder through the same `Source` the web is.
+//! The prebuilt history index: the release of the app's format picked from GitHub's list, its
+//! files downloaded and checked against their digests, the database unpacked, and the index
+//! installed only whole, in a folder of its release and format. The files are read from a
+//! test's folder through the same `Source` the web is.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::sync::Mutex;
@@ -8,20 +9,39 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use reforge::history::{FORMAT, History, SqliteHistory};
+use reforge::history::{BUILDS_FILE, FORMAT, History, STAMP_FILE, SqliteHistory, Stamp};
 use reforge_app::error::AppError;
 use reforge_app::index::{
-    self, Asset, IndexRelease, InstallProgress, InstallStep, Installer, Ranged, Source,
+    self, Asset, IndexRelease, InstallProgress, InstallStep, Installer, Ranged, ReleaseNames,
+    Source,
 };
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 const COMMIT: &str = "5b121f51ad752b06ce0cb0ea17d5859f4b20c645";
 
+const TAG: &str = "history-v2-index-16.19";
+
+/// The format of another version of the app.
+const OTHER: u32 = FORMAT + 1;
+
+fn names() -> ReleaseNames {
+    ReleaseNames::of(FORMAT)
+}
+
+/// The folder an index of the app's format from the release `TAG` is installed in.
+fn installed_name() -> String {
+    format!("{TAG}-v{FORMAT}")
+}
+
 fn stamp() -> String {
+    stamp_of(FORMAT)
+}
+
+fn stamp_of(format: u32) -> String {
     format!(
         r#"{{
-  "format": {FORMAT},
+  "format": {format},
   "repo": "https://github.com/LeagueToolkit/ltk-census-history.git",
   "head": "{COMMIT}",
   "newest_build": "16.19.8207193",
@@ -75,10 +95,38 @@ impl Folder {
             etag: Mutex::new("\"one\"".to_string()),
             asked: Mutex::new(Vec::new()),
         };
-        folder.put("stamp.json", stamp().as_bytes());
-        folder.put("builds.tsv", builds().as_bytes());
-        folder.put("history.sqlite.zst", &db_zst());
+        let names = names();
+        folder.put(&names.stamp, stamp().as_bytes());
+        folder.put(&names.builds, builds().as_bytes());
+        folder.put(&names.db, &db_zst());
         folder
+    }
+
+    /// The files of an index of another version of the app beside the app's: a stamp of that
+    /// format, and a list of builds and a database the app's reader would not open.
+    fn put_other_format(&self) {
+        let names = ReleaseNames::of(OTHER);
+        self.put(&names.stamp, stamp_of(OTHER).as_bytes());
+        self.put(&names.builds, b"another format's builds\n");
+        self.put(&names.db, b"another format's database");
+    }
+
+    /// GitHub's list of releases, one release `tag` holding the files `names` of this folder,
+    /// each with its size and digest, at a URL that is its name.
+    fn releases(&self, tag: &str, names: &[&str]) -> String {
+        let assets: Vec<_> = names
+            .iter()
+            .map(|name| {
+                let asset = self.asset(name);
+                serde_json::json!({
+                    "name": asset.name,
+                    "size": asset.size,
+                    "digest": format!("sha256:{}", asset.sha256),
+                    "browser_download_url": asset.url,
+                })
+            })
+            .collect();
+        serde_json::json!([{ "tag_name": tag, "draft": false, "assets": assets }]).to_string()
     }
 
     fn path(&self, name: &str) -> Utf8PathBuf {
@@ -100,11 +148,12 @@ impl Folder {
     }
 
     fn release(&self) -> IndexRelease {
+        let names = names();
         IndexRelease {
-            tag: "history-v2-index-16.19".to_string(),
-            stamp: self.asset("stamp.json"),
-            builds: self.asset("builds.tsv"),
-            db: self.asset("history.sqlite.zst"),
+            tag: TAG.to_string(),
+            stamp: self.asset(&names.stamp),
+            builds: self.asset(&names.builds),
+            db: self.asset(&names.db),
             archive: None,
         }
     }
@@ -204,7 +253,7 @@ fn api_asset(name: &str, digest: Option<&str>) -> serde_json::Value {
     })
 }
 
-fn api_release(tag: &str, draft: bool, files: &[(&str, Option<&str>)]) -> serde_json::Value {
+fn api_release(tag: &str, draft: bool, files: &[(String, Option<&str>)]) -> serde_json::Value {
     let assets: Vec<_> = files
         .iter()
         .map(|(name, digest)| api_asset(name, *digest))
@@ -212,24 +261,35 @@ fn api_release(tag: &str, draft: bool, files: &[(&str, Option<&str>)]) -> serde_
     serde_json::json!({ "tag_name": tag, "draft": draft, "assets": assets })
 }
 
-const WHOLE: [(&str, Option<&str>); 3] = [
-    ("stamp.json", Some("sha256:AA")),
-    ("builds.tsv", Some("sha256:bb")),
-    ("history.sqlite.zst", Some("sha256:cc")),
-];
+/// The three files of an index of `format`, each with a digest.
+fn whole(format: u32) -> [(String, Option<&'static str>); 3] {
+    let names = ReleaseNames::of(format);
+    [
+        (names.stamp, Some("sha256:AA")),
+        (names.builds, Some("sha256:bb")),
+        (names.db, Some("sha256:cc")),
+    ]
+}
+
+#[test]
+fn a_release_names_each_file_of_an_index_with_its_format() {
+    let names = ReleaseNames::of(7);
+
+    assert_eq!(names.stamp, "stamp-v7.json");
+    assert_eq!(names.builds, "builds-v7.tsv");
+    assert_eq!(names.db, "history-v7.sqlite.zst");
+}
 
 #[test]
 fn the_newest_release_holding_a_whole_index_is_picked() {
+    let [stamp, builds, db] = whole(FORMAT);
     let releases = serde_json::json!([
-        api_release("draft", true, &WHOLE),
-        api_release("no-builds", false, &[WHOLE[0], WHOLE[2]]),
-        api_release(
-            "no-digest",
-            false,
-            &[WHOLE[0], WHOLE[1], ("history.sqlite.zst", None)]
-        ),
-        api_release("whole", false, &WHOLE),
-        api_release("older", false, &WHOLE),
+        api_release("draft", true, &whole(FORMAT)),
+        api_release("no-builds", false, &[stamp.clone(), db.clone()]),
+        api_release("no-digest", false, &[stamp, builds, (db.0, None)]),
+        api_release("other-format", false, &whole(OTHER)),
+        api_release("whole", false, &whole(FORMAT)),
+        api_release("older", false, &whole(FORMAT)),
     ]);
 
     let picked = index::pick(&releases.to_string())
@@ -241,7 +301,10 @@ fn the_newest_release_holding_a_whole_index_is_picked() {
         picked.stamp.sha256, "aa",
         "a digest is kept as lower-case hex"
     );
-    assert_eq!(picked.db.url, "https://example.invalid/history.sqlite.zst");
+    assert_eq!(
+        picked.db.url,
+        format!("https://example.invalid/{}", names().db)
+    );
 }
 
 #[test]
@@ -249,8 +312,22 @@ fn no_release_holding_an_index_picks_none() {
     let releases = serde_json::json!([api_release(
         "code",
         false,
-        &[("app.zip", Some("sha256:aa"))]
+        &[("app.zip".to_string(), Some("sha256:aa"))]
     )]);
+
+    assert_eq!(index::pick(&releases.to_string()).unwrap(), None);
+}
+
+#[test]
+fn a_release_of_other_formats_only_holds_no_index_for_the_app() {
+    let mut files = whole(OTHER).to_vec();
+    // The names a release gave the files before they carried a format.
+    files.extend([
+        (STAMP_FILE.to_string(), Some("sha256:aa")),
+        (BUILDS_FILE.to_string(), Some("sha256:bb")),
+        ("history.sqlite.zst".to_string(), Some("sha256:cc")),
+    ]);
+    let releases = serde_json::json!([api_release("next", false, &files)]);
 
     assert_eq!(index::pick(&releases.to_string()).unwrap(), None);
 }
@@ -264,32 +341,69 @@ fn a_list_that_does_not_read_is_a_fetch_error() {
 }
 
 #[test]
-fn a_whole_release_installs_an_index_that_opens_in_a_folder_named_for_its_tag() {
+fn a_release_of_the_apps_format_installs_an_index_that_opens_in_a_folder_of_its_tag_and_format() {
     let folder = Folder::new();
+    let names = names();
+    let releases = folder.releases(TAG, &[&names.stamp, &names.builds, &names.db]);
+    let release = index::pick(&releases).unwrap().expect("a release");
 
-    let installed = install(&folder, &folder.release(), &AtomicBool::new(false)).unwrap();
+    let installed = install(&folder, &release, &AtomicBool::new(false)).unwrap();
 
-    assert_eq!(installed, folder.root().join("history-v2-index-16.19"));
+    assert_eq!(installed, folder.root().join(installed_name()));
     let history = SqliteHistory::open(&installed).unwrap();
     assert_eq!(
         history.stamp().map(|stamp| stamp.head.as_str()),
         Some(COMMIT)
     );
-    assert_eq!(entries(&folder.root()), ["history-v2-index-16.19"]);
+    assert_eq!(entries(&folder.root()), [installed_name()]);
+    assert_eq!(
+        entries(&installed),
+        ["builds.tsv", "history.sqlite", "stamp.json"],
+        "the files keep the names of an index's directory"
+    );
+}
+
+#[test]
+fn a_release_of_two_formats_installs_the_files_of_the_apps() {
+    let folder = Folder::new();
+    folder.put_other_format();
+    let (ours, other) = (names(), ReleaseNames::of(OTHER));
+    let releases = folder.releases(
+        TAG,
+        &[
+            &other.stamp,
+            &other.builds,
+            &other.db,
+            &ours.stamp,
+            &ours.builds,
+            &ours.db,
+        ],
+    );
+    let release = index::pick(&releases).unwrap().expect("a release");
+
+    let installed = install(&folder, &release, &AtomicBool::new(false)).unwrap();
+
+    assert_eq!(installed, folder.root().join(installed_name()));
+    assert_eq!(Stamp::read(&installed).unwrap().format, FORMAT);
+    assert_eq!(
+        fs::read_to_string(installed.join(BUILDS_FILE)).unwrap(),
+        builds()
+    );
+    SqliteHistory::open(&installed).unwrap();
 }
 
 #[test]
 fn a_file_with_other_bytes_than_the_release_lists_leaves_no_index() {
     let folder = Folder::new();
     let release = folder.release();
-    folder.put("builds.tsv", b"0\tsomething else\n");
+    folder.put(&names().builds, b"0\tsomething else\n");
 
     let Err(AppError::IndexDigest { file }) = install(&folder, &release, &AtomicBool::new(false))
     else {
         panic!("a file of other bytes was taken");
     };
 
-    assert_eq!(file, "builds.tsv");
+    assert_eq!(file, names().builds);
     assert!(
         entries(&folder.root()).is_empty(),
         "{:?}",
@@ -315,27 +429,24 @@ fn an_index_installed_already_is_not_downloaded_again() {
     let release = folder.release();
     install(&folder, &release, &AtomicBool::new(false)).unwrap();
     // The files are gone from the source: a second download would fail.
-    fs::remove_file(folder.path("history.sqlite.zst")).unwrap();
+    fs::remove_file(folder.path(&names().db)).unwrap();
 
     let installed = install(&folder, &release, &AtomicBool::new(false));
 
-    assert_eq!(
-        installed.unwrap(),
-        folder.root().join("history-v2-index-16.19")
-    );
+    assert_eq!(installed.unwrap(), folder.root().join(installed_name()));
 }
 
 #[test]
 fn a_database_download_that_stopped_resumes_from_where_it_stopped() {
     let folder = Folder::new();
-    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+    folder.put(&names().db, &long_db_zst(400_000));
     let release = folder.release();
     let stopped = install_stopping(&folder, &release, &AtomicBool::new(false), Some(100_000));
     assert!(matches!(stopped, Err(AppError::Cancelled)), "{stopped:?}");
 
     let installed = install(&folder, &release, &AtomicBool::new(false)).unwrap();
 
-    assert_eq!(installed, folder.root().join("history-v2-index-16.19"));
+    assert_eq!(installed, folder.root().join(installed_name()));
     let asked = folder.asked.lock().unwrap().clone();
     assert_eq!(asked.len(), 2, "{asked:?}");
     assert!(
@@ -351,7 +462,7 @@ fn a_database_download_that_stopped_resumes_from_where_it_stopped() {
 #[test]
 fn a_download_is_checked_as_it_comes_with_no_step_of_its_own() {
     let folder = Folder::new();
-    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+    folder.put(&names().db, &long_db_zst(400_000));
 
     let (installed, seen) = install_seen(&folder, &folder.release());
 
@@ -366,7 +477,7 @@ fn a_download_is_checked_as_it_comes_with_no_step_of_its_own() {
 #[test]
 fn a_resumed_download_checks_the_bytes_it_kept_before_the_rest() {
     let folder = Folder::new();
-    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+    folder.put(&names().db, &long_db_zst(400_000));
     let release = folder.release();
     install_stopping(&folder, &release, &AtomicBool::new(false), Some(100_000)).unwrap_err();
 
@@ -394,7 +505,7 @@ fn a_resumed_download_checks_the_bytes_it_kept_before_the_rest() {
 #[test]
 fn a_database_download_of_another_version_starts_again() {
     let folder = Folder::new();
-    folder.put("history.sqlite.zst", &long_db_zst(400_000));
+    folder.put(&names().db, &long_db_zst(400_000));
     let release = folder.release();
     install_stopping(&folder, &release, &AtomicBool::new(false), Some(100_000)).unwrap_err();
     *folder.etag.lock().unwrap() = "\"two\"".to_string();
@@ -407,19 +518,45 @@ fn a_database_download_of_another_version_starts_again() {
 }
 
 #[test]
+fn a_database_under_another_name_downloads_from_the_start() {
+    let folder = Folder::new();
+    let bytes = long_db_zst(400_000);
+    folder.put(&names().db, &bytes);
+    // The same bytes, size and digest under the name a release gave them before they carried a
+    // format.
+    folder.put("history.sqlite.zst", &bytes);
+    let unformatted = IndexRelease {
+        db: folder.asset("history.sqlite.zst"),
+        ..folder.release()
+    };
+    install_stopping(
+        &folder,
+        &unformatted,
+        &AtomicBool::new(false),
+        Some(100_000),
+    )
+    .unwrap_err();
+
+    install(&folder, &folder.release(), &AtomicBool::new(false)).unwrap();
+
+    let asked = folder.asked.lock().unwrap().clone();
+    assert_eq!(asked, [0, 0], "the download started from the start");
+}
+
+#[test]
 fn a_database_of_other_bytes_than_the_release_lists_is_not_kept() {
     let folder = Folder::new();
     let release = folder.release();
     let mut other = db_zst();
     *other.last_mut().unwrap() ^= 0xff;
-    folder.put("history.sqlite.zst", &other);
+    folder.put(&names().db, &other);
 
     let Err(AppError::IndexDigest { file }) = install(&folder, &release, &AtomicBool::new(false))
     else {
         panic!("a database of other bytes was taken");
     };
 
-    assert_eq!(file, "history.sqlite.zst");
+    assert_eq!(file, names().db);
     assert!(entries(&folder.root()).is_empty());
     assert!(
         entries(&folder.downloads()).is_empty(),
@@ -428,10 +565,10 @@ fn a_database_of_other_bytes_than_the_release_lists_is_not_kept() {
     );
 }
 
-/// The newest published index installed in a scratch folder and opened. Its database is
-/// compressed with a window of 2 GiB, which the unpacking takes.
+/// The newest published index of the app's format installed in a scratch folder and opened.
+/// Its database is compressed with a window of 2 GiB, which the unpacking takes.
 #[test]
-#[ignore = "downloads the published index, some 770 MB, and unpacks it, 2.75 GB"]
+#[ignore = "downloads the published index, some 1.7 GB, and unpacks it, 4.8 GB"]
 fn the_published_index_installs() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().join("indexes")).unwrap();
@@ -442,13 +579,23 @@ fn the_published_index_installs() {
     let installed = Installer::new(&web, &AtomicBool::new(false), &mut progress)
         .install(&release, &root, &root.join("downloads"))
         .unwrap();
-    eprintln!("{} installed in {:.0?}", release.tag, started.elapsed());
+    eprintln!(
+        "{} ({}) installed in {:.0?} as {}",
+        release.tag,
+        release.db.name,
+        started.elapsed(),
+        installed.file_name().unwrap()
+    );
+    assert_eq!(installed, root.join(index::folder_name(&release.tag)));
     let history = SqliteHistory::open(&installed).unwrap();
     let stamp = history.stamp().expect("a stamp");
     eprintln!("{} builds, up to {}", stamp.builds, stamp.newest_build);
 }
 
 #[test]
-fn a_tag_becomes_a_folder_name_with_no_separator() {
-    assert_eq!(index::folder_name("a/b\\c:d v1.2"), "a_b_c_d_v1.2");
+fn a_tag_becomes_a_folder_name_with_no_separator_and_the_format() {
+    assert_eq!(
+        index::folder_name("a/b\\c:d v1.2"),
+        format!("a_b_c_d_v1.2-v{FORMAT}")
+    );
 }

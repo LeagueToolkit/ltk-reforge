@@ -183,7 +183,8 @@ pub async fn load_selection(path: String) -> IpcResult<FixupChoice> {
     off_thread(move || FixupChoice::open(Utf8Path::new(&path))).await
 }
 
-/// The newest release of the census history that holds an index. None when none does.
+/// The newest release of the census history that holds an index of the app's format. None when
+/// none does.
 #[tauri::command]
 #[specta::specta]
 pub async fn index_release() -> IpcResult<Option<IndexReleaseView>> {

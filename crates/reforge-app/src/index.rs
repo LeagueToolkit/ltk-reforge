@@ -1,12 +1,13 @@
 //! The prebuilt history index, fetched from a release of the census history and unpacked on
-//! the user's machine (#ADR-0047; `docs/design/ROADMAP-UX.md`, "The history index").
+//! the user's machine (#ADR-0047; `docs/design/HISTORY.md`, "Distribution").
 //!
-//! A release that holds an index holds its three files: `stamp.json`, `builds.tsv` and
-//! `history.sqlite.zst`, each with the SHA-256 GitHub lists for it, and may hold the census
-//! history as an archive (#ADR-0060). Every byte is checked against its digest: the database
-//! downloads into a file that a later download resumes, and is unpacked once it is whole. An
-//! index is installed in a folder named for its release, and opened before the settings point
-//! at it, so an index the app holds open is never replaced.
+//! A release holds the three files of an index for each format published, named with the
+//! format ([`ReleaseNames`]), each with the SHA-256 GitHub lists for it, and may hold the census
+//! history as an archive (#ADR-0060). The app reads only its own format's. Every byte is
+//! checked against its digest: the database downloads into a file that a later download
+//! resumes, and is unpacked once it is whole. An index is installed in a folder named for its
+//! release and format, and opened before the settings point at it, so an index the app holds
+//! open is never replaced.
 
 use std::io::{self, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,7 +15,7 @@ use std::time::Duration;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use reforge::history::{BUILDS_FILE, DB_FILE, STAMP_FILE, SqliteHistory};
+use reforge::history::{BUILDS_FILE, DB_FILE, FORMAT, STAMP_FILE, SqliteHistory};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zstd::stream::read::Decoder;
@@ -25,15 +26,39 @@ use crate::error::{AppError, chain};
 /// The releases of the census history, newest first.
 pub const RELEASES: &str = "https://api.github.com/repos/LeagueToolkit/ltk-census-history/releases";
 
-/// The database as a release holds it.
-pub const DB_ZST_FILE: &str = "history.sqlite.zst";
-
 /// The census history as a release holds it: a bare repository, in tar, in zstd.
 pub const ARCHIVE_FILE: &str = "ltk-census-history.git.tar.zst";
 
 /// The largest window, as a power of two, a frame of the database may ask for: 2 GiB, as
 /// `zstd --long=31` writes it. Unpacking holds a window of memory.
 const WINDOW_LOG_MAX: u32 = 31;
+
+/// The names a release gives the files of an index of one format: each file's name in the
+/// index's directory with `-v<format>` before its extension, and the database's compressed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseNames {
+    /// The stamp's, `stamp-v<format>.json`.
+    pub stamp: String,
+    /// The list of builds', `builds-v<format>.tsv`.
+    pub builds: String,
+    /// The database's, in zstd, `history-v<format>.sqlite.zst`.
+    pub db: String,
+}
+
+impl ReleaseNames {
+    /// The names of the files of an index of `format`.
+    pub fn of(format: u32) -> Self {
+        let versioned = |file: &str| match file.split_once('.') {
+            Some((stem, extension)) => format!("{stem}-v{format}.{extension}"),
+            None => format!("{file}-v{format}"),
+        };
+        Self {
+            stamp: versioned(STAMP_FILE),
+            builds: versioned(BUILDS_FILE),
+            db: format!("{}.zst", versioned(DB_FILE)),
+        }
+    }
+}
 
 /// One file of a release.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,7 +73,7 @@ pub struct Asset {
     pub url: String,
 }
 
-/// A release that holds an index.
+/// A release that holds an index of the app's format.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IndexRelease {
     /// The release's tag.
@@ -92,28 +117,30 @@ impl ApiRelease {
         })
     }
 
-    fn index(&self) -> Option<IndexRelease> {
+    fn index(&self, names: &ReleaseNames) -> Option<IndexRelease> {
         if self.draft {
             return None;
         }
         Some(IndexRelease {
             tag: self.tag_name.clone(),
-            stamp: self.asset(STAMP_FILE)?,
-            builds: self.asset(BUILDS_FILE)?,
-            db: self.asset(DB_ZST_FILE)?,
+            stamp: self.asset(&names.stamp)?,
+            builds: self.asset(&names.builds)?,
+            db: self.asset(&names.db)?,
             archive: self.asset(ARCHIVE_FILE),
         })
     }
 }
 
-/// The newest release in GitHub's list of releases that holds a whole index, each file with
-/// its digest. None when no release does.
+/// The newest release in GitHub's list of releases that holds a whole index of the app's
+/// format, each file with its digest. None when no release does: a release of other formats
+/// only holds no index for the app.
 pub fn pick(releases_json: &str) -> Result<Option<IndexRelease>, AppError> {
     let releases: Vec<ApiRelease> =
         serde_json::from_str(releases_json).map_err(|error| AppError::IndexFetch {
             detail: format!("the list of releases does not read: {error}"),
         })?;
-    Ok(releases.iter().find_map(ApiRelease::index))
+    let names = ReleaseNames::of(FORMAT);
+    Ok(releases.iter().find_map(|release| release.index(&names)))
 }
 
 /// Where the files of a release are read from: the web, or a test's folder.
@@ -184,7 +211,7 @@ impl Web {
         &self.client
     }
 
-    /// The newest release that holds an index.
+    /// The newest release that holds an index of the app's format.
     pub fn latest(&self) -> Result<Option<IndexRelease>, AppError> {
         let mut text = String::new();
         self.open(RELEASES)?
@@ -344,10 +371,11 @@ impl<'a> Installer<'a> {
         }
     }
 
-    /// Installs a release's index in `root/<tag>` and answers that folder. The database
-    /// downloads into `downloads` first, where a download that stops is kept for the next
-    /// (#ADR-0060). The folder is written beside as `<tag>.partial` and renamed once the index
-    /// opens, so a folder of that name is a whole index.
+    /// Installs a release's index in `root/<tag>-v<format>` and answers that folder. The
+    /// database downloads into `downloads` first, under the release's tag and the database's
+    /// name, where a download that stops is kept for the next (#ADR-0060). The folder is written
+    /// beside with `.partial` after its name and renamed once the index opens, so a folder of
+    /// that name is a whole index.
     pub fn install(
         &mut self,
         release: &IndexRelease,
@@ -364,7 +392,7 @@ impl<'a> Installer<'a> {
         }
 
         self.total = release.stamp.size + release.builds.size + release.db.size;
-        let db = downloads.join(format!("{name}-{}", release.db.name));
+        let db = downloads.join(format!("{}-{}", path_safe(&release.tag), release.db.name));
         let (cancel, total) = (self.cancel, self.total);
         let progress = &mut *self.progress;
         // The database comes first, so its bytes downloaded are the release's.
@@ -554,10 +582,16 @@ impl IndexRelease {
     }
 }
 
-/// The folder a release's index is installed in: its tag, with nothing a path would read as a
-/// separator.
-pub fn folder_name(tag: &str) -> String {
-    tag.chars()
+/// The folder an index of the app's format is installed in: `name`, with nothing a path would
+/// read as a separator, and `-v<format>`. Two versions of the app that read two formats write
+/// no folder in common.
+pub fn folder_name(name: &str) -> String {
+    format!("{}-v{FORMAT}", path_safe(name))
+}
+
+/// `text` with nothing a path would read as a separator.
+pub(crate) fn path_safe(text: &str) -> String {
+    text.chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '.' || c == '-' {
                 c

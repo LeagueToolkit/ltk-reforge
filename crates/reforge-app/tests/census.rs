@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use reforge::history::{Families, Stamp};
+use reforge::history::{FORMAT, Families, Stamp};
 use reforge_app::census::Updater;
 use reforge_app::error::AppError;
 use reforge_census::{GitRepo, Indexer};
@@ -120,7 +120,10 @@ fn an_index_behind_the_history_is_taken_forward_into_a_folder_of_its_own() {
     let updated = updater.update(&first).unwrap().expect("a new index");
 
     let head = &server.commits[1];
-    assert_eq!(updated, indexes.join(format!("head-{}", &head[..12])));
+    assert_eq!(
+        updated,
+        indexes.join(format!("head-{}-v{FORMAT}", &head[..12]))
+    );
     let stamp = Stamp::read(&updated).unwrap();
     assert_eq!((&stamp.head, stamp.builds), (head, 2));
     assert_eq!(
