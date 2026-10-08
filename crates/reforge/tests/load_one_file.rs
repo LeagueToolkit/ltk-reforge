@@ -6,7 +6,7 @@ use fs_err as fs;
 use reforge::archive::file_kind;
 use reforge::diag::{Diagnostics, Stage};
 use reforge::env::Env;
-use reforge::game::{NameBook, Names};
+use reforge::game::{GameView, NameBook, Names};
 use reforge::history::NoHistory;
 use reforge::load::{FileFixCx, LoadOptions, NewFile, TakenFromGame, TakenSkin};
 use reforge::model::entity::{
@@ -91,7 +91,7 @@ fn a_file_fixup_adds_nothing_where_the_wad_holds_a_file() {
     let there = m
         .push_file(node(test, BASE_TEX, b"the mod's own"))
         .expect("free");
-    let game = skins::game();
+    let game = GameView::new(Box::new(skins::game()));
     let (mut book, mut log) = (NameBook::new(), Diagnostics::new());
     let mut sink = log.at(Stage::Load);
     let mut cx = FileFixCx {

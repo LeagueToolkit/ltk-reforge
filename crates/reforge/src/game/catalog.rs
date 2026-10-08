@@ -1,6 +1,6 @@
 //! The skins the game has for one character: each skin's identity, rig files, links and clips,
 //! and the objects its bins hold, by entry and by content, so that an object a mod pasted is
-//! traced to the skin it came from (#ADR-0043).
+//! traced to the skin it came from (#ADR-0080).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use std::sync::Arc;
 use ltk_meta::BinObject;
 use serde::Serialize;
 
-use super::view::GameBin;
+use super::source::GameBin;
 use crate::model::{AudioBlock, BinHash, ContentId, SkinEntry, Slot, WadHash, value};
 
 /// How many bins of one skin are read for the catalog, the skin bin included: the skin bin and

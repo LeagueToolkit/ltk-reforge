@@ -19,7 +19,7 @@ use super::{BinWrite, Chunk, ChunkKey, Layer, Origin, Package, WrittenBin};
 use crate::diag::{Halted, Sink};
 use crate::env::Env;
 use crate::fixups::{Changes, FixedMod};
-use crate::game::{GameView, NameBook, Names, Speller};
+use crate::game::{GameSource, NameBook, Names, Speller};
 use crate::load::{Fault, LoadOptions, Staleness};
 use crate::model::entity::{BinId, FileId, FileKind, FileNode, FileSource};
 use crate::model::value::{self, FileRef};
@@ -42,7 +42,7 @@ pub struct InPlaceBuilder<'a> {
     changes: &'a Changes,
     names: Option<(&'a NameBook, &'a Names)>,
     stale: Option<Staleness<'a>>,
-    game: Option<&'a GameView>,
+    game: Option<&'a dyn GameSource>,
     keep_dds: bool,
 }
 

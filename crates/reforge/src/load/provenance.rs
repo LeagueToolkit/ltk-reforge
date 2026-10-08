@@ -15,19 +15,15 @@ use serde::{Serialize, Serializer};
 
 use super::Fault;
 use crate::diag::{Channel, Code, Diag, Message, Severity, Sink, Subject};
-use crate::game::{Game, GameError, SizeIndex};
+pub use crate::game::MAX_SAME_SIZE_READS;
+use crate::game::{GameError, GameSource};
 use crate::history::{History, Life};
 use crate::model::entity::{FileId, FileNode, FileUse, Mod, WadId, WadRole};
 use crate::model::hash::skin_paths;
-use crate::model::{ContentId, FileKey, SideTable, Slot, Spell, WadHash, WadName};
+use crate::model::{FileKey, SideTable, Slot, Spell, WadHash, WadName};
 
 /// Every diagnostic code file provenance raises.
 pub const CODES: &[Code] = &[OlderGameFiles::CODE, SameSizeCapped::CODE];
-
-/// How many game chunks of a file's size are read to look for its bytes under another path.
-// #ADR-0070, measured 2026-10-06: a file of the datasets meets at most 1,167 chunks of its size
-// in its champion's WAD at 16.19.
-pub const MAX_SAME_SIZE_READS: usize = 2048;
 
 /// What the install holds at a file's own path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -219,9 +215,7 @@ impl Diag for SameSizeCapped {
 #[derive(Clone, Copy)]
 pub struct Against<'a> {
     /// The target game.
-    pub game: &'a dyn Game,
-    /// The game's chunks by size, where a copy under another path is looked for.
-    pub sizes: &'a SizeIndex,
+    pub game: &'a dyn GameSource,
     /// The build history.
     pub history: &'a dyn History,
     /// The names that spell a game path: a copy is ranked, and its skin folder told, by them.
@@ -242,7 +236,6 @@ impl FileProvenance {
     pub fn find(m: &Mod, against: &Against<'_>) -> Result<Self, Fault> {
         let mut finder = Finder {
             against: *against,
-            contents: BTreeMap::new(),
             capped: Vec::new(),
         };
         let mut out = Self::default();
@@ -338,32 +331,17 @@ impl Serialize for FileProvenance {
     }
 }
 
-/// The search for one mod's files, with what it read of the game.
+/// The search for one mod's files.
 struct Finder<'a> {
     against: Against<'a>,
-    /// The digest of each game chunk read. None for a path the game gave no bytes at.
-    contents: BTreeMap<WadHash, Option<ContentId>>,
     /// The files whose chunks of their size passed the cap.
     capped: Vec<FileId>,
 }
 
 impl Finder<'_> {
-    /// Whether the game's chunk at a path has a file's bytes. A chunk of another size is not
-    /// read.
-    fn holds(&mut self, path: WadHash, file: &FileNode) -> Result<bool, GameError> {
-        let game = self.against.game;
-        if game.size(path) != Some(file.size) {
-            return Ok(false);
-        }
-        let content = match self.contents.get(&path) {
-            Some(content) => *content,
-            None => {
-                let content = game.read(path)?.map(|bytes| ContentId::of(&bytes));
-                self.contents.insert(path, content);
-                content
-            }
-        };
-        Ok(content == Some(file.content))
+    /// Whether the game's file at a path has a file's bytes.
+    fn holds(&self, path: WadHash, file: &FileNode) -> Result<bool, GameError> {
+        self.against.game.holds(path, file.size, file.content)
     }
 
     /// Ranks equal copies so that the one named is the one that outlives the others: the
@@ -383,7 +361,6 @@ impl Finder<'_> {
         let wad = &m.wads[file.wad];
         let Against {
             game,
-            sizes,
             history,
             names,
         } = self.against;
@@ -396,24 +373,21 @@ impl Finder<'_> {
             WadRole::Other => (Some(wad.name.clone()), ""),
         };
 
-        let at_path = match game.size(file.hash) {
-            None => AtPath::NotGamePath,
-            Some(_) if self.holds(file.hash, file)? => AtPath::SameBytes,
-            Some(_) => AtPath::OtherBytes,
+        let at_path = match game.contains(file.hash) {
+            false => AtPath::NotGamePath,
+            true if self.holds(file.hash, file)? => AtPath::SameBytes,
+            true => AtPath::OtherBytes,
         };
         let mut paths = Vec::new();
         if at_path == AtPath::SameBytes {
             paths.push(file.hash);
         }
-        let same_size = home.map_or(&[][..], |home| sizes.same_size(&home, file.size));
-        let others = same_size.iter().filter(|path| **path != file.hash);
-        if others.clone().count() > MAX_SAME_SIZE_READS {
-            self.capped.push(id);
-        }
-        for &other in others.take(MAX_SAME_SIZE_READS) {
-            if self.holds(other, file)? {
-                paths.push(other);
+        if let Some(home) = home {
+            let copies = game.copies(&home, file.size, file.content, file.hash)?;
+            if copies.capped {
+                self.capped.push(id);
             }
+            paths.extend(copies.paths);
         }
         paths.sort_by_cached_key(|path| (self.rank(character, *path), path.0));
 

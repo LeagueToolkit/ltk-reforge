@@ -11,7 +11,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use reforge::diag::{Diagnostics, Render, Sink, Stage};
 use reforge::env::Env;
 use reforge::game::{
-    Game, Install, MimirAbsent, NameBook, NameSource, Names, NoBuild, Schema, SchemaAbsent,
+    Install, MimirAbsent, NameBook, NameSource, Names, NoBuild, Schema, SchemaAbsent,
     SchemaUnreadable, Speller, UnreadableWad, VersionUnknown, WadsUnreadable, mimir_cache_dir,
 };
 use reforge::history::{HistoryAbsent, IndexMissing, SqliteHistory};

@@ -25,7 +25,7 @@ use super::overlay::{Loaded, MAX_OVERLAY_BINS, Outcome, Overlay};
 use super::{Layer, Origin, Package, PatchOf, WrittenBin};
 use crate::diag::{Record, Sink};
 use crate::fixups::{TargetTypes, TypeSource};
-use crate::game::{FieldType, Game as _, GameBin, GameView};
+use crate::game::{FieldType, GameBin, GameSource};
 use crate::model::entity::UnitId;
 use crate::model::{
     BinHash, Fields, SkinEntry, WadHash, bin, name_hash, panic_text, path_hash, value,
@@ -94,7 +94,7 @@ pub struct CheckCx<'a> {
     /// The target build's type of each field of each class.
     pub types: &'a TargetTypes<'a>,
     /// The game the package is for. Without it no file is looked for.
-    pub game: Option<&'a GameView>,
+    pub game: Option<&'a dyn GameSource>,
     /// The package's patches applied to the game's bins. None for a package with no patch.
     pub overlay: Option<&'a Overlay>,
     /// The plan the package was built from. None for a repair.
@@ -115,7 +115,12 @@ impl<'a> CheckCx<'a> {
 
     /// What the checks of a port's package read.
     #[must_use]
-    pub fn of_port(mut self, game: &'a GameView, overlay: &'a Overlay, port: &'a Port) -> Self {
+    pub fn of_port(
+        mut self,
+        game: &'a dyn GameSource,
+        overlay: &'a Overlay,
+        port: &'a Port,
+    ) -> Self {
         self.game = Some(game);
         self.overlay = Some(overlay);
         self.port = Some(port);

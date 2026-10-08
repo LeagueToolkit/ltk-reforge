@@ -56,7 +56,6 @@ impl<'a> TargetTypes<'a> {
     /// shapes of the game's bins of every skin of the mod's characters. A skin's bins are its
     /// skin bin and what that links, breadth first, up to [`MAX_CHAIN`].
     pub fn of(m: &Mod, env: &'a Env) -> Result<Self, GameError> {
-        use crate::game::Game as _;
         let game = env.game();
         let mut types = Self::new(env.schema(), game.build());
         let characters: BTreeSet<&str> = m.characters.values().map(|c| c.name.as_str()).collect();

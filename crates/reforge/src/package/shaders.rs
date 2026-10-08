@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use ltk_meta::{BinObject, PropertyValueEnum as V};
 
 use super::findings::{ShaderLink, ShaderMissing};
-use crate::game::{GameError, GameView, SHADERS_BIN};
+use crate::game::{GameError, GameSource, SHADERS_BIN};
 use crate::model::walk::structs;
 use crate::model::{BinHash, name_hash, path_hash};
 
@@ -16,7 +16,7 @@ use crate::model::{BinHash, name_hash, path_hash};
 /// its shaders.
 pub(super) fn missing<'o>(
     objects: impl IntoIterator<Item = &'o BinObject>,
-    game: &GameView,
+    game: &dyn GameSource,
 ) -> Result<Option<ShaderMissing>, GameError> {
     let Some(shaders) = game.bin(path_hash(SHADERS_BIN))? else {
         return Ok(None);

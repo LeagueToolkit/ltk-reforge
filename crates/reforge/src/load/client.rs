@@ -18,7 +18,6 @@ use super::findings::{
 use super::stale::Staleness;
 use super::{Fault, MAX_LOAD_BINS, Run};
 use crate::diag::Sink;
-use crate::game::Game;
 use crate::history::HistoryError;
 use crate::model::entity::{
     BinId, BinNode, CharId, FileId, FileUse, Link, LinkTo, ObjectId, ObjectNode, UnitId,

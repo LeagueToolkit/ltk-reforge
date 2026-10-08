@@ -12,7 +12,7 @@ use ltk_game_data::{ApplyDiagnosticKind, NoSchema, Selector};
 use ltk_meta::BinObject;
 
 use super::{Layer, Package};
-use crate::game::{GameBin, GameError, GameView};
+use crate::game::{GameBin, GameError, GameSource};
 use crate::model::{BinHash, ChunkPath, WadHash, WadName, bin, path_hash};
 use crate::port::SHADERS_BIN;
 
@@ -140,7 +140,7 @@ fn changed(before: &[BinObject], after: &[BinObject]) -> Vec<(usize, Vec<BinHash
 
 impl Overlay {
     /// Applies every patch of a package to the game's bins.
-    pub fn apply(package: &Package, game: &GameView) -> Result<Self, GameError> {
+    pub fn apply(package: &Package, game: &dyn GameSource) -> Result<Self, GameError> {
         let _span = tracing::info_span!("overlay").entered();
         let mut out = Self::default();
         // Each target bin as the base layer leaves it, for the other layers to apply over.
@@ -238,7 +238,7 @@ impl Overlay {
     /// Everything a patched bin loads.
     fn load(
         package: &Package,
-        game: &GameView,
+        game: &dyn GameSource,
         bin: &AppliedBin,
         added: &[&ChunkPath],
     ) -> Result<Loaded, GameError> {

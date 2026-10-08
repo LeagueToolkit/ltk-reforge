@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use reforge::archive::file_kind;
 use reforge::diag::{Channel, Diag, Diagnostics, Render, Severity, Stage, Subject};
-use reforge::game::{Build, Game, GameError, SizeIndex};
+use reforge::game::{Build, Game, GameError, GameView, SizeIndex};
 use reforge::history::{History, HistoryError, Life, NoHistory};
 use reforge::load::Fault;
 use reforge::load::provenance::{
@@ -87,10 +87,15 @@ impl World {
         self.names.0.insert(path_hash(path), path.to_string());
     }
 
+    /// The game as a stage asks it.
+    fn view(&self) -> GameView {
+        GameView::new(Box::new(self.game.clone())).sizes(self.sizes.clone())
+    }
+
     fn find(&self, m: &Mod, history: &dyn History) -> FileProvenance {
+        let game = self.view();
         let against = Against {
-            game: &self.game,
-            sizes: &self.sizes,
+            game: &game,
             history,
             names: &self.names,
         };
@@ -639,13 +644,12 @@ impl Game for BrokenGame {
 fn a_game_chunk_that_does_not_read_is_a_fault() {
     let mut world = World::new();
     world.ship(BODY, &blob("game body"));
-    let broken = BrokenGame(world.game);
+    let broken = GameView::new(Box::new(BrokenGame(world.game))).sizes(world.sizes);
     let (mut m, wad) = test_mod();
     let copy = file(&mut m, wad, BODY, &blob("game body"));
 
     let against = Against {
         game: &broken,
-        sizes: &world.sizes,
         history: &NoHistory,
         names: &NoNames,
     };
@@ -661,9 +665,9 @@ fn a_history_that_does_not_answer_is_a_fault() {
     world.ship(BODY, &blob("game body"));
     let (mut m, wad) = test_mod();
     let broken = BrokenHistory(builds());
+    let game = world.view();
     let against = Against {
-        game: &world.game,
-        sizes: &world.sizes,
+        game: &game,
         history: &broken,
         names: &NoNames,
     };

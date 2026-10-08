@@ -1,5 +1,5 @@
 //! A unit's rig against the game's skins: the mesh and its submeshes, the skeleton, the clips
-//! at a slot, and the typed questions the game answers them from (#ADR-0043). The game is
+//! at a slot, and the typed questions the game answers them from (#ADR-0080). The game is
 //! `reforge_testkit::skins`, with rig files that read where a test needs them.
 
 use reforge::facts::rig::GraphFrom;
@@ -7,7 +7,7 @@ use reforge::facts::{
     Aspect, CatalogCapped, FactsError, Outcome, RigPart, RigUnreadable, Source, SubmeshesCopied,
     Visibility, Why,
 };
-use reforge::game::{Build, Game, GameError, GameView, MAX_CHAIN, SkinClass};
+use reforge::game::{Build, Game, GameError, GameSource, GameView, MAX_CHAIN, SkinClass};
 use reforge::history::NoHistory;
 use reforge::model::entity::FileId;
 use reforge::model::{Slot, WadHash, WadName, name_hash, path_hash};

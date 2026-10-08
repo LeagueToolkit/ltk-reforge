@@ -81,11 +81,11 @@ In this order. Each item is one or more changes measured against the baseline.
    cut from the mod's own events bank were checked and work, the last with the mod's own buses
    carried (#ADR-0064) and the game unit it left out left out (#ADR-0063)
    ([RUNS.md](RUNS.md), "Ports in game").
-3. **A game source that answers from the history**: a run with no install, and against the
-   game at any build the history holds (#ADR-0042, #ADR-0043). The index holds what the typed
-   questions need but vertex positions.
+3. **A game source that answers from the history**: not built. The target install stays
+   required: it answers what the target build holds, and the index what builds held
+   (#ADR-0080).
 4. **The author's change taken against the game at the mod's own build**, applied onto the
-   target build (#ADR-0043). `Base` is where the comparison says which build. A sub-character's
+   target build (#ADR-0080). `Base` is where the comparison says which build. A sub-character's
    game value of the mod's build, the health bar style among them, is handled here (#ADR-0067).
 5. **What ltk-forge held for later**: sounds over the game's (#GAME-BEHAVIOR-0016); a name
    made to hash to a field no table names (#ADR-0031); event names without a list; the
@@ -174,11 +174,6 @@ record and no measurement of reforge's own says it is right.
   (#GAME-BEHAVIOR-0012). One mod of the datasets carries 26 such events (#ADR-0075).
 - 84 sound units have an events bank of version 134 that plays their clips, and nothing
   converts a bank from 134 to 145.
-- The history holds no vertex positions, so a source backed by it does not answer which
-  submeshes of an own mesh are copied from another skin (#ADR-0043). No digest of rounded
-  positions is asked of the census (the user, 2026-10-04): a rounding rule frozen into the
-  history serves one check, and stays in the data when the rule proves wrong, where an exact
-  hash keeps its use.
 - The three earliest reworks of #GAME-CHANGE-0001 (Mordekaiser, Pantheon, Fiddlesticks) are
   known by their joint names alone. Their submeshes and dropped paths are not measured.
 - A port to skin0 can name a premium skin of the champion in a value a check of the base skin

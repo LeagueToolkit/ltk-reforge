@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use reforge::env::{Env, EnvError};
-use reforge::game::{Build, Game, GameError, GameView};
+use reforge::game::{Build, Game, GameError, GameSource, GameView};
 use reforge::load::{LoadError, LoadOptions};
 use reforge::model::{ContentId, Slot, WadHash, WadName, path_hash};
 use reforge_testkit::bins::{bin, blob, entry, graph, linked_bin};
@@ -69,12 +69,22 @@ fn an_environment_needs_a_game_and_nothing_else() {
     assert!(env.schema().is_none());
     assert_eq!(env.names().path(path_hash(BASE_MESH)), None);
     assert_eq!(env.game().build().map(Build::as_str), Some("16.19.1"));
+    // No chunk by size was given: a copy under another path is not found.
+    let copies = mesh_copies(&env);
+    assert!(copies.paths.is_empty() && !copies.capped);
+}
+
+/// The paths of the game's champion WAD, but one the game does not hold, with the bytes of the
+/// base's mesh.
+fn mesh_copies(env: &Env) -> reforge::game::Copies {
     let wad = WadName::parse(skins::WAD).expect("a WAD name");
-    assert!(
-        env.sizes()
-            .same_size(&wad, blob(BASE_MESH).len() as u64)
-            .is_empty()
+    let (size, content) = (
+        blob(BASE_MESH).len() as u64,
+        ContentId::of(&blob(BASE_MESH)),
     );
+    let besides = path_hash("assets/elsewhere.skn");
+    let copies = env.game().copies(&wad, size, content, besides);
+    copies.expect("the game reads")
 }
 
 #[test]
@@ -89,19 +99,21 @@ fn an_environment_holds_what_it_was_given() {
     let env = env.build().expect("an environment");
     assert!(env.has_history());
     assert_eq!(env.history().builds().len(), 2);
-    let wad = WadName::parse(skins::WAD).expect("a WAD name");
-    let same = env.sizes().same_size(&wad, blob(BASE_MESH).len() as u64);
-    assert!(same.contains(&path_hash(BASE_MESH)));
+    assert_eq!(mesh_copies(&env).paths, [path_hash(BASE_MESH)]);
 }
 
 #[test]
 fn the_view_answers_as_its_game_does() {
     let (view, ..) = counting(skins::game());
     let mesh = path_hash(BASE_MESH);
-    assert_eq!(view.size(mesh), Some(blob(BASE_MESH).len() as u64));
+    let content = ContentId::of(&blob(BASE_MESH));
+    assert!(
+        view.holds(mesh, blob(BASE_MESH).len() as u64, content)
+            .expect("it reads")
+    );
     assert!(view.contains(mesh));
     assert!(!view.contains(path_hash("assets/nowhere.tex")));
-    assert_eq!(view.read(mesh).expect("it reads"), Some(blob(BASE_MESH)));
+    assert_eq!(view.content(mesh).expect("it reads"), Some(content));
     assert_eq!(
         view.wad_of(mesh).map(|w| w.to_string()).as_deref(),
         Some(skins::WAD)

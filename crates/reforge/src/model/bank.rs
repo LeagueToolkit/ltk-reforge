@@ -1,8 +1,8 @@
 //! A sound bank as the stages after `load` ask for one: an events bank's header and hierarchy,
 //! a media bank's clips by id and key, and the game's path of a bank a repath tool moved.
 //!
-//! The census history records the same of each bank, so the game answers these from an
-//! install's bytes or from the history alike (#ADR-0043).
+//! The history index records the same of each bank, so a bank the install holds and one a
+//! build held are one type (`History::events_banks`).
 
 use reforge_wwise::{Bank, BankKind, Object};
 use serde::Serialize;

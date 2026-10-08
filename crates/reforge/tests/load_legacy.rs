@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use fs_err as fs;
 use reforge::archive::file_kind;
 use reforge::diag::{Channel, Diag, Diagnostics, Render, Stage};
-use reforge::game::{NameBook, Names};
+use reforge::game::{GameView, NameBook, Names};
 use reforge::history::NoHistory;
 use reforge::load::files::{FileFixCx, FileFixup, one_record};
 use reforge::load::legacy::{
@@ -108,12 +108,13 @@ impl Fixture {
     /// Runs the fixup as `load` runs it.
     fn run(&mut self) {
         let fixup = LegacyFormats;
+        let game = GameView::new(Box::new(self.game.clone()));
         let mut stage = self.log.at(Stage::Load);
         let mut sink = stage.by(fixup.id(), one_record(&fixup));
         fixup
             .fix(&mut FileFixCx {
                 module: &mut self.module,
-                game: &self.game,
+                game: &game,
                 history: &NoHistory,
                 names: &Names::default(),
                 book: &mut self.book,

@@ -9,6 +9,7 @@ mod install;
 mod namehash;
 mod names;
 mod schema;
+mod source;
 mod speller;
 mod view;
 
@@ -32,8 +33,9 @@ pub use self::schema::{
     FieldType, SCHEMA_FILE, Schema, SchemaAbsent, SchemaError, SchemaInstallNewer,
     SchemaUnreadable, meta_cache_dir,
 };
+pub use self::source::{Copies, GameBin, GameSkin, GameSource, MAX_SAME_SIZE_READS};
 pub use self::speller::Speller;
-pub use self::view::{GameBin, GameSkin, GameView};
+pub use self::view::GameView;
 use crate::diag::{Code, Diag};
 use crate::model::{Version, WadHash, WadName};
 

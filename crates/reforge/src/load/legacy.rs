@@ -21,7 +21,7 @@ use serde::{Serialize, Serializer};
 
 use super::files::{FileFixCx, FileFixup, NewFile};
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
-use crate::game::Game;
+use crate::game::GameSource;
 use crate::history::HistoryError;
 use crate::model::entity::{FileId, FileKind, MadeBy, WadId};
 use crate::model::{ChunkPath, FixupInfo, Phase, panic_text};
@@ -418,7 +418,7 @@ impl FileFixup for LegacyFormats {
         &INFO
     }
 
-    fn destinations(&self, path: &ChunkPath, _game: &dyn Game) -> Vec<ChunkPath> {
+    fn destinations(&self, path: &ChunkPath, _game: &dyn GameSource) -> Vec<ChunkPath> {
         twin(path).map(|(twin, _)| twin).into_iter().collect()
     }
 

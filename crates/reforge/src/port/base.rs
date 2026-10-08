@@ -1,6 +1,6 @@
 //! The game's side of a comparison: the object an author's object is compared with.
 //!
-//! What the author changed is the mod against the game at the mod's own build (#ADR-0043).
+//! What the author changed is the mod against the game at the mod's own build (#ADR-0080).
 //! Every comparison of the plan and of the build asks its base here, so the build the base is
 //! read at is chosen in this file alone. It is the target build.
 
@@ -10,13 +10,13 @@ use std::sync::Arc;
 use ltk_meta::BinObject;
 
 use crate::env::Env;
-use crate::game::{GameBin, GameError, GameView, SkinCatalog};
+use crate::game::{GameBin, GameError, GameSource, SkinCatalog};
 use crate::model::{BinHash, ContentId, WadHash};
 
 /// The game an author's objects are compared with.
 #[derive(Clone, Copy)]
 pub struct Base<'a> {
-    game: &'a GameView,
+    game: &'a dyn GameSource,
 }
 
 /// The game's object under an entry.

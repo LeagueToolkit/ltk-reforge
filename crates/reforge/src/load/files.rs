@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use crate::diag::{Record, Sink};
-use crate::game::{Game, NameBook, Names, Speller};
+use crate::game::{GameSource, NameBook, Names, Speller};
 use crate::history::{History, HistoryError};
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, MadeBy, Occupied};
 use crate::model::{ChunkPath, ContentId, FixupInfo, Mod, Spell};
@@ -50,7 +50,7 @@ pub trait FileFixup: Send + Sync {
     /// makes a file from it, or would when the mod did not ship one there itself. A file at a
     /// path the game does not ship is counted as covered when the mod holds a file at one of
     /// them.
-    fn destinations(&self, path: &ChunkPath, game: &dyn Game) -> Vec<ChunkPath> {
+    fn destinations(&self, path: &ChunkPath, game: &dyn GameSource) -> Vec<ChunkPath> {
         let _ = (path, game);
         Vec::new()
     }
@@ -82,7 +82,7 @@ pub struct FileFixCx<'a, 's> {
     /// The mod, with its WADs and files and no character yet.
     pub module: &'a mut Mod,
     /// The target game.
-    pub game: &'a dyn Game,
+    pub game: &'a dyn GameSource,
     /// The build history.
     pub history: &'a dyn History,
     /// The name tables.

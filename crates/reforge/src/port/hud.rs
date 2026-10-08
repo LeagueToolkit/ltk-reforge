@@ -16,7 +16,6 @@ use super::findings::{HudCarried, entry_hex, hashes_hex_list};
 use super::layout::Layout;
 use super::plan::{PlanError, PortInputs};
 use crate::diag::Sink;
-use crate::game::Game as _;
 use crate::load::{LoadOptions, Staleness, legacy};
 use crate::model::entity::{CharId, CharKind, FileId, FileKind, FileSource, Mod, UnitId};
 use crate::model::hash::skin_paths;
@@ -145,7 +144,7 @@ impl HudPlan {
                     continue;
                 }
                 // Other bytes than the game's at the path, and no stale copy of its older ones.
-                let overrides = game.size(f.hash).is_some()
+                let overrides = game.contains(f.hash)
                     && !game.holds(f.hash, f.size, f.content)?
                     && !stale.of(m, file)?;
                 if !overrides {

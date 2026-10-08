@@ -205,7 +205,6 @@ impl std::fmt::Debug for LoadOptions {
 pub fn against<'a>(env: &'a Env, names: &'a dyn Spell) -> Against<'a> {
     Against {
         game: env.game(),
-        sizes: env.sizes(),
         history: env.history(),
         names,
     }

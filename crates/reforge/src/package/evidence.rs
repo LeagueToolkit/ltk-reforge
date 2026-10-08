@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use super::config::Made;
 use crate::env::Env;
-use crate::game::{Build, Game};
+use crate::game::Build;
 use crate::load::Dating;
 use crate::load::dating::Piece;
 use crate::model::{Mod, Spelled, clean, clean_json};

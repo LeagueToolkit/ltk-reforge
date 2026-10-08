@@ -8,7 +8,7 @@ use super::set::FixError;
 use super::types::{TargetTypes, TypeSource};
 use std::sync::Arc;
 
-use crate::game::{FieldType, GameBin, GameView, NameBook, Names, Speller};
+use crate::game::{FieldType, GameBin, GameSource, NameBook, Names, Speller};
 use crate::model::entity::{Character, ObjectId, SkinUnit};
 use crate::model::value::kind_name;
 use crate::model::{Arena, BinHash, FieldPath, FixupId, WadHash};
@@ -16,7 +16,7 @@ use crate::model::{Arena, BinHash, FieldPath, FixupId, WadHash};
 /// The context of one fixup over one run: what it reads, and where it records its changes.
 pub struct FixCx<'a> {
     pub(super) types: &'a TargetTypes<'a>,
-    pub(super) game: &'a GameView,
+    pub(super) game: &'a dyn GameSource,
     /// The number of the build the mod was made at or after.
     pub(super) source: Option<u64>,
     pub(super) characters: &'a Arena<Character>,

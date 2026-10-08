@@ -19,7 +19,7 @@ use crate::facts::{
     Verdict, Via, Weight,
 };
 use crate::fixups::{After, Change, Changes, Counts, ObjectSet, Snapshot};
-use crate::game::{Build, Game};
+use crate::game::Build;
 use crate::load::dating::{Bound, Piece};
 use crate::load::inventory::Inventory;
 use crate::load::provenance::FileFact;

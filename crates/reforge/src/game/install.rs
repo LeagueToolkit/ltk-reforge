@@ -135,7 +135,7 @@ impl Diag for VersionUnknown {
 
 /// The chunks of each champion WAD by their uncompressed size. A byte copy of a file under
 /// another path is found by reading the chunks of its size only.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SizeIndex {
     /// Lowercase WAD name, to size, to the chunks of that size in the order added.
     wads: HashMap<String, HashMap<u64, Vec<WadHash>>>,

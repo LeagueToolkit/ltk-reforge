@@ -18,7 +18,7 @@ use super::{Catalogs, FactsError, load_pool, pooled};
 use crate::diag::Sink;
 use crate::env::Env;
 use crate::fixups::FixedMod;
-use crate::game::{CatalogSkin, Game, SkinCatalog, graph_clips};
+use crate::game::{CatalogSkin, SkinCatalog, graph_clips};
 use crate::load::{FileProvenance, legacy, moved};
 use crate::model::entity::{CharId, FileId, Mod, SkinUnit, UnitId, WadId};
 use crate::model::known::{class, field};

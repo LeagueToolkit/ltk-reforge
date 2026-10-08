@@ -6,7 +6,7 @@
 //!
 //! Each result has a constructor that takes what it is found from, so the order of
 //! [`Facts::gather`] is the dependency graph. The game is asked typed questions and no chunk
-//! is read here (#ADR-0043).
+//! is read here (#ADR-0080).
 //!
 //! `docs/design/ARCHITECTURE.md`, "Facts".
 

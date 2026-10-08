@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use fs_err as fs;
 use reforge::archive::file_kind;
 use reforge::diag::{Channel, Diag, Diagnostics, Render, Stage};
-use reforge::game::{FieldType, NameBook, Names};
+use reforge::game::{FieldType, GameView, NameBook, Names};
 use reforge::history::{
     BinHit, BuildRow, ClipJoints, EventsBankHit, FileHit, HeldAt, History, HistoryError, Life,
     MeshHit, NamedBy, NoHistory, ObjectBytes, ObjectHit, PathHit, Placed, PlayedBy, Position,
@@ -130,14 +130,20 @@ impl Fixture {
             .expect("the path is free")
     }
 
+    /// The game as a stage asks it.
+    fn view(&self) -> GameView {
+        GameView::new(Box::new(self.game.clone()))
+    }
+
     /// Runs a fixup as `load` runs it.
     fn run(&mut self, fixup: &dyn FileFixup, history: &dyn History) {
+        let game = self.view();
         let mut stage = self.log.at(Stage::Load);
         let mut sink = stage.by(fixup.id(), one_record(fixup));
         // A history that does not answer is the caller's fault to handle: nothing is made.
         let _ = fixup.fix(&mut FileFixCx {
             module: &mut self.module,
-            game: &self.game,
+            game: &game,
             history,
             names: &Names::default(),
             book: &mut self.book,
@@ -591,7 +597,7 @@ fn a_base_texture_is_not_made_under_a_base_suffix() {
     assert!(f.log.is_empty(), "{:?}", f.codes());
     // The file is covered by no file at the suffixed name.
     let path = ChunkPath::parse(&old).unwrap();
-    assert!(MovedAssets.destinations(&path, &f.game).is_empty());
+    assert!(MovedAssets.destinations(&path, &f.view()).is_empty());
 
     // The skeleton beside it is made.
     let (old, new) = (format!("{BASE}/vi.skl"), format!("{BASE}/vi_base.skl"));
@@ -824,10 +830,11 @@ fn a_history_that_does_not_answer_moves_nothing() {
     assert!(f.made(BASE_MESH).is_none());
     assert!(f.log.is_empty(), "{:?}", f.codes());
 
+    let game = f.view();
     let mut stage = f.log.at(Stage::Load);
     let result = MovedAssets.try_fix(&mut FileFixCx {
         module: &mut f.module,
-        game: &f.game,
+        game: &game,
         history: &broken,
         names: &Names::default(),
         book: &mut f.book,

@@ -13,7 +13,6 @@ use super::findings::{RefDangling, RefUnmounted};
 use super::plan::{Objects, PlanError, PortInputs};
 use super::reach::{Fate, Reach};
 use crate::diag::Sink;
-use crate::game::Game as _;
 use crate::load::provenance::{AtPath, BytesOrigin};
 use crate::load::{LoadOptions, Staleness, legacy, moved};
 use crate::model::entity::{FileId, Mod, UnitId};

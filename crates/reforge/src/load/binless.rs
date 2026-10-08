@@ -22,7 +22,7 @@ use super::rework::Around;
 use super::stale::Staleness;
 use super::{Fault, Run, locale_tag};
 use crate::diag::Sink;
-use crate::game::{Game, GameSkin};
+use crate::game::GameSkin;
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, WadId};
 use crate::model::hash::skin_paths;
 use crate::model::{ContentId, MAX_SLOT, Slot, Spell, WadHash, path_hash};
@@ -100,7 +100,7 @@ impl<'a> Binless<'a> {
         let base = path_hash(&skin_paths::skin_bin(champion, Slot::BASE));
         if locale_tag(&name).is_some()
             || !self.run.module.skin_bins(wad, champion).is_empty()
-            || game.size(base).is_none()
+            || !game.contains(base)
         {
             return Ok(());
         }
@@ -171,23 +171,19 @@ impl<'a> Binless<'a> {
         let mut out = Overrides::default();
         for &id in &m.wads[wad].files {
             let file = &m.files[id];
-            match game.size(file.hash) {
+            match game.contains(file.hash) {
                 // The file made of it stands for it.
-                None if made_from.contains(&id) => {}
-                None if self.covered(wad, id) => out.covered += 1,
-                None if env.has_history() && env.history().path(file.hash)?.is_none() => {
+                false if made_from.contains(&id) => {}
+                false if self.covered(wad, id) => out.covered += 1,
+                false if env.has_history() && env.history().path(file.hash)?.is_none() => {
                     out.never += 1;
                 }
-                None => {
+                false => {
                     out.former.insert(file.hash);
                 }
-                Some(_) if stale.of(m, id)? => out.stale += 1,
-                Some(size) if size != file.size => {
-                    out.overridden.insert(file.hash);
-                }
-                Some(_) => {
-                    let differs = |content: ContentId| content != file.content;
-                    if game.content(file.hash)?.is_some_and(differs) {
+                true if stale.of(m, id)? => out.stale += 1,
+                true => {
+                    if !game.holds(file.hash, file.size, file.content)? {
                         out.overridden.insert(file.hash);
                     }
                 }
@@ -203,7 +199,7 @@ impl<'a> Binless<'a> {
         let Some(path) = &m.files[file].path else {
             return false;
         };
-        let game: &dyn Game = self.run.env.game();
+        let game = self.run.env.game();
         self.run.options.fixups.iter().any(|fixup| {
             let made_at = fixup.destinations(path, game);
             made_at.iter().any(|to| m.file_at(wad, to.hash()).is_some())

@@ -21,7 +21,7 @@ use super::legacy::{
     Conversion, DroppedFormat, Unconverted, count_by_conversion, make, record_codes, twin,
 };
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
-use crate::game::Game;
+use crate::game::GameSource;
 use crate::history::HistoryError;
 use crate::model::entity::{FileId, FileKind, FileSource, MadeBy, WadId};
 use crate::model::{ChunkPath, FileKey, FixupInfo, Phase};
@@ -496,7 +496,7 @@ impl FileFixup for MovedAssets {
         &INFO
     }
 
-    fn destinations(&self, path: &ChunkPath, game: &dyn Game) -> Vec<ChunkPath> {
+    fn destinations(&self, path: &ChunkPath, game: &dyn GameSource) -> Vec<ChunkPath> {
         let shipped = candidates(path).into_iter();
         let shipped = shipped.filter(|candidate| game.contains(candidate.path.hash()));
         shipped.map(|candidate| candidate.path).collect()

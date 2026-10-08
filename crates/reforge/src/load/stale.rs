@@ -3,14 +3,14 @@
 
 use super::{Fault, LoadOptions};
 use crate::env::Env;
-use crate::game::{Game, GameView};
+use crate::game::GameSource;
 use crate::history::History;
 use crate::model::entity::FileId;
 use crate::model::{ContentId, FileKey, Mod};
 
 /// Judges whether a file is a stale copy.
 pub struct Staleness<'a> {
-    game: &'a GameView,
+    game: &'a dyn GameSource,
     history: &'a dyn History,
     keep: bool,
 }
@@ -37,9 +37,7 @@ impl<'a> Staleness<'a> {
         if self.keep || m.restorations.contains(&node.wad) {
             return Ok(false);
         }
-        if self.game.size(node.hash).is_none()
-            || self.game.holds(node.hash, node.size, node.content)?
-        {
+        if !self.game.contains(node.hash) || self.game.holds(node.hash, node.size, node.content)? {
             return Ok(false);
         }
         let origin = &m.files[m.origin_of(file)];
@@ -56,7 +54,7 @@ impl<'a> Staleness<'a> {
             return Ok(false);
         }
         let content = ContentId::of(bytes);
-        if self.game.size(node.hash).is_none()
+        if !self.game.contains(node.hash)
             || self.game.holds(node.hash, bytes.len() as u64, content)?
         {
             return Ok(false);

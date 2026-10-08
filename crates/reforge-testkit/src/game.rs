@@ -7,6 +7,7 @@ use reforge::game::{Build, Game, GameError, SizeIndex};
 use reforge::model::{WadHash, WadName, path_hash};
 
 /// A chunk store with no file behind it.
+#[derive(Clone)]
 pub struct MemoryGame {
     build: Option<Build>,
     wad: WadName,

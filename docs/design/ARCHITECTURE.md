@@ -142,7 +142,7 @@ The modules of `reforge`, each using only the ones above it:
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)) |
 | `archive` | `Archive`: the only reader of untrusted zips |
-| `game` | the target side: `Game` and `Install`, `GameView` and `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
+| `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
 | `env` | `Env`: what a run is judged against, built once |
 | `load` | `Mod` from an `Archive`: file fixups, binless mods, characters, units, loads; and what is known of the files before any value is read: `Dating`, `Inventory`, `FileProvenance`; the table of reworks |
@@ -155,7 +155,7 @@ The modules of `reforge`, each using only the ones above it:
 
 A test (`tests/layers.rs`) reads every `crate::` path of the sources and fails when a module
 uses one below it in this table. The same test fails when `facts` or `port` reads a game chunk
-(#ADR-0043).
+(#ADR-0080).
 
 `reforge-census` keeps gix, `ltk_ritobin` and the patched `ltk_*` crates out of `reforge`: a run
 asks the history questions and never walks the census. It depends on `reforge` for the index's
@@ -194,26 +194,27 @@ tables (`history`) and the bin value helpers (`model`).
 
 ## The environment
 
-`Env` is what a run is judged against: the game, its size index, the history, the names and
-the schema. It is immutable and built once by `Env::builder()`.
+`Env` is what a run is judged against: the game, the history, the names and the schema. It is
+immutable and built once by `Env::builder()`.
 
-- **`Game`** is a trait for a chunk store: contains, size, read, the WADs holding a path, the
-  build. `Install` implements it. `GameView` wraps a `Game` and caches what callers repeat: a
-  path's content id, a parsed bin with the files it names, the bins of a character's skin at a
-  slot (`GameSkin`). The caches live as long as the `Env` and have no cap, so a caller that
-  runs many mods builds an `Env` for each or a few. The chunks of one WAD by uncompressed size
-  are a `SizeIndex`, a value beside the `Game` and no method of it, so a fake game builds one
-  from the same chunks.
-- **The typed questions** (#ADR-0043) are what the stages after `load` ask of the game in place
-  of a chunk's bytes. `GameView` answers each from the install and keeps the answer:
+- **`GameSource`** is the game a run is judged against, the target install, asked typed
+  questions (#ADR-0080). Every stage reaches the game through it (`Env::game()`), and none of
+  its questions gives a chunk's bytes:
+  - `contains(path)`, `wads(path)`, `wad_of(path)`: whether the game has a file at a path, and
+    the WADs holding it, the one it is read from first;
+  - `holds(path, size, content)`: whether the game holds these bytes at a path;
+  - `copies(wad, size, content, besides)`: the other paths of a champion's WAD holding these
+    bytes, where a copy of a game file under another path is looked for;
   - `catalog(character)`: a `SkinCatalog`, every skin the game has for the character with its
     class, the slot it counts as (a chroma counts as its parent), its name, its mesh, skeleton
     and texture, its resolver and graph, its audio block and its clips; the objects of the
     skins' bins by entry, by the digest of their bytes and by the digest of their bytes after
     the entry hash; the slots whose bins hold each entry; and the slots at which the game has a
-    skin bin. A skin's bins are its skin bin and what that links, breadth first, 16 at most;
+    skin bin. A skin's bins are its skin bin and what that links, breadth first, `MAX_CHAIN` at
+    most (#ADR-0070);
   - `bin(path)`: the game's bin at a path, parsed, with the files its objects name and each
-    object by its entry;
+    object by its entry; `skin(character, slot)`: the bins of a character's skin at a slot
+    (`GameSkin`);
   - `skeleton(path)`: the joints' names in order, and how many a vertex may bind to;
   - `mesh_shape(path)`: the submeshes with their vertex positions rounded to 1/16 unit, every
     position, and the highest joint index a vertex binds to;
@@ -223,8 +224,15 @@ the schema. It is immutable and built once by `Env::builder()`.
   - `bank_clips(path)`: the clips of the bank or the package at a path, each by its id, its
     size and the key of its bytes, which is what the census records of a bank's clips.
 
-  A file that is absent, and one that does not read as what is asked, answer `None`. A chunk
-  the game holds and does not give is a `GameError`.
+  A file that is absent, and one that does not read as what is asked, answer `None`. A file the
+  game holds and does not give is a `GameError`. What a build before the target held is asked
+  of the history, not of the game.
+- **`GameView`** answers from a chunk store: `Game`, a trait for contains, size, read, the WADs
+  holding a path and the build, which `Install` implements. It reads, parses and keeps what
+  callers repeat: a path's content id, a parsed bin, a character's skins. The caches live as
+  long as the `Env` and have no cap, so a caller that runs many mods builds an `Env` for each or
+  a few. The chunks of each champion WAD by uncompressed size are a `SizeIndex`, the install's
+  own or one a fake game builds from the same chunks, which `copies` reads.
 - **`History`** is a trait with one method per question ([HISTORY.md](HISTORY.md), "The
   questions"). `SqliteHistory` reads the index, `NoHistory` answers nothing, and the testkit
   has one in memory.
@@ -364,7 +372,7 @@ pub struct Facts {
   signatures. Where the inputs are more than four, they are the fields of an inputs type
   (`OriginInputs`, `RigInputs`).
 - There is no cache and no invalidation. The mod is frozen, so a result stays true.
-- The game is asked typed questions (#ADR-0043, [The environment](#the-environment)). No code of
+- The game is asked typed questions (#ADR-0080, [The environment](#the-environment)). No code of
   `facts` reads a chunk.
 - **Copies.** Units of one character are related when their bins are the same bytes, equal once
   each bin's own slot names are normalised, near (80% or more of the normalised objects shared,
@@ -544,9 +552,9 @@ object takes a name of its own, which every link to it follows.
 - **The base of a comparison is a question of its own.** `Base` answers "the game's object
   under this entry" for every comparison of the plan and of the build: whether a reached
   object is the game's, whether a graph is the game's, whether a carried field differs
-  (#ADR-0043). It answers from the target build. The code that compares does not say which
+  (#ADR-0080). It answers from the target build. The code that compares does not say which
   build.
-- **The game is asked typed questions** (#ADR-0043): a parsed bin at a path, the catalog, the
+- **The game is asked typed questions** (#ADR-0080): a parsed bin at a path, the catalog, the
   WADs holding a path. No code of `port` reads a chunk.
 - **Faults.** A game chunk that does not read and a history that does not answer end `plan`
   with a `PlanError`.

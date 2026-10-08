@@ -8,7 +8,7 @@ use fs_err as fs;
 use reforge::archive::{Archive, Caps};
 use reforge::diag::{Channel, Diagnostics, Record, Render, Stage};
 use reforge::env::Env;
-use reforge::game::{Game, NameBook};
+use reforge::game::{GameSource, NameBook};
 use reforge::history::HistoryError;
 use reforge::load::{
     self, CODES, FileFixCx, FileFixup, LoadError, LoadOptions, Loader, NewFile, against,
@@ -299,7 +299,7 @@ impl FileFixup for Copies {
         Ok(())
     }
 
-    fn destinations(&self, _: &ChunkPath, _: &dyn Game) -> Vec<ChunkPath> {
+    fn destinations(&self, _: &ChunkPath, _: &dyn GameSource) -> Vec<ChunkPath> {
         Vec::new()
     }
 }

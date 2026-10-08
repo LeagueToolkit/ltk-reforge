@@ -111,8 +111,8 @@ fn a_module_uses_only_the_modules_before_it() {
     );
 }
 
-/// #ADR-0043: the facts and the decision ask the game typed questions. A chunk's bytes are
-/// read by `GameView`, which answers them.
+/// #ADR-0080: the facts and the decision ask the game typed questions (`GameSource`), and no
+/// question gives a chunk's bytes. An install's are read by `GameView`, which answers them.
 #[test]
 fn facts_and_port_read_no_game_chunk() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
