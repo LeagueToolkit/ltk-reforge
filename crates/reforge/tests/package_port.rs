@@ -205,7 +205,8 @@ fn two_runs_of_one_mod_give_the_same_package_and_report() {
 
 #[test]
 fn two_units_of_a_character_write_bins_of_their_own() {
-    // A skin0 port and a mod written for skin 3, each with a particle of its own.
+    // A skin0 port and a mod written for skin 3, each with a particle of its own, under the
+    // options that keep other slots (#ADR-0082).
     let at = |slot: u16, prefix: &str| {
         let names = |rest: &str| format!("Characters/Test/{rest}");
         let (graph_name, resources) = (
@@ -229,7 +230,12 @@ fn two_units_of_a_character_write_bins_of_their_own() {
     let mut files = at(0, "a");
     files.extend(at(3, "b"));
     let env = env(skins::game(), NoHistory);
-    let run = PortRun::of(&env, &archive(&files));
+    let options = PortOptions {
+        keep_other_slots: true,
+        ..PortOptions::default()
+    };
+    let archive = archive(&files);
+    let run = PortRun::under(&env, &archive, Policy::default(), options);
 
     assert_eq!(run.port.units.len(), 2, "{}", run.dump());
     for slot in [0, 3] {

@@ -54,6 +54,10 @@ pub struct PortCommand {
     /// Ship each DDS as it is, put in TEX's container nowhere.
     #[arg(long)]
     keep_dds: bool,
+    /// Ship the units at slots other than the mod's target too, each at its own slot: for a
+    /// mod that works on several skins.
+    #[arg(long)]
+    keep_other_slots: bool,
     /// The meta schema database the fixups and the checks read the target build's types from
     /// (default: the one the League Toolkit programs share on this machine).
     #[arg(long)]
@@ -88,7 +92,8 @@ impl PortCommand {
             .checks(checks)
             .keep_stale(self.keep_stale)
             .game_events_only(self.game_events_only)
-            .keep_dds(self.keep_dds);
+            .keep_dds(self.keep_dds)
+            .keep_other_slots(self.keep_other_slots);
         let mut run = porter.run().log_from(log);
         run::through(&mut run, &self.archive, Stage::Check)?;
 

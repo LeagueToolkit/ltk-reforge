@@ -16,6 +16,7 @@ use crate::model::{BinHash, Layer, Slot, WadHash};
 /// Every diagnostic code a decision and a plan raise.
 pub const CODES: &[Code] = &[
     UnitsLeft::CODE,
+    WorkLeft::CODE,
     Retargeted::CODE,
     GameCarried::CODE,
     LinkDangling::CODE,
@@ -344,6 +345,90 @@ impl Diag for UnitsLeft {
         f.list(&self.units, |f, row| {
             f.unit(row.unit).text(" (").text(row.why.as_str()).text(")");
         });
+    }
+}
+
+/// Own work that leaves with a character's units at slots its port does not change
+/// (#ADR-0082): what each of them holds that the units at the target do not hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkLeft {
+    /// The character.
+    pub character: CharId,
+    /// The unit that holds the target slot.
+    pub target: UnitId,
+    /// The units that leave with own work, in unit order.
+    pub units: Vec<UnitWork>,
+}
+
+/// What a unit that leaves holds of its own that the units at the target do not hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct UnitWork {
+    /// The unit.
+    pub unit: UnitId,
+    /// The slot it would change.
+    pub slot: Slot,
+    /// What the port makes of it.
+    pub kind: WorkKind,
+    /// Own models.
+    pub models: usize,
+    /// Own skeletons.
+    pub skeletons: usize,
+    /// Own textures.
+    pub textures: usize,
+    /// Other own files.
+    pub files: usize,
+    /// Own objects, by their bodies.
+    pub objects: usize,
+    /// Own clips.
+    pub clips: usize,
+}
+
+/// What a unit's own work at another slot is to the port (#ADR-0082).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkKind {
+    /// Own models, skeletons or textures: the author's work for the unit's slot, which the
+    /// options that keep other slots ship.
+    SlotWork,
+    /// Own objects, other files or clips alone: whether they were made for the unit's slot or
+    /// put there by the game's sharing between skins is not known, and they are not supported
+    /// for now.
+    Unsupported,
+}
+
+impl Diag for WorkLeft {
+    const CODE: Code = Code::new("unit.left-with-work", Channel::Output, Severity::Warning);
+
+    fn subject(&self) -> Subject {
+        Subject::Character(self.character)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.text("own work ")
+            .unit(self.target)
+            .text(" does not hold leaves with ");
+        f.count(self.units.len(), "unit")
+            .text(" at slots the port does not change: ");
+        f.list(&self.units, |f, work| {
+            let held = [
+                (work.models, "model"),
+                (work.skeletons, "skeleton"),
+                (work.textures, "texture"),
+                (work.files, "other file"),
+                (work.objects, "object"),
+                (work.clips, "clip"),
+            ];
+            f.unit(work.unit).text(" (");
+            let held = held.into_iter().filter(|(count, _)| *count > 0);
+            f.list(&held.collect::<Vec<_>>(), |f, (count, what)| {
+                f.count(*count, what);
+            });
+            if work.kind == WorkKind::Unsupported {
+                f.text("; not supported for now");
+            }
+            f.text(")");
+        });
+        f.text("; the options that keep other slots ship them");
     }
 }
 

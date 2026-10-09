@@ -129,6 +129,7 @@ struct Settings {
     compared: Vec<Policy>,
     game_events_only: bool,
     keep_dds: bool,
+    keep_other_slots: bool,
 }
 
 impl Settings {
@@ -144,6 +145,7 @@ impl Settings {
         PortOptions {
             keep_stale: self.keep_stale,
             game_events_only: self.game_events_only,
+            keep_other_slots: self.keep_other_slots,
         }
     }
 }
@@ -264,6 +266,14 @@ impl<'a> Porter<'a> {
     #[must_use]
     pub fn game_events_only(mut self, only: bool) -> Self {
         self.settings.game_events_only = only;
+        self
+    }
+
+    /// Ships the units at slots other than their champion's target too, each at its own slot,
+    /// or leaves them (#ADR-0082).
+    #[must_use]
+    pub fn keep_other_slots(mut self, keep: bool) -> Self {
+        self.settings.keep_other_slots = keep;
         self
     }
 

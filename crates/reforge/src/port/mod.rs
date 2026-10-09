@@ -28,7 +28,8 @@ pub use self::findings::{
     AudioCarried, AudioNotCarried, AudioUnitsLeftOut, CODES, Carried, CarriedBank, CarriedOnce,
     Carry, ForcedUnfit, GameCarried, HudCarried, Infeasible, LeftRow, LinkDangling,
     LiteralsRenamed, NotCarried, PreRework, RefDangling, RefUnmounted, Retargeted, SubLeft,
-    Superseded, TargetChosen, TargetConflict, UnitsLeft, Unjudged, Unreached,
+    Superseded, TargetChosen, TargetConflict, UnitWork, UnitsLeft, Unjudged, Unreached, WorkKind,
+    WorkLeft,
 };
 pub use self::hud::{FieldEdit, HudEdits, HudPlan};
 pub use self::layout::{Layout, MadeNames, folder_name, tidy_stem};

@@ -10,12 +10,13 @@ use reforge::model::entity::ObjectId;
 use reforge::model::{Slot, WadHash, name_hash, path_hash, value};
 use reforge::port::{
     Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, PlanError, Policy, PortOptions,
-    RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached,
+    RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached, WorkKind, WorkLeft,
 };
 use reforge_testkit::bins::{
     Skin, bin, blob, entry, graph, particle, resolver, resolver_with, text, with_link,
 };
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
+use reforge_testkit::packs::{DdsPixels, dds};
 use reforge_testkit::plans::{
     champion_and_unbound_pet, old_model_and_pet, paste_and_own_skin3, reworked,
 };
@@ -23,7 +24,7 @@ use reforge_testkit::skins::{
     self, BASE_PARTICLE, BASE_PARTICLE_TEX, BASE_TEX, S3_TEX, WAD, base_skin, skin_bin,
 };
 use reforge_testkit::{
-    BrokenGame, BrokenHistory, FactRun, MemoryHistory, ModArchive, PlanRun, PortRun,
+    BrokenGame, BrokenHistory, FactRun, MemoryHistory, ModArchive, PlanRun, PortRun, rigs,
 };
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
@@ -736,4 +737,160 @@ fn the_games_own_skin_alone_stays_a_unit() {
     // One unit alone stays a unit, and its port holds no record and no file.
     assert_eq!(run.port.shipping.ships.len(), 1, "{}", run.dump());
     assert!(run.port.files.is_empty());
+}
+
+/// The mod's own rig `prefix` at a slot of the champion: its skin bin, with its graph.
+fn own_rig_at(slot: u16, prefix: &str) -> (String, Vec<u8>) {
+    let graph = format!("Characters/Test/Animations/Skin{slot}");
+    let resources = format!("Characters/Test/Skins/Skin{slot}/Resources");
+    let skin = own_skin(prefix, &graph, &resources);
+    let entry = format!("Characters/Test/Skins/Skin{slot}");
+    mod_skin("test", slot, &entry, &skin, vec![own_graph(prefix, &graph)])
+}
+
+/// The mod's rig at skin0, and another rig of the mod's at skin 3 whose mesh, skeleton and
+/// texture are files of their kinds.
+fn rigs_at_skin0_and_skin3() -> Vec<(String, Vec<u8>)> {
+    let mut files = own_mod(&[], vec![]);
+    let body: &[[f32; 3]] = &[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    let of_its_kind = |path: &str| match path.rsplit('.').next() {
+        Some("skn") => Some(rigs::mesh(&[("body", body)], 0)),
+        Some("skl") => Some(rigs::skeleton(&["Root", "Spine"])),
+        Some("tex") => Some(dds(DdsPixels::Dxt1, (4, 4), 1)),
+        _ => None,
+    };
+    let own = own_files("b").into_iter().map(|(path, bytes)| {
+        let bytes = of_its_kind(&path).unwrap_or(bytes);
+        (path, bytes)
+    });
+    files.extend(own);
+    files.push(own_rig_at(3, "b"));
+    files
+}
+
+fn sorted(mut units: Vec<reforge::model::entity::UnitId>) -> Vec<reforge::model::entity::UnitId> {
+    units.sort();
+    units
+}
+
+#[test]
+fn a_unit_at_a_slot_the_port_does_not_change_leaves_with_its_own_work_named() {
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&rigs_at_skin0_and_skin3()));
+
+    let (target, other) = (run.unit("test", 0), run.unit("test", 3));
+    assert_eq!(run.port.shipping.ships, [target], "{}", run.dump());
+    assert_eq!(
+        run.port.shipping.left[&other].why,
+        Left::OffTarget { target }
+    );
+    let work = run.only::<WorkLeft>();
+    assert_eq!(work.target, target);
+    let row = work.units[0];
+    let found = (row.unit, row.slot, row.kind);
+    assert_eq!(found, (other, Slot(3), WorkKind::SlotWork));
+    // Its mesh, skeleton, texture and two clips are bytes the unit at skin0 does not ship.
+    let files = (row.models, row.skeletons, row.textures, row.files);
+    assert_eq!(files, (1, 1, 1, 2));
+}
+
+#[test]
+fn the_options_that_keep_other_slots_ship_every_unit_at_its_own_slot() {
+    let env = env(skins::game(), NoHistory);
+    let options = PortOptions {
+        keep_other_slots: true,
+        ..PortOptions::default()
+    };
+    let archive = archive(&rigs_at_skin0_and_skin3());
+    let run = PortRun::under(&env, &archive, Policy::default(), options);
+
+    let ships = sorted(vec![run.unit("test", 0), run.unit("test", 3)]);
+    let shipped = sorted(run.port.shipping.ships.clone());
+    assert_eq!(shipped, ships, "{}", run.dump());
+    assert!(run.found::<WorkLeft>().is_empty());
+}
+
+#[test]
+fn own_objects_alone_at_a_slot_the_port_does_not_change_are_not_supported() {
+    // The game's skin 3 with a particle of the mod's on the game's texture.
+    let own = "Characters/Test/Skins/Skin3/Particles/Test_Own";
+    let skin3 = with_link(
+        entry("Characters/Test/Skins/Skin3", &skins::skin3()),
+        "fx",
+        own,
+    );
+    let mut files = own_mod(&[], vec![]);
+    files.push((skin_bin("test", 3), bin(vec![skin3, particle(own, S3_TEX)])));
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let (target, other) = (run.unit("test", 0), run.unit("test", 3));
+    let left = &run.port.shipping.left[&other];
+    assert_eq!(left.why, Left::OffTarget { target }, "{}", run.dump());
+    let row = run.only::<WorkLeft>().units[0];
+    assert_eq!(row.kind, WorkKind::Unsupported);
+    assert_eq!((row.models, row.skeletons, row.textures), (0, 0, 0));
+    assert!(row.objects > 0, "{row:?}");
+}
+
+#[test]
+fn with_no_skin0_unit_every_unit_ships_at_its_own_slot() {
+    // The mod's rigs at skins 3 and 7 and none at skin0, a case #ADR-0082 leaves open.
+    let mut files = own_files("a");
+    files.extend(own_files("b"));
+    files.push(own_rig_at(3, "a"));
+    files.push(own_rig_at(7, "b"));
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let ships = sorted(vec![run.unit("test", 3), run.unit("test", 7)]);
+    let shipped = sorted(run.port.shipping.ships.clone());
+    assert_eq!(shipped, ships, "{}", run.dump());
+}
+
+#[test]
+fn the_games_own_skin0_leaves_and_the_mods_work_at_another_slot_ships() {
+    // The game's skin0 bin as the game ships it, beside the mod's rig at skin 3: the target is
+    // chosen among the author's units.
+    let mut files = own_files("a");
+    files.push(own_rig_at(3, "a"));
+    let game_skin0 = bin(vec![
+        entry(SKIN0, &skins::base_skin()),
+        graph(GRAPH0, skins::BASE_CLIPS),
+        resolver(RESOURCES0),
+        particle(BASE_PARTICLE, BASE_PARTICLE_TEX),
+    ]);
+    files.push((skin_bin("test", 0), game_skin0));
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let work = run.unit("test", 3);
+    assert_eq!(run.port.shipping.ships, [work], "{}", run.dump());
+    let left = &run.port.shipping.left[&run.unit("test", 0)];
+    assert_eq!(left.why, Left::GameSkin);
+}
+
+#[test]
+fn a_sub_characters_unit_at_another_slot_leaves_with_its_champions() {
+    // The champion's rigs at skin0 and skin 3, and models of the pet's own at both.
+    let mut files = rigs_at_skin0_and_skin3();
+    for (slot, prefix) in [(0, "p"), (3, "q")] {
+        files.extend(own_files(prefix));
+        let pet = own_skin(
+            prefix,
+            &format!("Characters/TestPet/Animations/Skin{slot}"),
+            &format!("Characters/TestPet/Skins/Skin{slot}/Resources"),
+        );
+        let entry = format!("Characters/TestPet/Skins/Skin{slot}");
+        files.push(mod_skin("testpet", slot, &entry, &pet, vec![]));
+    }
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let target = run.unit("test", 0);
+    let ships = sorted(vec![target, run.unit("testpet", 0)]);
+    let shipped = sorted(run.port.shipping.ships.clone());
+    assert_eq!(shipped, ships, "{}", run.dump());
+    let left = &run.port.shipping.left[&run.unit("testpet", 3)];
+    assert_eq!(left.why, Left::OffTarget { target });
 }

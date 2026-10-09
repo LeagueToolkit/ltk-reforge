@@ -470,10 +470,15 @@ object takes a name of its own, which every link to it follows.
 1. **`Shipping`**: the units that ship, and why each other unit leaves, as a `Left`: a copy,
    superseded, made before a rework, a sub-character left to the base or equal to the game's,
    no target, the game's own skin shipped again by a spread, a chroma folded into its parent
-   (#ADR-0018, #ADR-0020). A unit that leaves holds the id of the `unit.left` diagnostic of
-   its character. The last two are judged from what each unit reaches and names under the
-   mod's own names, so `Reach` and `FileRefs` are found once before `Shipping` and once after
-   the names moved.
+   (#ADR-0018, #ADR-0020), at a slot the port does not change (#ADR-0082). A unit that leaves
+   holds the id of the `unit.left` diagnostic of its character. The game's own skin and the
+   folded chroma are judged from what each unit reaches and names under the mod's own names,
+   so `Reach` and `FileRefs` are found once before `Shipping` and once after the names moved.
+   Then the slot a champion's skin0 unit goes to, among the units still shipping, is the only
+   slot the port changes: the units of the champion and of its sub-characters at other slots
+   leave unless `PortOptions::keep_other_slots`, and `unit.left-with-work` names the own work
+   they hold that the units at the target do not, by bytes: files by content, objects by body,
+   own clips.
 2. **`Renames`**, first part: each shipping unit's `Skin<S>` entry and resolver names become
    `Skin<T>`'s, and its graph's when the mod defines one. These names are replaced in every
    object of the mod, the objects of other groups and of no unit among them: a bin of one unit

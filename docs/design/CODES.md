@@ -133,7 +133,8 @@ bin. `unit.left` is raised once per character, with each of its units that leave
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
-| `unit.left` | note | the units of a character that leave the port, and why: a copy, superseded, tied with another unit on its target, made before a rework, a sub-character left to the base or equal to the game's, no target, the game's own skin, a chroma folded into its parent | `drop-copies.dropped` |
+| `unit.left` | note | the units of a character that leave the port, and why: a copy, superseded, tied with another unit on its target, made before a rework, a sub-character left to the base or equal to the game's, no target, the game's own skin, a chroma folded into its parent, at a slot the port does not change | `drop-copies.dropped` |
+| `unit.left-with-work` | warning | own work that leaves with a character's units at slots the port does not change, which the units at the target do not hold: models, skeletons and textures as the author's work for that slot, objects, other files and clips alone as not supported for now | none |
 | `unit.retargeted` | note | the unit's names moved from its slot to its target | `retarget.renamed` |
 | `unit.new-bin` | note | a sub-character the game ships only at skin0 gets a skin bin at the target | `target.sub-no-slot-bin`, `lower.new-bin` as a note |
 | `unit.new-bin-failed` | error | a record did not apply to that new bin | `lower.new-bin` as an error |

@@ -64,7 +64,7 @@ FIXUPS = (
     "reshape-wrap retype strip-undeclared"
 )
 REASONS = "base paste-cleaned slot fallback clips-origin skeleton-origin forced infeasible sub-follows sub-left-to-base unjudged superseded conflict pre-rework"
-LEFT = "copy superseded conflict pre-rework sub-left equal-to-game no-target game-skin chroma-folded"
+LEFT = "copy superseded conflict pre-rework sub-left equal-to-game no-target game-skin chroma-folded off-target"
 CHECK_WHY = (
     "no-such-skin no-mesh slot-mesh other-skin-mesh own-mesh foreign-mesh copied-visible copied-shown "
     "copied-hidden no-copied-submesh no-skeleton slot-skeleton slot-joints other-skin-skeleton premium-skeleton unbound "
@@ -236,6 +236,7 @@ RULES += [
     data("target.forced-unfit", "follows", VALUE, "true false"),
     data("check.other-skin", "values[].value", VALUE, "skin-name audio-tag bank-unit skeleton simple-skin texture"),
     data("unit.left", "units[].why", VALUE, LEFT),
+    data("unit.left-with-work", "units[].kind", VALUE, "slot-work unsupported"),
     data("unit.ported", "graph", VALUE, "true false"),
     data("unit.ported", "new_bin", VALUE, "true false"),
     data("ref.dangling", "former", POSITIVE, name="ref.dangling at a former path"),

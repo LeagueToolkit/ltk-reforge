@@ -51,6 +51,9 @@ pub struct PortOptions {
     /// A bank's events are cut from the game's events bank only: a bank the author added,
     /// which no event of the game's plays, is reported and not carried (#ADR-0030).
     pub game_events_only: bool,
+    /// The units at slots other than their champion's target ship too, each at its own slot,
+    /// for a mod that works on several skins (#ADR-0082).
+    pub keep_other_slots: bool,
 }
 
 /// An input of the run that did not answer while the port was planned: a fault of the machine
