@@ -1,9 +1,9 @@
 # GAME-BEHAVIOR-0022: A shader draws only from programs built for the game's shader bin
 
-- **Status:** Confirmed in game (2026-10-06)
-- **Builds:** 16.19
+- **Status:** Confirmed in game (2026-10-06, again 2026-10-09)
+- **Builds:** 16.19, 16.20
 - **Affects:** `CustomShaderDef`, the passes of `StaticMaterialDef`, `ShaderCache.dx11.wad.client`
-- **Related:** #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0023, #GAME-CHANGE-0024
+- **Related:** #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0023, #GAME-BEHAVIOR-0029, #GAME-CHANGE-0024
 
 ## Behaviour
 
@@ -20,8 +20,10 @@ Either way the client logs `Failed to compile shader.` for each variant of the p
 loads, the shader names of the record empty. The loading screen closes. At the first draw of the
 material the client logs `Material Missing Pipeline: <hash>` and crashes.
 
-The hash is the XXH3-64 of the material's entry name, lowercased, written in hex with no leading
-zeros: the log names the material that crashed.
+Here the hash is the XXH3-64 of the material's entry name, lowercased, written in hex with no
+leading zeros: the log names the material that crashed. A material on a shader that has programs,
+but not the variant it asks for, crashes at the same line with a hash that is not its name
+(#GAME-BEHAVIOR-0029).
 
 ## In a mod
 
@@ -42,6 +44,11 @@ Without the definition, a material's link to a game shader of that name draws.
     closed at 1.67 s; `Material Missing Pipeline: 65037001b3eb385e` at 1.72 s; the game crashed.
   - The same definition copied under the name `Shaders/SkinnedMesh/Reforge_Test_Own_Shader`, the
     material linking it: the same lines and the same hash, and the crash.
+- Seen again in game (2026-10-09, the 16.20.8248524 copy, a replay of Braum at skin 0), the same
+  three mods: the control drew and the game ended clean. The own copy and the own name each logged
+  the same two failed variants twice during the load, then
+  `Material Missing Pipeline: 65037001b3eb385e` after the loading screen closed (at 1.61 s and
+  1.63 s), and the game crashed.
 - `65037001b3eb385e` is the XXH3-64 of
   `characters/braum/skins/skin0/materials/reforge_shader_test`, the test material's name
   lowercased (computed 2026-10-06). It did not change with the shader's name.

@@ -1,7 +1,7 @@
 # GAME-BEHAVIOR-0023: A material linking no shader crashes the client at load
 
-- **Status:** Confirmed in game (2026-10-06)
-- **Builds:** 16.19
+- **Status:** Confirmed in game (2026-10-06, again 2026-10-09)
+- **Builds:** 16.19, 16.20
 - **Affects:** the link `StaticMaterialDef.techniques[].passes[].shader`
 - **Related:** #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0022, #GAME-CHANGE-0024
 
@@ -34,3 +34,6 @@ load from that build (#GAME-CHANGE-0024). The game's log does not point at the m
   with no line about shaders and no line of the crash handler. The control's log of the same
   replay goes on through the load and the game.
 - The user saw both crash at once, faster than the loading screen could be told apart.
+- Seen again in game (2026-10-09, the 16.20.8248524 copy, a replay of Braum at skin 0), the same
+  two mods: both crashed before the loading screen showed. Both logs end at 0.46 to 0.50 s, at the
+  same point, with no line about shaders. The control's log goes on through the load and the game.
