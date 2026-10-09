@@ -1549,3 +1549,29 @@ only difference of 128 of the 459: they have no skin0 unit of the author's and k
   other slots, 127 units. No repair differs.
 - **Time.** The 459 mods in 302 s at 8 in parallel, beside the repair baseline. The reduced
   corpus in 16 s for the port and 17 s for the repair.
+
+## Names other skins hold (2026-10-09)
+
+`object.link-dangling` names, of the names a unit reaches that nothing loaded at its target
+holds, the ones the game's bins of other skins of the character hold (#GAME-BEHAVIOR-0006), and
+what copies of their objects would bring: each object and, link by link, every object it names
+that the target lacks. The port with the target slot rule over the 1,976 mods whose
+`baseline-port-4` reports hold the finding, 435 s at 24 in parallel, summed by
+`scripts/corpus/held_elsewhere.py`.
+
+- **How often.** 2,252 shipping units in 1,756 mods reach 9,160 names that nothing loaded at
+  their target holds. The game's bins of other skins of the character hold 1,585 of them, in 179
+  units of 164 mods: 1,493 `VfxSystemDefinitionData`, 54 `StaticMaterialDef`, 30
+  `GearSkinUpgrade` and 8 `ContextualActionData`. #GAME-BEHAVIOR-0006 leaves open whether a gear
+  upgrade's link that nothing loads crashes the client.
+- **Where.** 112 of those units, in 102 mods, find the names at their premium origin, and 106
+  units, in 91 mods, are pastes, whose source slot is their target.
+- **What copies would bring.** 1,585 objects, the names' own: no object reached from them names
+  another that the target lacks, and none names a name that nothing holds. They name 5,136
+  files. By the objects a unit's copies would bring: 1 to 5 for 124 units, 6 to 20 for 27, 21 to
+  100 for 28.
+- **The other names.** No skin's bins hold the other 7,575 at the target build. PROJECT Urgot
+  1.5.0's 2 and Ben 10 Ultimate Alien Udyr's 1 are among them, and the history holds none of the
+  three at any build.
+- **The reduced corpus.** 5 ports differ from the run of the target slot rule, in those fields
+  alone.
