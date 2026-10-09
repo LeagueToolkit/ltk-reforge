@@ -1,6 +1,6 @@
 # ADR-0084: An events bank the client no longer loads gives way to the game's at its path
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-09)
 - **Related:** #ADR-0030, #ADR-0075, #ADR-0082, #GAME-BEHAVIOR-0015
 
 ## Context
