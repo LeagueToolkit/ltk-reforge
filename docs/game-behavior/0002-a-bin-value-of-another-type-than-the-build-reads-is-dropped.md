@@ -1,6 +1,6 @@
 # GAME-BEHAVIOR-0002: A bin value of another type than the build reads is dropped
 
-- **Status:** Inferred
+- **Status:** Confirmed in game (2026-10-10)
 - **Builds:** 16.19
 - **Affects:** every bin property
 - **Related:** none
@@ -35,5 +35,10 @@ the mod was made.
 - Seen in game (2026-10-06): one undeclared field added alone, a `birthTranslation` inside a
   `VfxShapeLegacy`, did not move its emitter, and the rest of the effect was drawn
   (#MOD-ARTIFACT-0019).
-- No check isolated one property with its type changed and nothing else. That check would
-  confirm the rule for a value of another type.
+- Seen in game (2026-10-10, the 16.19.8207193 copy, a replay of Braum at skin 0): one property
+  with its type changed and nothing else. A material's `switches`, which the build reads as a
+  `List2` of embedded `StaticMaterialSwitchDef`, written as a `List` of pointers holding one
+  switch set off. The game logged nothing of it and drew the material with the switch at the
+  shader's default, as the same material with no `switches` draws. Written as a `List2` of
+  embeds, the same switch asked the shader for a variant its cache lacks and the game crashed
+  (#GAME-BEHAVIOR-0029). LTK Manager warned of the first mod before it was played.
