@@ -58,7 +58,6 @@ pub fn builder() -> Builder<Wry> {
             HashesProgress,
             commands::RunStage,
             commands::RunFinding,
-            commands::RunLog,
             commands::RunPart
         ])
 }

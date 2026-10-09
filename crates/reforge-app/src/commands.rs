@@ -21,7 +21,6 @@ use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, We
 use crate::inputs::{self, Choice, InputsView};
 use crate::reveal::{self, Place};
 use crate::run::{self, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
-use crate::runlog::LogLine;
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
@@ -97,13 +96,6 @@ pub struct RunFinding {
     pub finding: Finding,
 }
 
-/// A line of the details of the run under way.
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
-pub struct RunLog {
-    /// The line.
-    pub line: LogLine,
-}
-
 /// What a stage of the run under way gave the views, as it ended.
 #[derive(Debug, Clone, Serialize, specta::Type, tauri_specta::Event)]
 pub struct RunPart {
@@ -126,13 +118,6 @@ impl Watch for Window {
         }))
     }
 
-    fn log(&mut self) -> Option<Box<dyn Fn(LogLine) + Send + Sync>> {
-        let app = self.0.clone();
-        Some(Box::new(move |line| {
-            let _ = RunLog { line }.emit(&app);
-        }))
-    }
-
     fn takes_parts(&self) -> bool {
         true
     }
@@ -143,7 +128,7 @@ impl Watch for Window {
 }
 
 /// A repair or a port of a mod, as far as the request asks, against the inputs the settings
-/// choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunLog`
+/// choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunPart`
 /// events.
 #[tauri::command]
 #[specta::specta]

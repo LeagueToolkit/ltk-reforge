@@ -1,6 +1,5 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-  "run_details_action": "Details ({count} lines)",
   "run_kind_port_label": "Port",
   "run_live_title": "Running, {seconds} s",
   "run_page_title": "Run",

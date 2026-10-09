@@ -4,7 +4,6 @@ import { create } from "zustand";
 import type {
   Finding,
   FixupChanges,
-  LogLine,
   ObjectView,
   PackageView,
   PartView,
@@ -87,7 +86,6 @@ export interface LiveRun {
   started: number;
   stages: Partial<Record<StageName, LiveStage>>;
   findings: Finding[];
-  log: LogLine[];
   /** What the fixups changed, once `fix` ended. */
   changes: FixupChanges[] | null;
   objects: ObjectView[];
@@ -103,7 +101,6 @@ export function startedRun(): LiveRun {
     started: Date.now(),
     stages: {},
     findings: [],
-    log: [],
     changes: null,
     objects: [],
     targets: null,

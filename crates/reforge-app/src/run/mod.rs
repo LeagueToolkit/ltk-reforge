@@ -11,20 +11,17 @@ mod views;
 use std::time::Instant;
 
 use camino::Utf8PathBuf;
-use parking_lot::Mutex;
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
 use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy};
 use reforge::{Porter, Repairer, Run, RunError};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use self::drawn::Drawn;
 pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
-use crate::runlog::{Capture, LogLine};
 use crate::selection::FixupChoice;
 use crate::view::Finding;
 
@@ -203,11 +200,6 @@ pub trait Watch {
         None
     }
 
-    /// Takes each line of the run's details as it comes.
-    fn log(&mut self) -> Option<Box<dyn Fn(LogLine) + Send + Sync>> {
-        None
-    }
-
     /// Whether the watch takes what each stage gave. A part is read from the run's report,
     /// which is built for it.
     fn takes_parts(&self) -> bool {
@@ -253,17 +245,6 @@ pub fn run(
         (StageName::Write, Some(out)) => Some(Utf8PathBuf::from(out)),
         _ => None,
     };
-
-    // The details are kept for the view and sent on to the watch.
-    let lines: Arc<Mutex<Vec<LogLine>>> = Arc::default();
-    let forward = watch.log();
-    let kept = Arc::clone(&lines);
-    let capture = Capture::start(move |line| {
-        if let Some(forward) = &forward {
-            forward(line.clone());
-        }
-        kept.lock().push(line);
-    });
 
     let mut log = inputs.log();
     if let Some(mut listener) = watch.findings() {
@@ -340,10 +321,8 @@ pub fn run(
         timed.push((StageName::Write, millis));
     }
     let millis = millis_since(started);
-    drop(capture);
 
     let drawn = Drawn::of(&run);
-    let log = std::mem::take(&mut *lines.lock());
     Ok(RunView {
         stages: stage_views(&run, &timed),
         meta: drawn.meta,
@@ -358,7 +337,6 @@ pub fn run(
         refused,
         fault,
         millis,
-        log,
     })
 }
 

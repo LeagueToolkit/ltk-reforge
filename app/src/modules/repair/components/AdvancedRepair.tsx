@@ -16,7 +16,6 @@ import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { PolicyCard } from "./PolicyCard";
 import { RulesCard } from "./RulesCard";
-import { RunDetails } from "./RunDetails";
 import { fixupDetail } from "./RunFindings";
 import { liveResults, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
@@ -278,7 +277,6 @@ export function AdvancedRepair() {
       {last && !live && (
         <>
           <RunSummary view={last} />
-          <RunDetails lines={last.log} />
           <StageStrip
             stages={last.stages}
             findings={last.findings}

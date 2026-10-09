@@ -7,7 +7,6 @@ import { countBySeverity } from "@/modules/findings";
 import { twMerge } from "@/utils";
 
 import type { LiveRun } from "../state/repairStore";
-import { RunDetails } from "./RunDetails";
 import { stageLabel } from "./StageStrip";
 
 /** Seconds since a moment, ticking while shown. */
@@ -71,7 +70,6 @@ export function LiveProgress({ live, stages }: { live: LiveRun; stages: StageNam
           );
         })}
       </ol>
-      <RunDetails lines={live.log} />
     </div>
   );
 }

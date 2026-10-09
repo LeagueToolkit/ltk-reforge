@@ -14,7 +14,6 @@ pub mod inputs;
 pub mod ipc;
 pub mod reveal;
 pub mod run;
-pub mod runlog;
 pub mod schema;
 pub mod selection;
 pub mod settings;

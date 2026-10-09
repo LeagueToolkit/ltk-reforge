@@ -9,7 +9,6 @@ import { useRunMod, useRunRunning, useRunStages } from "../api/run";
 import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
-import { RunDetails } from "./RunDetails";
 import { resultsOf, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
 
@@ -67,10 +66,7 @@ export function SimpleRepair() {
       {live && <LiveProgress live={live} stages={stages} />}
       {run.isError && <FailureNote failure={run.error} />}
       {last && !live && (
-        <>
-          <RunSummary view={last} onWriteAnyway={() => start([])} writing={running} />
-          <RunDetails lines={last.log} />
-        </>
+        <RunSummary view={last} onWriteAnyway={() => start([])} writing={running} />
       )}
       {results && <RunResults {...results} />}
     </div>

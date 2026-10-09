@@ -14,7 +14,6 @@ use reforge_app::run::{
     self, AfterView, OutcomeView, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent,
     StageName, StageState, Unwatched, Watch,
 };
-use reforge_app::runlog::LogLine;
 use reforge_app::selection::{FixupChoice, RuleOp, RuleSpec};
 use reforge_app::view::Finding;
 use reforge_testkit::archive::zip;
@@ -312,7 +311,6 @@ fn a_mods_name_reaches_the_view_cleaned() {
 struct Heard {
     stages: Vec<(StageName, &'static str)>,
     findings: Arc<Mutex<Vec<Finding>>>,
-    lines: Arc<Mutex<Vec<LogLine>>>,
     parts: Vec<PartView>,
 }
 
@@ -338,11 +336,6 @@ impl Watch for Heard {
         Some(Box::new(move |finding| {
             findings.lock().unwrap().push(finding)
         }))
-    }
-
-    fn log(&mut self) -> Option<Box<dyn Fn(LogLine) + Send + Sync>> {
-        let lines = Arc::clone(&self.lines);
-        Some(Box::new(move |line| lines.lock().unwrap().push(line)))
     }
 }
 

@@ -250,10 +250,8 @@ user picks another policy and runs again.
   starts and ends, and each finding as it is raised. A stage that gives a part sends it as it
   ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the
   changes, `decide` the decisions, `build` the package. The window shows each part as it
-  comes, in the same place it shows the ended run's (`reforge_app::run`, `drawn`). A run's
-  details are the library's `tracing` spans, one per stage with its time, its debug events,
-  and what other crates warn of (`reforge_app::runlog`), shown folded. Progress inside a stage
-  waits on the library.
+  comes, in the same place it shows the ended run's (`reforge_app::run`, `drawn`). Progress
+  inside a stage waits on the library.
 - Every finding opens to its details. A fixup's `fixup.*` finding opens to the values it
   counts, object by object, each with its path and its value before and after. Another
   finding opens to its fields, and an id among them (`%f12`) shows the name the report's

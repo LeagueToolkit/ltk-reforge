@@ -71,9 +71,6 @@ export function useRunEvents() {
       events.runFinding.listen(({ payload }) =>
         setLive((live) => live && { ...live, findings: [...live.findings, payload.finding] }),
       ),
-      events.runLog.listen(({ payload }) =>
-        setLive((live) => live && { ...live, log: [...live.log, payload.line] }),
-      ),
       events.runPart.listen(({ payload }) =>
         setLive((live) => live && withPart(live, payload.part)),
       ),

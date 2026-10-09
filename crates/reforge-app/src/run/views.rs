@@ -7,7 +7,6 @@ use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
 use super::StageName;
-use crate::runlog::LogLine;
 use crate::view::Finding;
 
 /// How far a stage got.
@@ -310,8 +309,6 @@ pub struct RunView {
     pub fault: Option<String>,
     /// How long the run took, in milliseconds. Shown, never written to a report.
     pub millis: u64,
-    /// The run's details: the library's spans and events, as the window showed them.
-    pub log: Vec<LogLine>,
     /// A name for each id of the report's tables and of the objects the fixups changed: what
     /// a finding's fields name by id (`%w0`, `%f12`, `%c0`, `%u0`, `%o14`).
     pub names: BTreeMap<String, String>,

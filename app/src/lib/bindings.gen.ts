@@ -19,7 +19,7 @@ export const commands = {
 	openInputs: () => __TAURI_INVOKE<({ ok: true; value: InputsView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("open_inputs"),
 	/**
 	 *  A repair or a port of a mod, as far as the request asks, against the inputs the settings
-	 *  choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunLog`
+	 *  choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunPart`
 	 *  events.
 	 */
 	runMod: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_mod", { request }),
@@ -98,7 +98,6 @@ export const events = {
 	indexUpdateProgress: makeEvent<IndexUpdateProgress>("index-update-progress"),
 	installProgress: makeEvent<InstallProgress>("install-progress"),
 	runFinding: makeEvent<RunFinding>("run-finding"),
-	runLog: makeEvent<RunLog>("run-log"),
 	runPart: makeEvent<RunPart>("run-part"),
 	runStage: makeEvent<RunStage>("run-stage"),
 };
@@ -532,16 +531,6 @@ export type KeptIndex = {
 	bytes: number,
 };
 
-/**  One line of a run's details. */
-export type LogLine = {
-	/**  Milliseconds since the run started. */
-	at: number,
-	/**  `error`, `warn`, `info`, `debug` or `trace`. */
-	level: string,
-	/**  The line, cleaned. */
-	text: string,
-};
-
 /**  The mod, as its archive and `META/info.json` name it. */
 export type ModView = {
 	/**  The archive's file name. */
@@ -700,12 +689,6 @@ export type RunKind =
 /**  The mod over the game's own skin at each unit's target. */
 "port";
 
-/**  A line of the details of the run under way. */
-export type RunLog = {
-	/**  The line. */
-	line: LogLine,
-};
-
 /**  What a stage of the run under way gave the views, as it ended. */
 export type RunPart = {
 	/**  The part. */
@@ -789,8 +772,6 @@ export type RunView = {
 	fault: string | null,
 	/**  How long the run took, in milliseconds. Shown, never written to a report. */
 	millis: number,
-	/**  The run's details: the library's spans and events, as the window showed them. */
-	log: LogLine[],
 	/**
 	 *  A name for each id of the report's tables and of the objects the fixups changed: what
 	 *  a finding's fields name by id (`%w0`, `%f12`, `%c0`, `%u0`, `%o14`).
