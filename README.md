@@ -15,9 +15,9 @@
   <img alt="rust 1.88" src="https://img.shields.io/badge/rust-1.88-black">
 </p>
 
-> 🚧 **Work in progress, early preview.** The fixer runs over the whole corpus and a handful
-> of its packages are confirmed in game. The app is being built, and every format and command
-> below may still change.
+> 🚧 **Work in progress.** The fixer runs over the whole corpus and a handful of its packages
+> are confirmed in game. The app is released as v0.1.4 (2026-10-09), and every format and
+> command below may still change.
 
 ## What it does
 
@@ -55,8 +55,10 @@ memory, and only what the run derived is written.
 ## Why
 
 The mods in the datasets this was built against are nearly all one kind: of about 6,000
-archives dumped from mod sites, 5,137 are champion skin mods (the rest are maps, UI, audio-only
-packs, and archives that are not a mod at all). A skin mod is a known shape: one or more
+archives dumped from mod sites, 4,952 are champion skin mods, 4,909 of them held in the
+datasets (the rest are maps, UI, audio-only packs, chroma VFX packs, restorations of a
+champion's older content, and archives that are not a mod at all). A skin mod is a known
+shape: one or more
 `skin<N>.bin`, a mesh, a skeleton, clips, textures, effects and sounds, all of it describing
 one look of one champion. That shape is what makes fixing and porting tractable, and what makes
 it worth doing for thousands of mods at once rather than one at a time by hand.
@@ -123,22 +125,23 @@ how it is recognised, why it is there and what the repair is.
 | **Rules are data** | ✅ | ✅ | ⚠️ | ❌ | ❌ |
 | **.modpkg output** | ✅ | ⚠️ | ❌ | ❌ | ❌ |
 | **Platform** | Windows, Linux | Windows | Windows | Windows | Windows |
-| **One-time download** | ~3 GB | small | small | small | ~220 MB |
-| **Maturity** | early preview | released | released | released | released |
+| **One-time download** | ~1.7 GB | small | small | small | ~220 MB |
+| **Maturity** | released, 0.1.4 | released | released | released | released |
 
 The rows come from the other tools' sources and READMEs, read on 2026-10-06, not from running
 them. The names are those of the tools; nothing here is a claim about their authors.
 
-What sets reforge apart is the history. Every other tool sees the mod against one build, the
-current one, and has to be told by hand what changed in between. reforge sees the mod against
-every build the game ever shipped, so it can say which build the mod was made at, which of its
-files are the game's own from back then, which objects are the author's, and what Riot itself
-did to each field between that build and this one. The same history is what lets a port put a
-mod on the right skin instead of all hundred of them.
+The difference is the history. The other tools see the mod against one build, the current
+one, and are told by hand what changed in between. reforge sees the mod against every build
+the game shipped, so it can say which build the mod was made at, which of its files are the
+game's own of that build, which objects are the author's, and what Riot did to each field
+between that build and this one. The same history lets a port put a mod on the one skin it
+was made for instead of every slot.
 
-The honest cost is that history: the first run downloads about 3 GB and keeps about 6 GB on
-disk. Every other tool in the table runs with a few hundred megabytes of hash tables or less.
-reforge is also younger than all of them and is an early preview.
+The cost is that history: the first run downloads 1.73 GB and keeps 4.77 GB on disk
+([ADR-0078](docs/adr/0078-the-history-index-holds-every-entrys-object-bytes-so-a-run-needs-no-clone.md)).
+The other tools in the table run with a few hundred megabytes of hash tables or less. reforge
+is also younger than all of them.
 
 ## What a run needs
 
@@ -149,8 +152,8 @@ reforge is also younger than all of them and is an early preview.
 | the schema database | the types the target build reads for each field of each class, from rito-meta |
 | the history index | every file and object of every build since the census began, as a SQLite database |
 
-The history index is the part that costs something: the first run downloads about 3 GB once
-and keeps about 6 GB on disk. The app keeps it current by appending builds as they arrive.
+The history index is the part that costs something: the first run downloads 1.73 GB once and
+keeps 4.77 GB on disk. The app keeps it current by appending builds as they arrive.
 
 ## Build
 
@@ -166,7 +169,7 @@ checks). A release is cross-compiled for Windows on Linux.
 
 | folder | holds |
 |---|---|
-| [docs/design/](docs/design/) | the architecture, the roadmap, the diagnostic codes, the edge cases, the runs log |
+| [docs/design/](docs/design/) | the architecture, the history, the roadmap and the app's roadmap, the diagnostic codes, the edge cases, the runs log, the review of ltk-forge |
 | [docs/adr/](docs/adr/) | one decision per file: a choice that could have gone another way, and why it went this way |
 | [docs/game-change/](docs/game-change/) | one change Riot made per file: the build, before and after, Riot's own conversion |
 | [docs/game-behavior/](docs/game-behavior/) | how the client behaves with a file, a value or a name |
@@ -204,14 +207,14 @@ survived that:
   ([ADR-0044](docs/adr/0044-ltk-forge-is-retired-and-reforge-is-compared-with-its-own-baseline.md)).
   Three programs and 28 working sessions in under three weeks, each session a person reading
   what came back and sending most of it back.
-- **Every rule was checked against the data, not asserted.** The corpus is 5,137 champion skin
+- **Every rule was checked against the data, not asserted.** The corpus is 4,909 champion skin
   mods of about 6,000 archives, run whole more than ten times between the two programs, with
-  629 edge cases counted
+  668 edge cases counted
   ([CASES.md](docs/design/CASES.md)) and a test for each. A field's type at a build is read off
   the game's own schema or the census history of 757 builds and about 11 million objects,
   never guessed. Riot's conversions are read off Riot's own files across the build that
   changed them.
-- **The reasons are written down.** 62 decisions, 24 game changes, 23 game behaviors and 34
+- **The reasons are written down.** 88 decisions, 25 game changes, 27 game behaviors and 38
   mod artifacts, each a record with its evidence, and a runs log of what was measured.
 - **The output was checked in the game**, by a person, on a running client, and the crashes
   found there became fixtures and tests before they became fixes.

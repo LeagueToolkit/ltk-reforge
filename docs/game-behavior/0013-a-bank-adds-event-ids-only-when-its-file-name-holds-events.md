@@ -22,4 +22,6 @@ the name is.
   audio design states it and holds no account of the single checks.
 - Every events bank a port of ltk-forge writes is named `<role>_events.bnk`. The ports checked
   in game on 2026-09-29 and 2026-09-30 play their events (#GAME-BEHAVIOR-0011,
-  #GAME-BEHAVIOR-0014). No port under another name was tried since.
+  #GAME-BEHAVIOR-0014). A port whose events bank is written under a name without `_events`,
+  checked in game at a current build with none of its events posted, would confirm the rule
+  for that build.

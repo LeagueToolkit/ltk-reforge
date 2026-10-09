@@ -92,7 +92,7 @@ that path stands for it.
 - The baseline port run (2026-10-04), over the 5,137 mods of the datasets, by the paths and the
   provenance its reports list:
 
-  | shape | mods | files under it | the game's bytes, held now | the game's bytes, held before |
+  | shape | mods | files under it | the game's bytes at the target build | the game's bytes at an earlier build only |
   |---|---:|---:|---:|---:|
   | `.<p><N>_` | 55 | 14,684 | 10,330 | 1,010 |
   | one of the 30 words | 223 | 59,011 | 41,936 | 2,093 |

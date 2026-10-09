@@ -55,7 +55,8 @@ What follows from it, the costs included.
 ```
 
 An accepted ADR is not rewritten. A later ADR supersedes it, and only the status line of the
-earlier one changes.
+earlier one changes. A later ADR that supersedes one consequence names it on the status line:
+`Accepted (YYYY-MM-DD); <the consequence> superseded by #ADR-NNNN`.
 
 ## Game change
 

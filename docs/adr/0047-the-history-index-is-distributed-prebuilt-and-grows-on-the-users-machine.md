@@ -1,6 +1,7 @@
 # ADR-0047: The history index is distributed prebuilt and grows on the user's machine
 
-- **Status:** Accepted (2026-10-04)
+- **Status:** Accepted (2026-10-04); a clone in place of the prebuilt index, and an entry's text
+  read from the census history, superseded by #ADR-0078
 - **Related:** #ADR-0005, #ADR-0036, #ADR-0042, #ADR-0043, #ADR-0046; `docs/design/HISTORY.md`
 
 ## Context

@@ -1,4 +1,4 @@
-# ADR-0052: The app ports, and a repair is a preset of the advanced view
+# ADR-0052: The app ports, and a repair is an advanced preset
 
 - **Status:** Accepted (2026-10-04)
 - **Related:** #ADR-0011, #ADR-0050; `docs/design/ROADMAP-UX.md`, "Two views of one run"

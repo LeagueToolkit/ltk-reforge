@@ -1,4 +1,4 @@
-# ADR-0070: A run's bounds sit well above the largest value measured, and one passed is reported
+# ADR-0070: A run's bounds sit well above the largest value measured
 
 - **Status:** Accepted (2026-10-06)
 - **Related:** #ADR-0044

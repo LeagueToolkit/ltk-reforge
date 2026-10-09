@@ -1,7 +1,7 @@
 # ADR-0078: The history index holds every entry's object bytes, so a run needs no clone
 
 - **Status:** Accepted (2026-10-08)
-- **Related:** #ADR-0005, #ADR-0036, #ADR-0057, #ADR-0060, #ADR-0077;
+- **Related:** #ADR-0005, #ADR-0036, #ADR-0047, #ADR-0057, #ADR-0060, #ADR-0077;
   `docs/design/HISTORY.md`, "Object bytes"
 
 ## Context
