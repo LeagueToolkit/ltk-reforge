@@ -1575,3 +1575,20 @@ that the target lacks. The port with the target slot rule over the 1,976 mods wh
   three at any build.
 - **The reduced corpus.** 5 ports differ from the run of the target slot rule, in those fields
   alone.
+
+## Copies of other skins' names (2026-10-09)
+
+#ADR-0083, over the 164 mods whose ports reach names only the game's bins of other skins hold
+(see "Names other skins hold") and over the reduced corpus, each compared with the run before
+the rule.
+
+- **What is copied.** 1,585 objects in 179 units, the names measured: 1,493
+  `VfxSystemDefinitionData`, 54 `StaticMaterialDef`, 30 `GearSkinUpgrade` and 8
+  `ContextualActionData`. 112 units copy from their premium origin. The names left dangling go
+  from 2,456 to 871, by those 1,585.
+- **The checks.** No check and no package diagnostic of the 164 differs: the patched bins
+  apply, read back and keep their types with the copies in them. One port ends with
+  `package.shader-missing`, as it did before.
+- **The reduced corpus.** 5 ports differ, each where it copies: 29 copies, the unit's bin that
+  holds them, the patched skin bins whose objects name them, and the package's names.
+- **Time.** The 164 mods in 48 s at 24 in parallel.
