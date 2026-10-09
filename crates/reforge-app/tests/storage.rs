@@ -157,6 +157,27 @@ fn the_index_kept_is_the_one_with_the_most_builds_the_settings_do_not_choose() {
 }
 
 #[test]
+fn the_indexes_are_measured_together_the_chosen_and_a_stopped_install_among_them() {
+    let data = Data::new();
+    let (indexes, downloads) = (data.indexes(), data.downloads());
+    let chosen = data.index(&indexes, &folder_name("history-v2-snapshot-0"), 2, 10);
+    data.index(&indexes, &folder_name("head-0123456789ab"), 5, 20);
+    let stopped = format!("{}.partial", folder_name("history-v2-snapshot-1"));
+    data.index(&indexes, &stopped, 9, 5);
+    let storage = Storage {
+        indexes: &indexes,
+        clones: &data.clones,
+        downloads: &downloads,
+    };
+
+    let view = storage.view(Some(&chosen));
+
+    let stamps = (stamp(2).len() + stamp(5).len() + stamp(9).len()) as u64;
+    assert_eq!(view.indexes_bytes, 10 + 20 + 5 + stamps);
+    assert_eq!(view.index_bytes, 10 + stamp(2).len() as u64);
+}
+
+#[test]
 fn the_clones_and_the_downloads_are_measured_with_all_they_hold() {
     let data = Data::new();
     let (indexes, downloads) = (data.indexes(), data.downloads());

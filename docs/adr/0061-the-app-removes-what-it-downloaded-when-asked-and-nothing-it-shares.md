@@ -1,6 +1,6 @@
 # ADR-0061: The app removes what it downloaded when asked, and nothing it shares
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-10-05)
 - **Related:** #ADR-0047, #ADR-0057, #ADR-0059, #ADR-0060; `docs/design/ROADMAP-UX.md`, "The
   inputs page"
 

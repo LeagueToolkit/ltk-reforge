@@ -2,11 +2,5 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "fixups_list_description": "The repairs a run makes to a mod, in the order they run",
   "fixups_list_title": "Fixups",
-  "fixups_off_by_default_label": "Off by default",
-  "fixups_page_title": "Repair",
-  "phase.conform.label": "Conform",
-  "phase.files.label": "Files",
-  "phase.layout.label": "Layout from {build}",
-  "phase.strip.label": "Strip",
-  "phase.undo.label": "Undo"
+  "fixups_page_title": "Repair"
 }

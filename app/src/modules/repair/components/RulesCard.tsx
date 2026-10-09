@@ -1,4 +1,5 @@
 import { FloppyDiskIcon, FolderOpenIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { Button, FailureNote, SectionCard, SegmentedControl } from "@/components";
@@ -177,36 +178,32 @@ function opSummary(rule: RuleSpec): string {
 export function RulesCard() {
   const advanced = useRepairStore((state) => state.advanced);
   const setAdvanced = useRepairStore((state) => state.setAdvanced);
-  const [failure, setFailure] = useState<unknown>(null);
   const choice = { off: advanced.fixupsOff, on: advanced.fixupsOn, rules: advanced.rules };
 
-  const saveSelection = async () => {
-    setFailure(null);
-    const path = await pickSavePath(["json"], m.rules_selection_filter_label());
-    if (path) {
-      try {
+  // Each asks the user for a file first, and does nothing when none is picked.
+  const save = useMutation({
+    mutationFn: async () => {
+      const path = await pickSavePath(["json"], m.rules_selection_filter_label());
+      if (path) {
         unwrap(await commands.saveSelection(path, choice));
-      } catch (error) {
-        setFailure(error);
       }
-    }
-  };
-  const loadSelection = async () => {
-    setFailure(null);
-    const path = await pickFile(["json"], m.rules_selection_filter_label());
-    if (path) {
-      try {
-        const loaded = unwrap(await commands.loadSelection(path));
+    },
+  });
+  const load = useMutation({
+    mutationFn: async () => {
+      const path = await pickFile(["json"], m.rules_selection_filter_label());
+      return path ? unwrap(await commands.loadSelection(path)) : null;
+    },
+    onSuccess: (loaded) => {
+      if (loaded) {
         setAdvanced({
           fixupsOff: loaded.off ?? [],
           fixupsOn: loaded.on ?? [],
           rules: loaded.rules ?? [],
         });
-      } catch (error) {
-        setFailure(error);
       }
-    }
-  };
+    },
+  });
 
   return (
     <SectionCard
@@ -218,7 +215,8 @@ export function RulesCard() {
             size="xs"
             variant="outline"
             left={<FolderOpenIcon weight="bold" />}
-            onClick={() => void loadSelection()}
+            loading={load.isPending}
+            onClick={() => load.mutate()}
           >
             {m.rules_load_action()}
           </Button>
@@ -226,14 +224,16 @@ export function RulesCard() {
             size="xs"
             variant="outline"
             left={<FloppyDiskIcon weight="bold" />}
-            onClick={() => void saveSelection()}
+            loading={save.isPending}
+            onClick={() => save.mutate()}
           >
             {m.rules_save_action()}
           </Button>
         </div>
       }
     >
-      {failure != null && <FailureNote failure={failure} />}
+      {load.isError && <FailureNote failure={load.error} />}
+      {save.isError && <FailureNote failure={save.error} />}
       {advanced.rules.length > 0 && (
         <ul className="divide-y divide-surface-700/50">
           {advanced.rules.map((rule) => (

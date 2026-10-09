@@ -6,8 +6,8 @@ Manager's stack), #ADR-0047 (the history index, distributed and grown on the use
 #ADR-0057 (the census history fetched as far as an append reads it), #ADR-0060 (the census
 history bootstrapped from a released archive, superseded by #ADR-0078: the index holds every
 entry's object bytes, so a run needs no clone), #ADR-0059 (the League Toolkit caches updated
-when asked and marked when behind), #ADR-0061 (what the app downloaded removed when asked,
-proposed), #ADR-0049 (an AI agent as a caller, proposed),
+when asked and marked when behind), #ADR-0061 (what the app downloaded removed when asked),
+#ADR-0049 (an AI agent as a caller, proposed),
 #ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
@@ -234,7 +234,8 @@ user picks another policy and runs again.
   mod with no error is written by that run. A mod with one is not: the view shows every
   finding, errors first, and a second button writes it with nothing blocking, as a new run.
 - The app holds no rule about a mod. It shows what the library returned and passes settings in.
-- Every finding shows its code. A fixup and a finding that name a record link to it.
+- Every finding shows its code. A fixup and a finding that name a record show the record's
+  code; the record is in `docs/`, and the app opens no link to it.
 - A mod's name, description and paths reach the screen through `clean`: the crate reads its
   views of a run from `Report::to_json`, which writes every character a terminal acts on as an
   escape.

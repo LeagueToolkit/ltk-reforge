@@ -72,7 +72,9 @@ export function IndexRow({ view, chosen, onChoose, pick }: IndexRowProps) {
 
   const kept = storage.data?.kept;
   const removable = storage.data != null && (storage.data.index_owned || kept != null);
-  const freed = (storage.data?.index_owned ? storage.data.index_bytes : 0) + (kept?.bytes ?? 0);
+  // The removal takes every index the app installed, not only the two the row names.
+  const freed = storage.data?.indexes_bytes ?? 0;
+  const origin = chosen && originOf(chosen, storage.data);
 
   return (
     <InputRow
@@ -91,7 +93,7 @@ export function IndexRow({ view, chosen, onChoose, pick }: IndexRowProps) {
                 {m.inputs_history_builds_label({ builds: view.builds, build: view.newest_build })}
               </span>
             )}
-            {originOf(chosen, storage.data) && <span>{originOf(chosen, storage.data)}</span>}
+            {origin && <span>{origin}</span>}
             {storage.data && storage.data.index_bytes > 0 && (
               <span>{m.inputs_on_disk_label({ size: diskSize(storage.data.index_bytes) })}</span>
             )}

@@ -36,6 +36,9 @@ pub struct StorageView {
     /// The index with the most builds among those the app installed and the settings do not
     /// choose.
     pub kept: Option<KeptIndex>,
+    /// The bytes of every index the app installed, the one the settings choose among them: what
+    /// their removal frees.
+    pub indexes_bytes: u64,
     /// The bytes of the app's clones of the census history.
     pub census_bytes: u64,
     /// The bytes of the downloads kept to resume.
@@ -55,7 +58,9 @@ pub struct Storage<'a> {
 impl Storage<'_> {
     /// What the folders hold, with `chosen` the index the settings choose.
     pub fn view(&self, chosen: Option<&Utf8Path>) -> StorageView {
-        let kept = folders(self.indexes)
+        let installed = folders(self.indexes);
+        let indexes_bytes = installed.iter().map(|dir| bytes_of(dir)).sum();
+        let kept = installed
             .into_iter()
             .filter(|dir| Some(dir.as_path()) != chosen)
             // An install that stopped: its stamp is written before its database.
@@ -72,6 +77,7 @@ impl Storage<'_> {
             index_bytes: chosen.map_or(0, bytes_of),
             index_owned: chosen.is_some_and(|dir| self.owns(dir)),
             kept,
+            indexes_bytes,
             census_bytes: self.clone_dirs().iter().map(|dir| bytes_of(dir)).sum(),
             downloads_bytes: bytes_of(self.downloads),
         }
