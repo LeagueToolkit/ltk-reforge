@@ -117,8 +117,12 @@ impl<'a> ClientLoad<'a> {
                 })
                 .collect();
             for file in linked {
+                // A bin past the cap is not read: its objects are not the load's.
+                if order.len() >= MAX_LOAD_BINS {
+                    break;
+                }
                 let bin = self.bin_of(file, sink);
-                if !order.contains(&bin) && order.len() < MAX_LOAD_BINS {
+                if !order.contains(&bin) {
                     order.push(bin);
                 }
             }

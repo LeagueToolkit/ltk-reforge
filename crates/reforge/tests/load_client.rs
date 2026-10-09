@@ -13,7 +13,7 @@ use reforge::model::bin::BinError;
 use reforge::model::entity::{FileUse, LinkTo};
 use reforge::model::value::as_str;
 use reforge::model::{Slot, name_hash};
-use reforge_testkit::bins::{Skin, bin, blob, entry, graph, linked_bin, particle};
+use reforge_testkit::bins::{Skin, bin, blob, entry, graph, linked_bin, particle, resolver};
 use reforge_testkit::skins::{self, BASE_TEX, S3_CLIPS, WAD, skin_bin, skin3};
 use reforge_testkit::{LoadRun, MemoryHistory, ModArchive};
 
@@ -340,13 +340,22 @@ fn a_load_follows_no_more_bins_than_the_cap_and_says_so() {
     let first = linked_bin(vec![], &[name(0).as_str()]);
     let mut archive = ModArchive::new().file(WAD, &skin_bin("test", 0), first);
     for i in 0..chain {
-        let next = linked_bin(vec![], &[name(i + 1).as_str()]);
+        let held = resolver(&format!("Link{i}"));
+        let next = linked_bin(vec![held], &[name(i + 1).as_str()]);
         archive = archive.file(WAD, &name(i), next);
     }
     let env = env();
     let run = LoadRun::of(&env, options(), &archive);
-    let unit = &run.module().units[run.unit("test", 0)];
+    let m = run.module();
+    let unit = &m.units[run.unit("test", 0)];
     assert_eq!(unit.loads.len(), MAX_LOAD_BINS);
+    // The first bin past the cap is neither read nor loaded: no object of it is in the mod.
+    let past = MAX_LOAD_BINS - 1;
+    let (file, node) = run.file(&name(past));
+    assert_eq!(node.used, FileUse::Unused);
+    assert!(m.bin_of(file).is_none());
+    let held = name_hash(&format!("Link{past}"));
+    assert!(m.objects.values().all(|object| object.entry != held));
     assert_eq!(run.file(&name(chain - 1)).1.used, FileUse::Unused);
     // The last bin loaded links one more of the mod's.
     let capped = run.only::<LoadCapped>();
