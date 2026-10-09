@@ -1,7 +1,11 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
-  "advanced_block_description": "Filters of findings that refuse the write, one per line: a code, an area, or terms like severity=error",
+  "advanced_block_area_label": "Any finding of an area",
+  "advanced_block_description": "A finding that matches refuses the write. The run still shows what it found.",
   "advanced_block_label": "Refuse the write on",
+  "advanced_block_raw_description": "One filter per line: a code, an area, or a term like severity=error, channel=input, stage=fix, record=#GAME-CHANGE-0005",
+  "advanced_block_raw_title": "Filter lines, for advanced use ({count} beyond the boxes)",
+  "advanced_block_severity_label": "Any finding of a severity, or worse",
   "advanced_checks_description": "What the built package is held to",
   "advanced_checks_title": "Checks",
   "advanced_fixups_description": "The repairs a run makes, in the order they run",
@@ -9,6 +13,7 @@
   "advanced_keep_dds_label": "Keep DDS textures",
   "advanced_keep_stale_description": "Copies of game files from an older build, carried as the mod's own",
   "advanced_keep_stale_label": "Keep stale copies",
+  "advanced_no_run_yet": "No run yet. Run shows each stage here, with what it found.",
   "advanced_package_label": "{name} {version}: {chunks} chunks, {patches} patches",
   "advanced_repair_preset_action": "Repair",
   "advanced_repair_preset_note": "A repair: the mod at its own skins and paths, its bins fixed for the game. It ships whole bins, which cover Riot's own at every patch. Standard settings port again.",
@@ -17,6 +22,11 @@
   "advanced_settings_title": "Run settings",
   "advanced_stage_findings_empty": "This stage raised nothing",
   "advanced_stage_not_run": "The run did not reach this stage",
+  "advanced_tab_result": "Result",
+  "advanced_tab_rules": "Rules",
+  "advanced_tab_settings": "Settings",
+  "advanced_tab_toggles": "Fixups and checks",
+  "advanced_tabs_label": "The advanced view",
   "advanced_through_label": "Run through",
   "advanced_written_label": "Written to {path}"
 }

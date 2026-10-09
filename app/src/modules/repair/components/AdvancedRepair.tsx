@@ -1,7 +1,15 @@
 import { PlayIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
-import { Button, FailureNote, SectionCard, SegmentedControl, Switch } from "@/components";
+import {
+  Button,
+  FailureNote,
+  SectionCard,
+  SegmentedControl,
+  Switch,
+  TabPanel,
+  Tabs,
+} from "@/components";
 import { m } from "@/i18n";
 import type { PolicyView, RunView, StageName } from "@/lib/bindings.gen";
 import { ChangesExplorer } from "@/modules/changes";
@@ -11,6 +19,7 @@ import { useInputs, useInputsGate } from "@/modules/inputs";
 
 import { useRunMod, useRunRunning, useRunStages } from "../api/run";
 import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state/repairStore";
+import { BlockPicker } from "./BlockPicker";
 import { DecisionsView } from "./DecisionsView";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
@@ -22,8 +31,11 @@ import { RunSummary } from "./RunSummary";
 import { StageStrip, stageLabel } from "./StageStrip";
 import { type ToggleItem, ToggleList } from "./ToggleList";
 
-/** The run settings: the last stage, the stale copies, and what refuses the write. */
-function SettingsCard({
+/** The advanced view's tabs. */
+type Tab = "result" | "settings" | "toggles" | "rules";
+
+/** The run bar: the last stage, the presets, and the one Run button every tab shares. */
+function RunBar({
   stages,
   onRun,
   running,
@@ -41,19 +53,42 @@ function SettingsCard({
   const through = stages.includes(advanced.through) ? advanced.through : "write";
 
   return (
-    <SectionCard
-      title={m.advanced_settings_title()}
-      action={
-        <div className="flex gap-1">
-          <Button size="xs" variant="ghost" onClick={() => applyPreset(STANDARD)}>
-            {m.advanced_reset_action()}
-          </Button>
-          <Button size="xs" variant="ghost" onClick={() => applyPreset(REPAIR)}>
-            {m.advanced_repair_preset_action()}
-          </Button>
-        </div>
-      }
-    >
+    <div className="flex flex-wrap items-center gap-3" data-ui="RunBar">
+      <Button
+        variant="filled"
+        left={<PlayIcon weight="bold" />}
+        loading={running}
+        disabled={!archive || inputs.isPending}
+        onClick={onRun}
+      >
+        {m.advanced_run_action()}
+      </Button>
+      <span className="text-sm text-surface-400 select-none">{m.advanced_through_label()}</span>
+      <SegmentedControl
+        options={options}
+        value={through}
+        onChange={(next) => setAdvanced({ through: next })}
+        aria-label={m.advanced_through_label()}
+      />
+      <div className="ml-auto flex gap-1">
+        <Button size="xs" variant="ghost" onClick={() => applyPreset(STANDARD)}>
+          {m.advanced_reset_action()}
+        </Button>
+        <Button size="xs" variant="ghost" onClick={() => applyPreset(REPAIR)}>
+          {m.advanced_repair_preset_action()}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** The run settings: the stale copies, the DDS textures, and what refuses the write. */
+function SettingsCard() {
+  const advanced = useRepairStore((state) => state.advanced);
+  const setAdvanced = useRepairStore((state) => state.setAdvanced);
+
+  return (
+    <SectionCard title={m.advanced_settings_title()}>
       {advanced.kind === "repair" && (
         <p
           className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs text-surface-200 select-none"
@@ -62,15 +97,6 @@ function SettingsCard({
           {m.advanced_repair_preset_note()}
         </p>
       )}
-      <div className="flex flex-col gap-2">
-        <p className="text-sm text-surface-100 select-none">{m.advanced_through_label()}</p>
-        <SegmentedControl
-          options={options}
-          value={through}
-          onChange={(next) => setAdvanced({ through: next })}
-          aria-label={m.advanced_through_label()}
-        />
-      </div>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-surface-100 select-none">{m.advanced_keep_stale_label()}</p>
@@ -97,29 +123,7 @@ function SettingsCard({
           aria-label={m.advanced_keep_dds_label()}
         />
       </div>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-surface-100 select-none">{m.advanced_block_label()}</span>
-        <span className="text-xs text-surface-400 select-none">
-          {m.advanced_block_description()}
-        </span>
-        <textarea
-          rows={2}
-          value={advanced.block.join("\n")}
-          onChange={(event) => setAdvanced({ block: event.target.value.split("\n") })}
-          className="rounded-md border border-surface-600 bg-surface-950/40 p-2 font-mono text-xs text-surface-100 focus-visible:outline-2 focus-visible:outline-accent-500"
-        />
-      </label>
-      <div className="flex justify-end">
-        <Button
-          variant="filled"
-          left={<PlayIcon weight="bold" />}
-          loading={running}
-          disabled={!archive || inputs.isPending}
-          onClick={onRun}
-        >
-          {m.advanced_run_action()}
-        </Button>
-      </div>
+      <BlockPicker block={advanced.block} onChange={(block) => setAdvanced({ block })} />
     </SectionCard>
   );
 }
@@ -227,7 +231,8 @@ function Toggles() {
 
 /**
  * The advanced view (#ADR-0050): the run's stages in order, a run up to one of them, and the
- * settings the library has. Each run is a new run from the archive.
+ * settings the library has, under four tabs with one Run bar over them. Each run is a new run
+ * from the archive, and starting one shows the result.
  */
 export function AdvancedRepair() {
   const archive = useRepairStore((state) => state.archive);
@@ -241,6 +246,7 @@ export function AdvancedRepair() {
   const running = useRunRunning();
   const { gate, dialog } = useInputsGate();
   const [selected, setSelected] = useState<StageName | null>(null);
+  const [tab, setTab] = useState<Tab>("result");
   const stages = useRunStages(kind);
 
   const start = (settings = advanced) => {
@@ -249,6 +255,7 @@ export function AdvancedRepair() {
     }
     const through = stages.includes(settings.through) ? settings.through : "write";
     setSelected(null);
+    setTab("result");
     gate(() =>
       run.mutate({
         kind: settings.kind,
@@ -266,29 +273,54 @@ export function AdvancedRepair() {
   };
   const lastRan = last?.stages.filter((stage) => stage.state !== "not-run").at(-1)?.stage;
   const shown = selected ?? lastRan ?? "read";
+  const togglesChanged =
+    advanced.fixupsOff.length + advanced.fixupsOn.length + advanced.checksOff.length;
+
+  const tabs = [
+    { value: "result" as const, label: m.advanced_tab_result() },
+    { value: "settings" as const, label: m.advanced_tab_settings() },
+    { value: "toggles" as const, label: m.advanced_tab_toggles(), count: togglesChanged },
+    { value: "rules" as const, label: m.advanced_tab_rules(), count: advanced.rules.length },
+  ];
 
   return (
     <div className="flex flex-col gap-6" data-ui="AdvancedRepair">
-      <SettingsCard stages={stages} onRun={() => start()} running={running} />
+      <RunBar stages={stages} onRun={() => start()} running={running} />
       {dialog}
-      {live && <LiveProgress live={live} stages={stages} />}
-      {live && <RunResults {...liveResults(live)} />}
-      {run.isError && <FailureNote failure={run.error} />}
-      {last && !live && (
-        <>
-          <RunSummary view={last} />
-          <StageStrip
-            stages={last.stages}
-            findings={last.findings}
-            selected={shown}
-            onSelect={setSelected}
-          />
-          <StageDetail view={last} stage={shown} onPolicy={runWithPolicy} />
-        </>
-      )}
-      {kind === "port" && <PolicyCard />}
-      <RulesCard />
-      <Toggles />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.advanced_tabs_label()}>
+        <TabPanel value="result">
+          {live && <LiveProgress live={live} stages={stages} />}
+          {live && <RunResults {...liveResults(live)} />}
+          {run.isError && <FailureNote failure={run.error} />}
+          {last && !live && (
+            <>
+              <RunSummary view={last} />
+              <StageStrip
+                stages={last.stages}
+                findings={last.findings}
+                selected={shown}
+                onSelect={setSelected}
+              />
+              <StageDetail view={last} stage={shown} onPolicy={runWithPolicy} />
+            </>
+          )}
+          {!last && !live && !run.isError && (
+            <p className="text-sm text-surface-400 select-none" data-ui="AdvancedRepair:empty">
+              {m.advanced_no_run_yet()}
+            </p>
+          )}
+        </TabPanel>
+        <TabPanel value="settings">
+          <SettingsCard />
+          {kind === "port" && <PolicyCard />}
+        </TabPanel>
+        <TabPanel value="toggles">
+          <Toggles />
+        </TabPanel>
+        <TabPanel value="rules">
+          <RulesCard />
+        </TabPanel>
+      </Tabs>
     </div>
   );
 }
