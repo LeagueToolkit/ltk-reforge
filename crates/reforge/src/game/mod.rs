@@ -9,6 +9,7 @@ mod install;
 mod namehash;
 mod names;
 mod schema;
+mod shader_cache;
 mod source;
 mod speller;
 mod view;
@@ -33,6 +34,7 @@ pub use self::schema::{
     FieldType, SCHEMA_FILE, Schema, SchemaAbsent, SchemaError, SchemaInstallNewer,
     SchemaUnreadable, meta_cache_dir,
 };
+pub use self::shader_cache::{ShaderStage, ShaderVariants, shader_file, variant_key};
 pub use self::source::{Copies, GameBin, GameSkin, GameSource, MAX_SAME_SIZE_READS};
 pub use self::speller::Speller;
 pub use self::view::GameView;

@@ -195,6 +195,10 @@ impl<'a> PortBuilder<'a> {
         if let Some(missing) = shaders::missing(port.objects.values(), game).map_err(Fault::from)? {
             return Err(sink.halt(missing).into());
         }
+        let variants = shaders::variants_missing(port.objects.values(), game);
+        if let Some(missing) = variants.map_err(Fault::from)? {
+            return Err(sink.halt(missing).into());
+        }
         let mut package = Package::new(ProjectConfig::of(m, Made::Ported));
         let mut found = Ported {
             files: 0,

@@ -224,7 +224,11 @@ immutable and built once by `Env::builder()`.
     path. The history's `events_banks` answers with the same type, per file, with the WADs
     that held it;
   - `bank_clips(path)`: the clips of the bank or the package at a path, each by its id, its
-    size and the key of its bytes, which is what the census records of a bank's clips.
+    size and the key of its bytes, which is what the census records of a bank's clips;
+  - `shader_variants(path)`: a `ShaderVariants`, the variants the shader cache's table at a
+    path holds programs for: the base defines, name and value pairs a key is made of, and the
+    key of each variant. `shader_file(objectPath, stage)` names the table of a game shader's
+    pixel or vertex programs in `ShaderCache.dx11.wad.client` (#GAME-BEHAVIOR-0029).
 
   A file that is absent, and one that does not read as what is asked, answer `None`. A file the
   game holds and does not give is a `GameError`. What a build before the target held is asked
@@ -629,6 +633,12 @@ object takes a name of its own, which every link to it follows.
 - **A material the client crashes on ends the run.** A package of either kind in which a
   material's pass links a shader the target's shader bin lacks is not built
   (`package.shader-missing`, #ADR-0069). The fixups have relinked what Riot's materials relinked.
+  Nor is one in which a material's pass, on a shader of the game's shader bin, asks for a variant
+  the target's shader cache lacks (`package.shader-variant-missing`, #GAME-BEHAVIOR-0029): the
+  pass's defines are made from the shader's definition in the game's bin and the material's
+  switches and macros, and the key of each technique and each child technique is looked up in
+  the tables of both the pixel and the vertex programs. A shader the mod's objects define, and one
+  with no table in the cache, is not judged.
 - **A repaired package is not the whole evidence of the mod.** The files left behind are part
   of what `load` judged by: a mod's date, and that a WAD restores a model from before a rework.
   A package repaired again from its own bytes alone dates differently in about half the mods,

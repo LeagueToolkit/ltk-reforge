@@ -18,6 +18,7 @@ ltk_meta.workspace = true
 ltk_wad.workspace = true
 ltk_mesh.workspace = true
 ltk_anim.workspace = true
+ltk_shader.workspace = true
 glam.workspace = true
 ltk_texture.workspace = true
 ltk_mod_project = { workspace = true, features = ["modpkg"] }
@@ -30,6 +31,7 @@ ltk_hashdb.workspace = true
 ltk_mimir_cache.workspace = true
 indexmap.workspace = true
 sha2.workspace = true
+xxhash-rust.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

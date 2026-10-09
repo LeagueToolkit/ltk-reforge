@@ -1,19 +1,24 @@
 //! A material's link to a shader the target's shader bin lacks (#ADR-0069): relinked where
 //! Riot's materials took another shader (#GAME-CHANGE-0024), and a mod with a link that has no
-//! relink gets no package, since the client crashes at load (#GAME-BEHAVIOR-0023).
+//! relink gets no package, since the client crashes at load (#GAME-BEHAVIOR-0023). A material
+//! that asks a game shader for a variant the target's shader cache lacks gets no package either,
+//! since the client crashes at its draw (#GAME-BEHAVIOR-0029).
 
 use ltk_meta::property::values;
 use ltk_meta::{BinObject, PropertyKind as Kind, PropertyValueEnum as V};
-use reforge::diag::Diag;
+use reforge::diag::{Diag, Record};
 use reforge::env::Env;
 use reforge::fixups::layout::ShaderRelink;
 use reforge::fixups::{After, Changed, FixupSet};
-use reforge::game::{SHADERS_BIN, Schema};
+use reforge::game::{SHADERS_BIN, Schema, ShaderStage};
 use reforge::model::name_hash;
-use reforge::package::{BuildError, ShaderLink, ShaderMissing};
-use reforge_testkit::bins::{bin, embedded, link, object};
+use reforge::package::{
+    BuildError, ShaderLink, ShaderMissing, ShaderVariant, ShaderVariantMissing,
+};
+use reforge_testkit::bins::{bin, embedded, flag, link, object, text};
 use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{field, kind};
+use reforge_testkit::shaders::toc;
 use reforge_testkit::{PackRun, SchemaRows, skins};
 
 const RELINK_ID: &str = "material-shader-relink";
@@ -125,5 +130,275 @@ fn a_game_with_no_shader_bin_judges_no_shader() {
     let run = PackRun::of(&env, &relink_only(), &archive);
     assert_eq!(links(&run), [link(REMOVED), link(UNRELINKED)]);
     assert!(run.fix.changes.is_empty());
+    let _ = run.package();
+}
+
+/// A game shader with programs in the cache, shaped as #GAME-BEHAVIOR-0029's: a feature define,
+/// a switch on by default and one off.
+const VARIANTS: &str = "Shaders/SkinnedMesh/Test_Variants";
+const PIXEL: &str = "ASSETS/Shaders/Generated/Shaders/SkinnedMesh/Test_Variants.ps-dx11";
+const VERTEX: &str = "ASSETS/Shaders/Generated/Shaders/SkinnedMesh/Test_Variants.vs-dx11";
+const OTHER_PIXEL: &str = "ASSETS/Shaders/Generated/Shaders/SkinnedMesh/Test_Other.ps-dx11";
+const OTHER_VERTEX: &str = "ASSETS/Shaders/Generated/Shaders/SkinnedMesh/Test_Other.vs-dx11";
+const BASE: &[(&str, &str)] = &[
+    ("FEATURE_BLOOM", "1"),
+    ("USE_RIM", "1"),
+    ("OFF_VALUE_ON_TEXTURE", "1"),
+    ("TRANSITION", "1"),
+];
+/// The variant of `OFF_VALUE_ON_TEXTURE` on, the only one compiled.
+const SWITCHED_ON: &str = "FEATURE_BLOOM=1OFF_VALUE_ON_TEXTURE=1USE_RIM=1";
+const SWITCHED_ON_TRANSITION: &str = "FEATURE_BLOOM=1OFF_VALUE_ON_TEXTURE=1TRANSITION=1USE_RIM=1";
+/// The variant of the shader's defaults: `OFF_VALUE_ON_TEXTURE=0` pairs no base define.
+const DEFAULTS: &str = "FEATURE_BLOOM=1USE_RIM=1";
+const TECHNIQUE: &str = "normal";
+const SWITCH_ON: &[(&str, bool)] = &[("OFF_VALUE_ON_TEXTURE", true)];
+
+/// The target at build 300, its shader bin defining `VARIANTS`, and its shader cache holding
+/// these files.
+fn variant_env(files: Vec<(&str, Vec<u8>)>) -> Env {
+    let mut game = skins::game_at("16.19.300");
+    game.insert(SHADERS_BIN, bin(vec![variants_shader()]));
+    for (path, bytes) in files {
+        game.insert(path, bytes);
+    }
+    Env::builder()
+        .game(game)
+        .schema(schema())
+        .build()
+        .expect("an environment")
+}
+
+/// The definition of `VARIANTS`.
+fn variants_shader() -> BinObject {
+    let switch = |name: &str, on: bool| {
+        embedded(
+            "ShaderStaticSwitch",
+            vec![("name", text(name)), ("onByDefault", flag(on))],
+        )
+    };
+    let switches = vec![
+        switch("USE_RIM", true),
+        switch("OFF_VALUE_ON_TEXTURE", false),
+    ];
+    object(
+        VARIANTS,
+        "CustomShaderDef",
+        vec![
+            ("objectPath", text(VARIANTS)),
+            ("featureDefines", strings(&[("FEATURE_BLOOM", "1")])),
+            ("staticSwitches", embeds(switches)),
+        ],
+    )
+}
+
+/// Both files of `VARIANTS`, of `BASE` and these variants.
+fn both(variants: &[&str]) -> Vec<(&'static str, Vec<u8>)> {
+    vec![(PIXEL, toc(BASE, variants)), (VERTEX, toc(BASE, variants))]
+}
+
+fn strings(pairs: &[(&str, &str)]) -> V {
+    let entries = pairs.iter().map(|(k, v)| (text(k), text(v))).collect();
+    V::Map(values::Map::new(Kind::String, Kind::String, entries).expect("a map of strings"))
+}
+
+/// What a material on `VARIANTS` sets.
+#[derive(Default)]
+struct Asks<'a> {
+    switches: &'a [(&'a str, bool)],
+    macros: &'a [(&'a str, &'a str)],
+    pass_macros: &'a [(&'a str, &'a str)],
+    /// The child techniques of its technique, each by its name and its macros.
+    children: &'a [(&'a str, &'a [(&'a str, &'a str)])],
+}
+
+/// A material of one technique of one pass on `VARIANTS`.
+fn variant_material(asks: &Asks<'_>) -> BinObject {
+    let switches = asks.switches.iter().map(|&(name, on)| {
+        embedded(
+            "StaticMaterialSwitchDef",
+            vec![("name", text(name)), ("on", flag(on))],
+        )
+    });
+    let pass = embedded(
+        "StaticMaterialPassDef",
+        vec![
+            ("shader", link(VARIANTS)),
+            ("shaderMacros", strings(asks.pass_macros)),
+        ],
+    );
+    let technique = embedded(
+        "StaticMaterialTechniqueDef",
+        vec![("name", text(TECHNIQUE)), ("passes", embeds(vec![pass]))],
+    );
+    let children = asks.children.iter().map(|&(name, macros)| {
+        embedded(
+            "StaticMaterialChildTechniqueDef",
+            vec![
+                ("name", text(name)),
+                ("parentName", text(TECHNIQUE)),
+                ("shaderMacros", strings(macros)),
+            ],
+        )
+    });
+    object(
+        MATERIAL,
+        "StaticMaterialDef",
+        vec![
+            ("switches", embeds(switches.collect())),
+            ("shaderMacros", strings(asks.macros)),
+            ("techniques", embeds(vec![technique])),
+            ("childTechniques", embeds(children.collect())),
+        ],
+    )
+}
+
+fn variant_run<'e>(env: &'e Env, asks: &Asks<'_>) -> PackRun<'e> {
+    PackRun::of(
+        env,
+        &relink_only(),
+        &skin_archive(vec![variant_material(asks)]),
+    )
+}
+
+/// The variant of `VARIANTS` the test material asks for in one file.
+fn variant(child: Option<&str>, stage: ShaderStage, filtered: &str) -> ShaderVariant {
+    ShaderVariant {
+        material: name_hash(MATERIAL),
+        shader: name_hash(VARIANTS),
+        technique: TECHNIQUE.to_owned(),
+        child: child.map(str::to_owned),
+        stage,
+        filtered: filtered.to_owned(),
+    }
+}
+
+#[test]
+fn a_material_whose_switches_ask_for_a_compiled_variant_is_built() {
+    let env = variant_env(both(&[SWITCHED_ON]));
+    let asks = Asks {
+        switches: SWITCH_ON,
+        ..Asks::default()
+    };
+    let _ = variant_run(&env, &asks).package();
+}
+
+#[test]
+fn a_switch_left_at_a_default_never_compiled_gets_no_package() {
+    let env = variant_env(both(&[SWITCHED_ON]));
+    let run = variant_run(&env, &Asks::default());
+    assert!(matches!(run.package, Err(BuildError::Halted(_))));
+    let missing = run.only::<ShaderVariantMissing>();
+    assert_eq!(
+        missing.variants,
+        [
+            variant(None, ShaderStage::Pixel, DEFAULTS),
+            variant(None, ShaderStage::Vertex, DEFAULTS),
+        ]
+    );
+    assert_eq!(
+        ShaderVariantMissing::CODE.name,
+        "package.shader-variant-missing"
+    );
+    assert_eq!(
+        ShaderVariantMissing::RECORD,
+        Some(Record::game_behavior(29))
+    );
+}
+
+#[test]
+fn a_child_technique_asking_for_a_variant_the_cache_lacks_gets_no_package() {
+    let env = variant_env(both(&[SWITCHED_ON]));
+    let asks = Asks {
+        switches: SWITCH_ON,
+        children: &[("transition", &[("TRANSITION", "1")])],
+        ..Asks::default()
+    };
+    let run = variant_run(&env, &asks);
+    assert!(matches!(run.package, Err(BuildError::Halted(_))));
+    let missing = run.only::<ShaderVariantMissing>();
+    let child = Some("transition");
+    assert_eq!(
+        missing.variants,
+        [
+            variant(child, ShaderStage::Pixel, SWITCHED_ON_TRANSITION),
+            variant(child, ShaderStage::Vertex, SWITCHED_ON_TRANSITION),
+        ]
+    );
+}
+
+#[test]
+fn a_define_that_pairs_no_base_define_is_left_out_of_the_key() {
+    let env = variant_env(both(&[SWITCHED_ON]));
+    // No base define is named `NUM_BLEND_WEIGHTS`, and `TRANSITION` is paired with 1.
+    let asks = Asks {
+        switches: SWITCH_ON,
+        macros: &[("NUM_BLEND_WEIGHTS", "4"), ("TRANSITION", "0")],
+        ..Asks::default()
+    };
+    let _ = variant_run(&env, &asks).package();
+}
+
+#[test]
+fn a_pass_macro_is_part_of_the_key() {
+    let env = variant_env(both(&[SWITCHED_ON_TRANSITION]));
+    let asks = Asks {
+        switches: SWITCH_ON,
+        pass_macros: &[("TRANSITION", "1")],
+        ..Asks::default()
+    };
+    let _ = variant_run(&env, &asks).package();
+}
+
+#[test]
+fn a_base_define_listed_with_two_values_pairs_either() {
+    let base = [BASE, &[("OFF_VALUE_ON_TEXTURE", "0")]].concat();
+    let compiled = "FEATURE_BLOOM=1OFF_VALUE_ON_TEXTURE=0USE_RIM=1";
+    let files = vec![
+        (PIXEL, toc(&base, &[compiled])),
+        (VERTEX, toc(&base, &[compiled])),
+    ];
+    let env = variant_env(files);
+    let _ = variant_run(&env, &Asks::default()).package();
+}
+
+#[test]
+fn a_variant_the_vertex_file_alone_lacks_gets_no_package() {
+    let files = vec![
+        (PIXEL, toc(BASE, &[SWITCHED_ON, DEFAULTS])),
+        (VERTEX, toc(BASE, &[SWITCHED_ON])),
+    ];
+    let env = variant_env(files);
+    let run = variant_run(&env, &Asks::default());
+    assert!(matches!(run.package, Err(BuildError::Halted(_))));
+    let missing = run.only::<ShaderVariantMissing>();
+    assert_eq!(
+        missing.variants,
+        [variant(None, ShaderStage::Vertex, DEFAULTS)]
+    );
+}
+
+#[test]
+fn a_shader_with_no_file_in_the_cache_is_not_judged() {
+    let files = vec![
+        (OTHER_PIXEL, toc(BASE, &[SWITCHED_ON])),
+        (OTHER_VERTEX, toc(BASE, &[SWITCHED_ON])),
+    ];
+    let env = variant_env(files);
+    let _ = variant_run(&env, &Asks::default()).package();
+}
+
+#[test]
+fn a_game_with_no_shader_cache_judges_no_variant() {
+    let env = variant_env(Vec::new());
+    let _ = variant_run(&env, &Asks::default()).package();
+}
+
+#[test]
+fn a_shader_the_mod_defines_is_not_judged_against_the_cache() {
+    // #GAME-BEHAVIOR-0022: the mod's own definition has no programs, whatever its name.
+    let env = variant_env(both(&[SWITCHED_ON]));
+    let objects = vec![variant_material(&Asks::default()), variants_shader()];
+    let run = PackRun::of(&env, &relink_only(), &skin_archive(objects));
     let _ = run.package();
 }

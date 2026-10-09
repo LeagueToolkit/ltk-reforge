@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use super::catalog::SkinCatalog;
+use super::shader_cache::ShaderVariants;
 use super::{Build, GameError};
 use crate::model::bin::{self, ParsedBin, ParsedObject};
 use crate::model::rig::{MeshShape, Skeleton};
@@ -98,6 +99,10 @@ pub trait GameSource: Send + Sync {
     /// The clips of the game's bank or package at a path, each by its id, its size and the key
     /// of its bytes. `None` when the game has no file there, or the file reads as neither.
     fn bank_clips(&self, path: WadHash) -> Result<Option<Arc<[BankClip]>>, GameError>;
+
+    /// The variants of the shader cache's file at a path. `None` when the game has no file
+    /// there, or the file reads as no table of a shader's programs.
+    fn shader_variants(&self, path: WadHash) -> Result<Option<Arc<ShaderVariants>>, GameError>;
 }
 
 /// A bin of the game, parsed.

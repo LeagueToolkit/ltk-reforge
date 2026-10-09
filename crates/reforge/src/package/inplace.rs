@@ -70,7 +70,8 @@ impl<'a> InPlaceBuilder<'a> {
     /// What the mod was loaded against, and under which options. A texture put in TEX's
     /// container is judged there as `load` judged the file: one that is a stale copy in
     /// that container is left out (#ADR-0023, #ADR-0039). A material's shader is judged
-    /// against the game's shader bin (#ADR-0069). Without it neither is judged.
+    /// against the game's shader bin (#ADR-0069), and the variant it asks for against the
+    /// game's shader cache (#GAME-BEHAVIOR-0029). Without it none is judged.
     #[must_use]
     pub fn judged(mut self, env: &'a Env, options: &LoadOptions) -> Self {
         self.stale = Some(Staleness::new(env, options));
@@ -93,8 +94,12 @@ impl<'a> InPlaceBuilder<'a> {
         let m: &Mod = self.fixed;
         let _span = tracing::info_span!("build", files = m.files.len()).entered();
         if let Some(game) = self.game {
-            let objects = m.objects.values().map(|object| &object.value);
-            if let Some(missing) = shaders::missing(objects, game).map_err(Fault::from)? {
+            let objects = || m.objects.values().map(|object| &object.value);
+            if let Some(missing) = shaders::missing(objects(), game).map_err(Fault::from)? {
+                return Err(sink.halt(missing).into());
+            }
+            let variants = shaders::variants_missing(objects(), game);
+            if let Some(missing) = variants.map_err(Fault::from)? {
                 return Err(sink.halt(missing).into());
             }
         }

@@ -166,9 +166,6 @@ record and no measurement of reforge's own says it is right.
   a port carries still resolves in the resolvers it writes is not checked.
 - *fixer* A mod's own `CustomShaderDef` is kept, and the client crashes at the first draw of a
   material that uses it (#GAME-BEHAVIOR-0022). No mod of the datasets defines one.
-- *fixer* A material on a game shader whose switches and macros ask for a variant the shader
-  cache lacks is packaged, and the client crashes at its first draw (#GAME-BEHAVIOR-0029). No
-  check reads the cache, and how many mods of the datasets hold one is not counted.
 - *fixer* A repair keeps a skin bin's link to a shared bin at its path before 16.10, which the
   client skips (#GAME-CHANGE-0012). Riot's bins link the `_multi_` path from 16.10.
 - *fixer* A repair ships a mod's champion root bin whole, with the champion's gameplay data of
@@ -238,4 +235,3 @@ code.
 | #MOD-ARTIFACT-0035, buses in a mod's media bank | the port's audio, which carries the buses the game's init bank does not define (#ADR-0064) |
 | #MOD-ARTIFACT-0037, chroma VFX packs | nothing in `crates/`: the class table `scripts/corpus/corpus.py` reads classes them apart (#ADR-0085) |
 | #MOD-ARTIFACT-0038, restorations of a champion's older content | nothing in `crates/`: the class table `scripts/corpus/corpus.py` reads classes them apart (#ADR-0086) |
-| #GAME-BEHAVIOR-0029, a material whose shader variant the cache lacks crashes at its draw | nothing: no check reads the shader cache ([Known limits](#known-limits)) |

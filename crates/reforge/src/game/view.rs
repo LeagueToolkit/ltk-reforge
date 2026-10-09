@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use super::catalog::{MAX_CHAIN, SkinCatalog};
 use super::install::{Install, SizeIndex};
+use super::shader_cache::ShaderVariants;
 use super::source::{Copies, GameBin, GameSkin, GameSource, MAX_SAME_SIZE_READS};
 use super::{Build, Game, GameError};
 use crate::model::hash::skin_paths;
@@ -71,6 +72,7 @@ pub struct GameView {
     clips: Kept<WadHash, Option<Arc<[u32]>>>,
     events_banks: Kept<WadHash, Option<Arc<EventsBank>>>,
     bank_clips: Kept<WadHash, Option<Arc<[BankClip]>>>,
+    shader_variants: Kept<WadHash, Option<Arc<ShaderVariants>>>,
 }
 
 impl GameView {
@@ -106,6 +108,7 @@ impl GameView {
             clips: Kept::default(),
             events_banks: Kept::default(),
             bank_clips: Kept::default(),
+            shader_variants: Kept::default(),
         }
     }
 
@@ -290,6 +293,12 @@ impl GameSource for GameView {
     fn bank_clips(&self, path: WadHash) -> Result<Option<Arc<[BankClip]>>, GameError> {
         self.parsed(&self.bank_clips, path, |bytes| {
             BankClip::read(&bytes).map(Arc::from)
+        })
+    }
+
+    fn shader_variants(&self, path: WadHash) -> Result<Option<Arc<ShaderVariants>>, GameError> {
+        self.parsed(&self.shader_variants, path, |bytes| {
+            ShaderVariants::read(&bytes).map(Arc::new)
         })
     }
 }

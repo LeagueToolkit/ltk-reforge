@@ -25,6 +25,9 @@ ltk_wad = "0.5.4"
 ltk_meta = "0.8.6"
 ltk_mesh = "0.4.6"
 ltk_anim = "0.3.7"
+# The shader cache's tables of contents. 0.3.10 has the same source and needs an ltk_io_ext newer
+# than the commit patched in below.
+ltk_shader = "=0.3.8"
 # Later milestones, declared now so the versions agree from the start.
 ltk_ritobin = "0.9.0"
 ltk_texture = "0.6.1"
@@ -42,6 +45,8 @@ ltk_mimir_cache = { git = "https://github.com/LeagueToolkit/mimir", rev = "67019
 # Deflate and stored only: fewer decoders for untrusted archives to reach.
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
+# A shader variant's key, which keeps the defines' case: ltk_hash's xxh64 lowercases.
+xxhash-rust = { version = "0.8", features = ["xxh64"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 gix = { version = "0.88", default-features = false, features = ["max-performance-safe", "sha1"] }
 clap = { version = "4", features = ["derive", "env"] }

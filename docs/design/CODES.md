@@ -178,6 +178,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `package.ported` | note | a port's output: files shipped, bins made, patches, and the files left out because the client does not reach them through the port, by reason | none |
 | `package.empty` | fatal | the package holds nothing | `emit.empty` |
 | `package.shader-missing` | fatal | materials linking a shader the target's shader bin lacks, with no relink: the client crashes at load (#ADR-0069) | none |
+| `package.shader-variant-missing` | fatal | materials asking a game shader for a variant the target's shader cache lacks, each with its technique, its child technique, the file and the defines of the key: the client crashes at their draw (#GAME-BEHAVIOR-0029) | none |
 | `package.thumbnail-dropped` | note | the mod's image is not carried as the thumbnail, and why (#ADR-0051) | none |
 | `check.manifest-unreadable` | error | the package's manifest does not load | `verify.manifest` |
 | `check.apply-failed` | error | a patch does not apply to the game's bin | `verify.apply` |

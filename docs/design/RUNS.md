@@ -1722,3 +1722,23 @@ condition", first with each struct of a collection judged by its class, then wit
     fields were the whole of its `check.field-undeclared`.
   - one repair with an object of `0xbc13bcf6` in a skin bin, with no field, its entry hash its
     class hash. Neither the census history nor the meta database holds the class.
+
+## Shader variants the cache lacks (2026-10-10)
+
+`package.shader-variant-missing` (#GAME-BEHAVIOR-0029), against the 16.19.8207193 copy and the
+history index of 757 builds in format 1, at 24 in parallel with one thread each.
+
+- **The reduced corpus**, port and repair, with the check on `b011081` and again on `33d101e`,
+  each compared with master at the same commit: the reports are equal in all 68 mods. No mod of
+  the 68 holds a material whose variant the cache lacks. Against `baseline-port-5` and
+  `baseline-repair-5` the reports differ only as the runs above have them. Port in 36 s, repair
+  in 59 s, ended as the baselines.
+- **The datasets**, with the check on `b011081`, not a baseline. The port: 4,870 done, 39 ended
+  by a fatal diagnostic, those of `baseline-port-5` and 9 `package.shader-variant-missing`, in
+  1,055 s. The repair: 4,875 done, 34 ended, those of `baseline-repair-5` and the same 9, in
+  1,365 s. The 9 are the only mods whose exit differs from the baselines'.
+
+| shader | file | mods | what the nearest variant the file holds differs in |
+|---|---|---:|---|
+| `Shaders/SkinnedMesh/Leona_Texture_Transition` | pixel | 7 | `OFF_VALUE_ON_TEXTURE=1`, a static switch the materials leave off |
+| `Shaders/SkinnedMesh/TFT_FixedUVSpace_Bloom` | pixel | 2 | `SKINNED_MATERIAL_ADDITIVE=1`, a macro every material of Riot's on the shader sets |

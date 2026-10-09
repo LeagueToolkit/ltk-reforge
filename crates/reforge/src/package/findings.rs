@@ -12,7 +12,7 @@ use super::thumbnail::ThumbnailRefusal;
 use super::wired::LeftBehind;
 use super::write::WriterKind;
 use crate::diag::{Channel, Code, Diag, DiagId, Message, Record, Severity, Subject};
-use crate::game::FieldType;
+use crate::game::{FieldType, ShaderStage};
 use crate::model::entity::UnitId;
 use crate::model::value::kind_name;
 use crate::model::{BinHash, ChunkPath, WadHash, WadName};
@@ -667,6 +667,72 @@ impl Diag for ShaderMissing {
                 .text(" (")
                 .entry(link.shader)
                 .text(")");
+        });
+    }
+}
+
+/// A variant of a game shader that a material's pass asks for, in one file of the shader's
+/// programs.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct ShaderVariant {
+    /// The material's entry hash.
+    #[serde(serialize_with = "hex")]
+    pub material: BinHash,
+    /// The shader's entry hash.
+    #[serde(serialize_with = "hex")]
+    pub shader: BinHash,
+    /// The technique of the pass, as the material names it.
+    pub technique: String,
+    /// The child technique whose macros the variant takes, as the material names it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub child: Option<String>,
+    /// The file of the shader's programs.
+    pub stage: ShaderStage,
+    /// The defines the variant's key is made of, as the client's log writes them.
+    pub filtered: String,
+}
+
+/// Materials of the package that ask a game shader for a variant the target's shader cache
+/// lacks. The client crashes at their draw (#GAME-BEHAVIOR-0029): there is nothing to write.
+/// The cache judged is `ShaderCache.dx11.wad.client`, DirectX 11's, the one the record read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ShaderVariantMissing {
+    /// Each variant the cache lacks, once, in the order of the material, the shader, the
+    /// technique, the child technique, the file and the defines.
+    pub variants: Vec<ShaderVariant>,
+}
+
+impl Diag for ShaderVariantMissing {
+    const CODE: Code = code("package.shader-variant-missing", Severity::Fatal);
+    const RECORD: Option<Record> = Some(Record::game_behavior(29));
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let mut materials: Vec<BinHash> = self.variants.iter().map(|v| v.material).collect();
+        materials.dedup();
+        f.count(materials.len(), "material").text(
+            " asking a game shader for a variant the target's shader cache lacks; the client \
+             crashes at their draw: ",
+        );
+        f.list(&self.variants, |f, variant| {
+            f.entry(variant.material)
+                .text(" (")
+                .entry(variant.shader)
+                .text(" ")
+                .spelled(&variant.technique);
+            if let Some(child) = &variant.child {
+                f.text("/").spelled(child);
+            }
+            f.text(" ").text(variant.stage.extension()).text(" ");
+            if variant.filtered.is_empty() {
+                f.text("with no define");
+            } else {
+                f.spelled(&variant.filtered);
+            }
+            f.text(")");
         });
     }
 }

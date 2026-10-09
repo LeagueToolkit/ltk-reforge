@@ -45,8 +45,8 @@ pub use self::findings::{
     FieldKept, FieldUndeclared, FileMissing, HeldBy, InPlace, LinkUnresolved, ManifestUnreadable,
     NameUnresolved, NewBin, NewBinFailed, NotWritten, OtherSkin, OtherSkinName, OverlayCapped,
     Place, Ported, RecordSkipped, ResolverFrozen, RoundTripFailed, RoundTripProblem, ShaderLink,
-    ShaderMissing, Shape, SkinValue, TextureContained, ThumbnailDropped, TypeMismatch, TypeRow,
-    UndeclaredRow, UnitPorted, Written,
+    ShaderMissing, ShaderVariant, ShaderVariantMissing, Shape, SkinValue, TextureContained,
+    ThumbnailDropped, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
 };
 pub use self::inplace::{BuildError, InPlaceBuilder};
 pub use self::overlay::{
@@ -80,6 +80,7 @@ pub const CODES: &[Code] = &[
     InPlace::CODE,
     Empty::CODE,
     ShaderMissing::CODE,
+    ShaderVariantMissing::CODE,
     ThumbnailDropped::CODE,
     ManifestUnreadable::CODE,
     ApplyFailed::CODE,
