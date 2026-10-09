@@ -3,8 +3,8 @@
   "port",
   "repair"
  ],
- "mods_in_runs": 5121,
- "cases": 670,
+ "mods_in_runs": 4909,
+ "cases": 668,
  "without": [],
  "mods": [
   {
@@ -33,12 +33,13 @@
     "audio.bank-id-set",
     "audio.bank-id-set by=bank-id",
     "audio.carried",
+    "audio.carried events from the game's bank at an older one's path",
+    "audio.carried from_mod=false",
     "audio.carried layer=base",
-    "audio.carried shape=overlay",
+    "audio.carried shape=own",
+    "audio.carried stands in for a game unit",
     "audio.literals-renamed",
-    "audio.literals-renamed to the base's",
-    "audio.not-carried",
-    "audio.not-carried why=no-events-bank",
+    "audio.literals-renamed to the mod's events",
     "audio.units-left-out",
     "bank role=events",
     "bank role=media",
@@ -49,7 +50,8 @@
     "candidate feasible=true",
     "candidate=skin0 first",
     "carried unit layer=base",
-    "carried unit over the game's events",
+    "carried unit stands in for a game unit",
+    "carried unit with events of its own",
     "change in an object no skin entry reaches",
     "character kind=champion",
     "character with a root bin",
@@ -229,7 +231,6 @@
     "reach keeps links to the game's objects",
     "record #GAME-BEHAVIOR-0002",
     "record #GAME-BEHAVIOR-0004",
-    "record #GAME-BEHAVIOR-0007",
     "record #GAME-CHANGE-0007",
     "record #GAME-CHANGE-0008",
     "record #GAME-CHANGE-0012",
@@ -238,7 +239,6 @@
     "record #MOD-ARTIFACT-0016",
     "record #MOD-ARTIFACT-0023",
     "ref.dangling",
-    "ref.unmounted",
     "references pointed at the game's files",
     "rework made=after",
     "rework=12.16",
@@ -260,6 +260,7 @@
     "rig submesh=hidden-shown",
     "rig submesh=visible",
     "slot the game has a bin at=true",
+    "sound literals renamed",
     "sound unit voice=false",
     "sound unit voice=true",
     "target.chosen",
@@ -267,11 +268,14 @@
     "target.chosen reason=slot",
     "unit leaves out a game unit",
     "unit left=chroma-folded",
+    "unit left=off-target",
     "unit ships its graph",
     "unit.left",
     "unit.left why=chroma-folded",
+    "unit.left why=off-target",
+    "unit.left-with-work",
+    "unit.left-with-work kind=unsupported",
     "unit.ported",
-    "unit.ported graph=false",
     "unit.ported graph=true",
     "unit.ported new_bin=false",
     "wad layout=packed",
@@ -287,6 +291,7 @@
     "archive holds=text",
     "archive holds=wwise-package",
     "audio.carried layer=voice",
+    "audio.carried shape=overlay",
     "bank role=package",
     "bank role=stub",
     "bin.taken-from-game",
@@ -296,6 +301,7 @@
     "bin.taken-from-game with files the game never held",
     "bin.taken-from-game with stale files",
     "carried unit layer=voice",
+    "carried unit over the game's events",
     "check why=premium-skeleton",
     "clips reused on the same joints=true",
     "dating evidence=file",
@@ -336,8 +342,9 @@
     "record #GAME-CHANGE-0006",
     "record #GAME-CHANGE-0016",
     "record #MOD-ARTIFACT-0013",
-    "ref.dangling at a former path",
-    "target.chosen reason=base"
+    "target.chosen reason=base",
+    "unit.left-with-work kind=slot-work",
+    "unit.ported graph=false"
    ],
    "only": []
   },
@@ -399,10 +406,7 @@
    "sha256": "552d4d5e68c1edc1fbf69e9ad1295963ba74a2d05ee602823646224c1a4f0086",
    "bytes": 11313323,
    "first": [
-    "audio.carried from_mod=false",
-    "audio.carried shape=own",
     "candidate=the skin whose clips it plays",
-    "carried unit with events of its own",
     "check why=slot-joints",
     "clips unknown",
     "decision by the clips played",
@@ -446,106 +450,79 @@
    ]
   },
   {
-   "sha256": "bb677a3d9e9dc3e003c5df65140624aafbec6257f7bb05cd29bbe658ae44a00e",
-   "bytes": 83138333,
+   "sha256": "21c1e6eb6091caea38f672abcea1575defb92869173e6139614be9871383e78d",
+   "bytes": 64917634,
    "first": [
-    "archive holds=json",
-    "archive holds=shortcut",
-    "archive holds=zip",
-    "check fit=unknown",
-    "check why=foreign-mesh",
-    "check why=foreign-skeleton",
-    "check.type-mismatch",
-    "check.type-mismatch by=types",
-    "check.type-mismatch found=Embed",
-    "check.type-mismatch wants=Embed",
-    "fixup retype Bool>Flag",
-    "fixup retype List wants F32",
-    "fixup retype as=removed",
-    "fixup retype as=unconvertible",
-    "fixup.removed by=retype",
-    "fixup.unconvertible",
-    "fixup.unconvertible by=retype",
-    "inventory finding=os-artifact",
-    "inventory item=shortcut",
-    "inventory item=zip",
-    "inventory.os-artifact",
-    "origin.conflicting",
-    "package.in-place left=orphaned",
-    "package.ported left=game",
-    "record #MOD-ARTIFACT-0011",
-    "rework=14.9",
-    "rig clip source=missing",
-    "wad layout=loose",
-    "wad role=other",
-    "wad.champion-guessed",
-    "wad.not-carried"
-   ],
-   "only": []
-  },
-  {
-   "sha256": "b2006d77e6e8df0d609af315e78c8763db46976ff5cb33b426eec88fafc451f1",
-   "bytes": 668960,
-   "first": [
-    "dating with no bound",
-    "fixup health-bar-style",
-    "fixup health-bar-style U8>U8",
-    "fixup health-bar-style as=value",
-    "fixup vfx-linger",
-    "fixup vfx-linger as=moved",
-    "fixup vfx-mesh-align",
-    "fixup vfx-mesh-align as=moved",
-    "fixup vfx-mesh-align as=value",
-    "fixup vfx-mesh-align nothing>Bool",
-    "fixup vfx-texture-mult-strays",
-    "fixup vfx-texture-mult-strays as=moved",
-    "fixup.changed by=health-bar-style",
-    "fixup.changed by=vfx-linger",
-    "fixup.changed by=vfx-mesh-align",
-    "fixup.changed by=vfx-texture-mult-strays",
-    "record #GAME-CHANGE-0003",
-    "record #GAME-CHANGE-0017",
-    "record #GAME-CHANGE-0023",
-    "record #MOD-ARTIFACT-0017"
-   ],
-   "only": []
-  },
-  {
-   "sha256": "13cb8f0398922722519bf6722ae1e4432166e98124501535be1eeda38cb7e5de",
-   "bytes": 32741276,
-   "first": [
-    "archive holds=ini",
+    "archive holds=pdn",
     "audio.carried layer=voice-locale",
     "bank in a locale's WAD",
     "carried unit layer=voice-locale",
-    "check.type-mismatch found=List",
-    "check.type-mismatch found=Pointer",
-    "check.type-mismatch wants=List",
-    "check.type-mismatch wants=Pointer",
-    "fixup known-artifacts-vfx-emitter",
-    "fixup known-artifacts-vfx-emitter as=removed",
-    "fixup retype Embed>Pointer",
-    "fixup retype List wants Vec3",
-    "fixup.removed by=known-artifacts-vfx-emitter",
+    "check why=copied-shown",
+    "check.type-mismatch",
+    "check.type-mismatch by=types",
+    "check.type-mismatch found=F32",
+    "check.type-mismatch wants=Option",
+    "fixup retype F32 wants Option",
+    "fixup retype List2>List2",
+    "fixup retype Map>Map",
+    "fixup retype U32>U8",
+    "fixup retype as=unconvertible",
+    "fixup.unconvertible",
+    "fixup.unconvertible by=retype",
+    "inventory item=pdn",
     "layer=voice-locale",
     "patch layer=voice-locale",
     "wad role=locale",
-    "wad.locale"
+    "wad role=other",
+    "wad.locale",
+    "wad.not-carried"
+   ],
+   "only": [
+    "check.type-mismatch found=F32",
+    "check.type-mismatch wants=Option",
+    "fixup retype F32 wants Option",
+    "fixup retype List2>List2"
+   ]
+  },
+  {
+   "sha256": "7eb881485fd18d9deaaf61ba6067b52f6235d2b99cba309eea4e89c1867dd8ca",
+   "bytes": 56385330,
+   "first": [
+    "archive holds=json",
+    "audio.carried events no unit's list names",
+    "bin.unreadable",
+    "file.moved how=sco-as-scb",
+    "fixup health-bar-style",
+    "fixup health-bar-style U8>U8",
+    "fixup health-bar-style as=value",
+    "fixup material-shader-relink",
+    "fixup material-shader-relink Link>Link",
+    "fixup material-shader-relink as=value",
+    "fixup.changed by=health-bar-style",
+    "fixup.changed by=material-shader-relink",
+    "halt package.shader-missing",
+    "object.copied",
+    "package.shader-missing",
+    "record #GAME-BEHAVIOR-0007",
+    "record #GAME-BEHAVIOR-0023",
+    "record #GAME-CHANGE-0023",
+    "record #GAME-CHANGE-0024",
+    "ref.unmounted"
    ],
    "only": []
   },
   {
-   "sha256": "9cd0944e45178341782c3db48a3411b004bb69c1fe3d94bccaae4a7a04fdae67",
-   "bytes": 6349378,
+   "sha256": "61cf9f5b17b98e71e1543737349f7ff07c93cb03df37d7488a90e7077e811d3a",
+   "bytes": 2170667,
    "first": [
     "character equal to the game's",
     "character.equal-to-game",
+    "dating with no bound",
     "decision made before a rework",
     "decision reason=pre-rework",
     "halt package.empty",
+    "origin.conflicting",
     "package.empty",
-    "package.thumbnail-dropped",
-    "package.thumbnail-dropped why=entry-too-large",
     "rework made=before",
     "rework=16.6",
     "target.pre-rework",
@@ -557,23 +534,44 @@
    "only": []
   },
   {
-   "sha256": "7eb881485fd18d9deaaf61ba6067b52f6235d2b99cba309eea4e89c1867dd8ca",
-   "bytes": 56385330,
+   "sha256": "4122f27aac0aa776e98e8cb85ffd15752972a470e0964cf06c3a432b7269da71",
+   "bytes": 15297578,
    "first": [
-    "archive holds=pdn",
-    "audio.carried events no unit's list names",
-    "bin.unreadable",
-    "file.moved how=sco-as-scb",
-    "fixup material-shader-relink",
-    "fixup material-shader-relink Link>Link",
-    "fixup material-shader-relink as=value",
-    "fixup.changed by=material-shader-relink",
-    "halt package.shader-missing",
-    "inventory item=pdn",
-    "package.shader-missing",
-    "record #GAME-BEHAVIOR-0023",
-    "record #GAME-CHANGE-0024",
-    "sound literals renamed"
+    "archive holds=bmp",
+    "archive holds=zip",
+    "fixup retype Embed>Pointer",
+    "fixup retype U16>U8",
+    "fixup vfx-mesh-align",
+    "fixup vfx-mesh-align as=moved",
+    "fixup vfx-mesh-align as=value",
+    "fixup vfx-mesh-align nothing>Bool",
+    "fixup.changed by=vfx-mesh-align",
+    "inventory item=zip",
+    "origin verdict=custom",
+    "origin with no evidence that decides",
+    "record #GAME-CHANGE-0017"
+   ],
+   "only": [
+    "fixup vfx-mesh-align as=value",
+    "fixup vfx-mesh-align nothing>Bool"
+   ]
+  },
+  {
+   "sha256": "f4862dbfea43b7ffa6ad807bf0e54d7d496f2730b9c73b116d6c3a8cf20d1784",
+   "bytes": 12739459,
+   "first": [
+    "archive holds=desktop-ini",
+    "fixup vfx-linger",
+    "fixup vfx-linger as=moved",
+    "fixup vfx-texture-mult-strays",
+    "fixup vfx-texture-mult-strays as=moved",
+    "fixup.changed by=vfx-linger",
+    "fixup.changed by=vfx-texture-mult-strays",
+    "inventory finding=os-artifact",
+    "inventory item=desktop-ini",
+    "inventory.os-artifact",
+    "record #GAME-CHANGE-0003",
+    "record #MOD-ARTIFACT-0017"
    ],
    "only": []
   },
@@ -582,7 +580,7 @@
    "bytes": 33879397,
    "first": [
     "check aspect=rig",
-    "check why=copied-shown",
+    "check fit=unknown",
     "check why=no-entry",
     "decision reason=superseded",
     "decision taken by another unit",
@@ -597,25 +595,10 @@
    "only": []
   },
   {
-   "sha256": "8c3871fbdd206f15f70254875bc1ded6e9b3e1ba8c436b7a1c0cbf25686ec9ef",
-   "bytes": 40741397,
-   "first": [
-    "archive holds=jpeg",
-    "archive holds=maya-binary",
-    "archive holds=web-p",
-    "archive.info-unreadable",
-    "audio.carried from_mod=true",
-    "audio.carried stands in for a game unit",
-    "audio.not-carried why=no-game-audio",
-    "carried unit stands in for a game unit",
-    "inventory item=maya-binary"
-   ],
-   "only": []
-  },
-  {
    "sha256": "5ee453a9753b71971aad9375afb9a5116052e2081efe0a24cae2ad85e14a5576",
    "bytes": 6771764,
    "first": [
+    "archive holds=ini",
     "archive holds=xcf",
     "decision reason=sub-left-to-base",
     "file.moved rename=resolution-prefix-2x",
@@ -638,12 +621,29 @@
     "fixup.changed by=vfx-tool-shape",
     "fixup.removed by=vfx-tool-shape",
     "record #MOD-ARTIFACT-0031",
-    "unit without a resolver"
+    "unit without a resolver",
+    "wad layout=loose"
    ],
    "only": [
     "fixup vfx-tool-shape as=removed",
     "fixup.removed by=vfx-tool-shape"
    ]
+  },
+  {
+   "sha256": "8c3871fbdd206f15f70254875bc1ded6e9b3e1ba8c436b7a1c0cbf25686ec9ef",
+   "bytes": 40741397,
+   "first": [
+    "archive holds=jpeg",
+    "archive holds=maya-binary",
+    "archive holds=web-p",
+    "archive.info-unreadable",
+    "audio.carried from_mod=true",
+    "audio.not-carried",
+    "audio.not-carried why=no-game-audio",
+    "inventory item=maya-binary",
+    "package.ported left=game"
+   ],
+   "only": []
   },
   {
    "sha256": "20f0a871b35216384c05554e687f15d733d976c688e2817d7f52198b730d3c61",
@@ -660,36 +660,25 @@
    "only": []
   },
   {
-   "sha256": "15007bca8ea75410d4a22371dde4fb70cf5ee42b80f752f025345ce1d4109192",
-   "bytes": 45813016,
+   "sha256": "b02bf9ee3b33797b259f091bb69517a5387d79838a182ec57db2f6d1ef275d09",
+   "bytes": 64181212,
    "first": [
-    "origin verdict=unknown",
-    "origin with no evidence that decides",
-    "origin.none",
-    "record #MOD-ARTIFACT-0010",
-    "rework=13.3",
-    "wad a locale's, holding the whole mod",
-    "wad.locale-packed"
-   ],
-   "only": []
-  },
-  {
-   "sha256": "89cabd884a888ecd1cdb72280d745eb771d44ced7097d54b02881ca63099f3a8",
-   "bytes": 80974483,
-   "first": [
-    "archive holds=item-recommendations",
     "archive holds=markdown",
-    "check.name-unresolved",
-    "check.name-unresolved by=apply",
-    "decision origin on the base's rig",
-    "fixup retype Map>Map",
-    "rework=11.23"
+    "audio.bank-unreadable",
+    "audio.carried sounds that play nothing",
+    "bank unreadable",
+    "fixup known-artifacts-vfx-emitter",
+    "fixup known-artifacts-vfx-emitter as=removed",
+    "fixup.removed by=known-artifacts-vfx-emitter"
    ],
-   "only": []
+   "only": [
+    "audio.bank-unreadable",
+    "bank unreadable"
+   ]
   },
   {
-   "sha256": "7f486220f7e3e75f9321d6880b7d1a8a65103cf7bbc269f0547a963d5c81a56e",
-   "bytes": 398857,
+   "sha256": "ab7f591efedc2c608ebeadc8cb2420e9e9e866cfa21420342a7257038bf5a92b",
+   "bytes": 2438708,
    "first": [
     "fixup reshape-hoist",
     "fixup reshape-hoist Pointer>String",
@@ -714,14 +703,15 @@
    "only": []
   },
   {
-   "sha256": "13137f23efc8de9e23b3b14b8eb8bc254605eb371266b29ee4cfa038704dba19",
-   "bytes": 15156079,
+   "sha256": "39279d5848e46e3f4acc7dae9c930879f5da83baec964316d2b689d531d6c377",
+   "bytes": 12841368,
    "first": [
-    "check fit=fits-with-fix",
-    "check why=copied-hidden",
-    "file.older-game of bytes the game still ships",
-    "provenance still shipped=true",
-    "rig.submesh-copied visibility=hidden-never"
+    "archive holds=shortcut",
+    "check why=foreign-mesh",
+    "check why=foreign-skeleton",
+    "inventory item=shortcut",
+    "origin verdict=unknown",
+    "origin.none"
    ],
    "only": []
   },
@@ -730,10 +720,23 @@
    "bytes": 35009223,
    "first": [
     "archive holds=gltf-binary",
-    "fixup retype U32>U8",
     "inventory item=gltf-binary",
+    "ref.dangling at a former path",
+    "rework=13.3",
     "unit left=game-skin",
     "unit.left why=game-skin"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "13137f23efc8de9e23b3b14b8eb8bc254605eb371266b29ee4cfa038704dba19",
+   "bytes": 15156079,
+   "first": [
+    "check fit=fits-with-fix",
+    "check why=copied-hidden",
+    "file.older-game of bytes the game still ships",
+    "provenance still shipped=true",
+    "rig.submesh-copied visibility=hidden-never"
    ],
    "only": []
   },
@@ -750,17 +753,6 @@
    "only": []
   },
   {
-   "sha256": "03c1e11581a0544480ee8772476fcd2ca7a3fe557a6c36a58a97a338d2cd1543",
-   "bytes": 3466544,
-   "first": [
-    "check.other-skin",
-    "check.other-skin by=base-skin",
-    "check.other-skin value=simple-skin",
-    "check.other-skin value=skeleton"
-   ],
-   "only": []
-  },
-  {
    "sha256": "9e259113b7c4d64004fdade48678bae0c91790e43fa80c6850c8a963a0fd8f81",
    "bytes": 6083795,
    "first": [
@@ -768,6 +760,17 @@
     "clips own, off the slot's joints",
     "decision reason=infeasible",
     "target.infeasible"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "224092427599d4d63b1dfc2e3d68a05cd0f22430deae074e2fa0af9fe330a277",
+   "bytes": 12085421,
+   "first": [
+    "record #MOD-ARTIFACT-0010",
+    "rework=14.9",
+    "wad a locale's, holding the whole mod",
+    "wad.locale-packed"
    ],
    "only": []
   },
@@ -788,46 +791,6 @@
    ]
   },
   {
-   "sha256": "b02bf9ee3b33797b259f091bb69517a5387d79838a182ec57db2f6d1ef275d09",
-   "bytes": 64181212,
-   "first": [
-    "audio.bank-unreadable",
-    "audio.carried sounds that play nothing",
-    "bank unreadable",
-    "origin verdict=custom"
-   ],
-   "only": [
-    "audio.bank-unreadable",
-    "bank unreadable"
-   ]
-  },
-  {
-   "sha256": "21c1e6eb6091caea38f672abcea1575defb92869173e6139614be9871383e78d",
-   "bytes": 64917634,
-   "first": [
-    "check.type-mismatch found=F32",
-    "check.type-mismatch wants=Option",
-    "fixup retype F32 wants Option",
-    "fixup retype List2>List2"
-   ],
-   "only": [
-    "check.type-mismatch found=F32",
-    "check.type-mismatch wants=Option",
-    "fixup retype F32 wants Option",
-    "fixup retype List2>List2"
-   ]
-  },
-  {
-   "sha256": "679e38c0f295162ed7c26c40775a182400bd7e0c040297f31968d57f3eff5693",
-   "bytes": 828738,
-   "first": [
-    "archive holds=desktop-ini",
-    "inventory confidence=name",
-    "inventory item=desktop-ini"
-   ],
-   "only": []
-  },
-  {
    "sha256": "bec3c44096ea0cfb9fce0d9d543c3680e9ba1b31eae2ba331d7349a74ddad730",
    "bytes": 1695939,
    "first": [
@@ -840,6 +803,26 @@
     "decision reason=skeleton-origin",
     "target.chosen reason=skeleton-origin"
    ]
+  },
+  {
+   "sha256": "48e0f34d2de54721f816388af0873a6778f2220b173d0cb6bcf929fe5daaf52c",
+   "bytes": 2028431,
+   "first": [
+    "fixup retype as=removed",
+    "fixup.removed by=retype",
+    "rework=9.16"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "0bdb0abbc63c84f9da9307d6a79f80edca2b6d59594b8b030da982f77183fa85",
+   "bytes": 3945451,
+   "first": [
+    "archive.chunk-duplicate",
+    "record #MOD-ARTIFACT-0011",
+    "wad.champion-guessed"
+   ],
+   "only": []
   },
   {
    "sha256": "0ab4237c5cdf648a7ef54661dd33c2217122bd775e2d1054db6233df96e77ed0",
@@ -904,6 +887,16 @@
    ]
   },
   {
+   "sha256": "6090e99e7b587e4e5f9acb623c225d9b65bbe72d167b4ae5bf50ec943552bdc0",
+   "bytes": 19324056,
+   "first": [
+    "check.name-unresolved",
+    "check.name-unresolved by=apply",
+    "rework=11.23"
+   ],
+   "only": []
+  },
+  {
    "sha256": "dba8c3eb7691ae1d6f44dafad70ac0edb3c7fa039863a60ed4acae0fae1f30a4",
    "bytes": 28809841,
    "first": [
@@ -955,6 +948,15 @@
    ]
   },
   {
+   "sha256": "9cd0944e45178341782c3db48a3411b004bb69c1fe3d94bccaae4a7a04fdae67",
+   "bytes": 6349378,
+   "first": [
+    "package.thumbnail-dropped",
+    "package.thumbnail-dropped why=entry-too-large"
+   ],
+   "only": []
+  },
+  {
    "sha256": "b013038f203067d934730caa75977ffb607d427258a9b9d63a69c385a2643a9e",
    "bytes": 8128010,
    "first": [
@@ -973,11 +975,20 @@
    "only": []
   },
   {
-   "sha256": "4122f27aac0aa776e98e8cb85ffd15752972a470e0964cf06c3a432b7269da71",
-   "bytes": 15297578,
+   "sha256": "1378ad3d3f90bed26c959f85c71a4e2997c6f6d3e298bc6e031fbbfe726d5032",
+   "bytes": 9428803,
    "first": [
-    "archive holds=bmp",
-    "fixup retype U16>U8"
+    "check.type-mismatch found=List",
+    "check.type-mismatch wants=List"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "7e478f0479c916dd8b77462aec78e94b132e0402cdf6e3d90f47381b03440c14",
+   "bytes": 14409913,
+   "first": [
+    "audio.literals-renamed to the base's",
+    "file.moved rename=variant-tag-and-prefix-2x"
    ],
    "only": []
   },
@@ -987,6 +998,15 @@
    "first": [
     "record #MOD-ARTIFACT-0012",
     "wad.duplicate"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "2a652cd55d8d14c8bf09d7d59368a4658e6d50a86260f758eba1270115d6f1ad",
+   "bytes": 51256654,
+   "first": [
+    "archive holds=item-recommendations",
+    "rework=14.7"
    ],
    "only": []
   },
@@ -1007,6 +1027,18 @@
     "rework=11.12"
    ],
    "only": []
+  },
+  {
+   "sha256": "4a554cb95fa0bf5dd0419cf9e3f3f353f6fcaf2404fe380342bba303dea783c3",
+   "bytes": 90629160,
+   "first": [
+    "check.type-mismatch found=Embed",
+    "check.type-mismatch wants=Embed"
+   ],
+   "only": [
+    "check.type-mismatch found=Embed",
+    "check.type-mismatch wants=Embed"
+   ]
   },
   {
    "sha256": "1d3c6e30652398b1c58a386e6a1581e13115794e3e2cc35e882b4752fdaf0d91",
@@ -1041,30 +1073,6 @@
    "only": []
   },
   {
-   "sha256": "00cc7d1ebe858e90209d9c360a583e5ee31860bc9aef0aa7e5cc9349b6c7ca35",
-   "bytes": 414416,
-   "first": [
-    "rework=14.7"
-   ],
-   "only": []
-  },
-  {
-   "sha256": "37304c11dd60a6b9c6f324d8ac4b8a2ccf85384dccb91b596edb778fbc070708",
-   "bytes": 459135,
-   "first": [
-    "rework=9.16"
-   ],
-   "only": []
-  },
-  {
-   "sha256": "e47acc8b0cd969f01ed86d95cbb21ec445247e9060ee3ad457e706af6b5272a6",
-   "bytes": 672509,
-   "first": [
-    "file.moved rename=resolution-prefix-4x"
-   ],
-   "only": []
-  },
-  {
    "sha256": "6f26d94056716b6d0eeb82f00dec1c3bd558c3469e59c001b198f8c59d8ddb30",
    "bytes": 734928,
    "first": [
@@ -1077,6 +1085,22 @@
    "bytes": 788390,
    "first": [
     "rework=15.7"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "679e38c0f295162ed7c26c40775a182400bd7e0c040297f31968d57f3eff5693",
+   "bytes": 828738,
+   "first": [
+    "inventory confidence=name"
+   ],
+   "only": []
+  },
+  {
+   "sha256": "791fff2de04bca623ae77d66418e768ae534c508802a970d02e0dc1b59dc0eb3",
+   "bytes": 1384101,
+   "first": [
+    "decision origin on the base's rig"
    ],
    "only": []
   },
@@ -1097,26 +1121,18 @@
    "only": []
   },
   {
-   "sha256": "3c7cd0bdba701b40d9e74472a83929c4f5b5c53baf1b7cca4a884055fdb63bfc",
-   "bytes": 1780337,
+   "sha256": "48ef618676efba958f8b8a55aa5c03da6faaa25ac7fcf2898b33c9c624c908bb",
+   "bytes": 7306750,
    "first": [
-    "file.moved rename=variant-tag-and-prefix-2x"
+    "rig clip source=missing"
    ],
    "only": []
   },
   {
-   "sha256": "79d6d1563b4ce97bac00c708d5ed846592740fe2957a233e64b66b66091094d0",
-   "bytes": 3676886,
+   "sha256": "6c015ac25955da888170a574bcfba8cc42b92aba2159234ba747396a2ebad373",
+   "bytes": 8559170,
    "first": [
-    "archive.chunk-duplicate"
-   ],
-   "only": []
-  },
-  {
-   "sha256": "2ba61ee5d08903fd6b2c385af7d6506f9f170f34ab5ba54b0e6249cba05ea356",
-   "bytes": 6750134,
-   "first": [
-    "audio.literals-renamed to the mod's events"
+    "package.in-place left=orphaned"
    ],
    "only": []
   },
@@ -1135,6 +1151,16 @@
     "fixup retype List>List2"
    ],
    "only": []
+  },
+  {
+   "sha256": "2749b36689c631101fc46760598a1e1ffde72f08320f48725041a14204062318",
+   "bytes": 15442868,
+   "first": [
+    "fixup retype Bool>Flag"
+   ],
+   "only": [
+    "fixup retype Bool>Flag"
+   ]
   },
   {
    "sha256": "37796a2c7824068d18e67faf92c3f0b9aac7e3e8951f199536b9f878230d0146",
@@ -1164,6 +1190,16 @@
    ],
    "only": [
     "audio.carried a locale copy once"
+   ]
+  },
+  {
+   "sha256": "0bdfa15cb5b701776e3f60086aae895327e1007a14704f7b3a6a7c6c6a6f4198",
+   "bytes": 43591495,
+   "first": [
+    "file.moved rename=resolution-prefix-4x"
+   ],
+   "only": [
+    "file.moved rename=resolution-prefix-4x"
    ]
   },
   {

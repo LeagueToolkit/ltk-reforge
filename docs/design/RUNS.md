@@ -1609,3 +1609,51 @@ corpus.
 - **The checks.** No check diagnostic of the 10 differs, and none ends in a fatal diagnostic.
 - **The reduced corpus.** Ben 10 Ultimate Alien Udyr alone differs from the run of the copy
   rule, by its 75 clips.
+
+## The baselines at 8cacfff (2026-10-09)
+
+Made again over the 4,909 mods in scope once the chroma VFX packs and the restorations were
+classed apart (#ADR-0085, #ADR-0086), with the program at `8cacfff`, against the 16.19.8207193
+copy and the history index of 757 builds in format 1, at 24 in parallel with one thread each.
+They are the first runs of the datasets with the port's rules of #ADR-0082, #ADR-0083 and
+#ADR-0084.
+
+| baseline | command | done | ended by a fatal diagnostic | failed | time | differs from the one replaced |
+|---|---|---:|---|---:|---|---:|
+| `baseline-port-5` | `port --no-write` | 4,879 | 30: one `archive.no-skin`, 13 `package.empty`, 16 `package.shader-missing` | 0 | 936 s | 4,908 mods |
+| `baseline-repair-5` | `repair --no-write --again` | 4,884 | 25: one `archive.no-skin`, 24 `package.shader-missing` | 0 | 1,172 s | 0 mods |
+
+- **The comparison** is over the 4,909 mods both baselines hold. The 212 mods classed apart
+  leave the baselines. The repair ran beside the port's comparison at 4 in parallel.
+- **The port's differences.** 4,501 ports differ in their options alone, which hold
+  `keep_other_slots` (#ADR-0082). The other 407 differ where the three rules and the names of
+  `object.link-dangling` (see "Names other skins hold") act, and each is a mod of those runs'
+  lists but two.
+  - 1,454 units in 245 mods leave as `off-target`, and `unit.left-with-work` is raised in 209
+    mods. Two of the 245 are not among the mods of "Extra units beside a champion's main unit":
+    Aurora's sub-character `auroraspirits` leaves at skin1 (`7c374313c165`), and an Ezreal mod
+    that `baseline-port-4` ends with `package.shader-missing` (`cad95ff580d3`) leaves its 20
+    units at other slots and ships.
+  - 161 mods copy 1,549 objects, each mod in one unit. Their reports are those of the run of
+    "Copies of other skins' names", field for field. 12 more mods hold copies in the plan of
+    units that leave, and raise no `object.copied`.
+  - The 10 mods of "Events banks the client no longer loads" give the reports of that run,
+    field for field.
+  - `object.link-dangling` differs in 364 mods.
+- **The repair** gives the reports of `baseline-repair-4` in all 4,909 mods: the three rules are
+  the port's.
+- **The edge cases**, derived by `cases.py` from the reports of both: 668 cases seen and 104
+  declared and not seen. 7 cases are new: `object.copied`, the two of `off-target`, the three of
+  `unit.left-with-work`, and `audio.carried` of events from an older bank's path. 9 are gone:
+  `audio.not-carried why=no-events-bank`, which #ADR-0084 leaves to no mod, and 8 that only mods
+  now classed apart showed: the four of `check.other-skin`, `check.type-mismatch` with `Pointer`
+  found and wanted, and `retype` of a `List` wanted as `F32` and as `Vec3`. `check.other-skin` and
+  `no-events-bank` join the cases not seen, and the five of the target slot rule leave them.
+- **The reduced corpus**: 68 mods show the 668 cases, 1.65 GB of archives. 19 of them are the
+  only mod to show a case. 51 of the 64 mods before stay, and 6 of the 64 are classed apart. Run
+  twice per command, the port in 33 s twice and the repair in 48 s twice, as the baselines ended
+  them: in the port 1 `archive.no-skin`, 3 `package.empty` and 1 `package.shader-missing`, in the
+  repair 1 `archive.no-skin` and 2 `package.shader-missing`. `compare.py` reports no difference
+  between the two runs, nor between a run and the baseline's reports of the 68 mods. One mod
+  takes 27 s of the port and 43 s of the repair: `4a554cb95fa0`, the only mod that shows
+  `check.type-mismatch` with `Embed` found and wanted.
