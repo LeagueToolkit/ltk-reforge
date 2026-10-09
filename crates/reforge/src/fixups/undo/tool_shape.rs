@@ -38,23 +38,33 @@ fn is_empty_struct(value: &V) -> bool {
 /// changed the emitter.
 fn undo_shape(cx: &mut FixCx<'_>, s: &mut StructMut<'_>) -> bool {
     let (shape, spawn_shape) = (name_hash(SHAPE), name_hash(SPAWN_SHAPE));
-    let old = match s.fields().get(&shape) {
-        Some(V::Embedded(values::Embedded(old)) | V::Struct(old)) => old.clone(),
+    let class = match s.fields().get(&shape) {
+        Some(V::Embedded(values::Embedded(old)) | V::Struct(old)) => old.class_hash,
         _ => return false,
     };
-    if ![name_hash(LEGACY), name_hash(POINT)].contains(&old.class_hash) {
+    if ![name_hash(LEGACY), name_hash(POINT)].contains(&class) {
         return false;
     }
     let Some(held) = s.fields_mut().shift_remove(&shape) else {
         return false;
     };
     let from = s.path_of(shape);
-    let class = old.class_hash;
-    let mut rest = old.properties;
-    let translation = rest.shift_remove(&name_hash(BIRTH_TRANSLATION));
-    if translation.is_none() && rest.is_empty() {
+    let empty = match &held {
+        V::Embedded(values::Embedded(old)) | V::Struct(old) => old.properties.is_empty(),
+        _ => false,
+    };
+    if empty {
         cx.removed(from.clone(), &held);
     }
+    let old = match held {
+        V::Embedded(values::Embedded(old)) | V::Struct(old) => old,
+        other => {
+            s.fields_mut().insert(shape, other);
+            return false;
+        }
+    };
+    let mut rest = old.properties;
+    let translation = rest.shift_remove(&name_hash(BIRTH_TRANSLATION));
     if s.fields().contains_key(&spawn_shape) {
         // No build read the tool's value: nothing is lost by it.
         for (field, value) in &rest {

@@ -1,9 +1,8 @@
 //! The health bar style of a champion's skin entry (#GAME-CHANGE-0023): the champion's bar of
 //! the target's numbering, in place of the champion's bar of an older numbering, or of none.
 //!
-//! A champion's own skin entry holds the champion's bar at every build from 13.4, so its value
-//! names the numbering it was written in, and the mod's date is not read. Another unit's value
-//! is not told apart from a bar of another numbering by the value alone, and is left.
+//! A champion's own entry's value names its numbering, so it is converted whatever the mod's
+//! date (#ADR-0065). A sub-character's value is left (#ADR-0067).
 
 use ltk_meta::PropertyValueEnum as V;
 use ltk_meta::property::values;
