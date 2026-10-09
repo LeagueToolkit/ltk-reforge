@@ -4792,6 +4792,8 @@ dependencies = [
 name = "reforge-testkit"
 version = "0.1.4"
 dependencies = [
+ "camino",
+ "fs-err",
  "glam",
  "ltk_anim",
  "ltk_hash",

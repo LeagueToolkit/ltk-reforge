@@ -17,14 +17,12 @@
 //! `cargo run -p reforge --example shader_tests -- <game> <champion> <out>` writes
 //! `<out>/shader-test-<champion>-<case>.fantome`.
 
-use camino::{Utf8Path, Utf8PathBuf};
 use ltk_meta::property::values;
 use ltk_meta::{BinObject, PropertyValueEnum as V};
-use reforge::game::Install;
 use reforge::model::value::{as_str, get};
 use reforge::model::walk::structs_mut;
 use reforge::model::{BinHash, name_hash};
-use reforge_testkit::ingame::{BaseSkin, GameBin};
+use reforge_testkit::ingame::{self, GameBin};
 
 const VEX_SKIN: &str = "data/characters/vex/skins/skin33.bin";
 const VEX_MATERIAL: &str = "Characters/Vex/Skins/Skin33/Materials/Vex_Skin33_Shadow_Mat";
@@ -109,13 +107,7 @@ fn material(vex: &BinObject, entry_name: &str, shader: BinHash, texture: &V) -> 
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [game, champion, out] = args.as_slice() else {
-        panic!("usage: shader_tests <game> <champion> <out>; got {args:?}");
-    };
-    let install = Install::open(Utf8Path::new(game))
-        .unwrap_or_else(|error| panic!("the install at {game} does not open: {error}"));
-
-    let skin = BaseSkin::read(&install, champion);
+    let (install, skin, out) = ingame::open("shader_tests", &args);
     let champion = &skin.champion;
     let entry_name = skin.entry_name();
     let texture = get(
@@ -128,8 +120,6 @@ fn main() {
     let shaders = GameBin::read(&install, SHADER_BIN);
     let definition = shaders.object(SHADER);
 
-    let out = Utf8PathBuf::from(out);
-    fs_err::create_dir_all(&out).unwrap_or_else(|error| panic!("{out} is not made: {error}"));
     let material_name = format!("Characters/{champion}/Skins/Skin0/Materials/Reforge_Shader_Test");
     let mesh = name_hash("SkinMeshDataProperties");
     for case in &CASES {
@@ -153,10 +143,7 @@ fn main() {
             bin.objects.push(copy);
         }
         let name = format!("Shader test: {} ({champion})", case.name);
-        let written = skin.fantome(&name, case.asks, &bin.to_bytes());
-        let file = out.join(format!("shader-test-{champion}-{}.fantome", case.name));
-        fs_err::write(&file, written)
-            .unwrap_or_else(|error| panic!("{file} is not written: {error}"));
-        println!("{file}");
+        let stem = format!("shader-test-{champion}-{}", case.name);
+        skin.write_mod(&out, &stem, &name, case.asks, &bin.to_bytes());
     }
 }

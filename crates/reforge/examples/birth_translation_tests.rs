@@ -19,15 +19,13 @@
 //! `cargo run -p reforge --example birth_translation_tests -- <game> <champion> <out>` writes
 //! `<out>/birth-translation-test-<champion>-<case>.fantome`.
 
-use camino::{Utf8Path, Utf8PathBuf};
 use glam::Vec3;
 use ltk_meta::PropertyValueEnum as V;
 use ltk_meta::property::values;
-use reforge::game::Install;
 use reforge::model::name_hash;
 use reforge::model::walk::Fields;
 use reforge_testkit::bins::{embedded, pointer};
-use reforge_testkit::ingame::BaseSkin;
+use reforge_testkit::ingame;
 
 const CHAMPION: &str = "zac";
 const SYSTEM: &str = "Characters/Zac/Skins/Skin0/Particles/Zac_Base_W_cas";
@@ -96,28 +94,15 @@ impl Case {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [game, champion, out] = args.as_slice() else {
-        panic!("usage: birth_translation_tests <game> <champion> <out>; got {args:?}");
-    };
-    let install = Install::open(Utf8Path::new(game))
-        .unwrap_or_else(|error| panic!("the install at {game} does not open: {error}"));
-    let skin = BaseSkin::read(&install, champion);
+    let (_install, skin, out) = ingame::open("birth_translation_tests", &args);
     let champion = &skin.champion;
     assert_eq!(champion, CHAMPION, "the cases are for {CHAMPION}");
 
-    let out = Utf8PathBuf::from(out);
-    fs_err::create_dir_all(&out).unwrap_or_else(|error| panic!("{out} is not made: {error}"));
     for case in &CASES {
         let mut bin = skin.bin.clone();
         bin.change_emitter(SYSTEM, EMITTER, |fields| case.apply(fields));
         let name = format!("Birth translation test: {} ({champion})", case.name);
-        let written = skin.fantome(&name, case.asks, &bin.to_bytes());
-        let file = out.join(format!(
-            "birth-translation-test-{champion}-{}.fantome",
-            case.name
-        ));
-        fs_err::write(&file, written)
-            .unwrap_or_else(|error| panic!("{file} is not written: {error}"));
-        println!("{file}");
+        let stem = format!("birth-translation-test-{champion}-{}", case.name);
+        skin.write_mod(&out, &stem, &name, case.asks, &bin.to_bytes());
     }
 }

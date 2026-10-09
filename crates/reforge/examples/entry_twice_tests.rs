@@ -14,14 +14,13 @@
 //! `cargo run -p reforge --example entry_twice_tests -- <game> <champion> <out>` writes
 //! `<out>/entry-twice-test-<champion>-<case>.fantome`.
 
-use camino::{Utf8Path, Utf8PathBuf};
 use ltk_meta::property::values;
 use ltk_meta::{BinObject, PropertyValueEnum as V};
-use reforge::game::{Game, Install};
+use reforge::game::Game;
 use reforge::model::value::as_str;
 use reforge::model::walk::{structs, structs_mut};
 use reforge::model::{bin, name_hash, path_hash};
-use reforge_testkit::ingame::{BaseSkin, GameBin};
+use reforge_testkit::ingame::{self, BaseSkin, GameBin};
 
 /// Where the changed entry sits among the bin's skin entries.
 #[derive(Debug, Clone, Copy)]
@@ -155,12 +154,7 @@ impl Case {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [game, champion, out] = args.as_slice() else {
-        panic!("usage: entry_twice_tests <game> <champion> <out>; got {args:?}");
-    };
-    let install = Install::open(Utf8Path::new(game))
-        .unwrap_or_else(|error| panic!("the install at {game} does not open: {error}"));
-    let skin = BaseSkin::read(&install, champion);
+    let (install, skin, out) = ingame::open("entry_twice_tests", &args);
     let champion = &skin.champion;
 
     let texture = first_emitter_texture(&skin.bin);
@@ -173,14 +167,9 @@ fn main() {
     let changed = retextured(skin.bin.object(&skin.entry_name()), &texture);
     println!("the changed entry draws {texture}");
 
-    let out = Utf8PathBuf::from(out);
-    fs_err::create_dir_all(&out).unwrap_or_else(|error| panic!("{out} is not made: {error}"));
     for case in &CASES {
         let name = format!("Entry twice test: {} ({champion})", case.name);
-        let written = skin.fantome(&name, case.asks, &case.bin(&skin, &changed));
-        let file = out.join(format!("entry-twice-test-{champion}-{}.fantome", case.name));
-        fs_err::write(&file, written)
-            .unwrap_or_else(|error| panic!("{file} is not written: {error}"));
-        println!("{file}");
+        let stem = format!("entry-twice-test-{champion}-{}", case.name);
+        skin.write_mod(&out, &stem, &name, case.asks, &case.bin(&skin, &changed));
     }
 }

@@ -31,14 +31,12 @@
 //! `cargo run -p reforge --example legacy_simple_tests -- <game> <champion> <out>` writes
 //! `<out>/legacy-simple-test-<champion>-<case>.fantome` for the champion's cases.
 
-use camino::{Utf8Path, Utf8PathBuf};
 use ltk_meta::PropertyValueEnum as V;
-use reforge::game::Install;
 use reforge::model::name_hash;
 use reforge::model::value::{each_mut, field_of};
 use reforge::model::walk::Fields;
 use reforge_testkit::bins::{embedded, float, pointer};
-use reforge_testkit::ingame::{BaseSkin, GameBin};
+use reforge_testkit::ingame::{self, GameBin};
 
 const COMPLEX: &str = "complexEmitterDefinitionData";
 const SIMPLE: &str = "simpleEmitterDefinitionData";
@@ -263,12 +261,7 @@ impl Target {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let [game, champion, out] = args.as_slice() else {
-        panic!("usage: legacy_simple_tests <game> <champion> <out>; got {args:?}");
-    };
-    let install = Install::open(Utf8Path::new(game))
-        .unwrap_or_else(|error| panic!("the install at {game} does not open: {error}"));
-    let skin = BaseSkin::read(&install, champion);
+    let (_install, skin, out) = ingame::open("legacy_simple_tests", &args);
     let champion = &skin.champion;
     let cases = CHAMPIONS
         .iter()
@@ -279,21 +272,13 @@ fn main() {
         })
         .cases;
 
-    let out = Utf8PathBuf::from(out);
-    fs_err::create_dir_all(&out).unwrap_or_else(|error| panic!("{out} is not made: {error}"));
     for case in cases {
         let mut bin = skin.bin.clone();
         if let Some((target, change)) = case.change {
             target.apply(&mut bin, change);
         }
         let name = format!("LegacySimple test: {} ({champion})", case.name);
-        let written = skin.fantome(&name, case.asks, &bin.to_bytes());
-        let file = out.join(format!(
-            "legacy-simple-test-{champion}-{}.fantome",
-            case.name
-        ));
-        fs_err::write(&file, written)
-            .unwrap_or_else(|error| panic!("{file} is not written: {error}"));
-        println!("{file}");
+        let stem = format!("legacy-simple-test-{champion}-{}", case.name);
+        skin.write_mod(&out, &stem, &name, case.asks, &bin.to_bytes());
     }
 }

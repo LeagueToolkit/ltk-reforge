@@ -1,15 +1,39 @@
 //! Test mods for checks in game: a champion's base skin bin as the game holds it, changed by one
 //! case, as the bytes of a `.fantome` that installs it over the game's own. The examples of
-//! `reforge` that build them read the game; this module takes it as a [`Game`].
+//! `reforge` that build them share one command line, `<game> <champion> <out>`: [`open`] reads
+//! it and the install it names, and [`BaseSkin::write_mod`] writes one case's mod under `out`.
+//! The rest takes the game as a [`Game`].
 
+use camino::{Utf8Path, Utf8PathBuf};
 use ltk_meta::property::values;
 use ltk_meta::{Bin, BinObject, PropertyValueEnum};
-use reforge::game::Game;
+use reforge::game::{Game, Install};
 use reforge::model::value::as_str;
 use reforge::model::walk::{Fields, structs_mut};
 use reforge::model::{WadName, bin, name_hash, path_hash};
 
 use crate::archive::{DEFLATED, zip};
+
+/// What an example's command line names, `<game> <champion> <out>`: the install opened, the
+/// champion's base skin read from it, and the output directory, made.
+///
+/// `example` is the example's name, for the usage message.
+///
+/// # Panics
+///
+/// When the arguments are not three, the install does not open, the champion has no base skin
+/// in it, or the output directory is not made.
+pub fn open(example: &str, args: &[String]) -> (Install, BaseSkin, Utf8PathBuf) {
+    let [game, champion, out] = args else {
+        panic!("usage: {example} <game> <champion> <out>; got {args:?}");
+    };
+    let install = Install::open(Utf8Path::new(game))
+        .unwrap_or_else(|error| panic!("the install at {game} does not open: {error}"));
+    let skin = BaseSkin::read(&install, champion);
+    let out = Utf8PathBuf::from(out);
+    fs_err::create_dir_all(&out).unwrap_or_else(|error| panic!("{out} is not made: {error}"));
+    (install, skin, out)
+}
 
 /// A game bin read whole: its objects in file order and the bins it links.
 #[derive(Debug, Clone)]
@@ -186,5 +210,18 @@ impl BaseSkin {
             ("META/info.json", info.as_slice(), DEFLATED),
             (entry.as_str(), bytes, DEFLATED),
         ])
+    }
+
+    /// Writes the test mod [`Self::fantome`] makes to `<out>/<stem>.fantome` and prints its
+    /// path.
+    ///
+    /// # Panics
+    ///
+    /// When the file is not written.
+    pub fn write_mod(&self, out: &Utf8Path, stem: &str, name: &str, asks: &str, bytes: &[u8]) {
+        let file = out.join(format!("{stem}.fantome"));
+        fs_err::write(&file, self.fantome(name, asks, bytes))
+            .unwrap_or_else(|error| panic!("{file} is not written: {error}"));
+        println!("{file}");
     }
 }

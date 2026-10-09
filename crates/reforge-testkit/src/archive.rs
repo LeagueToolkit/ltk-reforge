@@ -23,9 +23,22 @@ pub fn zip(entries: &[(&str, &[u8], CompressionMethod)]) -> Vec<u8> {
                 SimpleFileOptions::default().compression_method(*method),
             )
             .unwrap_or_else(|error| panic!("the entry {name:?} does not start: {error}"));
-        writer.write_all(bytes).unwrap();
+        writer.write_all(bytes).unwrap_or_else(|error| {
+            panic!(
+                "the {} bytes of {name:?} do not write: {error}",
+                bytes.len()
+            )
+        });
     }
-    writer.finish().unwrap().into_inner()
+    writer
+        .finish()
+        .unwrap_or_else(|error| {
+            panic!(
+                "the zip of {} entries does not finish: {error}",
+                entries.len()
+            )
+        })
+        .into_inner()
 }
 
 /// The bytes of a WAD with these chunks, each compressed with Zstandard.
@@ -48,7 +61,9 @@ pub fn packed_wad(chunks: &[(&str, &[u8])]) -> Vec<u8> {
             chunk.write_all(bytes)?;
             Ok(())
         })
-        .unwrap();
+        .unwrap_or_else(|error| {
+            panic!("the WAD of {} chunks does not build: {error}", chunks.len())
+        });
     out.into_inner()
 }
 
@@ -66,7 +81,10 @@ pub fn put_u32(bytes: &mut [u8], at: usize, value: u32) {
 
 /// Reads a little-endian `u32` from bytes.
 pub fn get_u32(bytes: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
+    let word = bytes[at..at + 4]
+        .try_into()
+        .unwrap_or_else(|error| panic!("no four bytes at {at} of {}: {error}", bytes.len()));
+    u32::from_le_bytes(word)
 }
 
 /// A field of an entry's zip headers, with the value a test writes there.
