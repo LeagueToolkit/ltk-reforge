@@ -50,7 +50,8 @@ impl ToSql for Bound {
 /// A table that holds each of its texts once, by an id the other tables store.
 #[derive(Clone, Copy)]
 enum Interned {
-    /// `names`: joints, materials, formats, tags, units.
+    /// `names`: joints, materials, formats, vertex types, tags, units, WAD versions, WAD tag
+    /// sets.
     Names,
     /// `wads`: the WADs' paths.
     Wads,

@@ -152,6 +152,15 @@ pub enum CensusError {
     /// A dictionary of the index does not load into zstd.
     #[error("dictionary {0} of the object bytes does not load")]
     ObjectDict(i64),
+    /// The index's object bytes were written by another zstd than the one running, which may
+    /// write other frames of the same bytes; an append keeps the stamp's codec.
+    #[error("the object bytes were written by zstd {stamped} and zstd {running} is running")]
+    ObjectZstd {
+        /// The version the stamp names.
+        stamped: String,
+        /// The version linked.
+        running: String,
+    },
     /// The index beside the tables does not read or write.
     #[error(transparent)]
     Index(#[from] HistoryError),

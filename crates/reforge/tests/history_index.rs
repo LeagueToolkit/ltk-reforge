@@ -8,6 +8,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use reforge::diag::{Diagnostics, Stage};
 use reforge::game::Build;
+use reforge::history::objects::{Decoder, LEVEL};
 use reforge::history::tables::{index_sql, schema_sql, table_names};
 use reforge::history::{
     self, BuildDetails, BuildRow, ClipJoints, DB_FILE, FORMAT, Families, FileKind, History,
@@ -407,6 +408,25 @@ fn object(fields: u16) -> Vec<u8> {
         bytes.extend(field.to_le_bytes());
     }
     bytes
+}
+
+#[test]
+fn a_delta_decodes_against_its_keyframes_bytes() {
+    let keyframe: Vec<u8> = (0..4096u32).flat_map(|n| (n % 251).to_le_bytes()).collect();
+    let mut version = keyframe.clone();
+    version[100] ^= 1;
+    let frame = zstd::bulk::compress(&keyframe, LEVEL).unwrap();
+    let mut c = zstd::bulk::Compressor::with_dictionary(LEVEL, &keyframe).unwrap();
+    let delta = c.compress(&version).unwrap();
+    assert!(
+        delta.len() < 64,
+        "a one-byte change takes {} bytes",
+        delta.len()
+    );
+    let mut decoder = Decoder::default();
+    let base = decoder.keyframe(None, &frame).unwrap();
+    assert_eq!(base, keyframe);
+    assert_eq!(decoder.delta(&base, &delta).unwrap(), version);
 }
 
 #[test]

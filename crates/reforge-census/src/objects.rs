@@ -20,7 +20,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 
 use rayon::prelude::*;
-use reforge::history::objects::{Decoder, FrameError, ObjectCodec, stated_size};
+use reforge::history::objects::{Decoder, FrameError, MAX_OBJECT, ObjectCodec, stated_size};
 use reforge::history::{BlobId, Position};
 use reforge::model::BinHash;
 use rusqlite::{OptionalExtension, Transaction, params};
@@ -70,8 +70,16 @@ pub(crate) struct Packed {
 pub(crate) enum Fresh {
     /// The text's one object.
     One(Packed),
-    /// The text holds no object or several.
+    /// The text holds no object or several, or one past `MAX_OBJECT`, which no frame of the
+    /// index decodes.
     Objectless,
+}
+
+/// The keyframe interval the codec names, as a count.
+fn keyframe_every(codec: &ObjectCodec) -> usize {
+    usize::try_from(codec.keyframe_every)
+        .expect("a keyframe interval fits usize")
+        .max(1)
 }
 
 impl Fresh {
@@ -82,9 +90,10 @@ impl Fresh {
             return Fresh::Objectless;
         };
         let len = object.bytes.len();
-        let Ok(len32) = u32::try_from(len) else {
+        if len > MAX_OBJECT {
             return Fresh::Objectless;
-        };
+        }
+        let len32 = u32::try_from(len).expect("an object within MAX_OBJECT fits u32");
         let digest: [u8; 32] = Sha256::digest(&object.bytes).into();
         let packed = PACKER.with(|cell| {
             let (cctx, scratch) = &mut *cell.borrow_mut();
@@ -295,9 +304,7 @@ pub(crate) fn write_whole(
     mut store: Store,
     codec: &ObjectCodec,
 ) -> Result<(), CensusError> {
-    let every = usize::try_from(codec.keyframe_every)
-        .unwrap_or(usize::MAX)
-        .max(1);
+    let every = keyframe_every(codec);
     let cap = usize::try_from(codec.dict_cap).unwrap_or(usize::MAX);
 
     // The texts of one object together, the first that held it leading.
@@ -350,7 +357,8 @@ pub(crate) fn write_whole(
 
     // A batch of blocks on every core, then its frames written in block order. A row's id is
     // its place in `contents`, from 1.
-    let id_of = |i: usize| i64::try_from(i).unwrap_or(i64::MAX) + 1;
+    let id_of =
+        |i: usize| i64::try_from(i + 1).unwrap_or_else(|_| panic!("object {i} is past i64"));
     let mut texts: Vec<(BlobId, BinHash, i64)> = Vec::with_capacity(held.len());
     let mut insert =
         tx.prepare("INSERT INTO object_bytes (id, keyframe, dict, frame) VALUES (?1, ?2, ?3, ?4)")?;
@@ -417,8 +425,16 @@ pub(crate) struct Appender {
 }
 
 impl Appender {
-    /// The appender of the index `tx` writes, with the codec its stamp names.
+    /// The appender of the index `tx` writes, with the codec its stamp names. The stamp keeps
+    /// the codec, so the zstd that wrote the frames must be the one running.
     pub(crate) fn load(tx: &Transaction<'_>, codec: &ObjectCodec) -> Result<Self, CensusError> {
+        let running = zstd_safe::version_string();
+        if codec.zstd != running {
+            return Err(CensusError::ObjectZstd {
+                stamped: codec.zstd.clone(),
+                running: running.to_string(),
+            });
+        }
         let mut decoder = Decoder::default();
         let mut dicts = Vec::new();
         let mut read = tx.prepare("SELECT id, class, dict FROM object_dicts ORDER BY id")?;
@@ -436,9 +452,7 @@ impl Appender {
             })?;
         Ok(Self {
             level: codec.level,
-            every: usize::try_from(codec.keyframe_every)
-                .unwrap_or(usize::MAX)
-                .max(1),
+            every: keyframe_every(codec),
             dicts,
             cctx: CCtx::create(),
             scratch: Vec::new(),
@@ -449,10 +463,11 @@ impl Appender {
 
     /// The rows of `object_bytes` the texts of an entry hold, oldest first.
     fn held(tx: &Transaction<'_>, entry: BinHash) -> Result<Vec<Held>, CensusError> {
+        // The ids distinct, not the frames: a frame is large and an entry's texts share rows.
         let mut read = tx.prepare_cached(
-            "SELECT DISTINCT o.id, o.keyframe, o.dict, o.frame FROM entry_texts e \
-             JOIN text_bytes t ON t.blob = e.blob JOIN object_bytes o ON o.id = t.object \
-             WHERE e.entry = ?1 ORDER BY o.id",
+            "SELECT o.id, o.keyframe, o.dict, o.frame FROM object_bytes o WHERE o.id IN \
+             (SELECT t.object FROM entry_texts e JOIN text_bytes t ON t.blob = e.blob \
+             WHERE e.entry = ?1) ORDER BY o.id",
         )?;
         let rows = read.query_map(params![entry.0], |r| {
             Ok(Held {
@@ -606,5 +621,23 @@ impl Appender {
             text.execute(params![&blob[..], pending.class.0, id])?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_object_past_the_reads_bound_is_objectless() {
+        let object = |len: usize| TextObject {
+            class: BinHash(2),
+            bytes: vec![0; len],
+        };
+        let at = Position(0);
+        let within = Fresh::of(BinHash(1), at, vec![object(MAX_OBJECT)]);
+        assert!(matches!(within, Fresh::One(_)));
+        let past = Fresh::of(BinHash(1), at, vec![object(MAX_OBJECT + 1)]);
+        assert!(matches!(past, Fresh::Objectless));
     }
 }

@@ -164,9 +164,9 @@ queries are checked against it by a test.
 
 `--families` limits the index to some of: files (with `placements`, `wad_lives` and `wads`),
 objects (with `entry_texts`, the object bytes, `bins`, `schema`, `links`, `refs`, the tags and
-the units), clips
-(with the events, the events banks and their objects), rigs (with the animation clips and their
-joint lists), textures. Every table exists in every index; one of a family not built is empty.
+the units), clips (with the events, the events banks and their objects), rigs (with the
+animation clips and their joint lists), textures. Every table exists in every index; one of a
+family not built is empty.
 
 The index is built beside its place and renamed into it.
 
@@ -188,12 +188,13 @@ so does `text_bytes`.
 - **Dictionaries.** A whole build trains them once every text is in. A class whose keyframes
   hold 1.6 MB or more gets one of its own, and the other classes share the general one. A
   dictionary is a hundredth of its keyframes' bytes, between 16 KiB and the cap, trained on
-  samples taken at even steps through the keyframes, a hundred times its size. A group zstd does
-  not train on has none. An append uses the dictionaries as they are, and a class with none of
-  its own uses the general one.
+  samples taken at even steps through the keyframes, a hundred times its size. A class whose
+  training fails shares the general one; when the general one's training fails, the keyframes
+  with no other are compressed with none. An append uses the dictionaries as they are, and a
+  class with none of its own uses the general one.
 - **Parameters.** The stamp records the zstd level (19), the keyframe interval (8), the
   dictionary cap (1 MiB) and the zstd library's version: what makes the frames again. Another
-  version of zstd may write other frames of the same bytes.
+  version of zstd may write other frames of the same bytes, so an append under one is refused.
 
 The walk keeps each new text's object packed at zstd's fastest level until every text is in. A
 whole build then orders the versions, trains the dictionaries and compresses on every core. An
@@ -203,8 +204,9 @@ keyframe's block holds eight. It reads the entry's rows through `entry_texts`, s
 from the tables. Both give the same order and the same blocks, so an appended index holds the
 bytes a whole build of the same commits holds. Their frames differ where their dictionaries do.
 
-A text that does not parse, or holds no object or several, has no row of `text_bytes`. The stamp
-counts the texts that hold no object or several apart from the unparsed ones.
+A text that does not parse, or holds no object or several, or one past 16 MiB (the most a read
+decodes), has no row of `text_bytes`. The stamp counts the texts that hold no object, several or
+one past the bound apart from the unparsed ones.
 
 `reforge history check-objects` reads every text's object and looks the digest of its bytes up
 in `objects` under the text's class. An object first held at a build whose bins number property
@@ -218,8 +220,9 @@ numbering only. The check names each such text with its bin, its entry and its f
 #ADR-0037. Path hashes, entry hashes, clip keys, norm keys and records are SQLite integers, the
 64 bits as a signed integer. File keys and object keys are 16-byte blobs, and a text's blob is
 its 20-byte git object id. A WAD is the id of its row in `wads`, as a name is in `names`, and an
-object in `bin_entries` the id of its row in `objects`. A lookup is one indexed query, and one more for each joint list and each object of an events bank.
-Nothing is loaded whole, and a script reads the same file with `sqlite3`.
+object in `bin_entries` the id of its row in `objects`. A lookup is one indexed query, and one
+more for each joint list and each object of an events bank. Nothing is loaded whole, and a
+script reads the same file with `sqlite3`.
 
 ## Rules
 

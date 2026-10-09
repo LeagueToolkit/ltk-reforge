@@ -465,7 +465,7 @@ impl TableDef {
 }
 
 /// The table every name is held in once: a joint, a material, a texture format, a vertex type,
-/// an audio tag, a bank unit.
+/// an audio tag, a bank unit, a WAD version, a WAD tag set.
 pub const NAMES_SQL: &str =
     "CREATE TABLE names (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);\n";
 

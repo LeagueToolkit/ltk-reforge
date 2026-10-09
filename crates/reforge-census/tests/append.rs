@@ -5,7 +5,7 @@ mod common;
 mod dump;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use reforge::history::{Families, History, Life, SqliteHistory};
+use reforge::history::{Families, History, Life, SqliteHistory, Stamp};
 use reforge::model::{FileKey, WadHash};
 use reforge_census::{CensusError, Indexer};
 use tempfile::TempDir;
@@ -191,6 +191,26 @@ fn a_history_shorter_than_the_index_is_not_appended_to() {
     let error = Indexer::new(&shorter, "memory").append(&out).unwrap_err();
     assert!(
         matches!(error, CensusError::Diverged { at: 2, .. }),
+        "{error}"
+    );
+}
+
+#[test]
+fn an_index_whose_object_bytes_another_zstd_wrote_is_not_appended_to() {
+    let history = five_builds();
+    let (_dir, root) = scratch();
+    let out = root.join("index");
+    index_of(&history, 2, &out);
+    let mut stamp = Stamp::read(&out).unwrap();
+    stamp.objects.zstd = "0.0.0".to_string();
+    stamp.write(&out).unwrap();
+    let error = Indexer::new(&history, "memory").append(&out).unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            CensusError::ObjectZstd { stamped, running }
+                if stamped == "0.0.0" && running == zstd::zstd_safe::version_string()
+        ),
         "{error}"
     );
 }

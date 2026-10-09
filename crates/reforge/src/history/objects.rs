@@ -58,6 +58,9 @@ pub enum FrameError {
     /// The frame states no size, or one above `MAX_OBJECT`.
     #[error("the frame states {0:?} bytes")]
     Size(Option<u64>),
+    /// The keyframe names a dictionary the decoder does not hold.
+    #[error("dictionary {0} is not held")]
+    Dict(i64),
     /// zstd refused the frame.
     #[error("zstd: {0}")]
     Zstd(&'static str),
@@ -93,10 +96,15 @@ impl Decoder {
         self.dicts.insert(dict, DDict::create(bytes));
     }
 
-    /// The bytes of a keyframe: its frame, with the dictionary `dict`, which is held, or none.
+    /// The bytes of a keyframe: its frame, with the dictionary `dict`, which must be held, or
+    /// none.
     pub fn keyframe(&mut self, dict: Option<i64>, frame: &[u8]) -> Result<Vec<u8>, FrameError> {
         let mut out = Vec::with_capacity(stated_size(frame)?);
-        let done = match dict.and_then(|id| self.dicts.get(&id)) {
+        let ddict = match dict {
+            Some(id) => Some(self.dicts.get(&id).ok_or(FrameError::Dict(id))?),
+            None => None,
+        };
+        let done = match ddict {
             Some(ddict) => self.dctx.decompress_using_ddict(&mut out, frame, ddict),
             None => self.dctx.decompress_using_dict(&mut out, frame, &[]),
         };
@@ -128,22 +136,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_delta_decodes_against_its_keyframes_bytes() {
-        let keyframe: Vec<u8> = (0..4096u32).flat_map(|n| (n % 251).to_le_bytes()).collect();
-        let mut version = keyframe.clone();
-        version[100] ^= 1;
-        let frame = zstd::bulk::compress(&keyframe, LEVEL).unwrap();
-        let mut c = zstd::bulk::Compressor::with_dictionary(LEVEL, &keyframe).unwrap();
-        let delta = c.compress(&version).unwrap();
-        assert!(
-            delta.len() < 64,
-            "a one-byte change takes {} bytes",
-            delta.len()
-        );
+    fn a_keyframe_of_a_dictionary_not_held_is_refused() {
+        let frame = zstd::bulk::compress(b"keyframe", LEVEL).unwrap();
         let mut decoder = Decoder::default();
-        let base = decoder.keyframe(None, &frame).unwrap();
-        assert_eq!(base, keyframe);
-        assert_eq!(decoder.delta(&base, &delta).unwrap(), version);
+        assert_eq!(decoder.keyframe(Some(5), &frame), Err(FrameError::Dict(5)));
     }
 
     #[test]

@@ -178,8 +178,8 @@ pub struct Stamp {
     pub rows: BTreeMap<String, u64>,
     /// Entry texts read that did not parse, so name nothing in `refs`, `tags` or `units`.
     pub unparsed_texts: usize,
-    /// Entry texts that parse and hold no object or several, so have no object bytes: a run has
-    /// no other source for them.
+    /// Entry texts that parse and hold no object or several, or one past `MAX_OBJECT`, so have
+    /// no object bytes: a run has no other source for them.
     pub objectless_texts: usize,
     /// How the object bytes were compressed.
     pub objects: ObjectCodec,
