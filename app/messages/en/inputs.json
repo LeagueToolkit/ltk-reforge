@@ -62,6 +62,7 @@
   "inputs_index_status_behind_label": "New builds published",
   "inputs_index_update_action": "Add the new builds",
   "inputs_index_use_kept_action": "Use it",
+  "inputs_maintainers_title": "For maintainers",
   "inputs_on_disk_label": "{size} on disk",
   "inputs_opening_label": "Opening the inputs",
   "inputs_own_file_label": "A file you chose",

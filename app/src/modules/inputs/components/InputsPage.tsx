@@ -1,6 +1,7 @@
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 
-import { Button, FailureNote, SectionCard, Spinner } from "@/components";
+import { Button, Disclosure, FailureNote, SectionCard, Spinner } from "@/components";
 import { m } from "@/i18n";
 import type { InputsView, Settings } from "@/lib/bindings.gen";
 import { FindingList } from "@/modules/findings";
@@ -225,8 +226,8 @@ function Rows({ view }: { view: InputsView | undefined }) {
 
 /**
  * The inputs a run is judged against: each one, where it was read from, how it stands against
- * what is published, and what was found. Under them, what the history index is made from, which
- * no run reads.
+ * what is published, and what was found. Under them, folded, what the history index is made
+ * from, which no run reads.
  */
 export function InputsPage() {
   const inputs = useInputs();
@@ -261,17 +262,67 @@ export function InputsPage() {
         )}
         {inputs.isError && <FailureNote failure={inputs.error} />}
       </SectionCard>
-      <SectionCard title={m.inputs_source_title()} description={m.inputs_source_description()}>
-        <div className="flex flex-col divide-y divide-surface-700/50">
-          <CensusRow />
-          <KeptDownloads />
-        </div>
-      </SectionCard>
       {inputs.data && (
         <SectionCard title={m.inputs_findings_title()}>
           <FindingList findings={inputs.data.findings} empty={m.inputs_findings_empty()} />
         </SectionCard>
       )}
+      <MaintainersGroup />
     </div>
+  );
+}
+
+/** Where the page remembers that the maintainers' group was left open. */
+const MAINTAINERS_OPEN_KEY = "inputs.maintainers-open";
+
+function readMaintainersOpen(): boolean {
+  try {
+    return localStorage.getItem(MAINTAINERS_OPEN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeMaintainersOpen(open: boolean) {
+  try {
+    localStorage.setItem(MAINTAINERS_OPEN_KEY, String(open));
+  } catch {
+    // The group opens all the same; only the next visit forgets it.
+  }
+}
+
+/**
+ * What the history index is made from, which no run reads: folded, for maintainers, and left
+ * as the user last had it.
+ */
+function MaintainersGroup() {
+  const [open, setOpen] = useState(readMaintainersOpen);
+  const toggle = (next: boolean) => {
+    setOpen(next);
+    writeMaintainersOpen(next);
+  };
+  return (
+    <Disclosure
+      open={open}
+      onOpenChange={toggle}
+      summary={
+        <span className="block">
+          <span className="block text-sm font-semibold text-surface-100">
+            {m.inputs_maintainers_title()}
+          </span>
+          <span className="mt-0.5 block text-xs text-surface-400">
+            {m.inputs_source_description()}
+          </span>
+        </span>
+      }
+      panelClassName="mt-2"
+    >
+      <SectionCard title={m.inputs_source_title()}>
+        <div className="flex flex-col divide-y divide-surface-700/50">
+          <CensusRow />
+          <KeptDownloads />
+        </div>
+      </SectionCard>
+    </Disclosure>
   );
 }

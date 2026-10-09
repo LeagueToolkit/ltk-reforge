@@ -10,6 +10,9 @@ export interface DisclosureProps {
   /** The panel, rendered only while open. */
   children: ReactNode;
   defaultOpen?: boolean;
+  /** Whether the panel is open, for a caller that keeps the state. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   className?: string;
   summaryClassName?: string;
   panelClassName?: string;
@@ -23,12 +26,19 @@ export function Disclosure({
   summary,
   children,
   defaultOpen,
+  open,
+  onOpenChange,
   className,
   summaryClassName,
   panelClassName,
 }: DisclosureProps) {
   return (
-    <Collapsible.Root defaultOpen={defaultOpen} className={className}>
+    <Collapsible.Root
+      defaultOpen={defaultOpen}
+      open={open}
+      onOpenChange={onOpenChange}
+      className={className}
+    >
       <Collapsible.Trigger
         className={twMerge(
           "group flex w-full cursor-pointer items-start gap-2 rounded-md text-left",

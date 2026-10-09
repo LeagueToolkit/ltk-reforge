@@ -114,7 +114,8 @@ The page has two groups, and a button that asks every server again how the input
 - **What a run reads**: the game, the hash tables, the schema database and the history index,
   a row each.
 - **What the history index is made from**: the app's clone of the census history, and the
-  downloads a stop kept. No run reads either, and the group says so.
+  downloads a stop kept. No run reads either, and the group says so. It is folded under a
+  disclosure titled "For maintainers", below the findings, closed unless the user left it open.
 
 The history index is a SQLite database and the census history a Git repository, and each row
 names its kind beside its title. They are two rows in two groups because they are brought up to
