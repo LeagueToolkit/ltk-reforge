@@ -1,6 +1,7 @@
 # ADR-0020: A port holds the author's one unit and never writes copies back
 
-- **Status:** Accepted (2026-09-29)
+- **Status:** Accepted (2026-09-29); several clusters of one character each ported superseded
+  by #ADR-0082
 - **Related:** #MOD-ARTIFACT-0001, #ADR-0012, #ADR-0018
 
 ## Context

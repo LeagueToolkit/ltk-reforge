@@ -1,6 +1,7 @@
 # ADR-0012: A mod for a premium slot stays there
 
-- **Status:** Accepted (2026-09-29)
+- **Status:** Accepted (2026-09-29); every unit of a mod with a bin for each slot kept superseded
+  by #ADR-0082
 - **Related:** #ADR-0010, #ADR-0013, #ADR-0020
 
 ## Context
