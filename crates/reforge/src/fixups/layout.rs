@@ -5,6 +5,7 @@
 mod birth_translation;
 mod default_technique;
 mod emission_surface;
+mod face_target;
 mod health_bar;
 mod legacy_simple;
 mod mesh_align;
@@ -17,6 +18,7 @@ use std::sync::Arc;
 pub use self::birth_translation::BirthTranslation;
 pub use self::default_technique::DefaultTechnique;
 pub use self::emission_surface::EmissionSurface;
+pub use self::face_target::FaceTarget;
 pub use self::health_bar::HealthBarStyle;
 pub use self::legacy_simple::LegacySimple;
 pub use self::mesh_align::MeshAlign;
@@ -51,6 +53,7 @@ pub fn all() -> Vec<Arc<dyn BinFixup>> {
         Arc::new(LegacySimple::new()),
         Arc::new(HealthBarStyle),
         Arc::new(DefaultTechnique),
+        Arc::new(FaceTarget),
         Arc::new(MeshAlign),
         Arc::new(SpawnShape),
         Arc::new(BirthTranslation),

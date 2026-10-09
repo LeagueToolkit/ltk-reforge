@@ -1679,3 +1679,11 @@ and `baseline-repair-5`.
   5,136 files; the mods hold 261 of them. 56 s at 24 in parallel.
 - **The cap note.** `catalog.capped` is raised by `fix`, the first stage to read a character's
   catalog, and by no other stage; no mod raises it.
+
+## The camera-facing event (2026-10-09)
+
+`graph-face-target` (#GAME-CHANGE-0026, #GAME-BEHAVIOR-0028) over the reduced corpus, port and
+repair, each compared with the run of "A copy's own files": no mod of the 68 holds an event of
+the old class, and the reports differ in the evidence's list of fixups alone. Port in 38 s,
+repair in 51 s, ended as the baselines. The fixup's effect is seen in game, in the record's
+evidence, and over the datasets at the next baseline.

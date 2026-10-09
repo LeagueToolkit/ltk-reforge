@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 use indexmap::IndexMap;
-use ltk_meta::path::{FieldNames, ValuePath, ValueSegment};
+use ltk_meta::path::{FieldNames, MapKey, ValuePath, ValueSegment};
 use ltk_meta::walk::{Node, NodeRefMut, Trail, TreeNode, Visit, Visitor, VisitorMut};
 use ltk_meta::{BinObject, PropertyValueEnum};
 
@@ -43,6 +43,14 @@ impl FieldPath {
     pub fn item(&self, index: usize) -> Self {
         let mut path = self.0.clone();
         path.push_index(index);
+        Self(path)
+    }
+
+    /// The path of the value under a key of the map at this path.
+    #[must_use]
+    pub fn key(&self, key: MapKey) -> Self {
+        let mut path = self.0.clone();
+        path.push_key(key);
         Self(path)
     }
 

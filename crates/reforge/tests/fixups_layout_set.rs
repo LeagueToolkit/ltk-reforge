@@ -2,10 +2,11 @@
 //! and one mod taken through all of them.
 
 use ltk_meta::property::values;
-use ltk_meta::{BinObject, PropertyValueEnum as V};
+use ltk_meta::{BinObject, PropertyKind, PropertyValueEnum as V};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, layout};
 use reforge::game::{SHADERS_BIN, Schema};
+use reforge::model::name_hash;
 use reforge_testkit::bins::{bin, embedded, flag, float, link, object, pointer, text};
 use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{embed, field, kind, pointer as to};
@@ -15,11 +16,12 @@ use reforge_testkit::{FixRun, SchemaRows, skins};
 const ENTRY: &str = "Characters/Test/Skins/Skin0";
 
 /// The ids of the fixups of this file, in the order the set runs them.
-const IDS: [&str; 9] = [
+const IDS: [&str; 10] = [
     "material-shader-relink",
     "vfx-legacy-simple",
     "health-bar-style",
     "material-default-technique",
+    "graph-face-target",
     "vfx-mesh-align",
     "vfx-spawn-shape",
     "vfx-spawn-shape-birth-translation",
@@ -47,11 +49,12 @@ fn the_layout_fixups_name_their_records_and_builds() {
             row(IDS[1], "12.19", "#GAME-CHANGE-0004"),
             row(IDS[2], "13.4", "#GAME-CHANGE-0023"),
             row(IDS[3], "13.5", "#GAME-CHANGE-0015"),
-            row(IDS[4], "13.8", "#GAME-CHANGE-0017"),
-            row(IDS[5], "14.1", "#GAME-CHANGE-0006"),
-            row(IDS[6], "14.1", "#MOD-ARTIFACT-0019"),
-            row(IDS[7], "15.3", "#GAME-CHANGE-0014"),
-            row(IDS[8], "15.18", "#GAME-CHANGE-0018"),
+            row(IDS[4], "13.8", "#GAME-CHANGE-0026"),
+            row(IDS[5], "13.8", "#GAME-CHANGE-0017"),
+            row(IDS[6], "14.1", "#GAME-CHANGE-0006"),
+            row(IDS[7], "14.1", "#MOD-ARTIFACT-0019"),
+            row(IDS[8], "15.3", "#GAME-CHANGE-0014"),
+            row(IDS[9], "15.18", "#GAME-CHANGE-0018"),
         ]
     );
 }
@@ -146,6 +149,10 @@ fn schema() -> Schema {
             &[field("unitHealthBarStyle", kind("U8"))],
         )
         .class("StaticMaterialPassDef", &[field("shader", kind("Link"))])
+        .class(
+            "FaceTargetEventData",
+            &[field("YRotationDegrees", kind("F32"))],
+        )
         .build()
 }
 
@@ -176,7 +183,23 @@ fn old_mod() -> Vec<BinObject> {
         "CharacterHealthBarDataRecord",
         vec![("unitHealthBarStyle", V::U8(values::U8::new(9)))],
     );
+    let camera = pointer(
+        "FaceCameraEventData",
+        vec![("YRotationDegrees", float(90.0))],
+    );
+    let key = V::Hash(values::Hash::new(name_hash("FaceCamera")));
+    let events = values::Map::new(
+        PropertyKind::Hash,
+        PropertyKind::Struct,
+        vec![(key, camera)],
+    )
+    .unwrap_or_else(|error| panic!("a map of events does not build: {error}"));
     vec![
+        object(
+            "Dance",
+            "AtomicClipData",
+            vec![("mEventDataMap", V::Map(events))],
+        ),
         object(
             ENTRY,
             "SkinCharacterDataProperties",
@@ -231,6 +254,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
         .with(layout::BirthTranslation)
         .with(layout::SpawnShape)
         .with(layout::MeshAlign)
+        .with(layout::FaceTarget)
         .with(layout::DefaultTechnique)
         .with(layout::HealthBarStyle)
         .with(layout::LegacySimple::new())
@@ -240,7 +264,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
     assert_eq!(by_fixup, IDS);
     let counts = once.changes.counts();
     // Lost: the technique a material chose.
-    assert_eq!((counts.changed, counts.removed, counts.lost), (11, 1, 1));
+    assert_eq!((counts.changed, counts.removed, counts.lost), (12, 1, 1));
     assert_eq!(once.field("Pass", "shader"), Some(&link(RELINKED)));
     assert!(once.field("Simple", "LegacySimple").is_some());
     assert!(once.field("Old", "SpawnShape").is_some());
@@ -252,6 +276,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
 
     let entries = [
         ENTRY,
+        "Dance",
         "Pass",
         "Simple",
         "Old",
