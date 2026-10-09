@@ -1593,7 +1593,7 @@ the rule.
   holds them, the patched skin bins whose objects name them, and the package's names.
 - **Time.** The 164 mods in 48 s at 24 in parallel.
 
-## Events banks the client no longer loads (2026-10-09)
+## Events banks of a version the client does not load (2026-10-09)
 
 #ADR-0084, over the 10 mods whose `baseline-port-4` reports leave own clips with no events bank
 to cut, each run with the program of the copy rule and with this one, and over the reduced
@@ -1637,7 +1637,7 @@ They are the first runs of the datasets with the port's rules of #ADR-0082, #ADR
   - 161 mods copy 1,549 objects, each mod in one unit. Their reports are those of the run of
     "Copies of other skins' names", field for field. 12 more mods hold copies in the plan of
     units that leave, and raise no `object.copied`.
-  - The 10 mods of "Events banks the client no longer loads" give the reports of that run,
+  - The 10 mods of "Events banks of a version the client does not load" give the reports of that run,
     field for field.
   - `object.link-dangling` differs in 364 mods.
 - **The repair** gives the reports of `baseline-repair-4` in all 4,909 mods: the three rules are
@@ -1657,3 +1657,25 @@ They are the first runs of the datasets with the port's rules of #ADR-0082, #ADR
   between the two runs, nor between a run and the baseline's reports of the 68 mods. One mod
   takes 27 s of the port and 43 s of the repair: `4a554cb95fa0`, the only mod that shows
   `check.type-mismatch` with `Embed` found and wanted.
+
+## A copy's own files (2026-10-09)
+
+#ADR-0088 and the review's fixes of the same day (the load cap tested before a bin is read,
+copies keyed by group and name, no `target.chosen` for a unit in a conflict, the copy's slot
+and object read off one chain), over the reduced corpus and over the 164 mods whose ports copy
+(see "Copies of other skins' names"; 161 are in scope), each compared with `baseline-port-5`
+and `baseline-repair-5`.
+
+- **The reduced corpus.** The repair differs in no mod but the program's version in the
+  evidence. The port differs in 4 mods: in all 4 the files a copy names get a verdict (62
+  `refs` rows); in 2 a copied object's link to a file the mod ships is rewritten to the file's
+  place; and one, an Evelynn skin at skin 6, ships 5 own textures its copied material names,
+  which left the port as not carried before. Port in 41 s, repair in 57 s, ended as the
+  baselines.
+- **The 161 mods with copies.** 152 ports differ in the verdicts of the files their copies name
+  (4,858 `refs` rows), 26 in the bytes of a bin whose copy links a file the mod ships, and 25
+  ship 261 own files their copies name, with `object.carried` and `package.texture-contained`
+  changed in those. One port that left 60 files orphaned leaves 40. The 1,585 copies name
+  5,136 files; the mods hold 261 of them. 56 s at 24 in parallel.
+- **The cap note.** `catalog.capped` is raised by `fix`, the first stage to read a character's
+  catalog, and by no other stage; no mod raises it.

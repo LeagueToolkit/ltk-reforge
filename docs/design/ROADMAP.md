@@ -37,6 +37,7 @@ each as a patch of the game's bin with the mod's own objects and files under a n
 | the port | what ships, reach, file references, layout, renames, audio, patches, voice and HUD layers, the apply check; `reforge port` | "The port", "Ports in game" |
 | the run | `Porter`, `Repairer` and `Run`, which the commands and any other caller drive the stages through | "The commands on a run" |
 | the tests | a test for each edge case and the guard that holds the list (#ADR-0045); the corpus scripts and the baseline (#ADR-0044) | [CASES.md](CASES.md) |
+| the app | a standalone desktop app (#ADR-0046), released as v0.1.4 (2026-10-09), with the history index distributed prebuilt (#ADR-0047) and holding every object's bytes (#ADR-0078) | [ROADMAP-UX.md](ROADMAP-UX.md) |
 
 The stages were built as a rewrite of ltk-forge and each was compared with it over the 5,137
 mods of the datasets. The last comparison is the record of parity ([RUNS.md](RUNS.md), "The
@@ -44,10 +45,10 @@ port").
 
 ## The fixer: left before a first release
 
-The fixer repairs 5,109 of the 5,137 mods of the datasets. One holds no skin, and 27 end with no
-package: a material of theirs links a shader Riot removed with no relink (#ADR-0069). A
-repaired mod repaired again changes nothing ([RUNS.md](RUNS.md), "The baselines and the edge
-cases"). Eight
+The fixer repairs 4,884 of the 4,909 mods of the datasets in scope ([RUNS.md](RUNS.md), "The
+baselines at 8cacfff"). One holds no skin, and 24 end with no package: a material of theirs
+links a shader Riot removed with no relink (#ADR-0069). A repaired mod repaired again changes
+nothing ([RUNS.md](RUNS.md), "The baselines and the edge cases"). Eight
 repaired mods were checked in game by the user and work ([RUNS.md](RUNS.md), "Ports in game").
 Every run embeds its evidence in the package it writes (#ADR-0041,
 [ARCHITECTURE.md](ARCHITECTURE.md), "Package").
@@ -93,8 +94,7 @@ In this order. Each item is one or more changes measured against the baseline.
 
 ## After
 
-- The first release, a standalone app (#ADR-0046), with the history index distributed
-  (#ADR-0047): its plan is [ROADMAP-UX.md](ROADMAP-UX.md).
+- What the app's plan holds beyond its release: [ROADMAP-UX.md](ROADMAP-UX.md).
 - The test realm's builds in the history.
 - A shared schema crate with LTK Manager.
 
@@ -124,6 +124,12 @@ Each is the user's. *fixer* marks the ones a repair depends on.
   of #MOD-ARTIFACT-0026: the port's baseline ships 23,753 such names in 959 mods, 62% of them
   bytes the game shipped. A pass that drops every tag the history knows, or one parameterised
   by the shape of a class of names, is to be explored (the user, 2026-10-06).
+- Whether a sub-character's copies (#ADR-0083) come from its own skins' bins alone, as built, or
+  from its champion's other skins' bins as well. The walk loads the champion's bins at the
+  target beside the sub-character's, so only a name the champion holds for another skin alone
+  is at stake; 103 `object.link-dangling` findings in 88 ports are on sub-characters
+  (`baseline-port-5`), and which of their names the champion's other skins hold is not
+  measured.
 - *fixer* Whether `vfx-texture-mult` moves `uvScrollAlphaMult` and `isRandomStartFrameMult`,
   which the client does not read (#GAME-BEHAVIOR-0027), or removes them with nothing lost, as
   #ADR-0068 removes what a complex emitter does not read. The same for an old simple emitter's
@@ -214,3 +220,18 @@ code.
 | #GAME-BEHAVIOR-0018, a block-compressed texture not in whole blocks is drawn | `TexContainer`, which leaves such a texture the DDS it is |
 | #GAME-BEHAVIOR-0019, a graph event does not look in the additional resolvers | `PortBuilder`, which writes the resolver's map whole under the game's name |
 | #MOD-ARTIFACT-0036, emitter vectors as floats in restored old effects | `retype`, which leaves such a value as it is |
+| #GAME-CHANGE-0025, a flag on camera-aligned meshes | nothing: no fixup sets the flag ([Known limits](#known-limits)) |
+| #GAME-BEHAVIOR-0016, the game's event plays beside a mod's event of the same hook | nothing: sounds over the game's are held for later ([The porter: next](#the-porter-next), item 5) |
+| #GAME-BEHAVIOR-0026, Riot's bins hold a field only where it differs from its default | `strip` and `retype`, which judge a field by the schema and not by whether a game object holds it |
+| #GAME-BEHAVIOR-0027, some declared VFX fields are loaded and not read | nothing: `vfx-texture-mult` moves them ([Decisions not taken](#decisions-not-taken), [Known limits](#known-limits)) |
+| #MOD-ARTIFACT-0005, banks added with events of their own | the port's audio, which cuts a unit's events from the mod's own events bank (#ADR-0030) |
+| #MOD-ARTIFACT-0014, the game's own skins shipped beside the mod's | the port's plan, which leaves such a unit to the game's bin (`unit.left`, #ADR-0020, #ADR-0082) |
+| #MOD-ARTIFACT-0015, bins as text or JSON at a bin's path | the inventory, which reports `inventory.bin-text` (#ADR-0066) |
+| #MOD-ARTIFACT-0027, a voice stub of an older bank version | the port's audio, which writes every bank with a header of the client's version |
+| #MOD-ARTIFACT-0030, a skin bin split into concat and StaticMat bins | nothing: the copies in them are judged as #MOD-ARTIFACT-0001 and #MOD-ARTIFACT-0029 are |
+| #MOD-ARTIFACT-0032, a champion's root bin shipped whole | nothing: a repair ships it whole ([Known limits](#known-limits)) |
+| #MOD-ARTIFACT-0033, effects moved into a champion's vfx bin | nothing: the objects load as the skin's own from a bin of another name |
+| #MOD-ARTIFACT-0034, transparent placeholders at missing texture paths | nothing: no pass takes a placeholder off or points its reference back at the game's path |
+| #MOD-ARTIFACT-0035, buses in a mod's media bank | the port's audio, which carries the buses the game's init bank does not define (#ADR-0064) |
+| #MOD-ARTIFACT-0037, chroma VFX packs | nothing in `crates/`: the class table `scripts/corpus/corpus.py` reads classes them apart (#ADR-0085) |
+| #MOD-ARTIFACT-0038, restorations of a champion's older content | nothing in `crates/`: the class table `scripts/corpus/corpus.py` reads classes them apart (#ADR-0086) |

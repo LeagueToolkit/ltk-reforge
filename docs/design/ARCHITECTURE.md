@@ -478,7 +478,8 @@ object takes a name of its own, which every link to it follows.
    slot the port changes: the units of the champion and of its sub-characters at other slots
    leave unless `PortOptions::keep_other_slots`, and `unit.left-with-work` names the own work
    they hold that the units at the target do not, by bytes: files by content, objects by body,
-   own clips.
+   own clips. A skin0 unit that left for any reason but a copy or a superseded one fixes no
+   slot, and every unit ships at its own (#ADR-0087).
 2. **`Renames`**, first part: each shipping unit's `Skin<S>` entry and resolver names become
    `Skin<T>`'s, and its graph's when the mod defines one. These names are replaced in every
    object of the mod, the objects of other groups and of no unit among them: a bin of one unit
@@ -498,8 +499,9 @@ object takes a name of its own, which every link to it follows.
    of the character hold is a `Copied`: the game's object, of the unit's premium origin when
    its bins hold it, else of the lowest slot, and the walk goes on through it. The plan names
    each copy under T's names, renames every link to it, and ships it in the unit's bin
-   beside its carried objects, its files left at the game's paths (#ADR-0083).
-4. **`FileRefs`**, per unit: each file a ported object names, as a `FileVerdict`: the game's at
+   beside its carried objects (#ADR-0083). A file a copy names ships under the namespace when
+   the mod holds it, and stays at the game's path otherwise (#ADR-0088).
+4. **`FileRefs`**, per unit: each file a ported object or a copy names, as a `FileVerdict`: the game's at
    a path (in a WAD mounted with the champion, #GAME-BEHAVIOR-0007), the mod's own and
    shipped, held only by a WAD that is not mounted, or dangling. A stale copy is the game's
    (#ADR-0023). Of a skin entry only the fields a port carries count. What `Reach` and

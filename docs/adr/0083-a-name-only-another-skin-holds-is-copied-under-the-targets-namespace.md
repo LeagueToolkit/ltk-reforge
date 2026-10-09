@@ -1,7 +1,7 @@
 # ADR-0083: A name only another skin holds is copied under the target's namespace
 
-- **Status:** Accepted (2026-10-09)
-- **Related:** #ADR-0082, #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0007
+- **Status:** Accepted (2026-10-09); no file shipped for a copy superseded by #ADR-0088
+- **Related:** #ADR-0082, #ADR-0088, #GAME-BEHAVIOR-0006, #GAME-BEHAVIOR-0007
 
 ## Context
 
