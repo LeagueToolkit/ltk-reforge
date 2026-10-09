@@ -429,7 +429,19 @@ impl Diag for WorkLeft {
             }
             f.text(")");
         });
-        f.text("; the options that keep other slots ship them");
+        let slot_work = self
+            .units
+            .iter()
+            .filter(|work| work.kind == WorkKind::SlotWork);
+        match slot_work.count() {
+            0 => {}
+            n if n == self.units.len() => {
+                f.text("; the options that keep other slots ship them");
+            }
+            _ => {
+                f.text("; the options that keep other slots ship the slot work");
+            }
+        }
     }
 }
 
@@ -905,6 +917,7 @@ impl Diag for AudioUnitsLeftOut {
             .text("when the mod was made, are left out: ");
         f.list(&self.units, |f, left| {
             f.spelled(&left.name);
+            let _ = write!(f, " (the skin's since build {})", left.first);
         });
     }
 }

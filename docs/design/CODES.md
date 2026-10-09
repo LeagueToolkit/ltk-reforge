@@ -92,10 +92,12 @@ A bin of the mod, and what a champion's rework says of the mod. Channel `input`.
 
 ## fixup
 
-What the fixups did. Channel `output`. The fixup is in `by`.
+What the fixups did. Channel `output`, but `catalog.capped`, which the stage raises of its
+input before any fixup runs. The fixup is in `by`.
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
+| `catalog.capped` | note | the game's skins of a character whose bins link more than the cap read of one skin; the rest are not read, by this stage or a later one | none |
 | `fixup.changed` | note | values kept, in the form the target build reads | `retype.converted`, `migrate.moved`, `reshape.wrapped`, `reshape.hoisted`, every `vfx-*.moved` |
 | `fixup.removed` | note | values removed with nothing lost: never read by a build since the mod's own, or written by a tool and read by none | `retype.dead-at-source`, `strip-undeclared.removed`, `strip-known-artifacts.removed`, `material-default-technique.removed` |
 | `fixup.lost` | warning | values removed that the mod's own build read and the target cannot hold | `strip-undeclared.lost`, `material-default-technique.other` |
@@ -107,7 +109,6 @@ The facts and the decision. `catalog` and `copies` are channel `input`, the rest
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
-| `catalog.capped` | note | the game's skins of a character whose bins link more than the cap read of one skin; the rest are not read | none |
 | `copies.found` | note | the copies of a representative unit, with their slots | `copies.dropped` |
 | `copies.near` | note | a near copy: another build of the same work | `copies.near` |
 | `copies.distinct-units` | note | several distinct skin bins in one character | `copies.distinct-units` |
@@ -134,7 +135,7 @@ bin. `unit.left` is raised once per character, with each of its units that leave
 | code | severity | means | ltk-forge |
 |---|---|---|---|
 | `unit.left` | note | the units of a character that leave the port, and why: a copy, superseded, tied with another unit on its target, made before a rework, a sub-character left to the base or equal to the game's, no target, the game's own skin, a chroma folded into its parent, at a slot the port does not change | `drop-copies.dropped` |
-| `unit.left-with-work` | warning | own work that leaves with a character's units at slots the port does not change, which the units at the target do not hold: models, skeletons and textures as the author's work for that slot, objects, other files and clips alone as not supported for now | none |
+| `unit.left-with-work` | warning | own work that leaves with a character's units at slots the port does not change, which the units at the target do not hold: models, skeletons and textures as the author's work for that slot, which the options that keep other slots ship; objects, other files and clips alone as not supported for now | none |
 | `unit.retargeted` | note | the unit's names moved from its slot to its target | `retarget.renamed` |
 | `unit.new-bin` | note | a sub-character the game ships only at skin0 gets a skin bin at the target | `target.sub-no-slot-bin`, `lower.new-bin` as a note |
 | `unit.new-bin-failed` | error | a record did not apply to that new bin | `lower.new-bin` as an error |
@@ -154,7 +155,7 @@ Channel `output`.
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
-| `audio.carried` | note | a unit's own clips carried, in bank units after the game's: each bank with its unit, its layer, how its clips play, the game's bank its events are cut from in place of one the client no longer loads, and the game unit it stands in for | `audio.carried`, once for each bank, layer and stand-in |
+| `audio.carried` | note | a unit's own clips carried, in bank units after the game's: each bank with its unit, its layer, how its clips play, the game's bank its events are cut from when the unit's own is of a version the client does not load (#ADR-0084), and the game unit it stands in for | `audio.carried`, once for each bank, layer and stand-in |
 | `audio.not-carried` | warning | a unit's own clips not carried, each with why: no audio block at the target, a locale copy that differs, no events bank to cut, no event that plays them | `audio.not-carried` |
 | `audio.units-left-out` | note | the game's bank units at the target the port leaves out of the block, as the mod's own block does, each with the first build the game's skin held it (#ADR-0063) | `audio.units-left-out` |
 | `audio.literals-renamed` | note | literal sound names rewritten for the target's audio: to the mod's renamed events, to the base's | `sound-literals.rewritten` |

@@ -849,11 +849,11 @@ them.
 
 ### fixups, not seen
 
+- `catalog.capped`
 - `fixup reshape-wrap`
 
 ### facts, not seen
 
-- `catalog.capped`
 - `check why=unbound`
 - `copy kind=byte-identical`
 - `rig part unreadable=mesh`

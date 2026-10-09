@@ -188,8 +188,10 @@ impl Shipping {
     }
 
     /// The slot a champion's port changes, and the unit that holds it: where its skin0 unit
-    /// goes, when that unit is the author's (#ADR-0082). None when the skin0 unit is no work of
-    /// the author's, or the champion has none.
+    /// goes, or the unit that took its slot, or its original when it is a copy (#ADR-0082).
+    /// None when the champion has no skin0 unit, or that unit left for any other reason: the
+    /// game's skin, made before a rework, equal to the game's, in a conflict, with no target
+    /// (#ADR-0087). Then every unit of the champion ships at its own slot.
     fn target_of(
         inputs: &PortInputs<'_>,
         champion: CharId,
@@ -398,10 +400,14 @@ impl Held {
         unit: UnitId,
     ) -> Option<UnitWork> {
         let m: &Mod = inputs.fixed;
-        let slot = inputs.targets.target(unit);
+        // A unit leaves its champion's target only from among the units that ship, each of
+        // which has a target.
+        let slot = inputs.targets.target(unit).unwrap_or_else(|| {
+            panic!("the unit {unit} leaves its champion's target slot with no target of its own")
+        });
         let mut work = UnitWork {
             unit,
-            slot: slot.unwrap_or(m.units[unit].source_slot),
+            slot,
             kind: WorkKind::Unsupported,
             models: 0,
             skeletons: 0,

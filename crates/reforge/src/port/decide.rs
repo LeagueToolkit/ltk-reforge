@@ -632,6 +632,8 @@ impl Targets {
                     });
                 }
                 (Some(_), Reason::Forced) => {}
+                // #ADR-0076: `target.conflict` says where the unit was placed.
+                (Some(_), _) if decision.reason == Reason::Conflict => {}
                 (Some(slot), reason) => {
                     sink.raise(TargetChosen {
                         unit,
