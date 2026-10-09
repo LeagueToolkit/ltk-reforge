@@ -6,6 +6,9 @@
 //! A link with no relink in the table is left. The package refuses it: the client crashes while
 //! it loads such a material (#GAME-BEHAVIOR-0023).
 
+use std::collections::BTreeMap;
+use std::sync::LazyLock;
+
 use ltk_meta::PropertyValueEnum as V;
 use ltk_meta::property::values;
 
@@ -104,10 +107,15 @@ fn shader(name: &str) -> BinHash {
     }
 }
 
+/// [`RELINKS`] by hash, hashed once: a material pass asks for every removed shader.
+static RELINKED: LazyLock<BTreeMap<BinHash, BinHash>> = LazyLock::new(|| {
+    let rows = RELINKS.iter();
+    rows.map(|(from, to)| (shader(from), shader(to))).collect()
+});
+
 /// The shader Riot's materials took in place of a removed one.
 fn relink_of(removed: BinHash) -> Option<BinHash> {
-    let row = RELINKS.iter().find(|(from, _)| shader(from) == removed);
-    row.map(|(_, to)| shader(to))
+    RELINKED.get(&removed).copied()
 }
 
 /// The fixup `material-shader-relink`.

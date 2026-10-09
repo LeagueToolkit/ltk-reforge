@@ -3,7 +3,7 @@
 //!
 //! `docs/design/ARCHITECTURE.md`, "The environment".
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use super::catalog::SkinCatalog;
@@ -109,6 +109,8 @@ pub struct GameBin {
     pub parsed: ParsedBin,
     /// The files its objects name.
     pub files: BTreeSet<WadHash>,
+    /// The place of each object in `parsed.objects`, by entry hash.
+    places: BTreeMap<BinHash, usize>,
 }
 
 impl GameBin {
@@ -120,17 +122,19 @@ impl GameBin {
             .flat_map(|object| value::file_refs(&object.value))
             .map(|file| file.hash())
             .collect();
+        let placed = parsed.objects.iter().enumerate();
+        let places = placed.map(|(at, o)| (o.value.path_hash, at)).collect();
         Some(Self {
             bytes: bytes.into(),
             parsed,
             files,
+            places,
         })
     }
 
     /// The object of the bin under an entry hash.
     pub fn object(&self, entry: BinHash) -> Option<&ParsedObject> {
-        let mut objects = self.parsed.objects.iter();
-        objects.find(|object| object.value.path_hash == entry)
+        self.parsed.objects.get(*self.places.get(&entry)?)
     }
 }
 
