@@ -5,7 +5,7 @@ import { m } from "@/i18n";
 import type { RunRequest } from "@/lib/bindings.gen";
 import { useInputs, useInputsGate } from "@/modules/inputs";
 
-import { useRunMod, useRunStages } from "../api/run";
+import { useRunMod, useRunRunning, useRunStages } from "../api/run";
 import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
@@ -30,6 +30,7 @@ export function SimpleRepair() {
   const out = useOutputFolder();
   const inputs = useInputs();
   const run = useRunMod();
+  const running = useRunRunning();
   const { gate, dialog } = useInputsGate();
 
   const start = (block: string[]) => {
@@ -55,7 +56,7 @@ export function SimpleRepair() {
         <Button
           variant="filled"
           left={<WrenchIcon weight="bold" />}
-          loading={run.isPending}
+          loading={running}
           disabled={!archive || !out || inputs.isPending}
           onClick={() => start(ERRORS_BLOCK)}
         >
@@ -67,7 +68,7 @@ export function SimpleRepair() {
       {run.isError && <FailureNote failure={run.error} />}
       {last && !live && (
         <>
-          <RunSummary view={last} onWriteAnyway={() => start([])} writing={run.isPending} />
+          <RunSummary view={last} onWriteAnyway={() => start([])} writing={running} />
           <RunDetails lines={last.log} />
         </>
       )}

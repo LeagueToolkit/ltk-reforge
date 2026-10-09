@@ -9,7 +9,7 @@ import { FindingList, worstFirst } from "@/modules/findings";
 import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
 import { useInputs, useInputsGate } from "@/modules/inputs";
 
-import { useRunMod, useRunStages } from "../api/run";
+import { useRunMod, useRunRunning, useRunStages } from "../api/run";
 import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state/repairStore";
 import { DecisionsView } from "./DecisionsView";
 import { LiveProgress } from "./LiveProgress";
@@ -239,6 +239,7 @@ export function AdvancedRepair() {
   const live = useRepairStore((state) => state.live);
   const out = useOutputFolder();
   const run = useRunMod();
+  const running = useRunRunning();
   const { gate, dialog } = useInputsGate();
   const [selected, setSelected] = useState<StageName | null>(null);
   const stages = useRunStages(kind);
@@ -269,7 +270,7 @@ export function AdvancedRepair() {
 
   return (
     <div className="flex flex-col gap-6" data-ui="AdvancedRepair">
-      <SettingsCard stages={stages} onRun={() => start()} running={run.isPending} />
+      <SettingsCard stages={stages} onRun={() => start()} running={running} />
       {dialog}
       {live && <LiveProgress live={live} stages={stages} />}
       {live && <RunResults {...liveResults(live)} />}

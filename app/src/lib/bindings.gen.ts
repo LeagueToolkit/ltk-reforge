@@ -19,7 +19,8 @@ export const commands = {
 	openInputs: () => __TAURI_INVOKE<({ ok: true; value: InputsView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("open_inputs"),
 	/**
 	 *  A repair or a port of a mod, as far as the request asks, against the inputs the settings
-	 *  choose. How it goes comes as `RunStage`, `RunFinding` and `RunLog` events.
+	 *  choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunLog`
+	 *  events.
 	 */
 	runMod: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_mod", { request }),
 	/**  The stages of a run of the kind, in order, as the library names them. */
@@ -198,6 +199,10 @@ export type AppError =
 { code: "SCHEMA_UNUSABLE"; detail: string } | 
 /**  The schema database could not be written to disk. */
 { code: "SCHEMA_UNWRITABLE"; detail: string } | 
+/**  A download of the schema database is under way already. */
+{ code: "SCHEMA_BUSY" } | 
+/**  A run of a mod is under way already. */
+{ code: "RUN_BUSY" } | 
 /**  A folder of the app's did not go when the user asked for it removed. */
 { code: "NOT_REMOVED"; path: string; detail: string } | 
 /**  A folder did not open in the system's file manager. */
@@ -915,6 +920,11 @@ export type StorageView = {
 	 *  choose.
 	 */
 	kept: KeptIndex | null,
+	/**
+	 *  The bytes of every index the app installed, the one the settings choose among them: what
+	 *  their removal frees.
+	 */
+	indexes_bytes: number,
 	/**  The bytes of the app's clones of the census history. */
 	census_bytes: number,
 	/**  The bytes of the downloads kept to resume. */

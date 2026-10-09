@@ -29,7 +29,7 @@ use tauri::Manager;
 
 use crate::archive::Clones;
 use crate::settings::SettingsStore;
-use crate::state::{HashesJob, IndexJob, OpenInputs};
+use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, SchemaJob};
 
 /// Starts the app and returns when its window closes.
 pub fn run() -> tauri::Result<()> {
@@ -72,6 +72,8 @@ pub fn run() -> tauri::Result<()> {
                 data.join("downloads"),
             )));
             app.manage(Arc::new(HashesJob::default()));
+            app.manage(Arc::new(SchemaJob::default()));
+            app.manage(Arc::new(RunJob::default()));
             Ok(())
         })
         .run(tauri::generate_context!())

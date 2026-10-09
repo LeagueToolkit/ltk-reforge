@@ -107,6 +107,12 @@ pub enum AppError {
     /// The schema database could not be written to disk.
     #[error("the schema database could not be written: {detail}")]
     SchemaUnwritable { detail: String },
+    /// A download of the schema database is under way already.
+    #[error("the schema database is downloading already")]
+    SchemaBusy,
+    /// A run of a mod is under way already.
+    #[error("a run is under way already")]
+    RunBusy,
     /// A folder of the app's did not go when the user asked for it removed.
     #[error("{path} could not be removed: {detail}")]
     NotRemoved { path: String, detail: String },

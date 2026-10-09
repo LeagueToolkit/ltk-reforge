@@ -30,8 +30,12 @@ impl Job {
 
     /// Marks the work started, unless some is under way.
     pub fn start(&self) -> bool {
+        if self.running.swap(true, Ordering::AcqRel) {
+            // A start refused leaves the stop asked of the work under way in place.
+            return false;
+        }
         self.cancel.store(false, Ordering::Relaxed);
-        !self.running.swap(true, Ordering::AcqRel)
+        true
     }
 
     /// Marks the work ended.
@@ -87,6 +91,20 @@ pub struct HashesJob {
     pub run: Job,
 }
 
+/// The schema database's download: one at a time, since each writes the shared folder.
+#[derive(Default)]
+pub struct SchemaJob {
+    /// The download under way.
+    pub run: Job,
+}
+
+/// The run of a mod: one at a time, since the window follows one run's events.
+#[derive(Default)]
+pub struct RunJob {
+    /// The run under way.
+    pub run: Job,
+}
+
 /// The inputs opened for one choice, opened again when the choice changes.
 pub struct OpenInputs {
     names_index: Utf8PathBuf,
@@ -122,5 +140,22 @@ impl OpenInputs {
     /// the same choice.
     pub fn forget(&self) {
         *self.current.lock() = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_start_refused_keeps_the_stop_asked_of_the_work_under_way() {
+        let job = Job::new();
+        assert!(job.start());
+        job.cancel.store(true, Ordering::Relaxed);
+        assert!(!job.start());
+        assert!(job.cancel.load(Ordering::Relaxed));
+        job.end();
+        assert!(job.start());
+        assert!(!job.cancel.load(Ordering::Relaxed));
     }
 }

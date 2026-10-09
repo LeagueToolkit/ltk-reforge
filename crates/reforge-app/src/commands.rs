@@ -25,7 +25,7 @@ use crate::runlog::LogLine;
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
-use crate::state::{HashesJob, IndexJob, OpenInputs};
+use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, SchemaJob};
 use crate::storage::StorageView;
 use crate::view::Finding;
 
@@ -143,15 +143,23 @@ impl Watch for Window {
 }
 
 /// A repair or a port of a mod, as far as the request asks, against the inputs the settings
-/// choose. How it goes comes as `RunStage`, `RunFinding` and `RunLog` events.
+/// choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunLog`
+/// events.
 #[tauri::command]
 #[specta::specta]
 pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> {
     let choice = Choice::from(&app.state::<SettingsStore>().get());
     let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
     off_thread(move || {
-        let inputs = open.get(&choice)?;
-        run::run(&inputs, &request, &mut Window(app))
+        let job = Arc::clone(&app.state::<Arc<RunJob>>());
+        if !job.run.start() {
+            return Err(AppError::RunBusy);
+        }
+        let ran = open
+            .get(&choice)
+            .and_then(|inputs| run::run(&inputs, &request, &mut Window(app)));
+        job.run.end();
+        ran
     })
     .await
 }
@@ -439,8 +447,14 @@ pub async fn schema_check() -> IpcResult<SchemaCheck> {
 pub async fn update_schema(app: AppHandle) -> IpcResult<()> {
     off_thread(move || {
         let dir = meta_cache_dir().ok_or_else(no_data_dir)?;
-        let web = Web::new()?;
-        if schema::update(&dir, &Wiki::new(&web, schema::PUBLISHED))? {
+        let job = app.state::<Arc<SchemaJob>>();
+        if !job.run.start() {
+            return Err(AppError::SchemaBusy);
+        }
+        let updated =
+            Web::new().and_then(|web| schema::update(&dir, &Wiki::new(&web, schema::PUBLISHED)));
+        job.run.end();
+        if updated? {
             // The database open is the old one: the next run opens the new.
             app.state::<Arc<OpenInputs>>().forget();
         }
