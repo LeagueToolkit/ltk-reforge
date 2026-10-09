@@ -1403,3 +1403,105 @@ scratch directory.
 - **The first ten builds**: 40 s to write, 68,088 texts and as many rows of object bytes. 3,033
   are keyed; the other 65,055 are all of legacy bins and hold a renumbered kind. The first five
   with the next five appended equal the ten built whole.
+
+## Extra units beside a champion's main unit (2026-10-09)
+
+`scripts/corpus/extra_units.py` over the reports of `baseline-port-3`, with no port run and no
+archive opened, for the 5,121 mods whose archives the datasets hold. 16 archives left the
+datasets on 2026-10-09: a series of uploads of one icon file per Ashe skin beside the game's own
+bins, and one more upload of the same uploader. 35 reports end in a fatal diagnostic, which
+leaves 5,086 ports.
+
+**What it measures.** A champion whose port ships more than one unit has a main unit: the unit
+at skin0, else the one with the most own work. Each other unit it ships is an extra unit. An
+extra unit's own work is compared with the main unit's by bytes: an own file by its content, an
+own object by the SHA-256 of the object the package writes, an own clip by a bank of the main
+unit's at the same path or with the same bytes. Own clips in a bank of the base's sound unit do
+not count, since every skin bin of the game names the base's units. A mod is multi-skin when an
+extra unit ships an own model, skeleton or texture that the main unit does not ship, a leftover
+when no extra unit holds own work that the main unit does not hold, and ambiguous otherwise. A
+family is the archives that share more than half of the smaller one's own files, by bytes.
+
+**How often.** 459 of the 5,086 ports ship 2,604 extra champion units, in 314 families.
+`Left::GameSkin` leaves 683 units in 33 mods.
+
+| bucket | mods | families | extra units | at the main unit's origin slot |
+|---|---:|---:|---:|---:|
+| leftover | 55 | 46 | 311 | 3 |
+| multi-skin | 361 | 237 | 2,068 | 20 |
+| ambiguous | 43 | 36 | 225 | 3 |
+
+Unit by unit, 431 extra units hold no own work that the main unit does not hold: the leftovers'
+311, 83 in 15 multi-skin mods and 37 in 3 ambiguous ones. 1,883 ship an own model, skeleton or
+texture, and 290 hold other own work. The reports of `baseline-port-1` (2026-10-04) give the same
+55 leftovers and the same 43 ambiguous mods, and 5 more multi-skin mods: 3 end in a fatal
+diagnostic in `baseline-port-3`, and in 2 the skin0 unit leaves there as the game's own skin.
+
+**The three mods of the report.** PROJECT Urgot 1.5.0 (`976ade55971f`) is a leftover. Its skin3
+unit's two own files are the main unit's icons by bytes. The unit also names the base's effects
+bank, with 117 own clips that the main unit's audio block does not name; PROJECT Urgot 1.5.3
+names the same bank bytes in its one unit, at skin0. Ben 10 Ultimate Alien Udyr
+(`7eda40f07563`) is ambiguous. Its units at skins 3, 5 and 6 each hold 4 own objects that the
+main unit does not write, and the units at skins 3 and 5 hold 33 and 9 own clips in banks at
+their skins' paths. The main unit's renamed banks hold 160 and 97 clips, 33 and 9 of them own,
+in other bytes. The reports hold no clip's bytes, so whether those are the main unit's clips is
+open. The port carries none of the main unit's 75 own clips (no events bank of the client's
+version to cut), and carries the 33 and the 9 at skins 3 and 5. The Lee Sin restoration
+(`bb677a3d9e9d`) is multi-skin: each of its 22 extra units ships own models, skeletons or
+textures, 86 files in all.
+
+**Leftovers.** Of the 311 units, 259 have a bin of an older build's bytes, last shipped at 14.x
+for 30, 15.x for 171 and 16.x for 58; 50 a bin of the install's bytes; 2 an own bin. 247 units
+in 32 mods sit beside a main unit placed as the base, 61 in 20 mods beside one at a premium
+slot, 2 in 2 mods beside a paste, and 1 beside one placed at the skin whose clips it plays. They
+are the units #ADR-0020 drops: faults like PROJECT Urgot's, and spreads of the main unit's work
+over the game's bins. `Left::GameSkin` keeps them for what they share with the main unit: 277
+units in 41 mods name own files, each the main unit's by bytes; 22 units in 10 mods reach own
+objects that the main unit writes too; 58 reach the game's objects of another slot. It keeps 23
+units in 5 mods whose every shipped unit, the main one with them, holds no own work: it leaves a
+game skin only beside a unit that carries the mod's work. 2 units in 2 mods have a bin that does
+not read, with no entry and no reach, and ship with the reason `unjudged`.
+
+**Multi-skin.** 166 mods ship an own model or skeleton that the main unit does not ship, 195 own
+textures alone. In 194 the files sit in the unit's skin folder or are its rig. 76 of the 78
+mods with "old" in their name are here, each skin's old model restored. The other 2 are one
+family of Nidalee voice mods whose extra units are older builds' bins: one a leftover, whose
+units name the main unit's own voice package (151 own clips) and nothing else of their own, and
+one ambiguous through 154 own effects clips at one unit's skin.
+
+**Ambiguous.** No extra unit of the 43 mods ships an own file that the main unit does not. They
+hold own objects (148 units, 7,700 objects) or own clips in banks at their own skins' paths (42
+units, 2,897 clips). Most are chroma effects mods, each chroma's unit with effects objects of its
+own, and sound mods with each skin's own clips.
+
+| held, not the main unit's | 0 | 1 to 5 | 6 to 20 | 21 to 100 | more |
+|---|---:|---:|---:|---:|---:|
+| own objects: units (mods) | 77 (8) | 25 (9) | 8 (5) | 115 (25) | 0 |
+| own clips of its skin: units (mods) | 183 (38) | 6 (2) | 1 (1) | 29 (5) | 6 (6) |
+
+**Each signal alone.** The leftovers' extra units the signal keeps, and the multi-skin mods'
+units with an own model, skeleton or texture that it drops:
+
+| a unit leaves when | leftover units kept (mods) | multi-skin units dropped (mods) |
+|---|---:|---:|
+| it sits at the main unit's origin slot | 308 (52) | 16 (16) |
+| its bin is the game's bytes | 2 (2) | 785 (153) |
+| its bin is an older build's bytes | 52 (13) | 98 (20) |
+| its mesh and skeleton are the game's | 50 (11) | 345 (104) |
+| it reaches no own object | 22 (10) | 743 (130) |
+| at most 10% of the objects it reaches are own | 16 (6) | 913 (166) |
+| at most 5 own objects are not the main unit's | 0 | 1,377 (214) |
+| no own object or object of another slot, own files and clips the main unit's | 74 (20) | 0 |
+| own objects, own files and own clips of its skin all the main unit's, by bytes | 0 | 0 |
+
+The last row is the leftover bucket's own test, so it separates the certain buckets by its
+making; over the ambiguous mods it drops 37 units in 3. No signal outside the byte comparison
+comes near it. The main unit's origin slot keeps 308 of the 311 leftover units, and the bin's
+bytes drop 785 multi-skin units. The current rule's object test keeps 74 leftover units in 20
+mods: their own objects are the main unit's by bytes, or they reach the game's objects of another
+slot. A bound on own objects separates only after the file test. With the file and clip tests,
+a bound of 5 drops 60 units in 12 ambiguous mods, all extra units of 5. Of Ben 10's units it
+drops the one at skin 6; the clips of the units at skins 3 and 5 hold them.
+
+**Families.** Archives whose own files differ in bytes stay apart: three versions of one chroma
+effects mod share no own file and count as three families.
