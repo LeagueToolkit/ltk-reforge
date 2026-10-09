@@ -553,7 +553,7 @@ def main():
     ap.add_argument("--codes", default=os.path.join(corpus.ROOT, "docs", "design", "CODES.md"))
     ap.add_argument("--doc")
     ap.add_argument("--dated")
-    ap.add_argument("--jobs", type=int, default=12)
+    corpus.add_jobs(ap)
     args = ap.parse_args()
     if args.doc and not args.dated:
         ap.error("--doc needs --dated, the date of the runs")

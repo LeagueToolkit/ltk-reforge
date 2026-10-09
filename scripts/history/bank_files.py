@@ -21,11 +21,14 @@ Inputs: --db, the index's database; --builds, its builds list, for the commit of
 --repo, a clone of the census history that holds the index's head; --game, an install's `Game`
 folder. `fill` writes the database in place, then vacuums it, unless --dry-run. Both print
 counts and exit non-zero on a fault.
+
+Needs the `zstandard` package (`pip install zstandard`), for the chunks `check` reads.
 """
 
 import argparse
 import hashlib
 import multiprocessing
+import os
 import re
 import sqlite3
 import struct
@@ -35,6 +38,9 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 import zstandard
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "corpus"))
+import corpus  # noqa: E402
 
 MASK = (1 << 64) - 1
 
@@ -260,6 +266,8 @@ def fill(args):
     tasks.sort(key=lambda t: (t[2], t[3], t[0]))
     with multiprocessing.Pool(args.jobs, start_git, (args.repo,)) as pool:
         read = list(pool.imap_unordered(read_task, tasks, chunksize=64))
+    # The faults and the counts come out the same whatever order the processes finished in.
+    read.sort(key=lambda r: (r[0], r[1]))
 
     faults = []
     of_file = {}
@@ -400,6 +408,12 @@ def bank_of(data):
 LOCALE_WAD = re.compile(r"\.([a-z]{2}_[a-z]{2})\.wad\.client$")
 
 
+def locale_of(wad):
+    """The locale a WAD's name carries, else None."""
+    found = LOCALE_WAD.search(wad)
+    return found.group(1) if found else None
+
+
 def check(args):
     db = sqlite3.connect(f"file:{args.db}?mode=ro", uri=True)
     if "key" not in columns(db):
@@ -441,10 +455,6 @@ def check(args):
     tocs = {}
     locale = args.locale.lower()
     matched = Counter()
-    def locale_of(wad):
-        found = LOCALE_WAD.search(wad)
-        return found.group(1) if found else None
-
     for path, banks in sorted(several.items()):
         seen = Counter()
         for key, wads in banks.items():
@@ -505,7 +515,7 @@ def main():
     filling.add_argument("--db", required=True)
     filling.add_argument("--builds", required=True)
     filling.add_argument("--repo", required=True)
-    filling.add_argument("--jobs", type=int, default=24)
+    corpus.add_jobs(filling)
     filling.add_argument("--dry-run", action="store_true")
     checking = commands.add_parser("check")
     checking.add_argument("--db", required=True)

@@ -23,12 +23,6 @@ import argparse, collections, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import corpus  # noqa: E402
 
-SIZES = [(0, "0"), (5, "1-5"), (20, "6-20"), (100, "21-100")]
-
-
-def size_of(n):
-    return next((name for top, name in SIZES if n <= top), ">100")
-
 
 def of_mod(item):
     """One row per unit with names nothing loaded at its target holds."""
@@ -86,7 +80,7 @@ def main():
     ap.add_argument("run")
     ap.add_argument("--out", required=True)
     ap.add_argument("--types", default=os.environ.get("REFORGE_TYPES"))
-    ap.add_argument("--jobs", type=int, default=12)
+    corpus.add_jobs(ap)
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     names = class_names(args.types)
@@ -109,14 +103,14 @@ def main():
     at_origin = [row for row in held_rows if row["origin_slot"] is not None and any(row["origin_slot"] in slots for _, _, slots in row["elsewhere"])]
     paste = [row for row in held_rows if row["origin_slot"] is not None and row["source"] == row["target"] != row["origin_slot"]]
     classes = collections.Counter(names.get(cls, cls) for row in rows for _, cls, _ in row["elsewhere"])
-    sizes = collections.Counter(size_of(row["objects"]) for row in held_rows)
+    sizes = collections.Counter(corpus.size_of(row["objects"]) for row in held_rows)
     out = [
         f"reports: {len(shas)}; units with dangling names: {len(rows)} in {len({r['sha256'] for r in rows})} mods, {sum(r['names'] for r in rows)} names",
         f"units with names other skins hold: {len(held_rows)} in {len({r['sha256'] for r in held_rows})} mods, {held_names} names",
         f"  of them, held at the unit's premium origin: {len(at_origin)} units in {len({r['sha256'] for r in at_origin})} mods",
         f"  of them, pastes (source slot at the target, origin elsewhere): {len(paste)} units in {len({r['sha256'] for r in paste})} mods",
         f"what copies would bring: {sum(r['objects'] for r in held_rows)} objects, {sum(r['files'] for r in held_rows)} files, {sum(r['unresolved'] for r in held_rows)} names nothing holds",
-        "units by the objects copies would bring: " + ", ".join(f"{name} {sizes[name]}" for _, name in SIZES + [(None, '>100')] if sizes[name]),
+        "units by the objects copies would bring: " + ", ".join(f"{name} {sizes[name]}" for name in corpus.SIZES if sizes[name]),
         "",
         "classes of the names held elsewhere: names",
     ]

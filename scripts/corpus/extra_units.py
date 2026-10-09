@@ -1,7 +1,7 @@
 """The champion units a port ships beside each champion's main one, sorted into leftovers and
 multi-skin mods by what the reports of a run already hold (#ADR-0020). No archive is opened.
 
-extra_units.py RUN --out DIR [--list FILE] [--builds FILE] [--seed N] [--check SHA256] [--jobs N]
+extra_units.py RUN --out DIR [--list FILE | --reduced] [--builds FILE] [--seed N] [--check SHA256] [--jobs N]
 extra_units.py --rows FILE --out DIR [--seed N] [--check SHA256]
 
 A champion whose port ships more than one unit has a main unit: the one at skin 0, else the
@@ -30,9 +30,11 @@ the versions and the series of one work count once.
 Inputs:
 
   RUN       a run directory of `run.py port`
-  --list    the SHA-256s to read, one per line (default: every report of RUN)
+  --list    the SHA-256s to read, one per line, or a reduced corpus (default: every report
+            of RUN)
+  --reduced the reduced corpus beside this script
   --builds  builds.tsv of the history index the run read, to name a bin's builds (default:
-            REFORGE_INDEX's, else data/history-757's of this checkout)
+            REFORGE_INDEX's, else builds are named by their positions)
   --rows    rows.jsonl of an earlier scan, read instead of RUN, with reports.jsonl beside it
   --seed    the seed the spot check draws ten families of each bucket with (default 20261009)
   --check   a mod whose bucket the user settled: listed first, its family not drawn
@@ -390,17 +392,6 @@ def bucket_of(rows):
     return bucket, why
 
 
-SIZES = ["0", "1-5", "6-20", "21-100", ">100"]
-
-
-def size_of(n):
-    """The bracket of a count, as `SIZES` names it."""
-    for top, name in ((0, "0"), (5, "1-5"), (20, "6-20"), (100, "21-100")):
-        if n <= top:
-            return name
-    return ">100"
-
-
 def own_share(row):
     reached = sum(row[f"objects_{key}"] for key in ("game_slot_install", "game_slot_history", "game_other_slot", "game_no_slot", "own"))
     return row["objects_own"] / reached if reached else 0.0
@@ -565,8 +556,8 @@ def summarize(rows, by_mod, buckets, mods, scores, seed):
     for what in ("own objects", "own clips of its slot"):
         sizes = collections.defaultdict(set)
         for row in ambiguous:
-            sizes[size_of(row["uncarried"].get(what, 0))].add((row["sha256"], row["unit"]))
-        cells = [f"{name} {len(sizes[name])} ({len({sha for sha, _ in sizes[name]})})" for name in SIZES if sizes[name]]
+            sizes[corpus.size_of(row["uncarried"].get(what, 0))].add((row["sha256"], row["unit"]))
+        cells = [f"{name} {len(sizes[name])} ({len({sha for sha, _ in sizes[name]})})" for name in corpus.SIZES if sizes[name]]
         out.append(f"  {what:24} " + ", ".join(cells))
     out += ["", "the ambiguous mods' extra units by bin and mesh: units"]
     for (game_bin, main_mesh), n in sorted(shapes.items()):
@@ -582,13 +573,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("run", nargs="?")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--list")
+    ap.add_argument("--list", help="a text file of SHA-256s, or a reduced corpus")
+    ap.add_argument("--reduced", action="store_true", help="the reduced corpus beside this script")
     ap.add_argument("--rows")
-    ap.add_argument("--builds", default=os.path.join(corpus.env("REFORGE_INDEX", "data", "history-757"), "builds.tsv"))
+    ap.add_argument("--builds", help="builds.tsv of the history index (default: REFORGE_INDEX's)")
     ap.add_argument("--seed", type=int, default=20261009)
     ap.add_argument("--check", action="append", default=[], metavar="SHA256", help="a mod whose bucket is settled")
-    ap.add_argument("--jobs", type=int, default=12)
+    corpus.add_jobs(ap)
     args = ap.parse_args()
+    index = corpus.env("REFORGE_INDEX")
+    builds_path = args.builds or (os.path.join(index, "builds.tsv") if index else None)
     if not args.run and not args.rows:
         ap.error("RUN or --rows is required")
     os.makedirs(args.out, exist_ok=True)
@@ -599,8 +593,8 @@ def main():
         with open(os.path.join(os.path.dirname(args.rows), "reports.jsonl"), encoding="utf-8") as f:
             mods = dict(json.loads(line) for line in f if line.strip())
     else:
-        builds = build_names(args.builds)
-        shas = corpus.listed(args.list) if args.list else corpus.reports(args.run)
+        builds = build_names(builds_path)
+        shas = corpus.chosen(args, set(corpus.reports(args.run)))
         rows, mods, owns = [], {}, {}
         for sha, facts, found, own in corpus.over(of_file, [(args.run, sha, builds) for sha in shas], args.jobs):
             mods[sha] = facts

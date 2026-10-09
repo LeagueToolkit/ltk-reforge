@@ -77,8 +77,7 @@ def main():
     def one(index):
         listing = os.path.join(parts_dir, f"{index:05}.txt")
         rows = os.path.join(parts_dir, f"{index:05}.tsv")
-        with open(listing, "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(where[sha] for sha in shas[index : index + PART]) + "\n")
+        corpus.write(listing, "\n".join(where[sha] for sha in shas[index : index + PART]) + "\n")
         with open(rows, "w", encoding="utf-8", newline="\n") as out:
             done = subprocess.run([EXAMPLE, args.game, listing], stdout=out, stderr=subprocess.PIPE, encoding="utf-8", errors="replace")
         if done.returncode != 0:
@@ -91,9 +90,8 @@ def main():
     for part in parts:
         with open(part, encoding="utf-8") as f:
             rows += [line.rstrip("\n").split("\t") for line in f if not line.startswith("sha256\t")]
-    with open(os.path.join(args.out, "links.tsv"), "w", encoding="utf-8", newline="\n") as f:
-        f.write("sha256\twad\tchunk\tkind\tentry\tshader\tin_game\n")
-        f.writelines("\t".join(row) + "\n" for row in rows)
+    header = "sha256\twad\tchunk\tkind\tentry\tshader\tin_game\n"
+    corpus.write(os.path.join(args.out, "links.tsv"), header + "".join("\t".join(row) + "\n" for row in rows))
 
     loaded = loaded_bins(args.run, shas) if args.run else None
     if loaded is not None:
@@ -123,8 +121,7 @@ def main():
     lines += ["", "CustomShaderDef objects of mods: mods, under, shader"]
     for (under, shader), mods in sorted(defined.items(), key=lambda kv: (-len(kv[1]), kv[0])):
         lines.append(f"  {len(mods):5}  {under}: {spell.get(shader, '0x' + shader)}")
-    with open(os.path.join(args.out, "summary.txt"), "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(lines) + "\n")
+    corpus.write(os.path.join(args.out, "summary.txt"), "\n".join(lines) + "\n")
     print("\n".join(lines[:4]))
 
 

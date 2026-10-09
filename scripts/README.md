@@ -37,6 +37,9 @@ python scripts/history/bank_files.py fill --db <history.sqlite> --builds <builds
 python scripts/history/bank_files.py check --db <history.sqlite> --game <install>/Game --at <position>
 ```
 
+It needs the `zstandard` package (`pip install zstandard`), the one Python package a script
+here imports outside the standard library.
+
 ## corpus
 
 The corpus tooling (#ADR-0044, #ADR-0045): a run of reforge over the mods of the datasets, the
@@ -51,6 +54,10 @@ header states its inputs and outputs.
 | `corpus/cases.py` | the edge cases the reports of runs show, each with how many mods show it and up to five of them, the cases the program declares that no mod shows, and the places of a report its table does not know. Writes the generated tables of `docs/design/CASES.md` again (`--doc`) |
 | `corpus/reduce.py` | the reduced corpus: the fewest mods that together show every case, as `corpus/reduced.json` |
 | `corpus/reduced.json` | the reduced corpus of the baselines, for `run.py --reduced` and `compare.py --reduced` |
+| `corpus/shaders.py` | the shaders mods link and define, against the game's shader bin (#GAME-CHANGE-0024, #GAME-BEHAVIOR-0022, #GAME-BEHAVIOR-0023): runs the example `shader_links` over the mods in scope, one row per link or definition, and a summary by shader |
+| `corpus/extra_units.py` | the champion units a port ships beside each champion's main one, from the reports of a run: one row per extra unit, each mod sorted into leftover, multi-skin or ambiguous (#ADR-0020), a spot check and the signals that tell them apart |
+| `corpus/held_elsewhere.py` | the names a port's units reach that nothing loaded at their target holds and the game's bins of another skin hold (#GAME-BEHAVIOR-0006, #ADR-0083): one line per unit, and the counts |
+| `corpus/off_target.py` | the units a run's ports leave at slots the port does not change (#ADR-0082) and the own work the `unit.left-with-work` findings name, checked against a comparison with the baseline |
 
 Every input is an argument or an environment variable. A mod is named by its SHA-256. No
 archive is extracted: reforge reads it in memory, and a run writes reports only.

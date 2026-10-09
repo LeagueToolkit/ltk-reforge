@@ -40,6 +40,18 @@ MAX_CHARACTERS = 20
 DONE, HALTED = 0, 2
 HALTED_LINE = re.compile(r'\n  "halted": (null|\d+),?\r?\n')
 
+# How many mods a script works on at once, unless `--jobs` says.
+JOBS = 12
+
+# The brackets a count is summarized in: the top of each, and the name of the one past them.
+SIZE_TOPS = [(0, "0"), (5, "1-5"), (20, "6-20"), (100, "21-100")]
+SIZES = [name for _, name in SIZE_TOPS] + [">100"]
+
+
+def size_of(n):
+    """The bracket of a count, as `SIZES` names it."""
+    return next((name for top, name in SIZE_TOPS if n <= top), SIZES[-1])
+
 
 def env(name, *parts):
     """An input's default: its environment variable, else a path of this checkout."""
@@ -61,7 +73,12 @@ def add_program(parser):
     parser.add_argument("--index", default=env("REFORGE_INDEX"))
     parser.add_argument("--mimir", default=env("REFORGE_MIMIR"))
     parser.add_argument("--schema", default=env("REFORGE_SCHEMA"))
-    parser.add_argument("--jobs", type=int, default=12)
+    add_jobs(parser)
+
+
+def add_jobs(parser):
+    """The argument that says how many mods are worked on at once."""
+    parser.add_argument("--jobs", type=int, default=JOBS, help=f"how many at once (default {JOBS})")
 
 
 def require(parser, args, *names):

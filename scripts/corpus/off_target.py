@@ -36,7 +36,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("run")
     ap.add_argument("--compare")
-    ap.add_argument("--jobs", type=int, default=12)
+    corpus.add_jobs(ap)
     args = ap.parse_args()
 
     shas = corpus.reports(args.run)
@@ -55,8 +55,9 @@ def main():
         print(f"  work-left {kind}: {kinds[kind]} units in {len(kinds_mods[kind])} mods")
     print("  own work named: " + ", ".join(f"{n} {what}" for what, n in held.items()))
     if args.compare:
-        other = sorted(differing(args.compare) - mods)
-        print(f"differing mods: {len(differing(args.compare))}, with no unit left at another slot: {len(other)}")
+        differs = differing(args.compare)
+        other = sorted(differs - mods)
+        print(f"differing mods: {len(differs)}, with no unit left at another slot: {len(other)}")
         for sha in other:
             print(f"  {sha}")
         sys.exit(1 if other else 0)

@@ -415,7 +415,7 @@ def main():
     ap.add_argument("--list", help="a text file of SHA-256s, or a reduced corpus")
     ap.add_argument("--reduced", action="store_true", help="the reduced corpus beside this script")
     ap.add_argument("--expect", help="the kinds of difference that are meant")
-    ap.add_argument("--jobs", type=int, default=12)
+    corpus.add_jobs(ap)
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
