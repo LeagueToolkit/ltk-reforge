@@ -11,11 +11,12 @@ use reforge::diag::{DiagnosticPolicy, Diagnostics, Record, Render, Severity, Sta
 use reforge::fixups::TargetTypes;
 use reforge::game::{Build, Schema};
 use reforge::model::entity::FileId;
-use reforge::model::{ChunkPath, Spelled, WadName, name_hash};
+use reforge::model::known::field;
+use reforge::model::{ChunkPath, SkinEntry, Spelled, WadName, name_hash, path_hash};
 use reforge::package::{
-    Against, BinWrite, Blocked, Check, CheckCx, CheckInfo, CheckSelection, CheckSet, Chunk,
-    ChunkKey, Coverage, Done, FieldUndeclared, Layer, Origin, Package, ProjectConfig, Refused,
-    RoundTripFailed, RoundTripProblem, TypeMismatch, WrittenBin, permit,
+    Against, BaseSkin, BinWrite, Blocked, Check, CheckCx, CheckInfo, CheckSelection, CheckSet,
+    Chunk, ChunkKey, Coverage, Done, FieldUndeclared, Layer, Origin, Package, ProjectConfig,
+    Refused, RoundTripFailed, RoundTripProblem, SkinValue, TypeMismatch, WrittenBin, permit,
 };
 use reforge_testkit::SchemaRows;
 use reforge_testkit::bins::{bin, float, object, pointer, text};
@@ -481,4 +482,35 @@ fn a_check_a_caller_adds_runs_after_the_built_in_ones_under_its_own_id() {
     };
     assert_eq!(diagnostic.by.as_deref(), Some("counted"));
     assert_eq!(diagnostic.stage, Stage::Check);
+}
+
+#[test]
+fn a_file_the_base_skin_holds_by_its_hash_is_not_read_for_another_skins_name() {
+    let entry = name_hash("Characters/Aatrox/Skins/Skin0");
+    let mesh = BinObject::builder(name_hash("mesh"), name_hash("SkinMeshDataProperties"))
+        .property(
+            name_hash(field::SKELETON),
+            values::String::from("ASSETS/Characters/Aatrox/Skins/Skin07/Aatrox_Skin07.skl"),
+        )
+        .property(
+            name_hash(field::TEXTURE),
+            values::WadChunkLink::new(path_hash(
+                "ASSETS/Characters/Aatrox/Skins/Skin07/Aatrox_Skin07_TX_CM.tex",
+            )),
+        )
+        .build();
+    let mesh = values::Embedded(values::Struct {
+        class_hash: mesh.class_hash,
+        properties: mesh.properties,
+    });
+    let object = BinObject::builder(entry, SkinEntry::class())
+        .property(name_hash(field::SKIN_MESH_PROPERTIES), mesh)
+        .property(
+            name_hash(field::CHAMPION_SKIN_NAME),
+            values::String::from("Aatrox"),
+        )
+        .build();
+    let found = BaseSkin::other_skin(SkinEntry::read(&object), "aatrox");
+    let found: Vec<SkinValue> = found.iter().map(|name| name.value).collect();
+    assert_eq!(found, [SkinValue::Skeleton]);
 }

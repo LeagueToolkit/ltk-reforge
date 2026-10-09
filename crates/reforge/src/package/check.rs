@@ -694,8 +694,9 @@ impl BaseSkin {
         false
     }
 
-    /// The values of a champion's skin entry that name another skin of the champion.
-    fn other_skin(entry: SkinEntry<'_>, champion: &str) -> Vec<OtherSkinName> {
+    /// The values of a champion's skin entry that name another skin of the champion. A file the
+    /// entry holds by its hash spells no path, and is not read.
+    pub fn other_skin(entry: SkinEntry<'_>, champion: &str) -> Vec<OtherSkinName> {
         let name = format!("{champion}skin");
         let unit = format!("{champion}_skin");
         let folder = format!("{champion}/skins/skin");
@@ -994,10 +995,7 @@ impl Typing<'_> {
 
 #[cfg(test)]
 mod tests {
-    use ltk_meta::property::values;
-
     use super::*;
-    use crate::model::known::field;
 
     #[test]
     fn a_name_is_another_skins_by_a_number_other_than_zero_after_the_marker() {
@@ -1027,36 +1025,5 @@ mod tests {
         assert_eq!(champion(base).as_deref(), Some("aatrox"));
         assert_eq!(champion("data/characters/aatrox/skins/skin7.bin"), None);
         assert_eq!(champion("data/characters/aatrox/aatrox.bin"), None);
-    }
-
-    #[test]
-    fn a_file_held_by_its_hash_is_not_read() {
-        let entry = name_hash("Characters/Aatrox/Skins/Skin0");
-        let mesh = BinObject::builder(name_hash("mesh"), name_hash("SkinMeshDataProperties"))
-            .property(
-                name_hash(field::SKELETON),
-                values::String::from("ASSETS/Characters/Aatrox/Skins/Skin07/Aatrox_Skin07.skl"),
-            )
-            .property(
-                name_hash(field::TEXTURE),
-                values::WadChunkLink::new(path_hash(
-                    "ASSETS/Characters/Aatrox/Skins/Skin07/Aatrox_Skin07_TX_CM.tex",
-                )),
-            )
-            .build();
-        let mesh = values::Embedded(values::Struct {
-            class_hash: mesh.class_hash,
-            properties: mesh.properties,
-        });
-        let object = BinObject::builder(entry, SkinEntry::class())
-            .property(name_hash(field::SKIN_MESH_PROPERTIES), mesh)
-            .property(
-                name_hash(field::CHAMPION_SKIN_NAME),
-                values::String::from("Aatrox"),
-            )
-            .build();
-        let found = BaseSkin::other_skin(SkinEntry::read(&object), "aatrox");
-        let found: Vec<SkinValue> = found.iter().map(|name| name.value).collect();
-        assert_eq!(found, [SkinValue::Skeleton]);
     }
 }
