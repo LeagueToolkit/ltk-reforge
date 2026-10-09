@@ -1,9 +1,14 @@
-import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import {
+  queryOptions,
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { commands, events, type HashesProgress } from "@/lib/bindings.gen";
 import { useSettings } from "@/modules/settings";
-import { queryFn, unwrap } from "@/utils";
+import { queryFn, unwrap, useLastEvent } from "@/utils";
 
 import { inputsQuery } from "./inputs";
 
@@ -29,11 +34,20 @@ export function useHashesCheck() {
   });
 }
 
+/** The download of the hash tables, a mutation under this key: a page left and come back to still sees it. */
+const hashesUpdateKey = ["hashes", "update"] as const;
+
+/** Whether the hash tables are downloading. */
+export function useHashesUpdating(): boolean {
+  return useIsMutating({ mutationKey: hashesUpdateKey }) > 0;
+}
+
 /** Downloads the tables the cache lacks or holds older; the inputs open again to read them. */
 export function useUpdateHashes() {
   const queryClient = useQueryClient();
   const settings = useSettings();
   return useMutation({
+    mutationKey: hashesUpdateKey,
     mutationFn: async () => unwrap(await commands.updateHashes()),
     onSuccess: () => {
       const chosen = settings.data ?? {};
@@ -51,12 +65,5 @@ export function cancelHashes() {
 
 /** How far the download under way has got, from the backend's events. */
 export function useHashesProgress(): HashesProgress | null {
-  const [progress, setProgress] = useState<HashesProgress | null>(null);
-  useEffect(() => {
-    const unlisten = events.hashesProgress.listen((event) => setProgress(event.payload));
-    return () => {
-      void unlisten.then((stop) => stop());
-    };
-  }, []);
-  return progress;
+  return useLastEvent(events.hashesProgress);
 }

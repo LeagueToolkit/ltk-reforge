@@ -3,7 +3,7 @@ import { DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Button, FailureNote } from "@/components";
 import { m } from "@/i18n";
 
-import { useSchemaCheck, useUpdateSchema } from "../api/schema";
+import { useSchemaCheck, useSchemaUpdating, useUpdateSchema } from "../api/schema";
 import { Offer } from "./InputRow";
 
 /**
@@ -14,6 +14,7 @@ import { Offer } from "./InputRow";
 export function SchemaDownload() {
   const check = useSchemaCheck();
   const update = useUpdateSchema();
+  const updating = useSchemaUpdating();
 
   if (check.isError) {
     return <FailureNote failure={check.error} className="text-xs" />;
@@ -33,7 +34,7 @@ export function SchemaDownload() {
         <Button
           size="sm"
           variant="filled"
-          loading={update.isPending}
+          loading={updating}
           left={<DownloadSimpleIcon weight="bold" />}
           onClick={() => update.mutate()}
         >

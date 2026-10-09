@@ -5,7 +5,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
 
 import {
   type ArchiveProgress,
@@ -15,7 +14,7 @@ import {
   type UpdateStep,
 } from "@/lib/bindings.gen";
 import { settingsKeys, useSettings } from "@/modules/settings";
-import { queryFn, unwrap } from "@/utils";
+import { queryFn, unwrap, useLastEvent } from "@/utils";
 
 import { storageKey } from "./storage";
 
@@ -74,14 +73,7 @@ export function cancelIndex() {
 
 /** How far the download under way has got, from the backend's events. */
 export function useIndexProgress(): InstallProgress | null {
-  const [progress, setProgress] = useState<InstallProgress | null>(null);
-  useEffect(() => {
-    const unlisten = events.installProgress.listen((event) => setProgress(event.payload));
-    return () => {
-      void unlisten.then((stop) => stop());
-    };
-  }, []);
-  return progress;
+  return useLastEvent(events.installProgress);
 }
 
 /**
@@ -182,24 +174,10 @@ export function useRemoveDownloads() {
 
 /** How far the bootstrap under way has got, from the backend's events. */
 export function useArchiveProgress(): ArchiveProgress | null {
-  const [progress, setProgress] = useState<ArchiveProgress | null>(null);
-  useEffect(() => {
-    const unlisten = events.archiveProgress.listen((event) => setProgress(event.payload));
-    return () => {
-      void unlisten.then((stop) => stop());
-    };
-  }, []);
-  return progress;
+  return useLastEvent(events.archiveProgress);
 }
 
 /** The step of the update under way, from the backend's events. */
 export function useIndexUpdateStep(): UpdateStep | null {
-  const [step, setStep] = useState<UpdateStep | null>(null);
-  useEffect(() => {
-    const unlisten = events.indexUpdateProgress.listen((event) => setStep(event.payload.step));
-    return () => {
-      void unlisten.then((stop) => stop());
-    };
-  }, []);
-  return step;
+  return useLastEvent(events.indexUpdateProgress)?.step ?? null;
 }
