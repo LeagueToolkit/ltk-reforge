@@ -224,7 +224,8 @@ impl<'a> Survey<'a> {
     }
 
     /// The characters the game's skins of a champion preload, by name in lowercase: what the
-    /// skin entries of its skin bins list. The bins they link are not read.
+    /// skin entries of its skin bins list. The bins they link are not read: a linked bin that
+    /// does not read is a fault of `fix`, not of `load`.
     fn preloads(&self, champion: &str) -> Result<BTreeSet<String>, GameError> {
         let game = self.run.env.game();
         let mut out = BTreeSet::new();
