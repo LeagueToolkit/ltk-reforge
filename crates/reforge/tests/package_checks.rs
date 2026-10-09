@@ -15,8 +15,9 @@ use reforge::model::known::field;
 use reforge::model::{BinHash, ChunkPath, SkinEntry, Spelled, WadName, name_hash, path_hash};
 use reforge::package::{
     Against, BaseSkin, BinWrite, Blocked, Check, CheckCx, CheckInfo, CheckSelection, CheckSet,
-    Chunk, ChunkKey, Coverage, Done, FieldUndeclared, Layer, Origin, Package, ProjectConfig,
-    Refused, RoundTripFailed, RoundTripProblem, SkinValue, TypeMismatch, WrittenBin, permit,
+    Chunk, ChunkKey, ClassUndeclared, Coverage, Done, FieldUndeclared, HeldBy, Layer, Origin,
+    Package, ProjectConfig, Refused, RoundTripFailed, RoundTripProblem, SkinValue, TypeMismatch,
+    WrittenBin, permit,
 };
 use reforge_testkit::SchemaRows;
 use reforge_testkit::bins::{bin, float, object, pointer, text};
@@ -412,6 +413,129 @@ fn a_struct_its_field_does_not_take_under_a_later_key_of_a_map_is_a_value_of_ano
 fn a_struct_of_a_derived_class_second_in_a_list_reads_as_its_base() {
     let list = children(&["Leaf", "Special"]);
     assert_eq!(mismatches(vec![("children", list)]), []);
+}
+
+/// Runs the type check on a package against these types, and gives what it raised.
+fn typed(package: &Package, types: &TargetTypes<'_>) -> Diagnostics {
+    let mut log = Diagnostics::new();
+    let cx = CheckCx::new(package, types);
+    types_only().run(&cx, &mut log.at(Stage::Check));
+    log
+}
+
+/// The rows of the classes the target build does not declare: the field that holds them, the
+/// class, how many.
+fn undeclared_classes(log: &Diagnostics) -> Vec<(Option<HeldBy>, BinHash, usize)> {
+    let found = log.of::<ClassUndeclared>().flat_map(|found| &found.classes);
+    found
+        .map(|row| (row.held_by, row.held, row.structs))
+        .collect()
+}
+
+/// Objects of the class `Ghost`, which the schema lacks: one alone, and one as a material's
+/// child.
+fn ghosts() -> Vec<BinObject> {
+    vec![
+        object("G", "Ghost", vec![]),
+        object("A", "Material", vec![("child", pointer("Ghost", vec![]))]),
+    ]
+}
+
+#[test]
+fn a_struct_of_a_class_the_schema_lacks_in_a_field_taking_a_declared_class_is_undeclared() {
+    let schema = schema();
+    let fields = vec![
+        ("child", pointer("Ghost", vec![("kept", float(1.0))])),
+        ("children", children(&["Leaf", "Ghost"])),
+    ];
+    let objects = vec![object("A", "Material", fields)];
+    let log = checked(&package_of(kept(objects)), Some(&schema), &types_only());
+    let held_by = |field: &str| HeldBy {
+        class: name_hash("Material"),
+        field: name_hash(field),
+    };
+    let ghost = name_hash("Ghost");
+    assert_eq!(
+        undeclared_classes(&log),
+        [
+            (Some(held_by("child")), ghost, 1),
+            (Some(held_by("children")), ghost, 1),
+        ]
+    );
+    assert_eq!(
+        log.of::<TypeMismatch>().count(),
+        0,
+        "no value of another type"
+    );
+
+    let diagnostic = log.iter().next().expect("the finding is raised");
+    assert_eq!(diagnostic.code.name, "check.class-undeclared");
+    assert_eq!(diagnostic.severity(), Severity::Error);
+    assert_eq!(diagnostic.by.as_deref(), Some("types"));
+    assert_eq!(diagnostic.record, Some(Record::mod_artifact(39)));
+    let hex = |name: &str| format!("{:08x}", name_hash(name).0);
+    assert_eq!(
+        diagnostic.message(&Render::plain()),
+        format!(
+            "2 structs of a class the target build does not declare: {material}.{child} holds \
+             {ghost} (1), {material}.{children} holds {ghost} (1)",
+            material = hex("Material"),
+            child = hex("child"),
+            children = hex("children"),
+            ghost = hex("Ghost"),
+        )
+    );
+}
+
+#[test]
+fn a_root_object_of_a_class_the_schema_lacks_is_undeclared() {
+    let schema = schema();
+    let objects = vec![object("G", "Ghost", vec![("kept", float(1.0))])];
+    let log = checked(&package_of(kept(objects)), Some(&schema), &types_only());
+    assert_eq!(undeclared_classes(&log), [(None, name_hash("Ghost"), 1)]);
+    let diagnostic = log.iter().next().expect("the finding is raised");
+    assert_eq!(
+        diagnostic.message(&Render::plain()),
+        format!(
+            "1 struct of a class the target build does not declare: {:08x} as an object (1)",
+            name_hash("Ghost").0
+        )
+    );
+}
+
+#[test]
+fn a_struct_of_a_class_the_schema_lacks_typed_against_the_installs_bins_raises_nothing() {
+    let schema = schema();
+    let build = Build::parse("16.19.300");
+    let mut types = TargetTypes::new(Some(&schema), build.as_ref());
+    // The install holds a material with a field the schema does not describe.
+    let leaf = pointer("Leaf", vec![]);
+    types.witness(&object("W", "Material", vec![("extra", leaf)]));
+    let ghost = pointer("Ghost", vec![]);
+    let objects = vec![object("A", "Material", vec![("extra", ghost)])];
+    let log = typed(&package_of(kept(objects)), &types);
+    assert_eq!(log.len(), 1, "what the check covered and nothing else");
+}
+
+/// The schema lacks some classes the game's data holds.
+#[test]
+fn a_class_the_schema_lacks_that_a_bin_of_the_install_holds_is_declared() {
+    let schema = schema();
+    let build = Build::parse("16.19.300");
+    let mut types = TargetTypes::new(Some(&schema), build.as_ref());
+    types.witness(&object("W", "Ghost", vec![]));
+    let log = typed(&package_of(kept(ghosts())), &types);
+    // Nor is the child a value of another type: the bases of the class are not known.
+    assert_eq!(log.len(), 1, "what the check covered and nothing else");
+}
+
+#[test]
+fn without_a_schema_no_class_is_undeclared() {
+    let build = Build::parse("16.19.300");
+    let types = TargetTypes::new(None, build.as_ref());
+    let log = typed(&package_of(kept(ghosts())), &types);
+    assert_eq!(log.of::<ClassUndeclared>().count(), 0);
+    assert_eq!(log.len(), 1, "what the check covered and nothing else");
 }
 
 #[test]

@@ -41,11 +41,12 @@ pub use self::evidence::{
     MAX_README_BYTES, PieceKind, Program, README_FILE,
 };
 pub use self::findings::{
-    Against, ApplyFailed, Blocked, Coverage, Done, Empty, EntryWhole, FieldKept, FieldUndeclared,
-    FileMissing, InPlace, LinkUnresolved, ManifestUnreadable, NameUnresolved, NewBin, NewBinFailed,
-    NotWritten, OtherSkin, OtherSkinName, OverlayCapped, Place, Ported, RecordSkipped,
-    ResolverFrozen, RoundTripFailed, RoundTripProblem, ShaderLink, ShaderMissing, Shape, SkinValue,
-    TextureContained, ThumbnailDropped, TypeMismatch, TypeRow, UndeclaredRow, UnitPorted, Written,
+    Against, ApplyFailed, Blocked, ClassRow, ClassUndeclared, Coverage, Done, Empty, EntryWhole,
+    FieldKept, FieldUndeclared, FileMissing, HeldBy, InPlace, LinkUnresolved, ManifestUnreadable,
+    NameUnresolved, NewBin, NewBinFailed, NotWritten, OtherSkin, OtherSkinName, OverlayCapped,
+    Place, Ported, RecordSkipped, ResolverFrozen, RoundTripFailed, RoundTripProblem, ShaderLink,
+    ShaderMissing, Shape, SkinValue, TextureContained, ThumbnailDropped, TypeMismatch, TypeRow,
+    UndeclaredRow, UnitPorted, Written,
 };
 pub use self::inplace::{BuildError, InPlaceBuilder};
 pub use self::overlay::{
@@ -90,6 +91,7 @@ pub const CODES: &[Code] = &[
     OtherSkin::CODE,
     TypeMismatch::CODE,
     FieldUndeclared::CODE,
+    ClassUndeclared::CODE,
     RoundTripFailed::CODE,
     Done::CODE,
     Written::CODE,

@@ -189,6 +189,7 @@ What was built, what the checks found, what was written. Channel `output`.
 | `check.other-skin` | warning | values of a champion's patched base skin that name another skin of the champion (#ADR-0062) | |
 | `check.type-mismatch` | error | values written of another type than the target build declares | `verify.type` |
 | `check.field-undeclared` | error | fields written that the target build's class does not declare | `verify.undeclared` |
+| `check.class-undeclared` | error | structs and objects written of a class the target build does not declare (#MOD-ARTIFACT-0039) | none |
 | `check.round-trip-failed` | error | a rewritten bin does not read back as it was built | `inplace.verify` |
 | `check.done` | note | what each check covered | `verify.summary` |
 | `write.written` | note | the project directory and the package | `emit.written` |

@@ -1701,3 +1701,24 @@ The record's 6 mods, by list, each run with the fixup and with `--no-fixup`: 5 h
 conditions converted (11 in the ports), and `check.type-mismatch` leaves the repairs of all 5 and
 the ports of 2. In the sixth, the one bin that holds the conditions is one nothing loads
 (`file.unused`), so it is not carried.
+
+## The class of each struct (2026-10-10)
+
+The type check over the reduced corpus, port and repair, each compared with the run of "The gear
+condition", first with each struct of a collection judged by its class, then with
+`check.class-undeclared` (#MOD-ARTIFACT-0039) added. Port and repair ended as the baselines.
+
+- **Each struct of a collection** gives the reports of the baseline in all 68 mods.
+- **The undeclared class.** The port differs in one mod, the repair in 9:
+  - the rework the record names, port and repair: its 3 structs, `0xfd47f6e6` in
+    `PersistentEffectConditionData.OwnerCondition` and `0x538189bf` twice in
+    `FloatComparisonMaterialDriver.mValueA`. `check.done` counts 42 fields fewer, theirs.
+  - 6 repairs that ship a champion's root bin whole (#MOD-ARTIFACT-0032): one
+    `ItemRecommendationContextList` object each, a class the census history holds last at 16.5.
+    Its 3 fields leave `check.field-undeclared`, which they were the whole of, and `check.done`
+    counts 3 fields fewer.
+  - one repair of a whole root bin and a sub-character's: 46 objects of 8 classes the census
+    holds last between 15.19 and 16.9, `ItemRecommendationContextList` among them. Their 289
+    fields were the whole of its `check.field-undeclared`.
+  - one repair with an object of `0xbc13bcf6` in a skin bin, with no field, its entry hash its
+    class hash. Neither the census history nor the meta database holds the class.

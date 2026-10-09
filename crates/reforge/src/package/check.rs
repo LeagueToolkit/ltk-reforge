@@ -17,10 +17,10 @@ use reforge_wwise::{Bank, BankKind, CLIENT_VERSION};
 use serde::{Deserialize, Serialize};
 
 use super::findings::{
-    Against, ApplyFailed, Coverage, Done, FieldUndeclared, FileMissing, LinkUnresolved,
-    ManifestUnreadable, NameUnresolved, OtherSkin, OtherSkinName, OverlayCapped, Place,
-    RecordSkipped, RoundTripFailed, RoundTripProblem, Shape, SkinValue, TypeMismatch, TypeRow,
-    UndeclaredRow,
+    Against, ApplyFailed, ClassRow, ClassUndeclared, Coverage, Done, FieldUndeclared, FileMissing,
+    HeldBy, LinkUnresolved, ManifestUnreadable, NameUnresolved, OtherSkin, OtherSkinName,
+    OverlayCapped, Place, RecordSkipped, RoundTripFailed, RoundTripProblem, Shape, SkinValue,
+    TypeMismatch, TypeRow, UndeclaredRow,
 };
 use super::overlay::{Loaded, MAX_OVERLAY_BINS, Outcome, Overlay};
 use super::{Layer, Origin, Package, PatchOf, WrittenBin};
@@ -790,9 +790,10 @@ impl Check for BaseSkin {
 }
 
 /// Every value of every bin the package ships is of the type the target build reads there,
-/// on a field its class declares. The types are the schema's at the install's build, and for
-/// a field the schema does not describe what the install's bins hold. Without a schema
-/// nothing is said of undeclared fields.
+/// on a field its class declares, and every struct and object is of a class the build
+/// declares. The types are the schema's at the install's build, and for a field the schema
+/// does not describe what the install's bins hold. Without a schema nothing is said of
+/// undeclared fields and classes.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Types;
 
@@ -813,6 +814,7 @@ impl Check for Types {
             fields: 0,
             wrong: IndexMap::new(),
             undeclared: IndexMap::new(),
+            classes: IndexMap::new(),
         };
         let mut bins = 0;
         for (_, key, chunk) in cx.package.bins() {
@@ -868,6 +870,14 @@ impl Check for Types {
                 fields,
             });
         }
+        if !typing.classes.is_empty() {
+            let classes: Vec<ClassRow> = typing.classes.into_values().collect();
+            // The finding rests on a record of its own, and not on the check's.
+            sink.by(TYPES.id.as_str(), None).raise(ClassUndeclared {
+                structs: classes.iter().map(|row| row.structs).sum(),
+                classes,
+            });
+        }
         let against = match cx.types.schema().and(cx.types.build()) {
             Some(build) => Against::Schema { build },
             None => Against::Install,
@@ -889,6 +899,20 @@ struct Typing<'a> {
     wrong: IndexMap<(BinHash, BinHash, Shape, Shape), TypeRow>,
     /// The values on a field its class does not declare, by class and field.
     undeclared: IndexMap<(BinHash, BinHash), UndeclaredRow>,
+    /// The structs and objects of a class the target build does not declare, by what holds
+    /// them and the class, in the order found.
+    classes: IndexMap<(Option<HeldBy>, BinHash), ClassRow>,
+}
+
+/// How a field takes a struct of a class.
+#[derive(Clone, Copy)]
+enum Taken {
+    /// The field's class, one that derives from it, or one whose bases are not known.
+    Yes,
+    /// A declared class that does not derive from the field's.
+    Other,
+    /// A class the target build does not declare.
+    Undeclared,
 }
 
 /// A field whose value reads as the type the target build reads there, and that type: what
@@ -911,17 +935,43 @@ fn reads_as(want: &FieldType, found: &FieldType) -> bool {
 }
 
 impl Typing<'_> {
-    /// Whether a field that reads structs of the class `want` takes one of the class `found`.
-    fn takes(&self, want: Option<BinHash>, found: BinHash, source: TypeSource) -> bool {
-        // A pointer or an embed of a derived class reads as its base. The install's bins
-        // show one class a field held and not every class it may hold.
-        let Some(want) = want.filter(|want| *want != found && source == TypeSource::Schema) else {
-            return true;
-        };
+    /// How a field that reads structs of the class `want` takes one of the class `found`.
+    fn takes(&self, want: Option<BinHash>, found: BinHash, source: TypeSource) -> Taken {
+        // The install's bins show one class a field held, and not every class it takes, so
+        // against them any class passes, one the schema lacks too. Against the schema, a class
+        // the target build does not declare is found apart.
+        if want == Some(found) || source != TypeSource::Schema {
+            return Taken::Yes;
+        }
         let (Some(schema), Some(build)) = (self.types.schema(), self.types.build()) else {
-            return true;
+            return Taken::Yes;
         };
-        schema.derives_from(found, want, build) || !schema.knows_class(found)
+        if !schema.has_class_at(found, build) {
+            // A class the install's bins hold is the build's, and its bases are not known.
+            return match self.types.declares_class(found) {
+                Some(true) => Taken::Yes,
+                _ => Taken::Undeclared,
+            };
+        }
+        // A pointer or an embed of a derived class reads as its base.
+        match want {
+            Some(want) if !schema.derives_from(found, want, build) => Taken::Other,
+            _ => Taken::Yes,
+        }
+    }
+
+    /// Counts one struct or object of a class the target build does not declare.
+    fn class_undeclared(&mut self, held_by: Option<HeldBy>, held: BinHash, place: &Place) {
+        let row = self
+            .classes
+            .entry((held_by, held))
+            .or_insert_with(|| ClassRow {
+                held_by,
+                held,
+                structs: 0,
+                first: place.clone(),
+            });
+        row.structs += 1;
     }
 
     /// Counts one value of a field written in the shape `found` where the build reads `wants`.
@@ -946,6 +996,10 @@ impl Typing<'_> {
     }
 
     fn object(&mut self, object: &BinObject, place: &Place) {
+        if self.types.declares_class(object.class_hash) == Some(false) {
+            self.class_undeclared(None, object.class_hash, place);
+            return;
+        }
         self.structure(object.class_hash, &object.properties, place);
     }
 
@@ -1031,20 +1085,31 @@ impl Typing<'_> {
     }
 
     /// Types the fields of a struct its field takes. A struct of a class the field does not
-    /// take is one value of another type, and its fields are not typed.
+    /// take is one value of another type, one of a class the build does not declare is counted
+    /// apart, and the fields of neither are typed.
     fn held(&mut self, held: &values::Struct, holder: Option<Holder>, place: &Place) {
-        if let Some(holder) = holder
-            && !self.takes(holder.want.class, held.class_hash, holder.source)
-        {
-            let found = FieldType {
-                class: Some(held.class_hash),
-                ..holder.found
-            };
-            let shapes = (Shape::of(&found), Shape::of(&holder.want));
-            self.mistyped((holder.class, holder.field), shapes, place);
+        let Some(holder) = holder else {
+            self.structure(held.class_hash, &held.properties, place);
             return;
+        };
+        match self.takes(holder.want.class, held.class_hash, holder.source) {
+            Taken::Yes => self.structure(held.class_hash, &held.properties, place),
+            Taken::Other => {
+                let found = FieldType {
+                    class: Some(held.class_hash),
+                    ..holder.found
+                };
+                let shapes = (Shape::of(&found), Shape::of(&holder.want));
+                self.mistyped((holder.class, holder.field), shapes, place);
+            }
+            Taken::Undeclared => {
+                let by = HeldBy {
+                    class: holder.class,
+                    field: holder.field,
+                };
+                self.class_undeclared(Some(by), held.class_hash, place);
+            }
         }
-        self.structure(held.class_hash, &held.properties, place);
     }
 }
 

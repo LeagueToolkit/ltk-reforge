@@ -3,7 +3,7 @@
 //! install's own bins hold. #GAME-BEHAVIOR-0021: the game ships such a field and does not
 //! read it, so a mod's copy keeps it in the game's shape.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use ltk_meta::{BinObject, PropertyKind as Kind};
 
@@ -32,6 +32,8 @@ pub struct TargetTypes<'a> {
     version: Option<Version>,
     /// The shape the first bin read holds each field of each class in.
     witnessed: HashMap<(BinHash, BinHash), FieldType>,
+    /// The classes of the structs the bins read hold.
+    classes: HashSet<BinHash>,
     /// The skins of each character whose bins link more than the
     /// [`MAX_CHAIN`](crate::game::MAX_CHAIN) witnessed.
     capped: BTreeMap<CharId, Vec<Slot>>,
@@ -46,6 +48,7 @@ impl<'a> TargetTypes<'a> {
             build: schema.map(|schema| schema.at_install(install)),
             version: install.and_then(Build::version),
             witnessed: HashMap::new(),
+            classes: HashSet::new(),
             capped: BTreeMap::new(),
         }
     }
@@ -93,10 +96,11 @@ impl<'a> TargetTypes<'a> {
         &self.capped
     }
 
-    /// Takes the shapes an object of the game holds its fields in. The first shape seen of a
-    /// field of a class stays.
+    /// Takes the shapes an object of the game holds its fields in, and the classes of its
+    /// structs. The first shape seen of a field of a class stays.
     pub fn witness(&mut self, object: &BinObject) {
         walk::structs(object, |s| {
+            self.classes.insert(s.class());
             for (field, value) in s.fields() {
                 self.witnessed
                     .entry((s.class(), field))
@@ -157,6 +161,14 @@ impl<'a> TargetTypes<'a> {
     pub fn has_class(&self, class: BinHash) -> Option<bool> {
         let (schema, build) = self.schema.zip(self.build)?;
         Some(schema.has_class_at(class, build))
+    }
+
+    /// Whether the target build declares the class: the schema has it at the build, or a bin
+    /// of the install holds a struct of it. None without a schema. The schema lacks some
+    /// classes the game's data holds.
+    pub fn declares_class(&self, class: BinHash) -> Option<bool> {
+        let held = self.classes.contains(&class);
+        self.has_class(class).map(|has| has || held)
     }
 
     /// Every type a field of a class had from a build to the target's. None without a schema,

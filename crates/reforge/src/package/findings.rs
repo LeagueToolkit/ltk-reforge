@@ -871,6 +871,72 @@ impl Diag for FieldUndeclared {
     }
 }
 
+/// A field of a class, which holds a struct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+pub struct HeldBy {
+    /// The class of the struct the field is on.
+    #[serde(serialize_with = "hex")]
+    pub class: BinHash,
+    /// The field.
+    #[serde(serialize_with = "hex")]
+    pub field: BinHash,
+}
+
+/// The structs of one class the target build does not declare, held by one field or written
+/// as objects.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ClassRow {
+    /// The field that holds them. None for objects of the class.
+    #[serde(flatten)]
+    pub held_by: Option<HeldBy>,
+    /// Their class.
+    #[serde(serialize_with = "hex")]
+    pub held: BinHash,
+    /// How many structs.
+    pub structs: usize,
+    /// The first of them.
+    pub first: Place,
+}
+
+/// Structs and objects of a class the target build does not declare (#MOD-ARTIFACT-0039). A
+/// clip event of such a class crashes the client at load (#GAME-BEHAVIOR-0028).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ClassUndeclared {
+    /// How many structs and objects.
+    pub structs: usize,
+    /// The structs by what holds them and their class, in the order found.
+    pub classes: Vec<ClassRow>,
+}
+
+impl Diag for ClassUndeclared {
+    const CODE: Code = code("check.class-undeclared", Severity::Error);
+    const RECORD: Option<Record> = Some(Record::mod_artifact(39));
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.structs, "struct")
+            .text(" of a class the target build does not declare: ");
+        f.list(&self.classes, |f, row| {
+            match row.held_by {
+                Some(by) => {
+                    f.class(by.class)
+                        .text(".")
+                        .field(by.field)
+                        .text(" holds ")
+                        .class(row.held);
+                }
+                None => {
+                    f.class(row.held).text(" as an object");
+                }
+            }
+            let _ = write!(f, " ({})", row.structs);
+        });
+    }
+}
+
 /// How a bin written again differs from what it was built to hold.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "problem", rename_all = "kebab-case")]

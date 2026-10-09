@@ -238,5 +238,4 @@ code.
 | #MOD-ARTIFACT-0035, buses in a mod's media bank | the port's audio, which carries the buses the game's init bank does not define (#ADR-0064) |
 | #MOD-ARTIFACT-0037, chroma VFX packs | nothing in `crates/`: the class table `scripts/corpus/corpus.py` reads classes them apart (#ADR-0085) |
 | #MOD-ARTIFACT-0038, restorations of a champion's older content | nothing in `crates/`: the class table `scripts/corpus/corpus.py` reads classes them apart (#ADR-0086) |
-| #MOD-ARTIFACT-0039, a struct of a class its field does not take | nothing: the record makes no repair; `check.type-mismatch` reports a declared class the field does not take, when the struct is the first its field holds |
 | #GAME-BEHAVIOR-0029, a material whose shader variant the cache lacks crashes at its draw | nothing: no check reads the shader cache ([Known limits](#known-limits)) |

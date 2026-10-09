@@ -676,7 +676,9 @@ object takes a name of its own, which every link to it follows.
   the patched bin loads. The checks read it, and the report lists each patched bin object by
   object.
 - **Checks** implement `Check`: the patches applied (`Apply`), the types of every value
-  written and of every field a patch changes (`Types`), a bin and a bank the run wrote read
+  written and of every field a patch changes, the class of each struct a value holds among
+  them, and that every struct and object written is of a class the target build declares
+  (`Types`, #MOD-ARTIFACT-0039), a bin and a bank the run wrote read
   back, the bank at the client's version (`RoundTrip`), a champion's patched base skin
   naming no other skin of the champion (`BaseSkin`, #ADR-0062). `Apply` holds that every record
   applies, that every link a patch adds leads to a bin, that every name and file a patched
