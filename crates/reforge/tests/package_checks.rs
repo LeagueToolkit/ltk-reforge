@@ -5,14 +5,14 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use ltk_meta::BinObject;
 use ltk_meta::property::values;
+use ltk_meta::{BinObject, PropertyKind, PropertyValueEnum};
 use reforge::diag::{DiagnosticPolicy, Diagnostics, Record, Render, Severity, Stage};
 use reforge::fixups::TargetTypes;
 use reforge::game::{Build, Schema};
 use reforge::model::entity::FileId;
 use reforge::model::known::field;
-use reforge::model::{ChunkPath, SkinEntry, Spelled, WadName, name_hash, path_hash};
+use reforge::model::{BinHash, ChunkPath, SkinEntry, Spelled, WadName, name_hash, path_hash};
 use reforge::package::{
     Against, BaseSkin, BinWrite, Blocked, Check, CheckCx, CheckInfo, CheckSelection, CheckSet,
     Chunk, ChunkKey, Coverage, Done, FieldUndeclared, Layer, Origin, Package, ProjectConfig,
@@ -20,7 +20,7 @@ use reforge::package::{
 };
 use reforge_testkit::SchemaRows;
 use reforge_testkit::bins::{bin, float, object, pointer, text};
-use reforge_testkit::schema::{field, kind, pointer as to};
+use reforge_testkit::schema::{field, kind, list_of, map_of, pointer as to};
 use reforge_testkit::skins::WAD;
 use reforge_testkit::sounds::{clip, media_bank, package as voice_package};
 use reforge_wwise::CLIENT_VERSION;
@@ -91,8 +91,8 @@ fn kept(objects: Vec<BinObject>) -> Chunk {
     Chunk::kept(file(), Arc::from(bin(objects)))
 }
 
-/// A target whose `Material` holds a count, a texture name and a child of the class `Leaf`,
-/// which `Special` derives from.
+/// A target whose `Material` holds a count, a texture name, and a child, a list of children
+/// and a map of children of the class `Leaf`, which `Special` derives from.
 fn schema() -> Schema {
     SchemaRows::new(300)
         .class(
@@ -101,6 +101,8 @@ fn schema() -> Schema {
                 field("count", kind("U8")),
                 field("textureName", kind("String")),
                 field("child", to("Leaf")),
+                field("children", list_of("Leaf")),
+                field("byName", map_of("Hash", "Leaf")),
             ],
         )
         .class("Leaf", &[field("kept", kind("F32"))])
@@ -355,6 +357,61 @@ fn the_type_check_finds_a_field_its_class_does_not_declare() {
         against,
     };
     assert_eq!(log.of::<Done>().collect::<Vec<_>>(), [&Done(covered)]);
+}
+
+/// A list of pointers to structs of these classes.
+fn children(classes: &[&str]) -> PropertyValueEnum {
+    let items = classes.iter().map(|class| pointer(class, vec![])).collect();
+    let list = values::Container::new(PropertyKind::Struct, items)
+        .unwrap_or_else(|error| panic!("a list of {classes:?} does not build: {error}"));
+    PropertyValueEnum::Container(list)
+}
+
+/// A map of pointers to structs of these classes, each under the hash of its key.
+fn by_name(keyed: &[(&str, &str)]) -> PropertyValueEnum {
+    let entries = keyed.iter().map(|(key, class)| {
+        let key = PropertyValueEnum::Hash(values::Hash::new(name_hash(key)));
+        (key, pointer(class, vec![]))
+    });
+    let map = values::Map::new(PropertyKind::Hash, PropertyKind::Struct, entries.collect())
+        .unwrap_or_else(|error| panic!("a map of {keyed:?} does not build: {error}"));
+    PropertyValueEnum::Map(map)
+}
+
+/// The rows of a type check of one material holding these fields: field, the class found,
+/// how many values.
+fn mismatches(fields: Vec<(&str, PropertyValueEnum)>) -> Vec<(BinHash, Option<BinHash>, usize)> {
+    let schema = schema();
+    let objects = vec![object("A", "Material", fields)];
+    let log = checked(&package_of(kept(objects)), Some(&schema), &types_only());
+    let found = log.of::<TypeMismatch>().flat_map(|found| &found.fields);
+    found
+        .map(|row| (row.field, row.found.class, row.values))
+        .collect()
+}
+
+#[test]
+fn a_struct_its_field_does_not_take_second_in_a_list_is_a_value_of_another_type() {
+    let list = children(&["Leaf", "Stranger", "Stranger"]);
+    let rows = mismatches(vec![("children", list)]);
+    let stranger = Some(name_hash("Stranger"));
+    assert_eq!(rows, [(name_hash("children"), stranger, 2)]);
+}
+
+#[test]
+fn a_struct_its_field_does_not_take_under_a_later_key_of_a_map_is_a_value_of_another_type() {
+    let map = by_name(&[("first", "Leaf"), ("second", "Stranger")]);
+    let rows = mismatches(vec![("byName", map)]);
+    assert_eq!(
+        rows,
+        [(name_hash("byName"), Some(name_hash("Stranger")), 1)]
+    );
+}
+
+#[test]
+fn a_struct_of_a_derived_class_second_in_a_list_reads_as_its_base() {
+    let list = children(&["Leaf", "Special"]);
+    assert_eq!(mismatches(vec![("children", list)]), []);
 }
 
 #[test]

@@ -65,6 +65,11 @@ pub fn map(key: &str, value: &str) -> Type {
     ])
 }
 
+/// A map from keys of a kind to pointers to structs of a class.
+pub fn map_of(key: &str, class: &str) -> Type {
+    Type(["Map".into(), key.to_string(), "Pointer".into(), hex(class)])
+}
+
 /// One type of a field over a range of builds.
 #[derive(Debug, Clone)]
 struct Revision {

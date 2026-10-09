@@ -11,6 +11,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use ltk_meta::property::values;
 use ltk_meta::{Bin, BinObject, PropertyValueEnum};
 use reforge_wwise::{Bank, BankKind, CLIENT_VERSION};
 use serde::{Deserialize, Serialize};
@@ -890,25 +891,58 @@ struct Typing<'a> {
     undeclared: IndexMap<(BinHash, BinHash), UndeclaredRow>,
 }
 
+/// A field whose value reads as the type the target build reads there, and that type: what
+/// the class of each struct the value holds is judged against.
+#[derive(Clone, Copy)]
+struct Holder {
+    class: BinHash,
+    field: BinHash,
+    want: FieldType,
+    found: FieldType,
+    source: TypeSource,
+}
+
+/// Whether a value of the shape `found` reads as `want` by its kinds. The class of each
+/// struct it holds is judged apart ([`Typing::takes`]): [`FieldType::of`] gives the class of
+/// a collection's first struct only.
+fn reads_as(want: &FieldType, found: &FieldType) -> bool {
+    let differs = |want: Option<_>, found: Option<_>| want.is_some() && want != found;
+    want.kind == found.kind && !differs(want.key, found.key) && !differs(want.item, found.item)
+}
+
 impl Typing<'_> {
-    /// Whether a value of the shape `found` reads as `want`.
-    fn reads_as(&self, want: &FieldType, found: &FieldType, source: TypeSource) -> bool {
-        let differs = |want: Option<_>, found: Option<_>| want.is_some() && want != found;
-        if want.kind != found.kind || differs(want.key, found.key) || differs(want.item, found.item)
-        {
-            return false;
-        }
+    /// Whether a field that reads structs of the class `want` takes one of the class `found`.
+    fn takes(&self, want: Option<BinHash>, found: BinHash, source: TypeSource) -> bool {
         // A pointer or an embed of a derived class reads as its base. The install's bins
         // show one class a field held and not every class it may hold.
-        match (want.class, found.class, source) {
-            (Some(want), Some(found), TypeSource::Schema) if want != found => {
-                let (Some(schema), Some(build)) = (self.types.schema(), self.types.build()) else {
-                    return true;
-                };
-                schema.derives_from(found, want, build) || !schema.knows_class(found)
-            }
-            _ => true,
-        }
+        let Some(want) = want.filter(|want| *want != found && source == TypeSource::Schema) else {
+            return true;
+        };
+        let (Some(schema), Some(build)) = (self.types.schema(), self.types.build()) else {
+            return true;
+        };
+        schema.derives_from(found, want, build) || !schema.knows_class(found)
+    }
+
+    /// Counts one value of a field written in the shape `found` where the build reads `wants`.
+    fn mistyped(
+        &mut self,
+        (class, field): (BinHash, BinHash),
+        (found, wants): (Shape, Shape),
+        place: &Place,
+    ) {
+        let row = self
+            .wrong
+            .entry((class, field, found, wants))
+            .or_insert_with(|| TypeRow {
+                class,
+                field,
+                found,
+                wants,
+                values: 0,
+                first: place.clone(),
+            });
+        row.values += 1;
     }
 
     fn object(&mut self, object: &BinObject, place: &Place) {
@@ -928,25 +962,22 @@ impl Typing<'_> {
         place: &Place,
     ) {
         self.fields += 1;
+        let mut holder = None;
         match self.types.type_of(class, field) {
             Some((want, source)) => {
                 let found = FieldType::of(value);
-                if !self.reads_as(&want, &found, source) {
+                if !reads_as(&want, &found) {
                     let shapes = (Shape::of(&found), Shape::of(&want));
-                    let row = self
-                        .wrong
-                        .entry((class, field, shapes.0, shapes.1))
-                        .or_insert_with(|| TypeRow {
-                            class,
-                            field,
-                            found: shapes.0,
-                            wants: shapes.1,
-                            values: 0,
-                            first: place.clone(),
-                        });
-                    row.values += 1;
+                    self.mistyped((class, field), shapes, place);
                     return;
                 }
+                holder = Some(Holder {
+                    class,
+                    field,
+                    want,
+                    found,
+                    source,
+                });
             }
             None => {
                 let schema = self.types.schema().filter(|_| self.types.build().is_some());
@@ -965,31 +996,55 @@ impl Typing<'_> {
                 }
             }
         }
-        self.value(value, place);
+        self.value(value, holder, place);
     }
 
-    /// Goes on into the structs a value holds.
-    fn value(&mut self, value: &PropertyValueEnum, place: &Place) {
+    /// Goes on into the structs a value holds, each judged against the class its field reads.
+    fn value(&mut self, value: &PropertyValueEnum, holder: Option<Holder>, place: &Place) {
         use PropertyValueEnum as V;
         match value {
-            V::Embedded(embedded) => {
-                self.structure(embedded.0.class_hash, &embedded.0.properties, place);
+            V::Embedded(embedded) => self.held(&embedded.0, holder, place),
+            V::Struct(pointer) if pointer.class_hash.0 != 0 => self.held(pointer, holder, place),
+            V::Container(list) => {
+                list.items()
+                    .iter()
+                    .for_each(|v| self.value(v, holder, place));
             }
-            V::Struct(pointer) if pointer.class_hash.0 != 0 => {
-                self.structure(pointer.class_hash, &pointer.properties, place);
-            }
-            V::Container(list) => list.items().iter().for_each(|v| self.value(v, place)),
             V::UnorderedContainer(list) => {
-                list.0.items().iter().for_each(|v| self.value(v, place));
+                list.0
+                    .items()
+                    .iter()
+                    .for_each(|v| self.value(v, holder, place));
             }
             V::Optional(option) => {
                 if let Some(inner) = option.value() {
-                    self.value(inner, place);
+                    self.value(inner, holder, place);
                 }
             }
-            V::Map(map) => map.entries().iter().for_each(|(_, v)| self.value(v, place)),
+            V::Map(map) => {
+                map.entries()
+                    .iter()
+                    .for_each(|(_, v)| self.value(v, holder, place));
+            }
             _ => {}
         }
+    }
+
+    /// Types the fields of a struct its field takes. A struct of a class the field does not
+    /// take is one value of another type, and its fields are not typed.
+    fn held(&mut self, held: &values::Struct, holder: Option<Holder>, place: &Place) {
+        if let Some(holder) = holder
+            && !self.takes(holder.want.class, held.class_hash, holder.source)
+        {
+            let found = FieldType {
+                class: Some(held.class_hash),
+                ..holder.found
+            };
+            let shapes = (Shape::of(&found), Shape::of(&holder.want));
+            self.mistyped((holder.class, holder.field), shapes, place);
+            return;
+        }
+        self.structure(held.class_hash, &held.properties, place);
     }
 }
 
