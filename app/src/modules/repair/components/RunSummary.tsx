@@ -1,17 +1,26 @@
 import { CheckCircleIcon, WarningIcon, XCircleIcon } from "@phosphor-icons/react";
+import { useMutation } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
-import { Button } from "@/components";
+import { Button, FailureNote, Tooltip } from "@/components";
 import { m } from "@/i18n";
-import type { RunView } from "@/lib/bindings.gen";
+import { commands, type RunView } from "@/lib/bindings.gen";
 import { countBySeverity } from "@/modules/findings";
-import { twMerge } from "@/utils";
+import { mutationFn, twMerge } from "@/utils";
 
 interface Banner {
   tone: "success" | "warning" | "danger" | "neutral";
   title: string;
   description?: string;
   detail?: string;
+  /** The written package's path, shown when the detail is hovered. */
+  path?: string;
+}
+
+/** The file name of a path. */
+function fileNameOf(path: string): string {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return cut >= 0 ? path.slice(cut + 1) : path;
 }
 
 function bannerOf(view: RunView): Banner {
@@ -27,7 +36,12 @@ function bannerOf(view: RunView): Banner {
     };
   }
   if (view.written) {
-    return { tone: "success", title: m.repair_status_written_title(), detail: view.written };
+    return {
+      tone: "success",
+      title: m.repair_status_written_title(),
+      detail: fileNameOf(view.written),
+      path: view.written,
+    };
   }
   if (view.refused) {
     return {
@@ -62,10 +76,18 @@ export interface RunSummaryProps {
   writing?: boolean;
 }
 
-/** How a run ended: written, refused, halted or stopped, and its findings counted. */
+/**
+ * How a run ended: written, refused, halted or stopped, and its findings counted. A written
+ * package is named by its file, its path on hover, with a button that shows it in its folder
+ * (`reveal_place`, which names the place and never a path).
+ */
 export function RunSummary({ view, onWriteAnyway, writing }: RunSummaryProps) {
   const banner = bannerOf(view);
   const counts = countBySeverity(view.findings);
+  const reveal = useMutation({ mutationFn: mutationFn(commands.revealPlace) });
+  const detail = banner.detail ? (
+    <p className="font-mono text-xs break-all text-surface-300">{banner.detail}</p>
+  ) : null;
   return (
     <div
       className={twMerge("flex items-start gap-3 rounded-xl border p-4", toneClass[banner.tone])}
@@ -77,9 +99,8 @@ export function RunSummary({ view, onWriteAnyway, writing }: RunSummaryProps) {
         {banner.description && (
           <p className="text-xs text-surface-300 select-none">{banner.description}</p>
         )}
-        {banner.detail && (
-          <p className="font-mono text-xs break-all text-surface-300">{banner.detail}</p>
-        )}
+        {banner.path && detail ? <Tooltip content={banner.path}>{detail}</Tooltip> : detail}
+        {reveal.isError && <FailureNote failure={reveal.error} className="mt-1" />}
         <p className="mt-1 text-xs text-surface-400 select-none">
           {m.repair_summary_counts_label({
             errors: counts.error + counts.fatal,
@@ -89,6 +110,16 @@ export function RunSummary({ view, onWriteAnyway, writing }: RunSummaryProps) {
           {m.repair_summary_time_label({ seconds: (view.millis / 1000).toFixed(1) })}
         </p>
       </div>
+      {view.written && (
+        <Button
+          size="sm"
+          variant="outline"
+          loading={reveal.isPending}
+          onClick={() => reveal.mutate("written")}
+        >
+          {m.repair_written_show_action()}
+        </Button>
+      )}
       {view.refused && onWriteAnyway && (
         <Button size="sm" variant="filled" loading={writing} onClick={onWriteAnyway}>
           {m.repair_write_anyway_action()}

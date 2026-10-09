@@ -103,6 +103,21 @@ pub struct SchemaJob {
 pub struct RunJob {
     /// The run under way.
     pub run: Job,
+    /// The package the last run wrote, for the window to show in its folder without naming a
+    /// path (`docs/design/ROADMAP-UX.md`, "The inputs page").
+    written: Mutex<Option<Utf8PathBuf>>,
+}
+
+impl RunJob {
+    /// Records what a run that ended wrote: its package, or nothing.
+    pub fn set_written(&self, path: Option<Utf8PathBuf>) {
+        *self.written.lock() = path;
+    }
+
+    /// The package the last run wrote, while one did.
+    pub fn written(&self) -> Option<Utf8PathBuf> {
+        self.written.lock().clone()
+    }
 }
 
 /// The inputs opened for one choice, opened again when the choice changes.

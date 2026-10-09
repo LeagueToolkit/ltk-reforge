@@ -136,6 +136,10 @@ export function describeError(error: AppError): ErrorCopy {
       description: m["error.NOT_REMOVED.description"](),
       detail,
     }))
+    .with({ code: "MOD_UNREADABLE" }, ({ path, detail }) => ({
+      title: m["error.MOD_UNREADABLE.title"](),
+      detail: `${path}: ${detail}`,
+    }))
     .with({ code: "NOT_SHOWN" }, ({ path, detail }) => ({
       title: m["error.NOT_SHOWN.title"](),
       detail: path ? `${path}: ${detail}` : detail,

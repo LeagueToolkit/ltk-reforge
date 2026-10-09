@@ -30,6 +30,7 @@ pub fn builder() -> Builder<Wry> {
             commands::find_game,
             commands::open_inputs,
             commands::run_mod,
+            commands::peek_mod,
             commands::run_stages,
             commands::save_selection,
             commands::load_selection,

@@ -127,7 +127,8 @@ A row holds, in this order:
 1. Its title, and a badge of how it stands: up to date, an update published, none, being
    checked, or not opening.
 2. The path read, with a button that shows the folder in the system's file manager
-   (`reveal_place`, which takes the name of a place and never a path).
+   (`reveal_place`, which takes the name of a place and never a path; the places are the
+   inputs' folders and the package the last run wrote, which the run state remembers).
 3. Short facts: whether the folder is the shared one or one the user chose, the build, the
    tables, the bytes on disk.
 4. An offer for each thing the user can have done, as a box with what it does, what it costs
@@ -245,8 +246,15 @@ user picks another policy and runs again.
   and the decide stage's view runs any of them with one button.
 - The stages a view lists are the library's, `Run::stages()` of a run of the kind
   (`run_stages`); the front end keeps no list of its own.
-- The mod card shows the package's thumbnail: the WebP the library encoded from the mod's
-  image (#ADR-0051), never the archive's own bytes.
+- The mod card shows the mod as soon as it is picked, from the library's read of the archive
+  alone (`reforge::peek`, the command `peek_mod`): its name, author and version, the
+  characters its paths name with their slots, and the package's thumbnail: the WebP the
+  library encoded from the mod's image (#ADR-0051), never the archive's own bytes. A run's own
+  name and thumbnail replace them. A mod that does not read shows the halting finding and the
+  path. The card says where the package goes, beside the mod or in the folder chosen under
+  Settings, as a link to Settings, where the folder is chosen.
+- A written package is named in the result by its file name, its path on hover, with a button
+  that shows it in its folder (`reveal_place` with the place `written`).
 - The app runs the stages one at a time, as `Run::through` does, and tells the window as each
   starts and ends, and each finding as it is raised. A stage that gives a part sends it as it
   ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the

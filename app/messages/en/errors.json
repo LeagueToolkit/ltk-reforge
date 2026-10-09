@@ -23,6 +23,7 @@
   "error.INDEX_UNREADABLE.title": "The index does not open",
   "error.INDEX_UNWRITABLE.title": "The index could not be written to disk",
   "error.INTERNAL.title": "Something went wrong in the app",
+  "error.MOD_UNREADABLE.title": "The mod does not read",
   "error.NAMES_UNREADABLE.title": "The hash tables do not open",
   "error.NOT_REMOVED.description": "A run or another program may hold a file of it open. Try again when it ends.",
   "error.NOT_REMOVED.title": "{path} could not be removed",

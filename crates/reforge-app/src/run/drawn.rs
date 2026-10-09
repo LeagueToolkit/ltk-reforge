@@ -110,7 +110,7 @@ fn package_view(run: &Run<'_>, row: PackageRow) -> PackageView {
 }
 
 /// A thumbnail as a `data:` URL the window shows as an image.
-fn data_url(thumbnail: &Thumbnail) -> String {
+pub(super) fn data_url(thumbnail: &Thumbnail) -> String {
     format!(
         "data:image/webp;base64,{}",
         BASE64.encode(thumbnail.bytes())

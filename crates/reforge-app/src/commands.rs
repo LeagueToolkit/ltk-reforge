@@ -20,7 +20,9 @@ use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{self, Choice, InputsView};
 use crate::reveal::{self, Place};
-use crate::run::{self, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch};
+use crate::run::{
+    self, ModPeek, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch,
+};
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
@@ -143,10 +145,21 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
         let ran = open
             .get(&choice)
             .and_then(|inputs| run::run(&inputs, &request, &mut Window(app)));
+        if let Ok(view) = &ran {
+            job.set_written(view.written.as_deref().map(Utf8PathBuf::from));
+        }
         job.run.end();
         ran
     })
     .await
+}
+
+/// A mod archive read alone: what it says of itself, its characters and its thumbnail, for
+/// the window to show when the mod is picked.
+#[tauri::command]
+#[specta::specta]
+pub async fn peek_mod(archive: String) -> IpcResult<ModPeek> {
+    off_thread(move || run::peek(Utf8Path::new(&archive))).await
 }
 
 /// The stages of a run of the kind, in order, as the library names them.
@@ -524,15 +537,24 @@ pub async fn remove_downloads(app: AppHandle) -> IpcResult<()> {
     .await
 }
 
-/// Shows a folder of the inputs in the system's file manager.
+/// Shows a place in the system's file manager: a folder of the inputs, or the package the
+/// last run wrote, selected in its folder.
 #[tauri::command]
 #[specta::specta]
 pub async fn reveal_place(app: AppHandle, place: Place) -> IpcResult<()> {
     let settings = app.state::<SettingsStore>().get();
     let job = Arc::clone(&app.state::<Arc<IndexJob>>());
+    let runs = Arc::clone(&app.state::<Arc<RunJob>>());
     off_thread(move || {
         let chosen = Choice::from(&settings);
         let dir = match place {
+            Place::Written => {
+                let file = runs.written().ok_or_else(|| AppError::NotShown {
+                    path: String::new(),
+                    detail: "no package was written".to_string(),
+                })?;
+                return reveal::reveal_file(&file);
+            }
             Place::Game => chosen.game,
             Place::Hashes => Some(hashes_dir(&settings)?),
             Place::Schema => match chosen.schema {

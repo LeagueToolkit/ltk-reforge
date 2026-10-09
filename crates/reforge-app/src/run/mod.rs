@@ -6,6 +6,7 @@
 //! one start and end, each finding as it is raised, and what each stage gave as it ends.
 
 mod drawn;
+mod peek;
 mod views;
 
 use std::time::Instant;
@@ -19,6 +20,7 @@ use reforge::{Porter, Repairer, Run, RunError};
 use serde::{Deserialize, Serialize};
 
 use self::drawn::Drawn;
+pub use self::peek::{CharacterPeek, ModPeek, peek};
 pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;

@@ -1,5 +1,6 @@
-//! A folder of the inputs shown in the system's file manager. The window names which folder,
-//! never a path: the path comes from the settings and the app's own folders.
+//! A folder of the inputs, or the package written, shown in the system's file manager. The
+//! window names which place, never a path: the path comes from the settings, the app's own
+//! folders and the last run.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -9,10 +10,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 
-/// A folder the inputs page can show.
+/// A place the window can show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum Place {
+    /// The package the last run wrote, selected in its folder.
+    Written,
     /// The game install.
     Game,
     /// The hash cache.
@@ -41,11 +44,45 @@ pub fn reveal(dir: &Utf8Path) -> Result<(), AppError> {
     if !dir.is_dir() {
         return Err(not_shown("no such folder".to_string()));
     }
-    // Explorer reads a path with `/` as no path and opens the user's documents.
-    let native: PathBuf = dir.as_std_path().components().collect();
     Command::new(FILE_MANAGER)
-        .arg(native)
+        .arg(native(dir))
         .spawn()
         .map(drop)
         .map_err(|error| not_shown(error.to_string()))
+}
+
+/// Opens the folder of `file` in the system's file manager, with the file selected where the
+/// file manager takes a selection.
+pub fn reveal_file(file: &Utf8Path) -> Result<(), AppError> {
+    let not_shown = |detail: String| AppError::NotShown {
+        path: file.to_string(),
+        detail,
+    };
+    if !file.is_file() {
+        return Err(not_shown("no such file".to_string()));
+    }
+    let mut command = Command::new(FILE_MANAGER);
+    if cfg!(windows) {
+        // One argument: Explorer reads `/select,` and the path split apart as two folders.
+        let mut select = std::ffi::OsString::from("/select,");
+        select.push(native(file));
+        command.arg(select);
+    } else if cfg!(target_os = "macos") {
+        command.arg("-R").arg(native(file));
+    } else {
+        let dir = file
+            .parent()
+            .ok_or_else(|| not_shown("no folder".to_string()))?;
+        command.arg(native(dir));
+    }
+    command
+        .spawn()
+        .map(drop)
+        .map_err(|error| not_shown(error.to_string()))
+}
+
+/// The path as the platform spells it: Explorer reads a path with `/` as no path and opens
+/// the user's documents.
+fn native(path: &Utf8Path) -> PathBuf {
+    path.as_std_path().components().collect()
 }

@@ -50,6 +50,9 @@ pub enum AppError {
     /// A write was asked for with no folder to write in.
     #[error("no folder to write the package in")]
     NoOutput,
+    /// A mod archive does not read: the halting diagnostic of `read`, its text cleaned.
+    #[error("the mod at {path} does not read: {detail}")]
+    ModUnreadable { path: String, detail: String },
     /// The history index's release did not download.
     #[error("the history index did not download: {detail}")]
     IndexFetch { detail: String },

@@ -23,6 +23,11 @@ export const commands = {
 	 *  events.
 	 */
 	runMod: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_mod", { request }),
+	/**
+	 *  A mod archive read alone: what it says of itself, its characters and its thumbnail, for
+	 *  the window to show when the mod is picked.
+	 */
+	peekMod: (archive: string) => __TAURI_INVOKE<({ ok: true; value: ModPeek }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("peek_mod", { archive }),
 	/**  The stages of a run of the kind, in order, as the library names them. */
 	runStages: (kind: RunKind) => __TAURI_INVOKE<({ ok: true; value: StageName[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_stages", { kind }),
 	/**  Saves a choice of fixups as a selection file the command reads with `--fixups`. */
@@ -71,7 +76,10 @@ export const commands = {
 	removeCensus: () => __TAURI_INVOKE<({ ok: true; value: CloneView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_census"),
 	/**  Removes the downloads kept to resume (#ADR-0061). */
 	removeDownloads: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_downloads"),
-	/**  Shows a folder of the inputs in the system's file manager. */
+	/**
+	 *  Shows a place in the system's file manager: a folder of the inputs, or the package the
+	 *  last run wrote, selected in its folder.
+	 */
 	revealPlace: (place: Place) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("reveal_place", { place }),
 	/**  What an update of the hash tables the settings choose would download. */
 	hashesCheck: () => __TAURI_INVOKE<({ ok: true; value: HashesCheck }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("hashes_check"),
@@ -160,6 +168,8 @@ export type AppError =
 { code: "BAD_POLICY"; detail: string } | 
 /**  A write was asked for with no folder to write in. */
 { code: "NO_OUTPUT" } | 
+/**  A mod archive does not read: the halting diagnostic of `read`, its text cleaned. */
+{ code: "MOD_UNREADABLE"; path: string; detail: string } | 
 /**  The history index's release did not download. */
 { code: "INDEX_FETCH"; detail: string } | 
 /**  A file of the release downloaded with other bytes than the release lists. */
@@ -258,6 +268,14 @@ export type ChangeView = {
 	before: ValueView | null,
 	/**  What is there after. */
 	after: AfterView,
+};
+
+/**  A character the archive ships skin bins for. */
+export type CharacterPeek = {
+	/**  Its name, as the paths spell it. */
+	name: string,
+	/**  The slots its skin bins ship, in order. */
+	slots: number[],
 };
 
 /**  A check of the package, as the list of checks shows it. */
@@ -531,6 +549,19 @@ export type KeptIndex = {
 	bytes: number,
 };
 
+/**  An archive read alone. */
+export type ModPeek = {
+	/**  The mod, as its archive and `META/info.json` name it. */
+	meta: ModView,
+	/**  The characters its paths name, each with its slots. */
+	characters: CharacterPeek[],
+	/**
+	 *  Its thumbnail as a `data:` URL: the WebP the library encoded from the mod's image
+	 *  (#ADR-0051), never the archive's own bytes.
+	 */
+	thumbnail: string | null,
+};
+
 /**  The mod, as its archive and `META/info.json` name it. */
 export type ModView = {
 	/**  The archive's file name. */
@@ -619,8 +650,10 @@ targets: TargetsView } |
 /**  The package. */
 package: PackageView };
 
-/**  A folder the inputs page can show. */
+/**  A place the window can show. */
 export type Place = 
+/**  The package the last run wrote, selected in its folder. */
+"written" | 
 /**  The game install. */
 "game" | 
 /**  The hash cache. */

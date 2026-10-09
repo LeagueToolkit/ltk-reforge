@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type {
   Finding,
   FixupChanges,
+  ModPeek,
   ObjectView,
   PackageView,
   PartView,
@@ -131,9 +132,12 @@ interface RepairState {
   last: RunView | null;
   /** The run under way, while one is. */
   live: LiveRun | null;
+  /** The mod picked, read alone, shown until a run names it. */
+  peek: ModPeek | null;
   /** The advanced view's settings. */
   advanced: AdvancedSettings;
   setArchive: (archive: string | null) => void;
+  setPeek: (peek: ModPeek | null) => void;
   setMode: (mode: RepairMode) => void;
   setLast: (last: RunView | null) => void;
   setLive: (change: (live: LiveRun | null) => LiveRun | null) => void;
@@ -148,8 +152,10 @@ export const useRepairStore = create<RepairState>()((set) => ({
   mode: "simple",
   last: null,
   live: null,
+  peek: null,
   advanced: STANDARD,
-  setArchive: (archive) => set({ archive, last: null }),
+  setArchive: (archive) => set({ archive, last: null, peek: null }),
+  setPeek: (peek) => set({ peek }),
   setMode: (mode) => set({ mode }),
   setLast: (last) => set({ last }),
   setLive: (change) => set((state) => ({ live: change(state.live) })),

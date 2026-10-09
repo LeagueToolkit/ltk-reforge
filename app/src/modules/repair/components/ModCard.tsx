@@ -1,7 +1,13 @@
-import { Button, SectionCard } from "@/components";
+import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { useEffect } from "react";
+
+import { Button, FailureNote, SectionCard } from "@/components";
 import { m } from "@/i18n";
-import { pickFile, pickFolder } from "@/modules/inputs";
-import { useSaveSettings, useSettings } from "@/modules/settings";
+import { commands } from "@/lib/bindings.gen";
+import { pickFile } from "@/modules/inputs";
+import { useSettings } from "@/modules/settings";
+import { queryFn } from "@/utils";
 
 import { folderOf } from "../api/run";
 import { useRepairStore } from "../state/repairStore";
@@ -17,34 +23,52 @@ export function useOutputFolder(): string | null {
   return archive ? folderOf(archive) : null;
 }
 
-/** The mod to repair, as picked and as the last run named it, and where it is written. */
+const peekKey = ["mod", "peek"] as const;
+
+/** The archive read alone. The file is read once per pick. */
+const peekQuery = (archive: string | null) =>
+  queryOptions({
+    queryKey: [...peekKey, archive] as const,
+    queryFn: queryFn(() => commands.peekMod(archive ?? "")),
+    enabled: archive !== null,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+/** The archive read alone, kept in the page's state while it is the one picked. */
+function usePeek(archive: string | null) {
+  const setPeek = useRepairStore((state) => state.setPeek);
+  const query = useQuery(peekQuery(archive));
+  useEffect(() => {
+    setPeek(query.data ?? null);
+  }, [query.data, setPeek]);
+  return query;
+}
+
+/**
+ * The mod to repair: as its archive names it when it is picked, as the last run named it
+ * after, and where its package goes.
+ */
 export function ModCard() {
   const archive = useRepairStore((state) => state.archive);
   const setArchive = useRepairStore((state) => state.setArchive);
-  const meta = useRepairStore((state) => state.last?.meta);
-  const thumbnail = useRepairStore(
+  const ran = useRepairStore((state) => state.last?.meta);
+  const built = useRepairStore(
     (state) => (state.live ? state.live.package : state.last?.package)?.thumbnail,
   );
   const settings = useSettings();
-  const save = useSaveSettings();
-  const out = useOutputFolder();
+  const queryClient = useQueryClient();
+  const peek = usePeek(archive);
+  const meta = ran ?? peek.data?.meta;
+  const thumbnail = built ?? peek.data?.thumbnail;
   const chosenOut = settings.data?.["output.folder"];
 
   const chooseMod = async () => {
     const picked = await pickFile(["fantome", "zip"], m.repair_archive_filter_label());
     if (picked) {
+      // The file at the path may have changed since it was last read.
+      await queryClient.invalidateQueries({ queryKey: peekKey });
       setArchive(picked);
-    }
-  };
-  const chooseOut = async () => {
-    const picked = await pickFolder();
-    if (picked && settings.data) {
-      save.mutate({ ...settings.data, "output.folder": picked });
-    }
-  };
-  const resetOut = () => {
-    if (settings.data) {
-      save.mutate({ ...settings.data, "output.folder": null });
     }
   };
 
@@ -58,14 +82,33 @@ export function ModCard() {
             className="h-16 w-16 shrink-0 rounded-md border border-surface-700 object-cover"
           />
         )}
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           {meta?.name && <p className="text-sm text-surface-50">{meta.name}</p>}
-          {meta?.author && (
+          {(meta?.author || meta?.version) && (
             <p className="text-xs text-surface-300">
-              {m.repair_mod_by_label({ author: meta.author })}
+              {[
+                meta.author && m.repair_mod_by_label({ author: meta.author }),
+                meta.version && m.repair_mod_version_label({ version: meta.version }),
+              ]
+                .filter(Boolean)
+                .join(", ")}
+            </p>
+          )}
+          {peek.data && peek.data.characters.length > 0 && (
+            <p className="text-xs text-surface-300" data-ui="ModCard:characters">
+              {peek.data.characters.map((character, index) => (
+                <span key={character.name}>
+                  {index > 0 && " · "}
+                  {character.name}{" "}
+                  <span className="text-surface-400">
+                    {m.repair_mod_skins_label({ slots: character.slots.join(", ") })}
+                  </span>
+                </span>
+              ))}
             </p>
           )}
           {archive && <p className="font-mono text-xs break-all text-surface-300">{archive}</p>}
+          {peek.isError && <FailureNote failure={peek.error} />}
           {!archive && (
             <p className="text-sm text-surface-400 select-none">{m.repair_mod_none()}</p>
           )}
@@ -74,27 +117,13 @@ export function ModCard() {
           {m.repair_mod_choose_action()}
         </Button>
       </div>
-      <div className="flex items-start justify-between gap-4" data-ui="ModCard:out">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-surface-400 select-none">{m.repair_out_title()}</p>
-          {out && <p className="font-mono text-xs break-all text-surface-300">{out}</p>}
-          {!chosenOut && (
-            <p className="text-xs text-surface-400 select-none">
-              {m.repair_out_mod_folder_label()}
-            </p>
-          )}
-        </div>
-        <div className="flex shrink-0 gap-2">
-          {chosenOut && (
-            <Button size="sm" variant="ghost" onClick={resetOut}>
-              {m.repair_out_reset_action()}
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => void chooseOut()}>
-            {m.repair_out_choose_action()}
-          </Button>
-        </div>
-      </div>
+      <Link
+        to="/settings"
+        className="text-xs break-all text-surface-400 underline-offset-2 hover:text-surface-200 hover:underline"
+        data-ui="ModCard:out"
+      >
+        {chosenOut ? m.repair_out_folder_label({ folder: chosenOut }) : m.repair_out_beside_label()}
+      </Link>
     </SectionCard>
   );
 }
