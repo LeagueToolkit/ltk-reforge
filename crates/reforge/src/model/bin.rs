@@ -29,6 +29,14 @@ pub enum BinError {
     /// An object's range in the table of contents ends past the file.
     #[error("object {0:08x} runs past the end of the file")]
     PastEnd(u32),
+    /// The table of contents lists more or fewer objects than the reader gave.
+    #[error("the table lists {listed} objects and {read} were read")]
+    ObjectCount {
+        /// How many objects the table of contents lists.
+        listed: usize,
+        /// How many objects the reader gave.
+        read: usize,
+    },
 }
 
 /// One object of a bin, with the digests of its bytes.
@@ -71,6 +79,12 @@ fn read(bytes: &[u8]) -> Result<ParsedBin, BinError> {
     let mut stream = BinStream::mount(Cursor::new(bytes)).map_err(|e| text(&e))?;
     let toc = stream.toc().map_err(|e| text(&e))?.clone();
     let listed = listed(&mut stream).map_err(|e| text(&e))?;
+    if toc.entries().len() != listed.len() {
+        return Err(BinError::ObjectCount {
+            listed: toc.entries().len(),
+            read: listed.len(),
+        });
+    }
     let mut objects: Vec<ParsedObject> = Vec::new();
     let mut seen: HashSet<u32> = HashSet::new();
     let mut duplicates = Vec::new();

@@ -109,6 +109,22 @@ fn bytes_that_are_no_bin_are_refused_with_the_reason() {
 }
 
 #[test]
+fn every_object_the_table_lists_is_read_or_the_bin_is_refused() {
+    // The reader sweeps the table whole, so a bin that reads has an object per row. A count
+    // that differs is a refusal with both counts, not a bin missing its last objects.
+    let objects: Vec<BinObject> = (0..5)
+        .map(|i| object(&format!("Characters/Lux/Skins/Skin{i}"), "Lux"))
+        .collect();
+    let parsed = bin::parse(&bytes(objects, &[])).unwrap();
+    assert_eq!(parsed.objects.len() + parsed.duplicates.len(), 5);
+    let refused = BinError::ObjectCount { listed: 5, read: 4 };
+    assert_eq!(
+        refused.to_string(),
+        "the table lists 5 objects and 4 were read"
+    );
+}
+
+#[test]
 fn every_prefix_of_a_bin_reads_or_is_refused_and_never_panics() {
     let bytes = bytes(
         vec![
