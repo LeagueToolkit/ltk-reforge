@@ -150,6 +150,7 @@ The modules of `reforge`, each using only the ones above it:
 | `facts` | `Facts` and each result in it: copies, object provenance, origins, rigs, clips, reworks, sounds; `UnitJudge` |
 | `port` | `Policy`, `Targets`; `Port` and the steps of its plan: `Shipping`, `Reach`, `FileRefs`, `Layout`, `Renames`, `OwnClips`, `AudioPlan`, `HudPlan`; `Base` |
 | `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers, `EvidenceDoc` |
+| `peek` | `Peek`: an archive read alone, its characters by path and its thumbnail, for a page that shows a mod before a run |
 | `report` | `Report` and its rows |
 | `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)) |
 

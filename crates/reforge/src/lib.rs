@@ -25,6 +25,8 @@ pub mod port;
 
 pub mod package;
 
+pub mod peek;
+
 pub mod report;
 
 pub mod porter;
