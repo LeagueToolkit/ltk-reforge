@@ -177,6 +177,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// request that hangs is worse than one that gives up.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// How long a download may wait for its next bytes. A download of 900 MB takes as long as it
+/// takes, but a connection that falls silent would otherwise hold the job, and its Stop
+/// button, for good: a stop is seen between two reads.
+const READ_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The most bytes GitHub's list of releases is read to. A page of the list holds thirty
+/// releases of a handful of files each, some hundred KB; a body past the bound is refused.
+const RELEASES_MAX: u64 = 16 << 20;
+
 /// The web, as GitHub serves a release.
 pub struct Web {
     client: reqwest::blocking::Client,
@@ -185,16 +194,18 @@ pub struct Web {
 impl Web {
     /// A client for downloads, which names the app, as GitHub's API asks.
     pub fn new() -> Result<Self, AppError> {
-        // A download of 900 MB takes as long as it takes.
-        Self::with_timeout(None)
+        // The blocking client's timeout bounds each send and each read of a body on its own, not
+        // the whole download (reqwest 0.12, `blocking::Response` as `Read`), so it is the read
+        // timeout, and the blocking builder has no other.
+        Self::with_timeout(READ_TIMEOUT)
     }
 
     /// A client for checks, whose requests give up after 20 seconds.
     pub fn for_checks() -> Result<Self, AppError> {
-        Self::with_timeout(Some(CHECK_TIMEOUT))
+        Self::with_timeout(CHECK_TIMEOUT)
     }
 
-    fn with_timeout(timeout: Option<Duration>) -> Result<Self, AppError> {
+    fn with_timeout(timeout: Duration) -> Result<Self, AppError> {
         let client = reqwest::blocking::Client::builder()
             .user_agent(concat!("reforge-app/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(CONNECT_TIMEOUT)
@@ -215,10 +226,19 @@ impl Web {
     pub fn latest(&self) -> Result<Option<IndexRelease>, AppError> {
         let mut text = String::new();
         self.open(RELEASES)?
+            .take(RELEASES_MAX + 1)
             .read_to_string(&mut text)
             .map_err(|error| AppError::IndexFetch {
                 detail: error.to_string(),
             })?;
+        if text.len() as u64 > RELEASES_MAX {
+            return Err(AppError::IndexFetch {
+                detail: format!(
+                    "the list of releases is larger than {} MB",
+                    RELEASES_MAX >> 20
+                ),
+            });
+        }
         pick(&text)
     }
 }
@@ -556,8 +576,10 @@ impl IndexRelease {
     /// small, and checked against its digest as an install checks it.
     pub fn view(&self, source: &dyn Source) -> Result<IndexReleaseView, AppError> {
         let mut bytes = Vec::new();
+        // One byte past the size the release lists fails the digest below.
         source
             .open(&self.stamp.url)?
+            .take(self.stamp.size + 1)
             .read_to_end(&mut bytes)
             .map_err(|error| AppError::IndexFetch {
                 detail: error.to_string(),

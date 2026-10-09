@@ -194,7 +194,7 @@ impl<'a> Bootstrap<'a> {
         fs::rename(&fresh, census).map_err(unwritable)?;
         let _ = fs::remove_dir_all(&old);
         let _ = fs::remove_file(&file);
-        // Updates fetch into the whole clone from now on, and nothing reads the fetched one.
+        // Updates fetch into the whole clone, and nothing reads the fetched one.
         if clones.partial.exists() {
             fs::remove_dir_all(&clones.partial).map_err(unwritable)?;
         }
