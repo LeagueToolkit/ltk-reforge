@@ -1592,3 +1592,20 @@ the rule.
 - **The reduced corpus.** 5 ports differ, each where it copies: 29 copies, the unit's bin that
   holds them, the patched skin bins whose objects name them, and the package's names.
 - **Time.** The 164 mods in 48 s at 24 in parallel.
+
+## Events banks the client no longer loads (2026-10-09)
+
+#ADR-0084, over the 10 mods whose `baseline-port-4` reports leave own clips with no events bank
+to cut, each run with the program of the copy rule and with this one, and over the reduced
+corpus.
+
+- **Carried.** 445 own clips in 6 mods, their events cut from the game's bank at the path an
+  older events bank of theirs held. Ben 10 Ultimate Alien Udyr's 75, in three units whose
+  banks are skin 3's, skin 5's and the base's of builds 415 to 572 under paths of their own;
+  PROJECT Urgot 1.5.0's 56, skin 3's bank in the base's folder; and 69, 100, 139 and 6 in four
+  more.
+- **Not carried.** 76 own clips in 4 mods: no event of the game's bank at the target build
+  plays them, and they are reported so.
+- **The checks.** No check diagnostic of the 10 differs, and none ends in a fatal diagnostic.
+- **The reduced corpus.** Ben 10 Ultimate Alien Udyr alone differs from the run of the copy
+  rule, by its 75 clips.
