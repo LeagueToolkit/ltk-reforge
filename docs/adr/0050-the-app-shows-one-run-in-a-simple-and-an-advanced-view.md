@@ -1,7 +1,8 @@
 # ADR-0050: The app shows one run in a simple and an advanced view
 
-- **Status:** Accepted (2026-10-04)
-- **Related:** #ADR-0003, #ADR-0024, #ADR-0045, #ADR-0046; `docs/design/ROADMAP-UX.md`
+- **Status:** Accepted (2026-10-04); the two views as the only ones superseded by #ADR-0090
+- **Related:** #ADR-0003, #ADR-0024, #ADR-0045, #ADR-0046, #ADR-0090;
+  `docs/design/ROADMAP-UX.md`
 
 ## Context
 

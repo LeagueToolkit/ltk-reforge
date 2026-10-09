@@ -286,6 +286,42 @@ Two faults of the crates reforge reads and packs with come before a release
 ([ROADMAP.md](ROADMAP.md), "Upstream"): a crafted archive can end the process, which a tool
 run on downloaded mods has to withstand.
 
+## The second version
+
+A review of the first version's pages (2026-10-09, screenshots of every page and state over a
+recorded run) found what a person trips over: the advanced view stacks the settings, the
+result, the stage detail, the policy, the rule editor and the toggles into one page with the
+Run button in the middle; the mod card shows only a path until a run ends, since its name and
+image come from the run's report; the result speaks the library's words (`%u0`, `reason:
+base`, "kept" for a converted value) and shows a full path where a name would do; a choice is
+typed where it could be picked (the filter syntax that refuses the write, a rule's fields, a
+target skin by number); a written package has no next step; and the inputs page shows a
+maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and #ADR-0091
+(the pages that explore). The steps, in order:
+
+1. **The pages that exist, made plain.** Each a change of its own:
+   - the mod read on pick: name, author, version, image and units shown at once, from a read
+     of the archive alone;
+   - the result banner names the package, with a button that shows it in its folder, the path
+     on hover;
+   - the Targets card in words: where each unit ships and why, what fits, and the other levels
+     of animation reuse folded under one line, shown where they differ;
+   - the advanced view in tabs: Result, Settings, Fixups and checks, Rules, with the mod card
+     and the Run button above them;
+   - what refuses the write picked by severity and area, the filter under a disclosure; a
+     target skin picked by its name among the champion's skins;
+   - ids in live findings spelled as each stage ends, and "converted" where "kept" stood;
+   - the output folder in Settings, the mod card saying where the package goes;
+   - the census history's group folded under a disclosure for maintainers.
+2. **The Mod page** and the **History page** (#ADR-0091), which share a renderer of values with
+   names, and the library's read of an archive alone and its spelled history queries.
+3. **The guided view** (#ADR-0090), once the library takes a target per unit.
+4. **Runs** and **Records** (#ADR-0091): the reports kept and reopened, a package's evidence
+   read, two runs compared; the records bundled and opened from a fixup or a finding.
+5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
+
+Each library change is one rule with its test (#ADR-0045), made before the page that needs it.
+
 ## Releases
 
 `.github/workflows/build.yml` runs the checks and builds the app's installer and the command
