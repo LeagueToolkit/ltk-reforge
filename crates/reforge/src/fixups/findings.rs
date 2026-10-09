@@ -9,8 +9,8 @@ use serde::{Serialize, Serializer};
 
 use super::changes::{Change, Outcome};
 use crate::diag::{Channel, Code, Diag, Message, Severity, Sink, Subject};
-use crate::model::BinHash;
-use crate::model::entity::ObjectId;
+use crate::model::entity::{CharId, ObjectId};
+use crate::model::{BinHash, Slot};
 
 const fn code(name: &'static str, severity: Severity) -> Code {
     Code::new(name, Channel::Output, severity)
@@ -84,6 +84,37 @@ impl Tally {
             f.class(row.class).text(".").field(row.field);
             let _ = write!(f, " ({})", row.values);
         });
+    }
+}
+
+/// The game's skins of a character whose bins link more than the cap read of one skin: the
+/// bins past it are not read, by this stage or a later one (#ADR-0070).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CatalogCapped {
+    /// The character.
+    pub character: CharId,
+    /// The skins.
+    pub slots: Vec<Slot>,
+    /// The cap on the bins read of one skin.
+    pub cap: usize,
+}
+
+impl Diag for CatalogCapped {
+    const CODE: Code = Code::new("catalog.capped", Channel::Input, Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Character(self.character)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        let slots: Vec<String> = self.slots.iter().map(Slot::to_string).collect();
+        let _ = write!(
+            f,
+            "the game's skin {} link more bins than the {} read of one skin; ",
+            slots.join("/"),
+            self.cap
+        );
+        f.text("the rest are not read");
     }
 }
 

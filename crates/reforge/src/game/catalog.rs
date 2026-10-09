@@ -130,11 +130,20 @@ pub struct SkinCatalog {
     entry_slots: HashMap<BinHash, BTreeSet<Slot>>,
     /// The slots at which the game has a skin bin.
     bins: BTreeSet<Slot>,
+    /// The bins read at each slot whose skin bin reads, the skin bin first: a skin bin that
+    /// holds no entry is in it, and not in `skins`.
+    chains: BTreeMap<Slot, Vec<WadHash>>,
     /// The skins whose bins link more than the [`MAX_CHAIN`] read.
     capped: BTreeSet<Slot>,
 }
 
 impl SkinCatalog {
+    /// The bins read at each slot whose skin bin reads, the skin bin first, a skin bin with no
+    /// entry included.
+    pub fn chains(&self) -> &BTreeMap<Slot, Vec<WadHash>> {
+        &self.chains
+    }
+
     /// The skins whose bins link more than the [`MAX_CHAIN`] read: the rest are not in the
     /// catalog.
     pub fn capped(&self) -> &BTreeSet<Slot> {
@@ -213,6 +222,8 @@ impl SkinCatalog {
     /// Takes in the bins read for the skin at a slot, the skin bin first, and the skin when
     /// the skin bin holds the entry of `entry` hash.
     pub(super) fn add(&mut self, slot: Slot, entry: BinHash, chain: Vec<(WadHash, Arc<GameBin>)>) {
+        let paths = chain.iter().map(|(path, _)| *path).collect();
+        self.chains.insert(slot, paths);
         let mut found = None;
         for (at, (_, bin)) in chain.iter().enumerate() {
             for (place, object) in bin.parsed.objects.iter().enumerate() {
@@ -238,7 +249,7 @@ impl SkinCatalog {
         if let Some(graph) = skin.graph.and_then(|graph| self.object(graph)) {
             skin.clips = graph_clips(graph);
         }
-        skin.chain = chain.into_iter().map(|(path, _)| path).collect();
+        skin.chain = self.chains[&slot].clone();
         self.skins.insert(slot, skin);
     }
 

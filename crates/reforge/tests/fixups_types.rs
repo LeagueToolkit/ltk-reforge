@@ -5,16 +5,19 @@ use ltk_meta::property::values;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum as V};
 use reforge::diag::Stage;
 use reforge::env::Env;
-use reforge::fixups::{FixError, FixInputs, FixupSet, ObjectSet, Rule, TargetTypes, TypeSource};
-use reforge::game::{Build, FieldType, GameError, Schema};
+use reforge::fixups::{
+    CatalogCapped, FixError, FixInputs, FixupSet, ObjectSet, Rule, TargetTypes, TypeSource,
+};
+use reforge::game::{Build, FieldType, GameError, MAX_CHAIN, Schema};
 use reforge::load::{Dating, LoadOptions};
-use reforge::model::name_hash;
-use reforge_testkit::bins::{bin, embedded, float, linked_bin, object, pointer, text};
+use reforge::model::{Slot, name_hash};
+use reforge_testkit::bins::{bin, embedded, entry, float, linked_bin, object, pointer, text};
 use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{field, kind, pointer as to};
 use reforge_testkit::{BrokenGame, FixRun, LoadRun, MemoryHistory, SchemaRows, skins};
 
 const DATED: &str = "assets/characters/test/skins/base/dated.tex";
+const SKIN0: &str = "Characters/Test/Skins/Skin0";
 
 /// `Thing.path` is a string up to build 199 and a file from 200. `Thing.gone` leaves at 149.
 fn schema() -> Schema {
@@ -177,6 +180,42 @@ fn the_bins_of_the_mods_characters_skins_are_witnessed() {
         Some(TypeSource::Install)
     );
     assert!(types.witnessed_len() > 2);
+}
+
+#[test]
+fn a_skin_whose_bins_link_past_the_cap_is_noted_by_the_fix() {
+    // #ADR-0070: the bins past the cap are not witnessed, and the stage says so.
+    let mut game = skins::game_at("16.19.300");
+    let linked: Vec<String> = (0..MAX_CHAIN + 4)
+        .map(|i| format!("data/characters/test/shared/part{i}.bin"))
+        .collect();
+    let links: Vec<&str> = linked.iter().map(String::as_str).collect();
+    game.insert(
+        &skins::skin_bin("test", 0),
+        linked_bin(vec![entry(SKIN0, &skins::base_skin())], &links),
+    );
+    for (i, path) in linked.iter().enumerate() {
+        let field = format!("part{i}");
+        let held = object(
+            &format!("Shared/Part{i}"),
+            "GameOnly",
+            vec![(&field, float(1.0))],
+        );
+        game.insert(path, bin(vec![held]));
+    }
+    let env = Env::builder().game(game).build().unwrap();
+    let run = FixRun::of(&env, &FixupSet::empty(), &skin_archive(vec![]));
+    let class = name_hash("GameOnly");
+    let types = TargetTypes::of(&run.fixed, &env).unwrap();
+    assert!(types.declares(class, name_hash("part0")));
+    assert!(!types.declares(class, name_hash(&format!("part{MAX_CHAIN}"))));
+    let capped: Vec<&CatalogCapped> = run.log.of::<CatalogCapped>().collect();
+    assert_eq!(capped.len(), 1, "{:#?}", run.messages());
+    assert_eq!(
+        (&capped[0].slots[..], capped[0].cap),
+        (&[Slot(0)][..], MAX_CHAIN)
+    );
+    assert_eq!(run.fixed.characters[capped[0].character].name, "test");
 }
 
 #[test]

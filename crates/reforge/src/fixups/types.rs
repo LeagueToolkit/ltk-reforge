@@ -3,14 +3,14 @@
 //! install's own bins hold. #GAME-BEHAVIOR-0021: the game ships such a field and does not
 //! read it, so a mod's copy keeps it in the game's shape.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use ltk_meta::{BinObject, PropertyKind as Kind};
 
 use crate::env::Env;
-use crate::game::{Build, FieldType, GameError, MAX_CHAIN, Schema};
-use crate::model::hash::skin_paths;
-use crate::model::{BinHash, MAX_SLOT, Mod, Slot, Version, WadHash, path_hash, walk};
+use crate::game::{Build, FieldType, GameError, Schema};
+use crate::model::entity::CharId;
+use crate::model::{BinHash, Mod, Slot, Version, WadHash, walk};
 
 /// Where the type of a field comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -32,6 +32,9 @@ pub struct TargetTypes<'a> {
     version: Option<Version>,
     /// The shape the first bin read holds each field of each class in.
     witnessed: HashMap<(BinHash, BinHash), FieldType>,
+    /// The skins of each character whose bins link more than the
+    /// [`MAX_CHAIN`](crate::game::MAX_CHAIN) witnessed.
+    capped: BTreeMap<CharId, Vec<Slot>>,
 }
 
 impl<'a> TargetTypes<'a> {
@@ -43,6 +46,7 @@ impl<'a> TargetTypes<'a> {
             build: schema.map(|schema| schema.at_install(install)),
             version: install.and_then(Build::version),
             witnessed: HashMap::new(),
+            capped: BTreeMap::new(),
         }
     }
 
@@ -53,40 +57,40 @@ impl<'a> TargetTypes<'a> {
     }
 
     /// The types a mod is fixed to: the environment's schema at the game's build, and the
-    /// shapes of the game's bins of every skin of the mod's characters. A skin's bins are its
-    /// skin bin and what that links, breadth first, up to [`MAX_CHAIN`].
+    /// shapes of the game's bins of every skin of the mod's characters, as the game's catalog
+    /// of each character reads them: the skin bin and what that links, breadth first, up to
+    /// [`MAX_CHAIN`](crate::game::MAX_CHAIN). A skin past the cap is in
+    /// [`TargetTypes::capped`].
     pub fn of(m: &Mod, env: &'a Env) -> Result<Self, GameError> {
         let game = env.game();
         let mut types = Self::new(env.schema(), game.build());
-        let characters: BTreeSet<&str> = m.characters.values().map(|c| c.name.as_str()).collect();
         let mut read: BTreeSet<WadHash> = BTreeSet::new();
-        for character in characters {
-            for slot in (0..=MAX_SLOT).map(Slot) {
-                let mut chain = vec![path_hash(&skin_paths::skin_bin(character, slot))];
-                let mut next = 0;
-                while next < chain.len() {
-                    let path = chain[next];
-                    next += 1;
-                    let Some(bin) = game.bin(path)? else {
-                        continue;
-                    };
-                    for link in &bin.parsed.dependencies {
-                        let linked = path_hash(link);
-                        let room = chain.len() < MAX_CHAIN && !chain.contains(&linked);
-                        if room && game.bin(linked)?.is_some() {
-                            chain.push(linked);
-                        }
-                    }
-                    // Skins share bins: a bin read for one is not witnessed again.
-                    if read.insert(path) {
-                        for object in &bin.parsed.objects {
-                            types.witness(&object.value);
-                        }
-                    }
+        for (id, character) in m.characters.iter() {
+            let catalog = game.catalog(&character.name)?;
+            for path in catalog.chains().values().flatten() {
+                // Skins share bins: a bin read for one is not witnessed again.
+                if !read.insert(*path) {
+                    continue;
                 }
+                let Some(bin) = game.bin(*path)? else {
+                    continue;
+                };
+                for object in &bin.parsed.objects {
+                    types.witness(&object.value);
+                }
+            }
+            if !catalog.capped().is_empty() {
+                let slots = catalog.capped().iter().copied().collect();
+                types.capped.insert(id, slots);
             }
         }
         Ok(types)
+    }
+
+    /// The skins of each character whose bins link more than the
+    /// [`MAX_CHAIN`](crate::game::MAX_CHAIN) witnessed: the shapes of the rest are not known.
+    pub fn capped(&self) -> &BTreeMap<CharId, Vec<Slot>> {
+        &self.capped
     }
 
     /// Takes the shapes an object of the game holds its fields in. The first shape seen of a

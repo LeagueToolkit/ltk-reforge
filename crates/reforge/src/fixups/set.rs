@@ -12,13 +12,14 @@ use serde::{Deserialize, Serialize};
 
 use super::changes::Changes;
 use super::context::FixCx;
+use super::findings::CatalogCapped;
 use super::rule::Rule;
 use super::scope::ObjectSet;
 use super::types::TargetTypes;
 use super::{BinFixup, built_in, findings};
 use crate::diag::Sink;
 use crate::env::Env;
-use crate::game::{GameError, NameBook, NameHashError};
+use crate::game::{GameError, MAX_CHAIN, NameBook, NameHashError};
 use crate::history::HistoryError;
 use crate::load::{Dating, FileFixup, LoadOptions};
 use crate::model::entity::ObjectId;
@@ -316,6 +317,13 @@ impl FixupSet {
     ) -> Result<Changes, FixError> {
         let _span = tracing::info_span!("fix", fixups = self.bins.len()).entered();
         let types = TargetTypes::of(m, inputs.env)?;
+        for (&character, slots) in types.capped() {
+            sink.raise(CatalogCapped {
+                character,
+                slots: slots.clone(),
+                cap: MAX_CHAIN,
+            });
+        }
         let ids: Vec<ObjectId> = m.objects.ids().filter(|&o| objects.contains(o)).collect();
         let mut changes = Changes::default();
         let mut fault = None;

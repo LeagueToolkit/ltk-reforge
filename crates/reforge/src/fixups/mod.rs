@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 pub use self::changes::{After, Change, Changes, Counts, Outcome, Snapshot};
 pub use self::context::FixCx;
-pub use self::findings::{Changed, FieldCount, Lost, Removed, Tally, Unconvertible};
+pub use self::findings::{CatalogCapped, Changed, FieldCount, Lost, Removed, Tally, Unconvertible};
 pub use self::rule::Rule;
 pub use self::scope::ObjectSet;
 pub use self::set::{
@@ -42,6 +42,7 @@ use crate::model::{BinHash, FixupInfo, StructMut, name_hash};
 
 /// Every diagnostic code this module raises.
 pub const CODES: &[Code] = &[
+    CatalogCapped::CODE,
     Changed::CODE,
     Removed::CODE,
     Lost::CODE,

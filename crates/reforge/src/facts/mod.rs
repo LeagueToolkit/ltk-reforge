@@ -29,9 +29,8 @@ use serde::Serializer;
 pub use self::clips::{Clips, ClipsAt, Reused, UnitClips};
 pub use self::copies::{Copies, CopyKind, Member, NEAR_JACCARD, UnitRole};
 pub use self::findings::{
-    BankUnreadable, CODES, CatalogCapped, CopiedSubmesh, CopiesFound, DistinctUnits, NearCopy,
-    OriginAmbiguous, OriginConflicting, OriginNone, RigPart, RigUnreadable, SubmeshesCopied,
-    UnreadBank,
+    BankUnreadable, CODES, CopiedSubmesh, CopiesFound, DistinctUnits, NearCopy, OriginAmbiguous,
+    OriginConflicting, OriginNone, RigPart, RigUnreadable, SubmeshesCopied, UnreadBank,
 };
 pub use self::judge::{
     Aspect, ClipBlock, Copied, Fit, Outcome, RigCheck, SlotFacts, UnitCandidates, UnitJudge, Why,
@@ -46,7 +45,7 @@ pub use self::sounds::{
 use crate::diag::Sink;
 use crate::env::Env;
 use crate::fixups::FixedMod;
-use crate::game::{GameError, MAX_CHAIN, SkinCatalog};
+use crate::game::{GameError, SkinCatalog};
 use crate::history::HistoryError;
 use crate::load::{Dating, FileProvenance, ReworkTable};
 use crate::model::entity::{CharId, CharKind, Mod, ObjectId, SkinUnit, UnitId};
@@ -104,19 +103,6 @@ impl Catalogs {
     /// A character's catalog.
     pub fn of(&self, character: CharId) -> Option<&SkinCatalog> {
         self.characters.get(&character).map(|catalog| &**catalog)
-    }
-
-    /// Raises the characters whose skins link more bins than a catalog reads.
-    pub fn report(&self, sink: &mut Sink<'_>) {
-        for (&character, catalog) in &self.characters {
-            if !catalog.capped().is_empty() {
-                sink.raise(CatalogCapped {
-                    character,
-                    slots: catalog.capped().iter().copied().collect(),
-                    cap: MAX_CHAIN,
-                });
-            }
-        }
     }
 }
 
@@ -325,7 +311,6 @@ impl Facts {
 
     /// Raises what the facts found, in the order they were gathered.
     pub fn report(&self, sink: &mut Sink<'_>) {
-        self.catalogs.report(sink);
         self.copies.report(sink);
         self.origins.report(sink);
         self.rigs.report(sink);

@@ -4,8 +4,7 @@
 
 use reforge::facts::rig::GraphFrom;
 use reforge::facts::{
-    Aspect, CatalogCapped, FactsError, Outcome, RigPart, RigUnreadable, Source, SubmeshesCopied,
-    Visibility, Why,
+    Aspect, FactsError, Outcome, RigPart, RigUnreadable, Source, SubmeshesCopied, Visibility, Why,
 };
 use reforge::game::{Build, Game, GameError, GameSource, GameView, MAX_CHAIN, SkinClass};
 use reforge::history::NoHistory;
@@ -563,28 +562,10 @@ fn a_skins_bins_are_read_breadth_first_up_to_the_cap() {
             .object(name_hash(&format!("Shared/Part{}", MAX_CHAIN)))
             .is_none()
     );
+    // The fix stage raises `catalog.capped` for it, as the first to read the catalog.
     assert_eq!(
         catalog.capped().iter().copied().collect::<Vec<_>>(),
         [Slot(0)]
-    );
-
-    // The facts of a mod of the character say so.
-    let mut game = skins::game();
-    game.insert(
-        &skins::skin_bin("test", 0),
-        linked_bin(vec![entry(SKIN0, &skins::base_skin())], &links),
-    );
-    for path in &linked {
-        game.insert(path, bin(vec![]));
-    }
-    let env = env(game, NoHistory);
-    let files = vec![mod_skin("test", 0, SKIN0, &skins::base_skin(), vec![])];
-    let run = FactRun::of(&env, &archive(&files));
-    let capped: Vec<CatalogCapped> = run.found();
-    assert_eq!(capped.len(), 1, "{}", run.dump());
-    assert_eq!(
-        (&capped[0].slots[..], capped[0].cap),
-        (&[Slot(0)][..], MAX_CHAIN)
     );
 }
 
