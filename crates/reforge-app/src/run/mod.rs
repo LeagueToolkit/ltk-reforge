@@ -289,6 +289,11 @@ pub fn run(
         timed.push((stage, millis));
         match ran {
             Ok(()) => {
+                // The tables a finding names by id are the mod's, which `load` makes.
+                if watch.takes_parts() && stage == StageName::Load {
+                    let names = ReportParts::names_of(&run);
+                    watch.part(PartView::Names { names });
+                }
                 if watch.takes_parts()
                     && let Some(part) = Drawn::part(&run, stage)
                 {

@@ -14,6 +14,7 @@ import type {
   StageName,
   TargetsView,
 } from "@/lib/bindings.gen";
+import type { IdNames } from "@/modules/findings";
 
 /** Which view of the run the page shows (#ADR-0050). */
 export type RepairMode = "simple" | "advanced";
@@ -86,6 +87,8 @@ export interface LiveRun {
   started: number;
   stages: Partial<Record<StageName, LiveStage>>;
   findings: Finding[];
+  /** A name for each id a finding names, as the stages that make the tables end. */
+  names: IdNames;
   /** What the fixups changed, once `fix` ended. */
   changes: FixupChanges[] | null;
   objects: ObjectView[];
@@ -101,6 +104,7 @@ export function startedRun(): LiveRun {
     started: Date.now(),
     stages: {},
     findings: [],
+    names: {},
     changes: null,
     objects: [],
     targets: null,
@@ -111,6 +115,7 @@ export function startedRun(): LiveRun {
 /** The run under way with what a stage gave as it ended. */
 export function withPart(live: LiveRun, part: PartView): LiveRun {
   return match(part)
+    .with({ part: "names" }, ({ names }) => ({ ...live, names: { ...live.names, ...names } }))
     .with({ part: "changes" }, ({ changes, objects }) => ({ ...live, changes, objects }))
     .with({ part: "targets" }, ({ targets }) => ({ ...live, targets }))
     .with({ part: "package" }, ({ package: built }) => ({ ...live, package: built }))

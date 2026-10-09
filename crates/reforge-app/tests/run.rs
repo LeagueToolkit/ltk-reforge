@@ -269,6 +269,7 @@ fn each_stage_that_gives_a_part_sends_it_as_it_ends_and_the_view_holds_the_same(
     let view = run::run(&bench.inputs, &request, &mut heard).unwrap();
 
     let [
+        PartView::Names { names },
         PartView::Changes { changes, objects },
         PartView::Targets { targets },
         PartView::Package { package },
@@ -279,6 +280,12 @@ fn each_stage_that_gives_a_part_sends_it_as_it_ends_and_the_view_holds_the_same(
             heard.parts
         );
     };
+    // The names `load` sent are the tables'; the view adds the changed objects' after them.
+    assert!(!names.is_empty(), "load sent no names");
+    for (id, name) in names {
+        assert_eq!(view.names.get(id), Some(name), "{id}");
+    }
+    assert!(names.keys().any(|id| id.starts_with("%u")), "{names:?}");
     assert_eq!(changes, &view.changes);
     assert_eq!(objects, &view.objects);
     assert_eq!(Some(targets), view.targets.as_ref());

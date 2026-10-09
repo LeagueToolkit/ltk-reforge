@@ -3,11 +3,12 @@
 
 use std::collections::BTreeMap;
 
+use reforge::Run;
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 
 use super::StageName;
-use crate::view::Finding;
+use crate::view::{Finding, read_clean};
 
 /// How far a stage got.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -93,7 +94,7 @@ pub enum AfterView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum OutcomeView {
-    /// A value kept, in the form the target build reads.
+    /// A value converted to the form the target build reads.
     Changed,
     /// A value removed with nothing lost.
     Removed,
@@ -131,7 +132,7 @@ pub struct ChangeView {
 pub struct FixupChanges {
     /// The fixup's id.
     pub fixup: String,
-    /// Values kept, in the form the target build reads.
+    /// Values converted to the form the target build reads.
     pub changed: usize,
     /// Values removed with nothing lost.
     pub removed: usize,
@@ -160,6 +161,12 @@ pub struct ObjectView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "part", rename_all = "kebab-case")]
 pub enum PartView {
+    /// The names of the report's tables, after `load`: what a finding raised from then on
+    /// names by id (`%w0`, `%f12`, `%c0`, `%u0`).
+    Names {
+        /// A name for each id, as `RunView::names` holds them.
+        names: BTreeMap<String, String>,
+    },
     /// What the fixups changed, after `fix`.
     Changes {
         /// What each fixup did, in the order they ran.
@@ -416,6 +423,12 @@ impl ReportParts {
             (unit.id.clone(), name)
         });
         wads.chain(files).chain(characters).chain(units).collect()
+    }
+
+    /// The names of a run's tables as its report stands: all four tables once `load` ended.
+    pub fn names_of(run: &Run<'_>) -> BTreeMap<String, String> {
+        let parts: ReportParts = read_clean(&run.report().to_json());
+        parts.names()
     }
 
     /// The decisions, each with its character's name.

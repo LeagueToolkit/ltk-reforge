@@ -362,7 +362,7 @@ export type Finding = {
 export type FixupChanges = {
 	/**  The fixup's id. */
 	fixup: string,
-	/**  Values kept, in the form the target build reads. */
+	/**  Values converted to the form the target build reads. */
 	changed: number,
 	/**  Values removed with nothing lost. */
 	removed: number,
@@ -569,7 +569,7 @@ export type OriginView = {
 
 /**  Which `fixup.*` finding a change counts under: its code is `fixup.` and this. */
 export type OutcomeView = 
-/**  A value kept, in the form the target build reads. */
+/**  A value converted to the form the target build reads. */
 "changed" | 
 /**  A value removed with nothing lost. */
 "removed" | 
@@ -597,6 +597,13 @@ export type PackageView = {
 
 /**  What a stage gave the views, sent to the window as the stage ends. */
 export type PartView = 
+/**
+ *  The names of the report's tables, after `load`: what a finding raised from then on
+ *  names by id (`%w0`, `%f12`, `%c0`, `%u0`).
+ */
+{ part: "names"; 
+/**  A name for each id, as `RunView::names` holds them. */
+names: { [key in string]: string } } | 
 /**  What the fixups changed, after `fix`. */
 { part: "changes"; 
 /**  What each fixup did, in the order they ran. */

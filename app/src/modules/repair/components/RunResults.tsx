@@ -18,12 +18,15 @@ export interface RunResultsProps {
 }
 
 /**
- * The results of the run under way, as far as it got. Its names are the changed objects'
- * alone: the rest come with the run's end.
+ * The results of the run under way, as far as it got. Its names are the tables' as `load`
+ * ended and the changed objects' as `fix` did.
  */
 export function liveResults(live: LiveRun): RunResultsProps {
   const { findings, changes, objects, targets } = live;
-  const names = Object.fromEntries(objects.map((object) => [object.id, object.entry]));
+  const names = {
+    ...live.names,
+    ...Object.fromEntries(objects.map((object) => [object.id, object.entry])),
+  };
   return { findings, changes, objects, targets, names };
 }
 
