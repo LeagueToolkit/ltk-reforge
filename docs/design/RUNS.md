@@ -1526,3 +1526,26 @@ file (#ADR-0081), at 24 in parallel with one thread each. 16 archives left the d
 - **The edge cases** of both: 670 cases seen, as before, and 105 declared and not seen. The 5
   more are the cases of `unit.left-with-work` and of `off-target`, which no baseline shows. The
   reduced corpus is the same 64 mods.
+
+## A port changes its target slot only (2026-10-09)
+
+#ADR-0082, over the 459 mods whose ports ship units beside a champion's main unit (see "Extra
+units beside a champion's main unit") and over the reduced corpus, compared with
+`baseline-port-4`. Every report's port options hold `keep_other_slots`, and that field is the
+only difference of 128 of the 459: they have no skin0 unit of the author's and keep every unit.
+
+- **What leaves.** The other 331 differ where units leave at a slot the port does not change,
+  2,018 units, and in nothing else.
+- **What `unit.left-with-work` names.** 1,408 units in 269 mods hold own models, skeletons or
+  textures the units at the target do not hold, and 214 units in 58 mods hold own objects, other
+  files or clips alone, not supported for now. Together: 975 models, 967 skeletons, 11,591
+  textures, 618 other files, 8,701 objects and 24,061 clips.
+- **The three mods of the report.** PROJECT Urgot 1.5.0 and Ben 10 Ultimate Alien Udyr ship
+  skin0 alone. Urgot's skin3 leaves with 117 own clips, and Udyr's skins 3, 5 and 6 with 4 own
+  objects each and 33 and 9 own clips, all not supported for now. The Lee Sin restoration ships
+  skin0 and names the models, skeletons and textures of its 22 other units, which the option
+  ships.
+- **The reduced corpus.** 9 of the 64 ports differ beyond the options, each where units leave at
+  other slots, 127 units. No repair differs.
+- **Time.** The 459 mods in 302 s at 8 in parallel, beside the repair baseline. The reduced
+  corpus in 16 s for the port and 17 s for the repair.
