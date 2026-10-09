@@ -53,7 +53,7 @@ case, the occurrences, and the runs that show it.
 
 <!-- cases.py: cases -->
 
-670 cases in 5,137 mods, from the runs `port` and `repair` of 2026-10-06.
+670 cases in 5,121 mods, from the runs `port` and `repair` of 2026-10-09.
 
 ### run
 
@@ -89,22 +89,22 @@ case, the occurrences, and the runs that show it.
 | `archive holds=pdn` | 31 | `3d955a3880d7` |
 | `archive holds=pe` | 66 | `9d15cbf8cc63` |
 | `archive holds=png` | 277 | `318a7ebe0cb8` |
-| `archive holds=property-bin` | 5,136 | `690378161a3c` |
+| `archive holds=property-bin` | 5,120 | `690378161a3c` |
 | `archive holds=psd` | 16 | `def699cffb6d` |
 | `archive holds=r3d2` | 1 | `6e3d4b1755d9` |
 | `archive holds=rar` | 8 | `0583e723cd3d` |
 | `archive holds=ritobin-json` | 631 | `8a2c7153fd2a` |
 | `archive holds=ritobin-text` | 1,707 | `3b1aaabea06e` |
 | `archive holds=shortcut` | 23 | `d686e249d4c1` |
-| `archive holds=simple-skin` | 4,540 | `042eb2b27725` |
-| `archive holds=skeleton` | 4,539 | `042eb2b27725` |
+| `archive holds=simple-skin` | 4,539 | `042eb2b27725` |
+| `archive holds=skeleton` | 4,538 | `042eb2b27725` |
 | `archive holds=static-mesh-ascii` | 1,144 | `8eee9126c83f` |
 | `archive holds=static-mesh-binary` | 2,762 | `d8cdb6ba220a` |
 | `archive holds=string-table` | 1 | `a26e64fdac59` |
 | `archive holds=subchunk-toc` | 85 | `767f0956dd3d` |
 | `archive holds=text` | 131 | `8f856aebd68d` |
-| `archive holds=texture` | 4,555 | `690378161a3c` |
-| `archive holds=texture-dds` | 4,181 | `c20537006f52` |
+| `archive holds=texture` | 4,539 | `690378161a3c` |
+| `archive holds=texture-dds` | 4,165 | `c20537006f52` |
 | `archive holds=tga` | 17 | `543b88a9b9d4` |
 | `archive holds=unknown` | 16 | `8dc89140f5bc` |
 | `archive holds=wad` | 10 | `40b00e9c3a2d` |
@@ -153,9 +153,9 @@ case, the occurrences, and the runs that show it.
 | `inventory.unknown` | 16 | `8dc89140f5bc` |
 | `wad a locale's, holding the whole mod` | 71 | `975ff083bcb8` |
 | `wad layout=loose` | 214 | `6de493211fd6` |
-| `wad layout=packed` | 4,932 | `4924914fd7a3` |
+| `wad layout=packed` | 4,916 | `4924914fd7a3` |
 | `wad restores a model from before a rework` | 43 | `70e59f043f84` |
-| `wad role=champion` | 5,136 | `690378161a3c` |
+| `wad role=champion` | 5,120 | `690378161a3c` |
 | `wad role=locale` | 481 | `eb88a666d18a` |
 | `wad role=other` | 34 | `4924914fd7a3` |
 | `wad.champion-guessed` | 19 | `0672cfff925b` |
@@ -174,43 +174,43 @@ case, the occurrences, and the runs that show it.
 | `bin.link-missing` | 2,741 | `b96f6a6c097c` |
 | `bin.link-missing former=false` | 37 | `6bae337c0ee7` |
 | `bin.link-missing former=true` | 2,720 | `b96f6a6c097c` |
-| `bin.taken-from-game` | 1,289 | `690378161a3c` |
+| `bin.taken-from-game` | 1,273 | `690378161a3c` |
 | `bin.taken-from-game from a former bin` | 63 | `c20537006f52` |
-| `bin.taken-from-game history=true` | 1,289 | `690378161a3c` |
+| `bin.taken-from-game history=true` | 1,273 | `690378161a3c` |
 | `bin.taken-from-game with files no bin names` | 440 | `cb2c00df0e69` |
 | `bin.taken-from-game with files the game never held` | 403 | `2a321a390f6f` |
 | `bin.taken-from-game with stale files` | 196 | `c92cdc9e684c` |
 | `bin.unreadable` | 58 | `a3fd517fd99a` |
 | `character equal to the game's` | 216 | `c20537006f52` |
-| `character kind=champion` | 5,136 | `690378161a3c` |
+| `character kind=champion` | 5,120 | `690378161a3c` |
 | `character kind=sub` | 681 | `c20537006f52` |
 | `character with a root bin` | 259 | `a2c700b70d1d` |
 | `character.equal-to-game` | 216 | `c20537006f52` |
-| `dating evidence=file` | 2,995 | `8b880d06d01c` |
+| `dating evidence=file` | 2,994 | `8b880d06d01c` |
 | `dating evidence=object` | 1,190 | `b96f6a6c097c` |
-| `dating with no bound` | 951 | `690378161a3c` |
+| `dating with no bound` | 936 | `690378161a3c` |
 | `file kind=anm` | 2,793 | `98106ae9af46` |
-| `file kind=bin` | 5,136 | `690378161a3c` |
+| `file kind=bin` | 5,120 | `690378161a3c` |
 | `file kind=bnk` | 2,792 | `b96f6a6c097c` |
-| `file kind=dds` | 4,182 | `4924914fd7a3` |
+| `file kind=dds` | 4,166 | `4924914fd7a3` |
 | `file kind=other` | 2,353 | `8f856aebd68d` |
 | `file kind=scb` | 2,875 | `d8cdb6ba220a` |
 | `file kind=sco` | 1,144 | `8eee9126c83f` |
-| `file kind=skl` | 4,539 | `042eb2b27725` |
-| `file kind=skn` | 4,540 | `042eb2b27725` |
-| `file kind=tex` | 4,556 | `4924914fd7a3` |
+| `file kind=skl` | 4,538 | `042eb2b27725` |
+| `file kind=skn` | 4,539 | `042eb2b27725` |
+| `file kind=tex` | 4,540 | `4924914fd7a3` |
 | `file kind=wpk` | 1,855 | `eb88a666d18a` |
 | `file made by=bank-id` | 1,453 | `7bc34b21a01b` |
 | `file made by=legacy-format` | 1,969 | `b770e36141eb` |
 | `file made by=moved-asset` | 1,889 | `088d0a057ec0` |
-| `file source=archive` | 5,137 | `4924914fd7a3` |
-| `file source=game` | 1,289 | `690378161a3c` |
+| `file source=archive` | 5,121 | `4924914fd7a3` |
+| `file source=game` | 1,273 | `690378161a3c` |
 | `file source=made` | 2,824 | `088d0a057ec0` |
 | `file source=rewritten` | 1,453 | `7bc34b21a01b` |
-| `file use=former-path` | 2,886 | `c20537006f52` |
-| `file use=loaded` | 5,136 | `690378161a3c` |
+| `file use=former-path` | 2,870 | `c20537006f52` |
+| `file use=loaded` | 5,120 | `690378161a3c` |
 | `file use=override` | 3,104 | `b96f6a6c097c` |
-| `file use=referenced` | 5,128 | `690378161a3c` |
+| `file use=referenced` | 5,112 | `690378161a3c` |
 | `file use=stale` | 1,670 | `10ab724f95a9` |
 | `file use=unused` | 3,219 | `4924914fd7a3` |
 | `file with no path spelled` | 3,116 | `2a321a390f6f` |
@@ -219,7 +219,7 @@ case, the occurrences, and the runs that show it.
 | `file.format-converted how=as-is` | 2 | `6e3d4b1755d9` |
 | `file.format-converted how=dds-as-tex` | 1,877 | `b770e36141eb` |
 | `file.format-converted how=sco-as-scb` | 346 | `032db643a88a` |
-| `file.former-path` | 2,886 | `c20537006f52` |
+| `file.former-path` | 2,870 | `c20537006f52` |
 | `file.moved` | 1,889 | `088d0a057ec0` |
 | `file.moved by=moved-assets` | 1,889 | `088d0a057ec0` |
 | `file.moved how=as-is` | 1,818 | `088d0a057ec0` |
@@ -236,13 +236,13 @@ case, the occurrences, and the runs that show it.
 | `file.older-game of bytes the game still ships` | 154 | `801766ddc63e` |
 | `file.stale` | 1,670 | `10ab724f95a9` |
 | `file.unused` | 3,218 | `2a321a390f6f` |
-| `provenance at path=not-game-path` | 4,591 | `c20537006f52` |
-| `provenance at path=other-bytes` | 5,136 | `690378161a3c` |
-| `provenance at path=same-bytes` | 2,136 | `690378161a3c` |
-| `provenance in a skin's folder` | 4,356 | `690378161a3c` |
+| `provenance at path=not-game-path` | 4,575 | `c20537006f52` |
+| `provenance at path=other-bytes` | 5,120 | `690378161a3c` |
+| `provenance at path=same-bytes` | 2,120 | `690378161a3c` |
+| `provenance in a skin's folder` | 4,340 | `690378161a3c` |
 | `provenance origin=history` | 3,089 | `8b880d06d01c` |
-| `provenance origin=install` | 4,110 | `690378161a3c` |
-| `provenance origin=own` | 5,135 | `690378161a3c` |
+| `provenance origin=install` | 4,094 | `690378161a3c` |
+| `provenance origin=own` | 5,119 | `690378161a3c` |
 | `provenance still shipped=false` | 3,059 | `8b880d06d01c` |
 | `provenance still shipped=true` | 154 | `801766ddc63e` |
 | `rework.restoration` | 43 | `70e59f043f84` |
@@ -367,82 +367,82 @@ case, the occurrences, and the runs that show it.
 
 | case | mods | example |
 |---|---:|---|
-| `check aspect=clips` | 4,525 | `690378161a3c` |
-| `check aspect=mesh` | 5,136 | `690378161a3c` |
+| `check aspect=clips` | 4,509 | `690378161a3c` |
+| `check aspect=mesh` | 5,120 | `690378161a3c` |
 | `check aspect=rig` | 3 | `e6e43d1fb3db` |
-| `check aspect=skeleton` | 5,136 | `690378161a3c` |
+| `check aspect=skeleton` | 5,120 | `690378161a3c` |
 | `check aspect=slot` | 5 | `77058d9704d3` |
-| `check aspect=submeshes` | 4,167 | `042eb2b27725` |
-| `check fit=does-not-fit` | 1,424 | `d905b9c41357` |
-| `check fit=fits` | 5,134 | `690378161a3c` |
+| `check aspect=submeshes` | 4,166 | `042eb2b27725` |
+| `check fit=does-not-fit` | 1,412 | `d905b9c41357` |
+| `check fit=fits` | 5,118 | `690378161a3c` |
 | `check fit=fits-with-fix` | 22 | `13137f23efc8` |
 | `check fit=unknown` | 122 | `e2e6ce24228c` |
 | `check why=clips-blocked` | 423 | `91c798fedc8b` |
-| `check why=clips-fit` | 4,521 | `690378161a3c` |
+| `check why=clips-fit` | 4,505 | `690378161a3c` |
 | `check why=copied-hidden` | 22 | `13137f23efc8` |
 | `check why=copied-shown` | 189 | `12520a916f1d` |
 | `check why=copied-visible` | 265 | `90fb9073d4e0` |
 | `check why=foreign-mesh` | 100 | `e2e6ce24228c` |
 | `check why=foreign-skeleton` | 99 | `e2e6ce24228c` |
 | `check why=no-clips` | 20 | `46e2a68b6b93` |
-| `check why=no-copied-submesh` | 4,167 | `042eb2b27725` |
+| `check why=no-copied-submesh` | 4,166 | `042eb2b27725` |
 | `check why=no-entry` | 3 | `e6e43d1fb3db` |
 | `check why=no-mesh` | 1 | `fc86c0d71d96` |
 | `check why=no-skeleton` | 1 | `fc86c0d71d96` |
 | `check why=no-such-skin` | 5 | `77058d9704d3` |
-| `check why=other-skin-mesh` | 790 | `d905b9c41357` |
-| `check why=other-skin-skeleton` | 731 | `d905b9c41357` |
-| `check why=own-mesh` | 4,167 | `042eb2b27725` |
+| `check why=other-skin-mesh` | 778 | `d905b9c41357` |
+| `check why=other-skin-skeleton` | 723 | `d905b9c41357` |
+| `check why=own-mesh` | 4,166 | `042eb2b27725` |
 | `check why=own-skeleton` | 2,874 | `548613f5aa7c` |
-| `check why=premium-skeleton` | 86 | `ab3df3f38fa0` |
-| `check why=slot-joints` | 1,849 | `042eb2b27725` |
-| `check why=slot-mesh` | 1,192 | `690378161a3c` |
-| `check why=slot-skeleton` | 1,206 | `690378161a3c` |
+| `check why=premium-skeleton` | 82 | `ab3df3f38fa0` |
+| `check why=slot-joints` | 1,848 | `042eb2b27725` |
+| `check why=slot-mesh` | 1,177 | `690378161a3c` |
+| `check why=slot-skeleton` | 1,191 | `690378161a3c` |
 | `clips blocked=needs-own-rig` | 419 | `91c798fedc8b` |
 | `clips blocked=own-off` | 2 | `8d8774c67b13` |
 | `clips blocked=refused` | 421 | `91c798fedc8b` |
 | `clips graph found=false` | 2 | `137304ee1cad` |
-| `clips graph found=true` | 5,136 | `690378161a3c` |
-| `clips on the unit's own rig=false` | 1,304 | `690378161a3c` |
-| `clips on the unit's own rig=true` | 4,150 | `042eb2b27725` |
+| `clips graph found=true` | 5,120 | `690378161a3c` |
+| `clips on the unit's own rig=false` | 1,289 | `690378161a3c` |
+| `clips on the unit's own rig=true` | 4,149 | `042eb2b27725` |
 | `clips own, off the slot's joints` | 2 | `8d8774c67b13` |
-| `clips reused from another skin` | 1,785 | `0db3470a3dd1` |
-| `clips reused on the same joints=false` | 1,748 | `0db3470a3dd1` |
+| `clips reused from another skin` | 1,777 | `0db3470a3dd1` |
+| `clips reused on the same joints=false` | 1,740 | `0db3470a3dd1` |
 | `clips reused on the same joints=true` | 59 | `a069969dabbc` |
 | `clips unknown` | 238 | `a8cbdd4e3846` |
 | `copies spread over other skins` | 1,007 | `2a4bdfa3de06` |
-| `copies.distinct-units` | 505 | `ab3df3f38fa0` |
+| `copies.distinct-units` | 491 | `ab3df3f38fa0` |
 | `copies.found` | 1,029 | `2a4bdfa3de06` |
 | `copies.near` | 614 | `29172c455892` |
 | `copy kind=near` | 614 | `29172c455892` |
 | `copy kind=renamed` | 214 | `605c42917603` |
 | `copy kind=same-rig` | 513 | `2a4bdfa3de06` |
 | `copy role=copy` | 1,029 | `2a4bdfa3de06` |
-| `copy role=representative` | 5,136 | `690378161a3c` |
+| `copy role=representative` | 5,120 | `690378161a3c` |
 | `game object via=history` | 3,455 | `b96f6a6c097c` |
-| `game object via=install` | 3,787 | `690378161a3c` |
-| `game object=game-exact` | 4,883 | `690378161a3c` |
+| `game object via=install` | 3,771 | `690378161a3c` |
+| `game object=game-exact` | 4,867 | `690378161a3c` |
 | `game object=game-renamed` | 644 | `16cdc7e5ea65` |
-| `origin evidence weight=strong` | 4,551 | `690378161a3c` |
-| `origin evidence weight=weak` | 4,546 | `690378161a3c` |
+| `origin evidence weight=strong` | 4,535 | `690378161a3c` |
+| `origin evidence weight=weak` | 4,530 | `690378161a3c` |
 | `origin evidence=audio-tag` | 1,096 | `c30b3459834f` |
-| `origin evidence=files` | 2,662 | `690378161a3c` |
+| `origin evidence=files` | 2,646 | `690378161a3c` |
 | `origin evidence=graph` | 1,023 | `c30b3459834f` |
 | `origin evidence=graph-closeness` | 1,352 | `04ac5afc04f1` |
-| `origin evidence=mesh` | 1,836 | `6de493211fd6` |
-| `origin evidence=objects` | 4,211 | `690378161a3c` |
+| `origin evidence=mesh` | 1,824 | `6de493211fd6` |
+| `origin evidence=objects` | 4,195 | `690378161a3c` |
 | `origin evidence=resolver` | 286 | `37b0f73a5134` |
-| `origin evidence=resolver-closeness` | 4,086 | `690378161a3c` |
-| `origin evidence=skeleton` | 1,837 | `6de493211fd6` |
+| `origin evidence=resolver-closeness` | 4,070 | `690378161a3c` |
+| `origin evidence=skeleton` | 1,825 | `6de493211fd6` |
 | `origin evidence=skin-name` | 839 | `ab3df3f38fa0` |
-| `origin evidence=texture` | 1,587 | `1a276d766e03` |
-| `origin own mesh=false` | 1,289 | `690378161a3c` |
-| `origin own mesh=true` | 4,167 | `042eb2b27725` |
-| `origin strength=strong` | 4,443 | `690378161a3c` |
+| `origin evidence=texture` | 1,572 | `1a276d766e03` |
+| `origin own mesh=false` | 1,274 | `690378161a3c` |
+| `origin own mesh=true` | 4,166 | `042eb2b27725` |
+| `origin strength=strong` | 4,427 | `690378161a3c` |
 | `origin strength=weak` | 601 | `042eb2b27725` |
-| `origin verdict=base` | 3,329 | `690378161a3c` |
+| `origin verdict=base` | 3,313 | `690378161a3c` |
 | `origin verdict=custom` | 130 | `2c79b080d055` |
-| `origin verdict=premium` | 1,950 | `d905b9c41357` |
+| `origin verdict=premium` | 1,936 | `d905b9c41357` |
 | `origin verdict=unknown` | 157 | `2dc58d50ccd1` |
 | `origin with no evidence that decides` | 287 | `2c79b080d055` |
 | `origin.ambiguous` | 27 | `894d1ee26bd9` |
@@ -468,44 +468,44 @@ case, the occurrences, and the runs that show it.
 | `rework=9.12` | 48 | `64ff2706f13a` |
 | `rework=9.16` | 21 | `37304c11dd60` |
 | `rig clip at a moved path` | 66 | `ba6e499a11c5` |
-| `rig clip own=false` | 4,726 | `690378161a3c` |
+| `rig clip own=false` | 4,710 | `690378161a3c` |
 | `rig clip own=true` | 1,560 | `98106ae9af46` |
-| `rig clip source=game` | 3,625 | `690378161a3c` |
+| `rig clip source=game` | 3,609 | `690378161a3c` |
 | `rig clip source=missing` | 7 | `5db3d0c678cf` |
 | `rig clip source=mod` | 2,436 | `98106ae9af46` |
 | `rig graph from=archive` | 2,395 | `98106ae9af46` |
-| `rig graph from=game` | 2,862 | `690378161a3c` |
+| `rig graph from=game` | 2,846 | `690378161a3c` |
 | `rig mesh at a moved path` | 102 | `298c1ffbf113` |
-| `rig mesh own=false` | 1,286 | `690378161a3c` |
-| `rig mesh own=true` | 4,167 | `042eb2b27725` |
-| `rig mesh source=game` | 892 | `690378161a3c` |
+| `rig mesh own=false` | 1,271 | `690378161a3c` |
+| `rig mesh own=true` | 4,166 | `042eb2b27725` |
+| `rig mesh source=game` | 877 | `690378161a3c` |
 | `rig mesh source=missing` | 1 | `fc86c0d71d96` |
-| `rig mesh source=mod` | 4,443 | `042eb2b27725` |
+| `rig mesh source=mod` | 4,442 | `042eb2b27725` |
 | `rig part unreadable=skeleton` | 1 | `0ab4237c5cdf` |
 | `rig skeleton at a moved path` | 102 | `298c1ffbf113` |
-| `rig skeleton own=false` | 1,300 | `690378161a3c` |
-| `rig skeleton own=true` | 4,150 | `042eb2b27725` |
-| `rig skeleton source=game` | 890 | `690378161a3c` |
+| `rig skeleton own=false` | 1,285 | `690378161a3c` |
+| `rig skeleton own=true` | 4,149 | `042eb2b27725` |
+| `rig skeleton source=game` | 875 | `690378161a3c` |
 | `rig skeleton source=missing` | 1 | `fc86c0d71d96` |
-| `rig skeleton source=mod` | 4,442 | `042eb2b27725` |
+| `rig skeleton source=mod` | 4,441 | `042eb2b27725` |
 | `rig submesh=hidden-never` | 792 | `52aa42a711bd` |
 | `rig submesh=hidden-shown` | 1,551 | `34a1e0d78ac0` |
-| `rig submesh=visible` | 4,167 | `042eb2b27725` |
+| `rig submesh=visible` | 4,166 | `042eb2b27725` |
 | `rig.submesh-copied` | 475 | `90fb9073d4e0` |
 | `rig.submesh-copied visibility=hidden-never` | 147 | `45c9eb0eb82d` |
 | `rig.submesh-copied visibility=hidden-shown` | 348 | `957d17b60f1e` |
 | `rig.submesh-copied visibility=visible` | 265 | `90fb9073d4e0` |
 | `rig.unreadable` | 1 | `0ab4237c5cdf` |
 | `rig.unreadable parts=skeleton` | 1 | `0ab4237c5cdf` |
-| `slot the game has a bin at=true` | 5,136 | `690378161a3c` |
+| `slot the game has a bin at=true` | 5,120 | `690378161a3c` |
 
 ### decision
 
 | case | mods | example |
 |---|---:|---|
 | `candidate feasible=false` | 616 | `bec3c44096ea` |
-| `candidate feasible=true` | 4,520 | `690378161a3c` |
-| `candidate=skin0 first` | 4,490 | `690378161a3c` |
+| `candidate feasible=true` | 4,504 | `690378161a3c` |
+| `candidate=skin0 first` | 4,474 | `690378161a3c` |
 | `candidate=the champion's target` | 464 | `46aa40949486` |
 | `candidate=the premium origin` | 537 | `ed7617f29465` |
 | `candidate=the skin whose clips it plays` | 86 | `91c798fedc8b` |
@@ -513,8 +513,8 @@ case, the occurrences, and the runs that show it.
 | `decision by the clips played` | 86 | `91c798fedc8b` |
 | `decision made before a rework` | 15 | `c20537006f52` |
 | `decision makes a new bin` | 5 | `77058d9704d3` |
-| `decision origin on the base's rig` | 25 | `8d6b23ea9486` |
-| `decision reason=base` | 3,442 | `690378161a3c` |
+| `decision origin on the base's rig` | 23 | `de5d7c1e5189` |
+| `decision reason=base` | 3,426 | `690378161a3c` |
 | `decision reason=clips-origin` | 84 | `91c798fedc8b` |
 | `decision reason=conflict` | 1 | `552d4d5e68c1` |
 | `decision reason=fallback` | 497 | `ed7617f29465` |
@@ -522,22 +522,22 @@ case, the occurrences, and the runs that show it.
 | `decision reason=paste-cleaned` | 463 | `560ccdbe142b` |
 | `decision reason=pre-rework` | 15 | `c20537006f52` |
 | `decision reason=skeleton-origin` | 1 | `bec3c44096ea` |
-| `decision reason=slot` | 985 | `d905b9c41357` |
+| `decision reason=slot` | 971 | `d905b9c41357` |
 | `decision reason=sub-follows` | 439 | `46aa40949486` |
 | `decision reason=sub-left-to-base` | 28 | `03a8a0aa8c28` |
 | `decision reason=superseded` | 5 | `0f805b36e089` |
 | `decision reason=unjudged` | 2 | `e6e43d1fb3db` |
 | `decision taken by another unit` | 5 | `0f805b36e089` |
 | `decision unfit` | 23 | `77058d9704d3` |
-| `decision with chroma followers` | 1,236 | `33a76ab3965e` |
+| `decision with chroma followers` | 1,229 | `33a76ab3965e` |
 | `decision with no target` | 49 | `c20537006f52` |
-| `target.chosen` | 5,118 | `690378161a3c` |
-| `target.chosen reason=base` | 3,442 | `690378161a3c` |
+| `target.chosen` | 5,102 | `690378161a3c` |
+| `target.chosen reason=base` | 3,426 | `690378161a3c` |
 | `target.chosen reason=clips-origin` | 86 | `91c798fedc8b` |
 | `target.chosen reason=fallback` | 497 | `ed7617f29465` |
 | `target.chosen reason=paste-cleaned` | 463 | `560ccdbe142b` |
 | `target.chosen reason=skeleton-origin` | 1 | `bec3c44096ea` |
-| `target.chosen reason=slot` | 985 | `d905b9c41357` |
+| `target.chosen reason=slot` | 971 | `d905b9c41357` |
 | `target.chosen reason=sub-follows` | 424 | `46aa40949486` |
 | `target.conflict` | 1 | `552d4d5e68c1` |
 | `target.forced-unfit` | 23 | `77058d9704d3` |
@@ -554,26 +554,26 @@ case, the occurrences, and the runs that show it.
 | case | mods | example |
 |---|---:|---|
 | `file verdict=dangling` | 1,274 | `b96f6a6c097c` |
-| `file verdict=game` | 4,924 | `690378161a3c` |
-| `file verdict=own` | 5,098 | `690378161a3c` |
+| `file verdict=game` | 4,908 | `690378161a3c` |
+| `file verdict=own` | 5,082 | `690378161a3c` |
 | `file verdict=unmounted` | 324 | `e2e6ce24228c` |
 | `hud.carried` | 1,439 | `cb2c00df0e69` |
-| `object reached as=carried` | 4,523 | `8023f23a12d3` |
-| `object reached as=entry` | 5,121 | `690378161a3c` |
-| `object reached as=game` | 1,775 | `2ec7826df1e5` |
+| `object reached as=carried` | 4,522 | `8023f23a12d3` |
+| `object reached as=entry` | 5,105 | `690378161a3c` |
+| `object reached as=game` | 1,762 | `2ec7826df1e5` |
 | `object reached as=graph` | 2,394 | `98106ae9af46` |
-| `object reached as=resolver` | 5,112 | `690378161a3c` |
-| `object.carried` | 5,136 | `690378161a3c` |
-| `object.game-carried` | 779 | `8023f23a12d3` |
-| `object.link-dangling` | 1,984 | `0db3470a3dd1` |
+| `object reached as=resolver` | 5,096 | `690378161a3c` |
+| `object.carried` | 5,120 | `690378161a3c` |
+| `object.game-carried` | 778 | `8023f23a12d3` |
+| `object.link-dangling` | 1,976 | `0db3470a3dd1` |
 | `object.unreached` | 1,590 | `551e18abc8c4` |
-| `reach carries game objects for overrides` | 779 | `8023f23a12d3` |
+| `reach carries game objects for overrides` | 778 | `8023f23a12d3` |
 | `reach enters the champion's objects` | 279 | `21891a4c64e2` |
-| `reach keeps links to the game's objects` | 5,031 | `690378161a3c` |
+| `reach keeps links to the game's objects` | 5,015 | `690378161a3c` |
 | `ref.dangling` | 1,270 | `b96f6a6c097c` |
 | `ref.dangling at a former path` | 262 | `b96f6a6c097c` |
 | `ref.unmounted` | 321 | `e2e6ce24228c` |
-| `references pointed at the game's files` | 3,744 | `b96f6a6c097c` |
+| `references pointed at the game's files` | 3,743 | `b96f6a6c097c` |
 | `renames keep links to the source slot` | 6 | `bec3c44096ea` |
 | `renames retarget a unit` | 596 | `bec3c44096ea` |
 | `renames swap game names` | 418 | `bec3c44096ea` |
@@ -598,10 +598,10 @@ case, the occurrences, and the runs that show it.
 | `unit.left why=sub-left` | 28 | `03a8a0aa8c28` |
 | `unit.left why=superseded` | 5 | `0f805b36e089` |
 | `unit.new-bin` | 5 | `77058d9704d3` |
-| `unit.ported` | 5,102 | `690378161a3c` |
-| `unit.ported graph=false` | 2,950 | `690378161a3c` |
+| `unit.ported` | 5,086 | `690378161a3c` |
+| `unit.ported graph=false` | 2,934 | `690378161a3c` |
 | `unit.ported graph=true` | 2,257 | `a8cbdd4e3846` |
-| `unit.ported new_bin=false` | 5,102 | `690378161a3c` |
+| `unit.ported new_bin=false` | 5,086 | `690378161a3c` |
 | `unit.ported new_bin=true` | 5 | `77058d9704d3` |
 | `unit.retargeted` | 596 | `bec3c44096ea` |
 
@@ -646,43 +646,43 @@ case, the occurrences, and the runs that show it.
 | `carried unit stands in for a game unit` | 27 | `5c2e33d0b72d` |
 | `carried unit with events of its own` | 400 | `b0ff2afbf036` |
 | `sound literals renamed` | 168 | `b0ff2afbf036` |
-| `sound unit voice=false` | 5,132 | `690378161a3c` |
-| `sound unit voice=true` | 4,990 | `690378161a3c` |
+| `sound unit voice=false` | 5,116 | `690378161a3c` |
+| `sound unit voice=true` | 4,974 | `690378161a3c` |
 | `unit leaves out a game unit` | 124 | `999455df6a97` |
 
 ### package
 
 | case | mods | example |
 |---|---:|---|
-| `again built=true` | 5,109 | `690378161a3c` |
-| `again redated` | 4,749 | `690378161a3c` |
+| `again built=true` | 5,093 | `690378161a3c` |
+| `again redated` | 4,733 | `690378161a3c` |
 | `chunk origin=bank` | 2,225 | `b467633d7198` |
 | `chunk origin=contained` | 3,002 | `40300b55696d` |
 | `chunk origin=delta` | 3,935 | `40300b55696d` |
-| `chunk origin=kept` | 5,117 | `690378161a3c` |
-| `chunk origin=made` | 4,544 | `8023f23a12d3` |
-| `layer=base` | 5,117 | `690378161a3c` |
+| `chunk origin=kept` | 5,101 | `690378161a3c` |
+| `chunk origin=made` | 4,543 | `8023f23a12d3` |
+| `layer=base` | 5,101 | `690378161a3c` |
 | `layer=hud` | 1,433 | `cb2c00df0e69` |
 | `layer=voice` | 1,074 | `ed6637fa8f40` |
 | `layer=voice-locale` | 539 | `eb88a666d18a` |
 | `package.empty` | 15 | `c20537006f52` |
 | `package.field-kept` | 395 | `0247e6935e9d` |
-| `package.in-place` | 5,109 | `690378161a3c` |
-| `package.in-place left=former-path` | 2,865 | `c20537006f52` |
+| `package.in-place` | 5,093 | `690378161a3c` |
+| `package.in-place left=former-path` | 2,849 | `c20537006f52` |
 | `package.in-place left=orphaned` | 32 | `9db170f43edc` |
 | `package.in-place left=stale` | 1,705 | `c92cdc9e684c` |
 | `package.in-place left=unused` | 3,199 | `2a321a390f6f` |
 | `package.in-place ships files a fixup made` | 2,748 | `088d0a057ec0` |
 | `package.in-place writes bins again` | 3,935 | `40300b55696d` |
-| `package.ported` | 5,102 | `690378161a3c` |
-| `package.ported left=former-path` | 2,857 | `8481ee36daca` |
+| `package.ported` | 5,086 | `690378161a3c` |
+| `package.ported left=former-path` | 2,841 | `8481ee36daca` |
 | `package.ported left=game` | 218 | `9ee78322b1d9` |
-| `package.ported left=not-carried` | 5,102 | `690378161a3c` |
-| `package.ported left=orphaned` | 2,881 | `eb5aba5314eb` |
+| `package.ported left=not-carried` | 5,086 | `690378161a3c` |
+| `package.ported left=orphaned` | 2,880 | `eb5aba5314eb` |
 | `package.ported left=recut` | 2,225 | `b467633d7198` |
 | `package.ported left=stale` | 1,655 | `c92cdc9e684c` |
 | `package.ported left=unused` | 3,200 | `2a321a390f6f` |
-| `package.resolver-frozen` | 4,394 | `8023f23a12d3` |
+| `package.resolver-frozen` | 4,393 | `8023f23a12d3` |
 | `package.shader-missing` | 27 | `b96f6a6c097c` |
 | `package.texture-contained` | 3,039 | `40300b55696d` |
 | `package.texture-contained contained` | 3,002 | `40300b55696d` |
@@ -693,29 +693,29 @@ case, the occurrences, and the runs that show it.
 | `package.texture-contained kept=truncated` | 2 | `8c8bf89b8b5a` |
 | `package.thumbnail-dropped` | 18 | `9cd0944e4517` |
 | `package.thumbnail-dropped why=entry-too-large` | 18 | `9cd0944e4517` |
-| `patch adds links` | 4,549 | `8023f23a12d3` |
-| `patch layer=base` | 5,102 | `690378161a3c` |
+| `patch adds links` | 4,548 | `8023f23a12d3` |
+| `patch layer=base` | 5,086 | `690378161a3c` |
 | `patch layer=hud` | 1,433 | `cb2c00df0e69` |
 | `patch layer=voice` | 1,074 | `ed6637fa8f40` |
 | `patch layer=voice-locale` | 539 | `eb88a666d18a` |
 | `patch of=root` | 1,433 | `cb2c00df0e69` |
-| `patch of=skin` | 5,102 | `690378161a3c` |
-| `patch outcome=applied` | 5,102 | `690378161a3c` |
+| `patch of=skin` | 5,086 | `690378161a3c` |
+| `patch outcome=applied` | 5,086 | `690378161a3c` |
 
 ### checks
 
 | case | mods | example |
 |---|---:|---|
-| `check.done` | 5,117 | `690378161a3c` |
-| `check.done by=apply` | 5,102 | `690378161a3c` |
-| `check.done by=base-skin` | 5,102 | `690378161a3c` |
-| `check.done by=round-trip` | 5,117 | `690378161a3c` |
-| `check.done by=types` | 5,117 | `690378161a3c` |
-| `check.done check=apply` | 5,102 | `690378161a3c` |
-| `check.done check=base-skin` | 5,102 | `690378161a3c` |
-| `check.done check=round-trip` | 5,117 | `690378161a3c` |
-| `check.done check=types` | 5,117 | `690378161a3c` |
-| `check.done source=schema` | 5,117 | `690378161a3c` |
+| `check.done` | 5,101 | `690378161a3c` |
+| `check.done by=apply` | 5,086 | `690378161a3c` |
+| `check.done by=base-skin` | 5,086 | `690378161a3c` |
+| `check.done by=round-trip` | 5,101 | `690378161a3c` |
+| `check.done by=types` | 5,101 | `690378161a3c` |
+| `check.done check=apply` | 5,086 | `690378161a3c` |
+| `check.done check=base-skin` | 5,086 | `690378161a3c` |
+| `check.done check=round-trip` | 5,101 | `690378161a3c` |
+| `check.done check=types` | 5,101 | `690378161a3c` |
+| `check.done source=schema` | 5,101 | `690378161a3c` |
 | `check.field-undeclared` | 218 | `a2c700b70d1d` |
 | `check.field-undeclared by=types` | 218 | `a2c700b70d1d` |
 | `check.name-unresolved` | 3 | `25c6531f00ba` |
@@ -742,7 +742,7 @@ case, the occurrences, and the runs that show it.
 | case | mods | example |
 |---|---:|---|
 | `record #GAME-BEHAVIOR-0001` | 5 | `77058d9704d3` |
-| `record #GAME-BEHAVIOR-0002` | 5,125 | `690378161a3c` |
+| `record #GAME-BEHAVIOR-0002` | 5,109 | `690378161a3c` |
 | `record #GAME-BEHAVIOR-0004` | 1,439 | `cb2c00df0e69` |
 | `record #GAME-BEHAVIOR-0007` | 321 | `e2e6ce24228c` |
 | `record #GAME-BEHAVIOR-0023` | 27 | `b96f6a6c097c` |
@@ -770,7 +770,7 @@ case, the occurrences, and the runs that show it.
 | `record #MOD-ARTIFACT-0010` | 71 | `975ff083bcb8` |
 | `record #MOD-ARTIFACT-0011` | 19 | `0672cfff925b` |
 | `record #MOD-ARTIFACT-0012` | 4 | `e5f3a984b590` |
-| `record #MOD-ARTIFACT-0013` | 1,289 | `690378161a3c` |
+| `record #MOD-ARTIFACT-0013` | 1,273 | `690378161a3c` |
 | `record #MOD-ARTIFACT-0016` | 2,098 | `3b1aaabea06e` |
 | `record #MOD-ARTIFACT-0017` | 9 | `a62c018e8eb8` |
 | `record #MOD-ARTIFACT-0018` | 6 | `9f9a7268dd0d` |
@@ -794,7 +794,7 @@ them.
 
 <!-- cases.py: unseen -->
 
-100 cases, against the runs `port` and `repair` of 2026-10-06.
+105 cases, against the runs `port` and `repair` of 2026-10-09.
 
 ### run, not seen
 
@@ -873,7 +873,12 @@ them.
 - `hud entry with an unspelled field`
 - `hud.carried with an unspelled field`
 - `unit left=no-target`
+- `unit left=off-target`
 - `unit.left why=no-target`
+- `unit.left why=off-target`
+- `unit.left-with-work`
+- `unit.left-with-work kind=slot-work`
+- `unit.left-with-work kind=unsupported`
 - `unit.new-bin-failed`
 - `unit.not-written`
 

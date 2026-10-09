@@ -1505,3 +1505,24 @@ drops the one at skin 6; the clips of the units at skins 3 and 5 hold them.
 
 **Families.** Archives whose own files differ in bytes stay apart: three versions of one chroma
 effects mod share no own file and count as three families.
+
+## The baselines at e709c75 (2026-10-09)
+
+Made again over the 5,121 mods of the datasets, with the program at `e709c75`, against the
+16.19.8207193 copy and the history index of 757 builds in format 1, its events banks keyed by
+file (#ADR-0081), at 24 in parallel with one thread each. 16 archives left the datasets that day
+(see "Extra units beside a champion's main unit").
+
+| baseline | command | done | ended by a fatal diagnostic | failed | time | differs from the one replaced |
+|---|---|---:|---|---:|---|---:|
+| `baseline-port-4` | `port --no-write` | 5,086 | 35: one `archive.no-skin`, 15 `package.empty`, 19 `package.shader-missing` | 0 | 943 s | 5,086 mods |
+| `baseline-repair-4` | `repair --no-write --again` | 5,093 | 28: one `archive.no-skin`, 27 `package.shader-missing` | 0 | 1,293 s | 5,093 mods |
+
+- **The differences** from `baseline-port-3` and `baseline-repair-3`: every report's evidence
+  names the program 0.1.3 against 0.1.2. Beyond it, one port differs (`21c1e6eb6091`): one of
+  its game objects is first held at 15.17.7060568 against 15.1.6450085, in the index of format
+  1 against the one `baseline-port-3` read. The repair ran beside builds of the workspace and a
+  port of 459 mods, so its time is longer than the machine's.
+- **The edge cases** of both: 670 cases seen, as before, and 105 declared and not seen. The 5
+  more are the cases of `unit.left-with-work` and of `off-target`, which no baseline shows. The
+  reduced corpus is the same 64 mods.
