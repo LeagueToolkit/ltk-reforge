@@ -12,9 +12,10 @@ use std::fmt::Write as _;
 use serde::Serialize;
 
 use super::base::{Base, BaseObjects};
-use super::findings::{GameCarried, LinkDangling, Unreached, hashes_hex};
+use super::findings::{Brought, GameCarried, HeldElsewhere, LinkDangling, Unreached, hashes_hex};
 use super::plan::{Objects, PlanError, PortInputs};
 use crate::diag::Sink;
+use crate::game::SkinCatalog;
 use crate::load::provenance::{AtPath, BytesOrigin};
 use crate::model::entity::{CharId, LinkTo, Mod, ObjectId, UnitId};
 use crate::model::hash::skin_paths;
@@ -72,6 +73,12 @@ pub struct UnitReach {
     /// Names reached that nothing loaded at the target holds.
     #[serde(serialize_with = "hashes_hex")]
     pub dangling: BTreeSet<BinHash>,
+    /// Of the dangling names, the ones the game's bins of other skins of the character hold.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub elsewhere: Vec<HeldElsewhere>,
+    /// What copies of those names' objects would bring.
+    #[serde(skip_serializing_if = "Brought::is_empty")]
+    pub brought: Brought,
     /// The game bins the port keeps as links: the ones the mod's load links, and a bin of the
     /// source slot that holds a name the target's bins lack.
     pub game_links: Vec<ChunkPath>,
@@ -271,6 +278,8 @@ impl Walk<'_, '_> {
             game: BTreeSet::new(),
             champion: BTreeSet::new(),
             dangling: BTreeSet::new(),
+            elsewhere: Vec::new(),
+            brought: Brought::default(),
             game_links,
             leftovers: Vec::new(),
             carried_for_overrides: 0,
@@ -336,6 +345,11 @@ impl Walk<'_, '_> {
             let links = value::links(self.objects.value(object)).into_iter();
             queue.extend(links.map(|link| (link, Some(object), fate == Fate::Game)));
         }
+        // #GAME-BEHAVIOR-0006: a name the bins of another skin hold resolves at the target only
+        // where a loaded bin holds it.
+        if let Some(catalog) = self.inputs.facts.catalogs.of(node.character) {
+            (reach.elsewhere, reach.brought) = held_elsewhere(catalog, &reach.dangling, resolves);
+        }
 
         // A game object naming an overridden file is carried, and so is every game object on
         // the way to it: the file ships under the namespace, and the links to it follow.
@@ -384,6 +398,45 @@ impl Walk<'_, '_> {
             .collect();
         Ok(Some(reach))
     }
+}
+
+/// The dangling names the bins of the character's other skins hold, and what copies of their
+/// objects would bring: every game object reached from them, link by link, through names
+/// nothing loaded at the target holds.
+fn held_elsewhere(
+    catalog: &SkinCatalog,
+    dangling: &BTreeSet<BinHash>,
+    resolves: impl Fn(BinHash) -> bool,
+) -> (Vec<HeldElsewhere>, Brought) {
+    let mut held = Vec::new();
+    let mut queue: VecDeque<BinHash> = VecDeque::new();
+    for &name in dangling {
+        let (Some(slots), Some(object)) = (catalog.slots_of(name), catalog.object(name)) else {
+            continue;
+        };
+        let slots = slots.iter().copied().collect();
+        let class = object.class_hash;
+        held.push(HeldElsewhere { name, class, slots });
+        queue.push_back(name);
+    }
+    let mut brought = Brought::default();
+    let mut seen: BTreeSet<BinHash> = BTreeSet::new();
+    let mut files: BTreeSet<WadHash> = BTreeSet::new();
+    while let Some(name) = queue.pop_front() {
+        if !seen.insert(name) {
+            continue;
+        }
+        let Some(object) = catalog.object(name) else {
+            brought.unresolved += 1;
+            continue;
+        };
+        brought.objects += 1;
+        files.extend(value::file_refs(object).iter().map(value::FileRef::hash));
+        let links = value::links(object).into_iter();
+        queue.extend(links.filter(|&link| !resolves(link)));
+    }
+    brought.files = files.len();
+    (held, brought)
 }
 
 impl Reach {
@@ -439,6 +492,8 @@ impl Reach {
                     unit,
                     slot: reach.target,
                     names: reach.dangling.iter().copied().collect(),
+                    elsewhere: reach.elsewhere.clone(),
+                    brought: reach.brought,
                 });
             }
             if !reach.leftovers.is_empty() {

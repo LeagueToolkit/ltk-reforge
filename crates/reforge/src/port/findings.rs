@@ -487,6 +487,45 @@ pub struct LinkDangling {
     /// The names, by their hashes.
     #[serde(serialize_with = "hashes_hex_list")]
     pub names: Vec<BinHash>,
+    /// Of those names, the ones the game's bins of other skins of the character hold.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub elsewhere: Vec<HeldElsewhere>,
+    /// What copies of those names' objects would bring.
+    #[serde(skip_serializing_if = "Brought::is_empty")]
+    pub brought: Brought,
+}
+
+/// A name nothing loaded at a unit's target holds, which the game's bins of other skins of the
+/// character hold (#GAME-BEHAVIOR-0006).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeldElsewhere {
+    /// The name.
+    #[serde(serialize_with = "entry_hex")]
+    pub name: BinHash,
+    /// The class of the game's object under it.
+    #[serde(serialize_with = "entry_hex")]
+    pub class: BinHash,
+    /// The slots whose bins hold it.
+    pub slots: Vec<Slot>,
+}
+
+/// The game's objects that copies of names held at other skins would bring: each of them and,
+/// link by link, every object they name that nothing loaded at the target holds.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct Brought {
+    /// The objects the bins of other skins hold.
+    pub objects: usize,
+    /// The files those objects name.
+    pub files: usize,
+    /// Names those objects reach that no skin's bins hold either.
+    pub unresolved: usize,
+}
+
+impl Brought {
+    /// Whether it brings nothing.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 impl Diag for LinkDangling {
@@ -502,6 +541,17 @@ impl Diag for LinkDangling {
         f.list(&self.names, |f, name| {
             f.entry(*name);
         });
+        if !self.elsewhere.is_empty() {
+            let held = self.elsewhere.len();
+            let _ = write!(f, "; {held} of them the game holds at other skins: ");
+            f.list(&self.elsewhere, |f, held| {
+                f.entry(held.name).text(" (");
+                f.list(&held.slots, |f, slot| {
+                    let _ = write!(f, "skin{slot}");
+                });
+                f.text(")");
+            });
+        }
     }
 }
 

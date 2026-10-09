@@ -112,6 +112,29 @@ fn reach_sorts_what_the_entry_reaches() {
     assert_eq!(verdict(&run, "test", 0, BASE_PARTICLE_TEX), None);
     // The leftover is not carried, so neither is what it names.
     assert_eq!(verdict(&run, "test", 0, "assets/mod/a/leftover.tex"), None);
+    // A name nothing holds is held at no other skin either.
+    assert!(run.only::<LinkDangling>().elsewhere.is_empty());
+}
+
+#[test]
+fn a_dangling_name_the_bins_of_another_skin_hold_is_named_with_that_skin() {
+    // The mod's rig at skin0 links the graph only the game's skin 3 bins hold.
+    let graph3 = "Characters/Test/Animations/Skin3";
+    let files = own_mod(&[("fx", graph3)], vec![]);
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let dangling = run.only::<LinkDangling>();
+    assert_eq!(dangling.names, [name_hash(graph3)], "{}", run.dump());
+    let held = &dangling.elsewhere[0];
+    assert_eq!(
+        (held.name, held.slots.as_slice()),
+        (name_hash(graph3), &[Slot(3)][..])
+    );
+    // A copy brings the graph and names its clips; nothing it links is missing.
+    let brought = dangling.brought;
+    let counts = (brought.objects, brought.files, brought.unresolved);
+    assert_eq!(counts, (1, skins::S3_CLIPS.len(), 0));
 }
 
 #[test]
