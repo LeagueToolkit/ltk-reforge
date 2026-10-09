@@ -9,8 +9,8 @@ use reforge::history::NoHistory;
 use reforge::model::entity::ObjectId;
 use reforge::model::{Slot, WadHash, name_hash, path_hash, value};
 use reforge::port::{
-    Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, PlanError, Policy, PortOptions,
-    RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached, WorkKind, WorkLeft,
+    Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, ObjectsCopied, PlanError, Policy,
+    PortOptions, RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached, WorkKind, WorkLeft,
 };
 use reforge_testkit::bins::{
     Skin, bin, blob, entry, graph, particle, resolver, resolver_with, text, with_link,
@@ -112,29 +112,39 @@ fn reach_sorts_what_the_entry_reaches() {
     assert_eq!(verdict(&run, "test", 0, BASE_PARTICLE_TEX), None);
     // The leftover is not carried, so neither is what it names.
     assert_eq!(verdict(&run, "test", 0, "assets/mod/a/leftover.tex"), None);
-    // A name nothing holds is held at no other skin either.
-    assert!(run.only::<LinkDangling>().elsewhere.is_empty());
+    // A name nothing holds is no other skin's either: nothing is copied.
+    assert!(run.found::<ObjectsCopied>().is_empty());
 }
 
 #[test]
-fn a_dangling_name_the_bins_of_another_skin_hold_is_named_with_that_skin() {
-    // The mod's rig at skin0 links the graph only the game's skin 3 bins hold.
+fn a_name_only_another_skins_bins_hold_is_copied_under_the_targets_names() {
+    // #ADR-0083: the mod's rig at skin0 links the graph only the game's skin 3 bins hold.
     let graph3 = "Characters/Test/Animations/Skin3";
     let files = own_mod(&[("fx", graph3)], vec![]);
     let env = env(skins::game(), NoHistory);
     let run = PortRun::of(&env, &archive(&files));
 
-    let dangling = run.only::<LinkDangling>();
-    assert_eq!(dangling.names, [name_hash(graph3)], "{}", run.dump());
-    let held = &dangling.elsewhere[0];
-    assert_eq!(
-        (held.name, held.slots.as_slice()),
-        (name_hash(graph3), &[Slot(3)][..])
-    );
-    // A copy brings the graph and names its clips; nothing it links is missing.
-    let brought = dangling.brought;
-    let counts = (brought.objects, brought.files, brought.unresolved);
-    assert_eq!(counts, (1, skins::S3_CLIPS.len(), 0));
+    assert!(run.found::<LinkDangling>().is_empty(), "{}", run.dump());
+    let copied = run.only::<ObjectsCopied>();
+    let found: Vec<_> = copied.objects.iter().map(|c| (c.name, c.from)).collect();
+    assert_eq!(found, [(name_hash(graph3), Slot(3))]);
+    // The copy ships in the unit's bin under a name of the target's, and the entry names it.
+    let port = run.port.unit(run.unit("test", 0)).expect("the unit ships");
+    let [copy] = port.copies.as_slice() else {
+        panic!("one copy: {}", run.dump());
+    };
+    assert_ne!(copy.path_hash, name_hash(graph3));
+    let entry = run.port.object(port.entry).expect("the entry is ported");
+    assert!(value::links(entry).contains(&copy.path_hash));
+    assert!(!value::links(entry).contains(&name_hash(graph3)));
+    assert!(run.ships(&format!("mods/{NS}/characters/test/skin0/vfx.bin")));
+    // The clips it names stay the game's, at the game's paths.
+    let clips: Vec<WadHash> = skins::S3_CLIPS.iter().map(|p| path_hash(p)).collect();
+    let named: Vec<WadHash> = value::file_refs(copy)
+        .iter()
+        .map(value::FileRef::hash)
+        .collect();
+    assert_eq!(named, clips);
 }
 
 #[test]

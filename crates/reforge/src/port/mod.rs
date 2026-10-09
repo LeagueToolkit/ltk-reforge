@@ -25,16 +25,16 @@ pub use self::decide::{
     Alternative, Candidate, Conflict, Considered, Decision, MadeBefore, Reason, Targets, clip_fit,
 };
 pub use self::findings::{
-    AudioCarried, AudioNotCarried, AudioUnitsLeftOut, Brought, CODES, Carried, CarriedBank,
-    CarriedOnce, Carry, ForcedUnfit, GameCarried, HeldElsewhere, HudCarried, Infeasible, LeftRow,
-    LinkDangling, LiteralsRenamed, NotCarried, PreRework, RefDangling, RefUnmounted, Retargeted,
+    AudioCarried, AudioNotCarried, AudioUnitsLeftOut, CODES, Carried, CarriedBank, CarriedOnce,
+    Carry, CopiedName, ForcedUnfit, GameCarried, HudCarried, Infeasible, LeftRow, LinkDangling,
+    LiteralsRenamed, NotCarried, ObjectsCopied, PreRework, RefDangling, RefUnmounted, Retargeted,
     SubLeft, Superseded, TargetChosen, TargetConflict, UnitWork, UnitsLeft, Unjudged, Unreached,
     WorkKind, WorkLeft,
 };
 pub use self::hud::{FieldEdit, HudEdits, HudPlan};
 pub use self::layout::{Layout, MadeNames, folder_name, tidy_stem};
 pub use self::plan::{Objects, PlanError, Port, PortInputs, PortOptions, PortUnit};
-pub use self::reach::{Fate, Reach, SHADERS_BIN, UnitReach};
+pub use self::reach::{Copied, Fate, Reach, SHADERS_BIN, UnitReach};
 pub use self::refs::{
     ALWAYS_MOUNTED, CARRIED_FIELDS, FileRefs, FileVerdict, ICON_FIELDS, UnitRefs,
 };

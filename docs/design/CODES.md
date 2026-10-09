@@ -142,7 +142,8 @@ bin. `unit.left` is raised once per character, with each of its units that leave
 | `unit.ported` | note | what the unit's port holds: records, objects carried, whether the graph ships, whether its bin is written whole | `lower.summary` |
 | `object.carried` | note | what the port carries under its namespace: objects, files, references pointed at the game's files | `relocate.summary` |
 | `object.game-carried` | note | game objects carried because they name files the mod overrides | `reach.overrides` |
-| `object.link-dangling` | note | names the entry reaches that nothing loaded at the target holds; of them, the ones the game's bins of other skins of the character hold, with what copies of their objects would bring | `reach.dangling` |
+| `object.link-dangling` | note | names the entry reaches that nothing loaded at the target holds, nor the game's bins of another skin of the character | `reach.dangling` |
+| `object.copied` | note | game objects of other skins copied under the target's names, for names nothing loaded at the target holds (#ADR-0083) | none |
 | `object.unreached` | note | objects of the unit's load that no entry reaches; not carried | `reach.leftovers` |
 | `ref.dangling` | note | files the port names that nothing holds | `file-refs.dangling` |
 | `ref.unmounted` | note | files only a WAD not mounted with the champion holds | `file-refs.unavailable` |

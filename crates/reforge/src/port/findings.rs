@@ -17,6 +17,7 @@ use crate::model::{BinHash, Layer, Slot, WadHash};
 pub const CODES: &[Code] = &[
     UnitsLeft::CODE,
     WorkLeft::CODE,
+    ObjectsCopied::CODE,
     Retargeted::CODE,
     GameCarried::CODE,
     LinkDangling::CODE,
@@ -477,7 +478,8 @@ impl Diag for GameCarried {
     }
 }
 
-/// Names a unit's entry reaches that nothing loaded at its target holds.
+/// Names a unit's entry reaches that nothing loaded at its target holds, nor the game's bins
+/// of another skin of the character.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LinkDangling {
     /// The unit.
@@ -487,45 +489,6 @@ pub struct LinkDangling {
     /// The names, by their hashes.
     #[serde(serialize_with = "hashes_hex_list")]
     pub names: Vec<BinHash>,
-    /// Of those names, the ones the game's bins of other skins of the character hold.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub elsewhere: Vec<HeldElsewhere>,
-    /// What copies of those names' objects would bring.
-    #[serde(skip_serializing_if = "Brought::is_empty")]
-    pub brought: Brought,
-}
-
-/// A name nothing loaded at a unit's target holds, which the game's bins of other skins of the
-/// character hold (#GAME-BEHAVIOR-0006).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct HeldElsewhere {
-    /// The name.
-    #[serde(serialize_with = "entry_hex")]
-    pub name: BinHash,
-    /// The class of the game's object under it.
-    #[serde(serialize_with = "entry_hex")]
-    pub class: BinHash,
-    /// The slots whose bins hold it.
-    pub slots: Vec<Slot>,
-}
-
-/// The game's objects that copies of names held at other skins would bring: each of them and,
-/// link by link, every object they name that nothing loaded at the target holds.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
-pub struct Brought {
-    /// The objects the bins of other skins hold.
-    pub objects: usize,
-    /// The files those objects name.
-    pub files: usize,
-    /// Names those objects reach that no skin's bins hold either.
-    pub unresolved: usize,
-}
-
-impl Brought {
-    /// Whether it brings nothing.
-    pub fn is_empty(&self) -> bool {
-        *self == Self::default()
-    }
 }
 
 impl Diag for LinkDangling {
@@ -541,17 +504,53 @@ impl Diag for LinkDangling {
         f.list(&self.names, |f, name| {
             f.entry(*name);
         });
-        if !self.elsewhere.is_empty() {
-            let held = self.elsewhere.len();
-            let _ = write!(f, "; {held} of them the game holds at other skins: ");
-            f.list(&self.elsewhere, |f, held| {
-                f.entry(held.name).text(" (");
-                f.list(&held.slots, |f, slot| {
-                    let _ = write!(f, "skin{slot}");
-                });
-                f.text(")");
-            });
-        }
+    }
+}
+
+/// A name of a game object a port copies from the bins of another skin, and whence
+/// (#ADR-0083).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct CopiedName {
+    /// The name the game holds it under.
+    #[serde(serialize_with = "entry_hex")]
+    pub name: BinHash,
+    /// Its class.
+    #[serde(serialize_with = "entry_hex")]
+    pub class: BinHash,
+    /// The slot whose bins it is copied from.
+    pub from: Slot,
+}
+
+/// The game objects a unit's port copies from the bins of other skins of the character, for
+/// names nothing loaded at its target holds (#ADR-0083).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ObjectsCopied {
+    /// The unit.
+    pub unit: UnitId,
+    /// Its target.
+    pub slot: Slot,
+    /// The objects, in the order reached.
+    pub objects: Vec<CopiedName>,
+}
+
+impl Diag for ObjectsCopied {
+    const CODE: Code = plan("object.copied");
+
+    fn subject(&self) -> Subject {
+        Subject::Unit(self.unit)
+    }
+
+    fn message(&self, f: &mut Message<'_>) {
+        f.count(self.objects.len(), "object");
+        let _ = write!(
+            f,
+            " of other skins copied under skin{}'s names: ",
+            self.slot
+        );
+        f.list(&self.objects, |f, copied| {
+            f.entry(copied.name);
+            let _ = write!(f, " (skin{})", copied.from);
+        });
     }
 }
 

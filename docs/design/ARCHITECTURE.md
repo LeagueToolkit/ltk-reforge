@@ -494,7 +494,11 @@ object takes a name of its own, which every link to it follows.
    holds, the game bins the port keeps as links, and the objects nothing reaches
    (#GAME-BEHAVIOR-0006). A game object naming a file the mod overrides is carried, with every
    game object on the way to it. A resolver under the slot's own name stands in for a
-   resolver link nothing loads at T (#ADR-0056).
+   resolver link nothing loads at T (#ADR-0056). A name only the game's bins of another skin
+   of the character hold is a `Copied`: the game's object, of the unit's premium origin when
+   its bins hold it, else of the lowest slot, and the walk goes on through it. The plan names
+   each copy under T's names, renames every link to it, and ships it in the unit's bin
+   beside its carried objects, its files left at the game's paths (#ADR-0083).
 4. **`FileRefs`**, per unit: each file a ported object names, as a `FileVerdict`: the game's at
    a path (in a WAD mounted with the champion, #GAME-BEHAVIOR-0007), the mod's own and
    shipped, held only by a WAD that is not mounted, or dangling. A stale copy is the game's

@@ -4,18 +4,21 @@
 //! The walk follows object links from the entry through the unit's load. A name the load does
 //! not hold resolves to the game's objects at the target: the bins of the game's skin there,
 //! the bin of shader definitions, and the game bins the mod's load links (#GAME-BEHAVIOR-0006).
-//! Anything else is dangling.
+//! A name only the game's bins of another skin hold is copied, and the walk goes on through the
+//! copy (#ADR-0083). Anything else is dangling.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 
+use ltk_meta::BinObject;
 use serde::Serialize;
 
 use super::base::{Base, BaseObjects};
-use super::findings::{Brought, GameCarried, HeldElsewhere, LinkDangling, Unreached, hashes_hex};
+use super::findings::{
+    CopiedName, GameCarried, LinkDangling, ObjectsCopied, Unreached, hashes_hex,
+};
 use super::plan::{Objects, PlanError, PortInputs};
 use crate::diag::Sink;
-use crate::game::SkinCatalog;
 use crate::load::provenance::{AtPath, BytesOrigin};
 use crate::model::entity::{CharId, LinkTo, Mod, ObjectId, UnitId};
 use crate::model::hash::skin_paths;
@@ -56,8 +59,20 @@ impl Fate {
     }
 }
 
+/// The game's object under a name only the bins of another skin hold, which a port copies
+/// under the target's names (#ADR-0083).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Copied {
+    /// The name, and whence.
+    #[serde(flatten)]
+    pub name: CopiedName,
+    /// The game's object.
+    #[serde(skip)]
+    pub object: BinObject,
+}
+
 /// What one unit's entry reaches at its target.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UnitReach {
     /// The target.
     pub target: Slot,
@@ -70,15 +85,13 @@ pub struct UnitReach {
     /// unit carries.
     #[serde(serialize_with = "hashes_hex")]
     pub champion: BTreeSet<BinHash>,
-    /// Names reached that nothing loaded at the target holds.
+    /// Names reached that nothing loaded at the target holds, nor the game's bins of another
+    /// skin.
     #[serde(serialize_with = "hashes_hex")]
     pub dangling: BTreeSet<BinHash>,
-    /// Of the dangling names, the ones the game's bins of other skins of the character hold.
+    /// Names only the game's bins of another skin hold, copied, in the order reached.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub elsewhere: Vec<HeldElsewhere>,
-    /// What copies of those names' objects would bring.
-    #[serde(skip_serializing_if = "Brought::is_empty")]
-    pub brought: Brought,
+    pub copies: Vec<Copied>,
     /// The game bins the port keeps as links: the ones the mod's load links, and a bin of the
     /// source slot that holds a name the target's bins lack.
     pub game_links: Vec<ChunkPath>,
@@ -109,7 +122,7 @@ impl UnitReach {
 }
 
 /// What each unit with a target and an entry reaches.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct Reach {
     /// By unit.
     pub units: BTreeMap<UnitId, UnitReach>,
@@ -272,14 +285,44 @@ impl Walk<'_, '_> {
             linked
         };
 
+        // #ADR-0083: a copy is of the unit's premium origin when its bins hold the name, else of
+        // the lowest slot whose bins hold it.
+        let catalog = self.inputs.facts.catalogs.of(node.character);
+        let origin = targets
+            .decisions
+            .get(&unit)
+            .and_then(|decision| decision.premium);
+        let origin_skin = origin
+            .zip(catalog)
+            .and_then(|(slot, catalog)| catalog.skin(slot));
+        let at_origin = match origin_skin {
+            Some(skin) => self.base.loaded(&skin.chain)?,
+            None => BaseObjects::default(),
+        };
+        let copy_of = |name: BinHash| -> Option<Copied> {
+            let slots = catalog?.slots_of(name)?;
+            let from_origin = origin.filter(|slot| slots.contains(slot));
+            let held = from_origin.and_then(|slot| Some((slot, at_origin.object(name)?.value)));
+            let (from, object) = match held {
+                Some(held) => held,
+                None => (*slots.first()?, catalog?.object(name)?),
+            };
+            let name = CopiedName {
+                name,
+                class: object.class_hash,
+                from,
+            };
+            let object = object.clone();
+            Some(Copied { name, object })
+        };
+
         let mut reach = UnitReach {
             target: t,
             objects: Vec::new(),
             game: BTreeSet::new(),
             champion: BTreeSet::new(),
             dangling: BTreeSet::new(),
-            elsewhere: Vec::new(),
-            brought: Brought::default(),
+            copies: Vec::new(),
             game_links,
             leftovers: Vec::new(),
             carried_for_overrides: 0,
@@ -325,6 +368,11 @@ impl Walk<'_, '_> {
                         reach.game_links.push(bin.clone());
                     }
                     reach.game.insert(name);
+                } else if let Some(copied) = copy_of(name) {
+                    // What the copy names is the port's to resolve as well.
+                    let links = value::links(&copied.object).into_iter();
+                    queue.extend(links.map(|link| (link, None, false)));
+                    reach.copies.push(copied);
                 } else {
                     reach.dangling.insert(name);
                 }
@@ -344,11 +392,6 @@ impl Walk<'_, '_> {
             reach.objects.push((object, fate));
             let links = value::links(self.objects.value(object)).into_iter();
             queue.extend(links.map(|link| (link, Some(object), fate == Fate::Game)));
-        }
-        // #GAME-BEHAVIOR-0006: a name the bins of another skin hold resolves at the target only
-        // where a loaded bin holds it.
-        if let Some(catalog) = self.inputs.facts.catalogs.of(node.character) {
-            (reach.elsewhere, reach.brought) = held_elsewhere(catalog, &reach.dangling, resolves);
         }
 
         // A game object naming an overridden file is carried, and so is every game object on
@@ -375,8 +418,14 @@ impl Walk<'_, '_> {
             carry.extend(parents.get(&object).into_iter().flatten().copied());
         }
         // What stayed the game's and was reached only through the game's objects is not the
-        // mod's.
+        // mod's. A copy is kept where a kept object names it, and what it names goes on.
         let fates: HashMap<ObjectId, Fate> = reach.objects.iter().copied().collect();
+        let copy_links: HashMap<BinHash, Vec<BinHash>> = reach
+            .copies
+            .iter()
+            .map(|copied| (copied.name.name, value::links(&copied.object)))
+            .collect();
+        let mut through: HashSet<BinHash> = HashSet::new();
         let mut kept: BTreeSet<ObjectId> = BTreeSet::new();
         let mut stack = vec![entry];
         stack.extend(stale_link.and_then(|_| own.get(own_name)));
@@ -384,13 +433,21 @@ impl Walk<'_, '_> {
             if !kept.insert(object) || fates.get(&object) == Some(&Fate::Game) {
                 continue;
             }
-            for link in value::links(self.objects.value(object)) {
+            let mut names = value::links(self.objects.value(object));
+            while let Some(link) = names.pop() {
                 if let Some(child) = own.get(link).or_else(|| adopted.get(&link).copied()) {
                     stack.push(child);
+                } else if let Some(links) = copy_links.get(&link)
+                    && through.insert(link)
+                {
+                    names.extend(links.iter().copied());
                 }
             }
         }
         reach.objects.retain(|(object, _)| kept.contains(object));
+        reach
+            .copies
+            .retain(|copied| through.contains(&copied.name.name));
         let reached: BTreeSet<ObjectId> = reach.objects.iter().map(|(o, _)| *o).collect();
         reach.leftovers = order
             .into_iter()
@@ -398,45 +455,6 @@ impl Walk<'_, '_> {
             .collect();
         Ok(Some(reach))
     }
-}
-
-/// The dangling names the bins of the character's other skins hold, and what copies of their
-/// objects would bring: every game object reached from them, link by link, through names
-/// nothing loaded at the target holds.
-fn held_elsewhere(
-    catalog: &SkinCatalog,
-    dangling: &BTreeSet<BinHash>,
-    resolves: impl Fn(BinHash) -> bool,
-) -> (Vec<HeldElsewhere>, Brought) {
-    let mut held = Vec::new();
-    let mut queue: VecDeque<BinHash> = VecDeque::new();
-    for &name in dangling {
-        let (Some(slots), Some(object)) = (catalog.slots_of(name), catalog.object(name)) else {
-            continue;
-        };
-        let slots = slots.iter().copied().collect();
-        let class = object.class_hash;
-        held.push(HeldElsewhere { name, class, slots });
-        queue.push_back(name);
-    }
-    let mut brought = Brought::default();
-    let mut seen: BTreeSet<BinHash> = BTreeSet::new();
-    let mut files: BTreeSet<WadHash> = BTreeSet::new();
-    while let Some(name) = queue.pop_front() {
-        if !seen.insert(name) {
-            continue;
-        }
-        let Some(object) = catalog.object(name) else {
-            brought.unresolved += 1;
-            continue;
-        };
-        brought.objects += 1;
-        files.extend(value::file_refs(object).iter().map(value::FileRef::hash));
-        let links = value::links(object).into_iter();
-        queue.extend(links.filter(|&link| !resolves(link)));
-    }
-    brought.files = files.len();
-    (held, brought)
 }
 
 impl Reach {
@@ -487,13 +505,18 @@ impl Reach {
                     objects: reach.carried_for_overrides,
                 });
             }
+            if !reach.copies.is_empty() {
+                sink.raise(ObjectsCopied {
+                    unit,
+                    slot: reach.target,
+                    objects: reach.copies.iter().map(|copied| copied.name).collect(),
+                });
+            }
             if !reach.dangling.is_empty() {
                 sink.raise(LinkDangling {
                     unit,
                     slot: reach.target,
                     names: reach.dangling.iter().copied().collect(),
-                    elsewhere: reach.elsewhere.clone(),
-                    brought: reach.brought,
                 });
             }
             if !reach.leftovers.is_empty() {
@@ -527,6 +550,10 @@ impl Dump for Reach {
             );
             for link in &reach.game_links {
                 let _ = writeln!(out, "   keeps link {link}");
+            }
+            for copied in &reach.copies {
+                let (name, from) = (copied.name.name, copied.name.from);
+                let _ = writeln!(out, "   copies {:08x} from skin{from}", name.0);
             }
         }
         out

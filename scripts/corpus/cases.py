@@ -239,8 +239,6 @@ RULES += [
     data("unit.left-with-work", "units[].kind", VALUE, "slot-work unsupported"),
     data("unit.ported", "graph", VALUE, "true false"),
     data("unit.ported", "new_bin", VALUE, "true false"),
-    data("object.link-dangling", "elsewhere", SET, name="object.link-dangling held at other skins"),
-    data("object.link-dangling", "brought.unresolved", POSITIVE, name="object.link-dangling brings names nothing holds"),
     data("ref.dangling", "former", POSITIVE, name="ref.dangling at a former path"),
     data("hud.carried", "unspelled", POSITIVE, name="hud.carried with an unspelled field"),
     data("audio.carried", "banks[].carry.shape", VALUE, "overlay own"),

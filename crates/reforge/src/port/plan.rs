@@ -137,7 +137,7 @@ impl<'a> Objects<'a> {
 }
 
 /// One unit of a port.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PortUnit {
     /// The unit.
     pub unit: UnitId,
@@ -155,6 +155,10 @@ pub struct PortUnit {
     pub graph: Option<ObjectId>,
     /// The objects it carries, in the order reached.
     pub carried: Vec<ObjectId>,
+    /// The game objects of other skins it copies, each as it ships: under a name of the
+    /// target's, its links renamed (#ADR-0083).
+    #[serde(skip)]
+    pub copies: Vec<BinObject>,
     /// The game bins it keeps as links.
     pub game_links: Vec<ChunkPath>,
     /// Its directory.
@@ -288,6 +292,20 @@ impl Linking<'_, '_> {
                 .or_default()
                 .push((old, new));
         }
+        // A copy of another skin's object takes a name of the target's, as a carried object
+        // does, and every link to it follows (#ADR-0083).
+        let mut copies = Vec::new();
+        for copied in &reached.copies {
+            let mut object = copied.object.clone();
+            let leaf = Layout::leaf(inputs.names, &object);
+            let new = self
+                .layout
+                .name_object(&character.spelled, t, object.class_hash, &leaf);
+            let pair = (object.path_hash, new);
+            self.renames.namespaced.entry(group).or_default().push(pair);
+            object.path_hash = new;
+            copies.push(object);
+        }
         let ported: Vec<(ObjectId, Fate)> = reached.ported().collect();
         self.by_group
             .push((ported.iter().map(|(o, _)| *o).collect(), group));
@@ -359,6 +377,7 @@ impl Linking<'_, '_> {
             resolver,
             graph,
             carried,
+            copies,
             game_links: reached.game_links.clone(),
             dir,
         });
@@ -392,6 +411,15 @@ impl Linking<'_, '_> {
                 }
                 let renamed = value::rename_hashes_by(held, &renames, &|hash| keys.contains(&hash));
                 self.objects.set(object, renamed);
+            }
+        }
+        for unit in &mut self.units {
+            let renames = self.renames.of_group((unit.champion, unit.target));
+            let named: HashSet<BinHash> = renames.keys().copied().collect();
+            for copy in &mut unit.copies {
+                if value::names_any(copy, &named) {
+                    *copy = value::rename_hashes_by(copy, &renames, &|hash| keys.contains(&hash));
+                }
             }
         }
     }

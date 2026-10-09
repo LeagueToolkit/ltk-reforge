@@ -452,7 +452,9 @@ impl<'a> PortBuilder<'a> {
                 bins.push((path, objects, Vec::new()));
             }
         };
-        made(Layout::objects_bin(&unit.dir), objects_of(&unit.carried));
+        let mut objects = objects_of(&unit.carried);
+        objects.extend(unit.copies.iter().cloned());
+        made(Layout::objects_bin(&unit.dir), objects);
         let graph: Vec<_> = unit.graph.into_iter().collect();
         made(Layout::graph_bin(&unit.dir), objects_of(&graph));
         for link in &unit.game_links {
