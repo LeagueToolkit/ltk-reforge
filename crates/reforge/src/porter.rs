@@ -277,7 +277,7 @@ impl<'a> Porter<'a> {
         self
     }
 
-    /// Ships each DDS as it is, put in TEX's container nowhere (#ADR-0055).
+    /// Ships each DDS as it is, not put in a TEX container (#ADR-0055).
     #[must_use]
     pub fn keep_dds(mut self, keep: bool) -> Self {
         self.settings.keep_dds = keep;
@@ -345,7 +345,7 @@ impl<'a> Repairer<'a> {
         self
     }
 
-    /// Ships each DDS as it is, put in TEX's container nowhere (#ADR-0055).
+    /// Ships each DDS as it is, not put in a TEX container (#ADR-0055).
     #[must_use]
     pub fn keep_dds(mut self, keep: bool) -> Self {
         self.settings.keep_dds = keep;

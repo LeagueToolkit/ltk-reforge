@@ -99,7 +99,14 @@ pub fn stub(stem: &str) -> Vec<u8> {
 
 /// An events bank named `stem` holding these objects.
 pub fn events_bank(stem: &str, objects: Vec<Object>) -> Vec<u8> {
-    let mut bank = Bank::new_bnk(header(stem), true);
+    events_bank_at(stem, CLIENT_VERSION, objects)
+}
+
+/// An events bank named `stem`, of a version, holding these objects.
+pub fn events_bank_at(stem: &str, version: u32, objects: Vec<Object>) -> Vec<u8> {
+    let mut header = header(stem);
+    header[..4].copy_from_slice(&version.to_le_bytes());
+    let mut bank = Bank::new_bnk(header, true);
     bank.objects = objects;
     bank.write()
 }

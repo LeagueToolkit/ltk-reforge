@@ -7,21 +7,26 @@ use ltk_meta::BinObject;
 use reforge::env::Env;
 use reforge::facts::ClipOrigin;
 use reforge::history::{NoHistory, Position};
-use reforge::model::{BankClip, BankRole, INIT_BANK, Layer, Slot, name_hash, path_hash, value};
+use reforge::model::{
+    BankClip, BankRole, INIT_BANK, Layer, SkinEntry, Slot, name_hash, path_hash, value,
+};
 use reforge::port::{
-    AudioCarried, AudioNotCarried, Carry, LiteralsRenamed, NotCarried, Policy, PortOptions,
+    AudioCarried, AudioNotCarried, AudioUnitsLeftOut, Carry, LiteralsRenamed, NotCarried, Policy,
+    PortOptions,
 };
 use reforge_testkit::bins::{bin, graph, resolver, text};
 use reforge_testkit::facts::env;
 use reforge_testkit::skins::{self, BASE_CLIPS, WAD, skin_bin};
 use reforge_testkit::sounds::{
-    BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_WPK, audio_game, base_entry, bus, clip,
-    container, event, events_bank, init_bank, media_bank, media_bank_with, package, play, sfx,
-    sound, voice_game, with_audio,
+    BASE_SFX, BASE_VO, SFX_AUDIO, SFX_EVENTS, Unit, VO_EVENTS, VO_WPK, audio_game, base_entry, bus,
+    clip, container, event, events_bank, events_bank_at, init_bank, media_bank, media_bank_with,
+    package, play, sfx, sound, voice_game, with_audio,
 };
 use reforge_testkit::{MemoryGame, MemoryHistory, ModArchive, PlanRun, PortRun};
 use reforge_wwise::{Bank, CLIENT_VERSION, id_of, kind};
 
+const SKIN0: &str = "Characters/Test/Skins/Skin0";
+const SKIN0_BIN: &str = "data/characters/test/skins/skin0.bin";
 const GRAPH0: &str = "Characters/Test/Animations/Skin0";
 const DANCE: &str = "Play_sfx_TestSkin03_Dance";
 const IDLE: &str = "Play_sfx_TestSkin03_Idle";
@@ -294,14 +299,7 @@ fn own_clips_at_a_premium_path_get_a_unit_of_their_own() {
 
 /// An events bank of an older version than the client loads, with skin 3's dance.
 fn older_events_bank(stem: &str) -> Vec<u8> {
-    let mut header = 134u32.to_le_bytes().to_vec();
-    header.extend(id_of(stem).to_le_bytes());
-    header.extend(0u32.to_le_bytes());
-    header.extend(16u16.to_le_bytes());
-    header.extend(0u16.to_le_bytes());
-    let mut bank = Bank::new_bnk(header, true);
-    bank.objects = vec![event(DANCE, &[20])];
-    bank.write()
+    events_bank_at(stem, 134, vec![event(DANCE, &[20])])
 }
 
 #[test]
@@ -331,16 +329,147 @@ fn own_clips_whose_events_bank_the_client_no_longer_loads_are_cut_from_its_paths
     else {
         panic!("{carried:?}");
     };
-    // The dance plays clip 9 in the game's bank at skin 3's path.
+    // The dance plays clip 9 in the game's bank at skin 3's path. No name of the run spells
+    // that path, so it is named by its hash.
     assert_eq!(*events, 1);
-    // The path is spelled where the run's names spell it, else by its hash.
     let hash = format!("{:016x}", path_hash(&events_at).0);
-    let named = successor.as_deref().expect("the path of the bank cut from");
-    assert!(
-        named == hash || named.eq_ignore_ascii_case(&events_at),
-        "{named}"
-    );
+    assert_eq!(successor.as_deref(), Some(hash.as_str()));
     assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
+}
+
+/// [`skin3_game`] with an events bank at skin 7's path too, which plays nothing.
+fn skin3_and_skin7_game() -> (MemoryGame, String, String) {
+    let (mut game, _, events3_at) = skin3_game();
+    let events7_at = sfx("skin07", "test_skin07_sfx_events");
+    game.insert(
+        &events7_at,
+        events_bank("test_skin07_sfx_events", Vec::new()),
+    );
+    (game, events3_at, events7_at)
+}
+
+/// The mod of skin 3's unit pasted onto the base at renamed paths, its media bank of clip 9
+/// and these older events banks, each in the order given, in a history that held each
+/// bank's bytes at a path of the game's.
+fn with_older_banks(game: MemoryGame, older: &[(&str, &str)]) -> (Env, ModArchive) {
+    let builds = ["16.18.1", "16.19.1"];
+    let mut history = MemoryHistory::new(&builds);
+    let audio = sfx("base", "ben1_sfx_audio");
+    let media = media_bank("ben1_sfx_audio", CLIENT_VERSION, vec![clip(9, 9)]);
+    let mut files = vec![(audio.clone(), media)];
+    for (n, (stem, held_at)) in older.iter().enumerate() {
+        let bank = older_events_bank(stem);
+        history = history.with_content(held_at, &bank, 0..=0);
+        files.push((sfx("base", &format!("ben{}_sfx_events", n + 1)), bank));
+    }
+    let banks: Vec<&str> = files.iter().map(|(path, _)| path.as_str()).collect();
+    let files: Vec<(&str, Vec<u8>)> = files
+        .iter()
+        .map(|(path, bytes)| (path.as_str(), bytes.clone()))
+        .collect();
+    let archive = mod_of(&["TestSkin03"], &[skin3_unit(&banks)], &files);
+    (env(game, history), archive)
+}
+
+#[test]
+fn of_two_older_events_banks_the_one_whose_successor_plays_the_clip_is_cut() {
+    // #ADR-0084: skin 7's bank at the target build plays nothing, skin 3's plays the dance.
+    let (game, events3_at, events7_at) = skin3_and_skin7_game();
+    let older = [
+        ("test_skin07_sfx_events", events7_at.as_str()),
+        ("test_skin03_sfx_events", events3_at.as_str()),
+    ];
+    let (env, archive) = with_older_banks(game, &older);
+    let run = port(&env, &archive);
+
+    assert!(run.found::<AudioNotCarried>().is_empty(), "{}", run.dump());
+    let carried = &run.only::<AudioCarried>().banks[0];
+    let Carry::Own {
+        events, successor, ..
+    } = &carried.carry
+    else {
+        panic!("{carried:?}");
+    };
+    assert_eq!(*events, 1);
+    let hash = format!("{:016x}", path_hash(&events3_at).0);
+    assert_eq!(successor.as_deref(), Some(hash.as_str()));
+}
+
+#[test]
+fn own_clips_no_successor_of_an_older_events_bank_plays_are_not_carried() {
+    // #ADR-0084: the only older bank was the game's at skin 7's path, whose bank at the
+    // target build plays nothing.
+    let (game, _, events7_at) = skin3_and_skin7_game();
+    let older = [("test_skin07_sfx_events", events7_at.as_str())];
+    let (env, archive) = with_older_banks(game, &older);
+    let run = port(&env, &archive);
+
+    assert!(run.port.audio.is_empty(), "{}", run.dump());
+    let expected = NotCarried::NoEvent {
+        clips: 1,
+        source: "Test_Skin03_SFX".into(),
+    };
+    assert_eq!(run.only::<AudioNotCarried>().left, [expected]);
+}
+
+/// A file of the mod whose bytes the game shipped from the second build on: it dates the mod
+/// there.
+const DATED: &str = "assets/characters/test/skins/base/dated.tex";
+
+#[test]
+fn a_unit_the_block_leaves_out_leaves_it_where_the_game_has_no_events_bank_to_take_a_header_from() {
+    // #ADR-0063: the game's base skin lists its effects and voice units and holds none of
+    // their banks. The mod, made at the second build, keeps the effects unit alone and adds an
+    // own clip to it, which no header can carry.
+    let mut game = skins::game();
+    let base_entry = base_entry(&[BASE_SFX, BASE_VO]);
+    game.insert(
+        &skin_bin("test", 0),
+        bin(vec![
+            base_entry,
+            graph(GRAPH0, BASE_CLIPS),
+            resolver("Characters/Test/Skins/Skin0/Resources"),
+        ]),
+    );
+    let dated = vec![7; 5000];
+    let history = MemoryHistory::new(&["1.0.50", "1.0.150", "16.19.300"])
+        .with_content(DATED, &dated, 1..=2)
+        .with_unit(
+            SFX_EVENTS,
+            ("Test_Base_SFX", SKIN0, SKIN0_BIN),
+            false,
+            0..=2,
+        )
+        .with_unit(VO_EVENTS, ("Test_Base_VO", SKIN0, SKIN0_BIN), true, 0..=2);
+    let env = env(game, history);
+    let media = media_bank("test_base_sfx_audio", CLIENT_VERSION, vec![clip(9, 9)]);
+    let files = [(SFX_AUDIO, media), (DATED, dated)];
+    let run = port(&env, &mod_of(&["Test"], &[BASE_SFX], &files));
+
+    let unit = run.unit("test", 0);
+    let expected = NotCarried::NoGameAudio {
+        clips: 1,
+        target: Slot(0),
+    };
+    let left: Vec<&NotCarried> = run
+        .found::<AudioNotCarried>()
+        .iter()
+        .flat_map(|found| &found.left)
+        .collect();
+    assert_eq!(left, [&expected], "{}", run.dump());
+    let audio = run.port.audio.of(unit).expect("the unit leaves a unit out");
+    assert_eq!(audio.left_out, ["Test_Base_VO"]);
+    assert!(audio.units.is_empty());
+    assert_eq!(run.only::<AudioUnitsLeftOut>().units[0].first, Position(0));
+    // The patched block holds the effects unit alone.
+    let applied = run.applied(&Layer::Base, SKIN0_BIN);
+    let entry = applied
+        .objects
+        .iter()
+        .find(|o| o.path_hash == name_hash(SKIN0));
+    let block = SkinEntry::read(entry.expect("the skin entry")).audio();
+    let names: Vec<&str> = block.units.iter().map(|unit| unit.name.as_str()).collect();
+    assert_eq!(names, ["Test_Base_SFX"]);
 }
 
 #[test]

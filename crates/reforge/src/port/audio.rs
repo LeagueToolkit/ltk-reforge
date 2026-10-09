@@ -297,17 +297,17 @@ impl Planning<'_> {
     ) -> Result<Option<OwnEvents>, PlanError> {
         let source_name = &unit.unit.name;
         let mut game_source = self.game_events(unit)?;
+        let of_mod = self.mod_events(unit, own);
         let mut successor = None;
-        // #ADR-0084
         if game_source.is_none()
-            && self.mod_events(unit, own).is_none()
+            && of_mod.is_none()
             && let Some((bank, path)) = self.successor_events(unit, own)?
         {
+            // #ADR-0084: the successor stands in for the path's bank from here on.
             game_source = Some(bank);
-            let spelled = self.inputs.names.path(path);
-            successor = Some(spelled.unwrap_or_else(|| format!("{:016x}", path.0)));
+            successor = Some(self.inputs.names.path_or_hex(path));
         }
-        let Some(mut source) = game_source.clone().or_else(|| self.mod_events(unit, own)) else {
+        let Some(mut source) = game_source.clone().or_else(|| of_mod.clone()) else {
             self.left.push(NotCarried::NoEventsBank {
                 clips: own.len(),
                 source: source_name.clone(),
@@ -320,7 +320,7 @@ impl Planning<'_> {
         if cut.events.is_empty()
             && !from_mod
             && !self.inputs.options.game_events_only
-            && let Some(theirs) = self.mod_events(unit, own)
+            && let Some(theirs) = of_mod
         {
             let of_mod = theirs.cut_to(own);
             if !of_mod.events.is_empty() {
@@ -461,10 +461,9 @@ impl Planning<'_> {
         // #ADR-0073: a locale WAD's bank of a unit that is not voice goes where the champion
         // WAD's would.
         let locale = locale.filter(|_| voice);
-        let layer = match (locale, voice) {
-            (Some(locale), _) => Layer::Voice(Some(locale.to_string())),
-            (None, true) => Layer::Voice(None),
-            (None, false) => Layer::Base,
+        let layer = match voice {
+            true => Layer::Voice(locale.map(str::to_string)),
+            false => Layer::Base,
         };
         let character = &m.characters[m.units[self.unit].character];
         let (wad, suffix) = match locale {
@@ -606,10 +605,16 @@ impl AudioPlan {
             else {
                 continue;
             };
+            let character = &m.characters[m.units[unit].character];
+            let catalog = inputs.facts.catalogs.of(m.units[unit].character);
+            let game = catalog.and_then(|catalog| catalog.skin(t));
+            let game = game.map(|skin| &skin.audio);
             // #ADR-0063, at the slot the mod's block was made for only: a block made for
             // another skin names that skin's units, and every unit of the target's is missing
-            // from it.
-            let left_out = match t == m.units[unit].source_slot {
+            // from it. Where the game has no block at the target there is none to leave a unit
+            // out of.
+            let at_source = game.is_some() && t == m.units[unit].source_slot;
+            let left_out = match at_source {
                 true => sounds.left_out.as_slice(),
                 false => &[],
             };
@@ -623,10 +628,6 @@ impl AudioPlan {
                 plan.leave_out(unit, left_out);
                 continue;
             }
-            let character = &m.characters[m.units[unit].character];
-            let catalog = inputs.facts.catalogs.of(m.units[unit].character);
-            let game = catalog.and_then(|catalog| catalog.skin(t));
-            let game = game.map(|skin| &skin.audio);
             let header = match game {
                 Some(game) => Self::header(inputs, game)?,
                 None => None,
