@@ -55,6 +55,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      # The packages pnpm fetches, keyed on the lockfile: an install from the store downloads
+      # nothing.
+      - name: Find pnpm's store
+        id: pnpm
+        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm.outputs.path }}
+          key: pnpm-${{ hashFiles('app/pnpm-lock.yaml') }}
+          restore-keys: pnpm-
+
       - name: Check the format
         run: cargo fmt --all --check
 
@@ -100,10 +112,19 @@ jobs:
           key: cargo-xwin-1
           restore-keys: cargo-xwin-
 
-      # Each step below sources this again, for the variables: a step keeps none of the last one's.
-      - name: Fetch the Windows target, CRT and SDK
-        run: . scripts/cross/env.sh
+      # As in the job above.
+      - name: Find pnpm's store
+        id: pnpm
+        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm.outputs.path }}
+          key: pnpm-${{ hashFiles('app/pnpm-lock.yaml') }}
+          restore-keys: pnpm-
+
+      # env.sh fetches the Windows target, CRT and SDK on its first run and sets the variables.
+      # Each build step sources it, since a step keeps none of the last one's variables.
       # First, and `--locked`: a Cargo.lock that does not match Cargo.toml stops the build here.
       - name: Build the command
         run: |
