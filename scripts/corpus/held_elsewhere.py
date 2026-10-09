@@ -1,6 +1,7 @@
 """The names a port's units reach that nothing loaded at their target holds and the game's bins
-of another skin hold (#GAME-BEHAVIOR-0006), as the `object.link-dangling` findings of a run
-name them, with what copies of their objects would bring.
+of another skin hold (#GAME-BEHAVIOR-0006): copied by a run under #ADR-0083, as its
+`object.copied` findings name them; before it, named in its `object.link-dangling` findings
+with what copies would bring.
 
 held_elsewhere.py RUN --out DIR [--types FILE] [--jobs N]
 
@@ -12,9 +13,10 @@ Inputs:
 
 Outputs, in DIR:
 
-  units.tsv    one unit with dangling names per line: SHA-256, unit, its target, its source
-               slot, its origin's slot, the names, those held elsewhere and at which slots,
-               what copies would bring
+  units.tsv    one unit with names nothing loaded at its target holds per line: SHA-256,
+               unit, its target, its source slot, its origin's slot, those names, the ones held
+               elsewhere and at which slots (the slot copied from, under #ADR-0083), what copies
+               bring (files and names nothing holds only before #ADR-0083)
   summary.txt  the counts"""
 import argparse, collections, json, os, sys
 
@@ -29,33 +31,42 @@ def size_of(n):
 
 
 def of_mod(item):
-    """One row per unit with dangling names."""
+    """One row per unit with names nothing loaded at its target holds."""
     run, sha = item
     report = corpus.read(run, sha)
     units = {u["id"]: u for u in report.get("units") or []}
     decisions = {d["unit"]: d for d in (report.get("targets") or {}).get("decisions") or []}
-    rows = []
+    found = {}
     for d in report.get("diagnostics") or []:
-        if d["code"] != "object.link-dangling":
+        if d["code"] not in ("object.link-dangling", "object.copied"):
             continue
         data = d["data"]
         unit = data["unit"]
         origin = (decisions.get(unit) or {}).get("origin") or {}
-        brought = data.get("brought") or {}
-        rows.append({
+        row = found.setdefault(unit, {
             "sha256": sha,
             "unit": unit,
             "character": units[unit]["character_name"],
             "target": data["slot"],
             "source": units[unit]["slot"],
             "origin_slot": origin.get("slot") if origin.get("verdict") == "premium" else None,
-            "names": len(data["names"]),
-            "elsewhere": [[held["name"], held["class"], held["slots"]] for held in data.get("elsewhere") or []],
-            "objects": brought.get("objects", 0),
-            "files": brought.get("files", 0),
-            "unresolved": brought.get("unresolved", 0),
+            "names": 0,
+            "elsewhere": [],
+            "objects": 0,
+            "files": 0,
+            "unresolved": 0,
         })
-    return sha, rows
+        if d["code"] == "object.copied":
+            row["names"] += len(data["objects"])
+            row["elsewhere"] += [[copied["name"], copied["class"], [copied["from"]]] for copied in data["objects"]]
+            row["objects"] += len(data["objects"])
+            continue
+        row["names"] += len(data["names"])
+        row["elsewhere"] += [[held["name"], held["class"], held["slots"]] for held in data.get("elsewhere") or []]
+        brought = data.get("brought") or {}
+        for key in ("objects", "files", "unresolved"):
+            row[key] += brought.get(key, 0)
+    return sha, list(found.values())
 
 
 def class_names(path):
