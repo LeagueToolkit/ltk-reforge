@@ -7,7 +7,7 @@ import { twMerge } from "@/utils";
 
 import { countOutcomes, movedParts, OUTCOMES, type ChangeItem } from "../model";
 
-/** Each outcome's colour: a kept value is good, a removed one plain, a lost one a warning. */
+/** Each outcome's colour: a converted value is good, a removed one plain, a lost one a warning. */
 const outcomeTone: Record<OutcomeView, string> = {
   changed: "bg-success",
   removed: "bg-surface-500",

@@ -25,8 +25,8 @@
       }
     }
   ],
-  "changes_outcome.changed.description": "Kept, in the form the target build reads",
-  "changes_outcome.changed.label": "kept",
+  "changes_outcome.changed.description": "Converted to the form the target build reads",
+  "changes_outcome.changed.label": "converted",
   "changes_outcome.lost.description": "Removed, and the mod's own build read them: the target build cannot hold them",
   "changes_outcome.lost.label": "lost",
   "changes_outcome.removed.description": "Removed with nothing lost: no build since the mod's own read them",
