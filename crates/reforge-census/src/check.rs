@@ -119,7 +119,10 @@ fn check_chunk(
                 r.get::<_, u16>(2)?,
             ))
         });
-        let (bin, entry, first) = place.optional()?.unwrap_or((0, entry, 0));
+        // No row: an orphan, counted apart.
+        let Some((bin, entry, first)) = place.optional()? else {
+            continue;
+        };
         let first = Position(first);
         let legacy = history.build(first).is_some_and(|b| b.details.legacy_bins);
         unkeyed.push(Unkeyed {
@@ -157,13 +160,14 @@ pub fn check_objects(dir: &Utf8Path) -> Result<ObjectCheck, CensusError> {
         }
     }
     let orphans = stored.iter().filter(|(b, _)| !texts.contains(b)).count();
+    stored.retain(|(b, _)| texts.contains(b));
     let checked: Vec<(usize, Vec<Unkeyed>)> = stored
         .par_chunks(CHUNK)
         .map(|chunk| check_chunk(dir, chunk))
         .collect::<Result<_, _>>()?;
     let mut check = ObjectCheck {
         texts: texts.len(),
-        stored: stored.len() - orphans,
+        stored: stored.len(),
         orphans,
         objects: count(&db, "SELECT COUNT(*) FROM object_bytes")?,
         ..ObjectCheck::default()

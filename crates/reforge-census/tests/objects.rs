@@ -334,3 +334,32 @@ fn an_object_whose_digest_is_no_object_key_is_named_with_where_it_first_appeared
     assert_eq!(named.class, BinHash(2));
     assert!(named.legacy && named.renumbered, "{named:?}");
 }
+
+#[test]
+fn a_text_no_entry_holds_is_counted_as_an_orphan_and_not_named() {
+    let (keyed, unkeyed) = (rito(1, 2, 0, "Ahri", true), rito(1, 2, 1, "Ahri", true));
+    let key = hex(&Sha256::digest(bytes_of(&keyed)));
+    let history = history(vec![
+        tree([(text_path(2, 1), keyed), bin_file(2, &key)]),
+        tree([
+            (text_path(5, 1), unkeyed.clone()),
+            bin_file(5, &"a".repeat(64)),
+        ]),
+    ]);
+    let (_dir, root) = scratch();
+    let out = root.join("index");
+    whole(&history, &out);
+    // A row of `text_bytes` for a blob no row of `entry_texts` holds, of the unkeyed object.
+    let db = Connection::open(out.join("history.sqlite")).unwrap();
+    db.execute(
+        "INSERT INTO text_bytes (blob, class, object) \
+         SELECT ?1, class, object FROM text_bytes WHERE blob = ?2",
+        rusqlite::params![&[0xeeu8; 20][..], &common::blob_id(&unkeyed)[..]],
+    )
+    .unwrap();
+    drop(db);
+    let check = check_objects(&out).unwrap();
+    assert_eq!((check.stored, check.keyed, check.orphans), (2, 1, 1));
+    let named: Vec<_> = check.unkeyed.iter().map(|u| u.blob).collect();
+    assert_eq!(named, [common::blob_id(&unkeyed)]);
+}
