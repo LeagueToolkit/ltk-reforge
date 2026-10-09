@@ -1687,3 +1687,17 @@ repair, each compared with the run of "A copy's own files": no mod of the 68 hol
 the old class, and the reports differ in the evidence's list of fixups alone. Port in 38 s,
 repair in 51 s, ended as the baselines. The fixup's effect is seen in game, in the record's
 evidence, and over the datasets at the next baseline.
+
+## The gear condition (2026-10-10)
+
+`contextual-gear-equip` (#GAME-CHANGE-0027) over the reduced corpus, port and repair, each
+compared with the run of "The camera-facing event". One mod of the 68 holds a condition of the
+old class. Its two conditions are converted, `check.type-mismatch` is gone from its report, and
+its repair edits the rule's object in the 101 bins that copy it (#MOD-ARTIFACT-0001). The other
+reports differ in the evidence's list of fixups alone. Port in 39 s, repair in 57 s, ended as the
+baselines.
+
+The record's 6 mods, by list, each run with the fixup and with `--no-fixup`: 5 have their
+conditions converted (11 in the ports), and `check.type-mismatch` leaves the repairs of all 5 and
+the ports of 2. In the sixth, the one bin that holds the conditions is one nothing loads
+(`file.unused`), so it is not carried.

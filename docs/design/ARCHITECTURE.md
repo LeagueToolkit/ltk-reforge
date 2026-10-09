@@ -310,7 +310,9 @@ pub struct FixupInfo {
 
 - **The rest is Rust.** A fixup that combines values, chooses a class from the schema, recurses,
   reads where a struct is held or conforms a whole object to the schema implements the trait in
-  code: the camera-facing event, which changes the class of a struct in a map, mesh alignment,
+  code: the camera-facing event, which changes the class of a struct in a map, the gear
+  condition, which changes the class of a struct in a list and renames one of its fields, mesh
+  alignment,
   the spawn shape, the emission surface, the sampler's fields, the default
   technique, the texture-mult strays, the simple-particle fields (a table rule's move, and a
   removal from a complex emitter), the shader relink, the hoist and the wrap, retype, strip. Retype's conversions are a

@@ -16,7 +16,7 @@ use reforge_testkit::{FixRun, SchemaRows, skins};
 const ENTRY: &str = "Characters/Test/Skins/Skin0";
 
 /// The ids of the fixups of this file, in the order the set runs them.
-const IDS: [&str; 10] = [
+const IDS: [&str; 11] = [
     "material-shader-relink",
     "vfx-legacy-simple",
     "health-bar-style",
@@ -26,6 +26,7 @@ const IDS: [&str; 10] = [
     "vfx-spawn-shape",
     "vfx-spawn-shape-birth-translation",
     "material-sampler-fields",
+    "contextual-gear-equip",
     "vfx-emission-surface",
 ];
 
@@ -54,7 +55,8 @@ fn the_layout_fixups_name_their_records_and_builds() {
             row(IDS[6], "14.1", "#GAME-CHANGE-0006"),
             row(IDS[7], "14.1", "#MOD-ARTIFACT-0019"),
             row(IDS[8], "15.3", "#GAME-CHANGE-0014"),
-            row(IDS[9], "15.18", "#GAME-CHANGE-0018"),
+            row(IDS[9], "15.18", "#GAME-CHANGE-0027"),
+            row(IDS[10], "15.18", "#GAME-CHANGE-0018"),
         ]
     );
 }
@@ -153,6 +155,10 @@ fn schema() -> Schema {
             "FaceTargetEventData",
             &[field("YRotationDegrees", kind("F32"))],
         )
+        .class(
+            "ContextualConditionGearIdEquip",
+            &[field("CheckNewGearId", flag())],
+        )
         .build()
 }
 
@@ -194,7 +200,18 @@ fn old_mod() -> Vec<BinObject> {
         vec![(key, camera)],
     )
     .unwrap_or_else(|error| panic!("a map of events does not build: {error}"));
+    let gear = pointer(
+        "ContextualConditionGearId",
+        vec![("NewGearId", V::U32(values::U32::new(1)))],
+    );
+    let conditions = values::Container::new(PropertyKind::Struct, vec![gear])
+        .unwrap_or_else(|error| panic!("a list of conditions does not build: {error}"));
     vec![
+        object(
+            "Rule",
+            "ContextualRule",
+            vec![("mConditions", V::Container(conditions))],
+        ),
         object(
             "Dance",
             "AtomicClipData",
@@ -250,6 +267,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
         .expect("an environment");
     let set = FixupSet::empty()
         .with(layout::EmissionSurface)
+        .with(layout::GearEquip)
         .with(layout::SamplerFields)
         .with(layout::BirthTranslation)
         .with(layout::SpawnShape)
@@ -264,7 +282,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
     assert_eq!(by_fixup, IDS);
     let counts = once.changes.counts();
     // Lost: the technique a material chose.
-    assert_eq!((counts.changed, counts.removed, counts.lost), (12, 1, 1));
+    assert_eq!((counts.changed, counts.removed, counts.lost), (13, 1, 1));
     assert_eq!(once.field("Pass", "shader"), Some(&link(RELINKED)));
     assert!(once.field("Simple", "LegacySimple").is_some());
     assert!(once.field("Old", "SpawnShape").is_some());
@@ -276,6 +294,7 @@ fn one_mod_is_laid_out_by_every_layout_fixup_once() {
 
     let entries = [
         ENTRY,
+        "Rule",
         "Dance",
         "Pass",
         "Simple",

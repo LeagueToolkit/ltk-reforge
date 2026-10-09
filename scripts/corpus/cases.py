@@ -60,7 +60,7 @@ FIXUPS = (
     "known-artifacts-static-material known-artifacts-value-color known-artifacts-vfx-emitter "
     "known-artifacts-vfx-system vfx-texture-mult-strays vfx-flex-shape vfx-filtering vfx-linger "
     "vfx-legacy-simple vfx-texture-mult material-default-technique graph-face-target vfx-mesh-align vfx-spawn-shape "
-    "vfx-spawn-shape-birth-translation material-sampler-fields vfx-emission-surface reshape-hoist "
+    "vfx-spawn-shape-birth-translation material-sampler-fields contextual-gear-equip vfx-emission-surface reshape-hoist "
     "reshape-wrap retype strip-undeclared"
 )
 REASONS = "base paste-cleaned slot fallback clips-origin skeleton-origin forced infeasible sub-follows sub-left-to-base unjudged superseded conflict pre-rework"
