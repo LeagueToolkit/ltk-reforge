@@ -246,6 +246,7 @@ RULES += [
     data("audio.carried", "banks[].carry.shared", POSITIVE, name="audio.carried events sharing an id with the game's"),
     data("audio.carried", "banks[].carry.silent", POSITIVE, name="audio.carried sounds that play nothing"),
     data("audio.carried", "banks[].carry.unnamed", SET, name="audio.carried events no unit's list names"),
+    data("audio.carried", "banks[].carry.successor", SET, name="audio.carried events from the game's bank at an older one's path"),
     data("audio.carried", "banks[].layer", VALUE, "base"),
     data("audio.carried", "banks[].layer.voice", UNSET, name="audio.carried layer=voice"),
     data("audio.carried", "banks[].layer.voice", SET, name="audio.carried layer=voice-locale"),

@@ -154,7 +154,7 @@ Channel `output`.
 
 | code | severity | means | ltk-forge |
 |---|---|---|---|
-| `audio.carried` | note | a unit's own clips carried, in bank units after the game's: each bank with its unit, its layer, how its clips play and the game unit it stands in for | `audio.carried`, once for each bank, layer and stand-in |
+| `audio.carried` | note | a unit's own clips carried, in bank units after the game's: each bank with its unit, its layer, how its clips play, the game's bank its events are cut from in place of one the client no longer loads, and the game unit it stands in for | `audio.carried`, once for each bank, layer and stand-in |
 | `audio.not-carried` | warning | a unit's own clips not carried, each with why: no audio block at the target, a locale copy that differs, no events bank to cut, no event that plays them | `audio.not-carried` |
 | `audio.units-left-out` | note | the game's bank units at the target the port leaves out of the block, as the mod's own block does, each with the first build the game's skin held it (#ADR-0063) | `audio.units-left-out` |
 | `audio.literals-renamed` | note | literal sound names rewritten for the target's audio: to the mod's renamed events, to the base's | `sound-literals.rewritten` |

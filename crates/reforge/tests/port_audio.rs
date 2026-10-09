@@ -7,7 +7,7 @@ use ltk_meta::BinObject;
 use reforge::env::Env;
 use reforge::facts::ClipOrigin;
 use reforge::history::{NoHistory, Position};
-use reforge::model::{BankClip, BankRole, INIT_BANK, Layer, Slot, name_hash, value};
+use reforge::model::{BankClip, BankRole, INIT_BANK, Layer, Slot, name_hash, path_hash, value};
 use reforge::port::{
     AudioCarried, AudioNotCarried, Carry, LiteralsRenamed, NotCarried, Policy, PortOptions,
 };
@@ -274,6 +274,7 @@ fn own_clips_at_a_premium_path_get_a_unit_of_their_own() {
         shared: 0,
         silent: 1,
         unnamed: Vec::new(),
+        successor: None,
     };
     assert_eq!(carried.carry, expected);
 
@@ -288,6 +289,57 @@ fn own_clips_at_a_premium_path_get_a_unit_of_their_own() {
     assert_eq!(named("idleSound"), Some(IDLE));
     let literals = run.only::<LiteralsRenamed>();
     assert_eq!((literals.to_mod, literals.to_base), (1, 0));
+    assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
+}
+
+/// An events bank of an older version than the client loads, with skin 3's dance.
+fn older_events_bank(stem: &str) -> Vec<u8> {
+    let mut header = 134u32.to_le_bytes().to_vec();
+    header.extend(id_of(stem).to_le_bytes());
+    header.extend(0u32.to_le_bytes());
+    header.extend(16u16.to_le_bytes());
+    header.extend(0u16.to_le_bytes());
+    let mut bank = Bank::new_bnk(header, true);
+    bank.objects = vec![event(DANCE, &[20])];
+    bank.write()
+}
+
+#[test]
+fn own_clips_whose_events_bank_the_client_no_longer_loads_are_cut_from_its_paths_bank() {
+    // #ADR-0084: skin 3's unit pasted onto the base at renamed paths. Its events bank is skin
+    // 3's of an older version, which the game held at skin 3's path.
+    let (game, _, events_at) = skin3_game();
+    let older = older_events_bank("test_skin03_sfx_events");
+    let builds = ["16.18.1", "16.19.1"];
+    let history = MemoryHistory::new(&builds).with_content(&events_at, &older, 0..=0);
+    let env = env(game, history);
+    let (audio, events) = (
+        sfx("base", "ben1_sfx_audio"),
+        sfx("base", "ben1_sfx_events"),
+    );
+    let media = media_bank("ben1_sfx_audio", CLIENT_VERSION, vec![clip(9, 9)]);
+    let banks = [audio.as_str(), events.as_str()];
+    let files = [(audio.as_str(), media), (events.as_str(), older)];
+    let archive = mod_of(&["TestSkin03"], &[skin3_unit(&banks)], &files);
+    let run = port(&env, &archive);
+
+    assert!(run.found::<AudioNotCarried>().is_empty(), "{}", run.dump());
+    let carried = &run.only::<AudioCarried>().banks[0];
+    let Carry::Own {
+        events, successor, ..
+    } = &carried.carry
+    else {
+        panic!("{carried:?}");
+    };
+    // The dance plays clip 9 in the game's bank at skin 3's path.
+    assert_eq!(*events, 1);
+    // The path is spelled where the run's names spell it, else by its hash.
+    let hash = format!("{:016x}", path_hash(&events_at).0);
+    let named = successor.as_deref().expect("the path of the bank cut from");
+    assert!(
+        named == hash || named.eq_ignore_ascii_case(&events_at),
+        "{named}"
+    );
     assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
 }
 

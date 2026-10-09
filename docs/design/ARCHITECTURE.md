@@ -531,7 +531,8 @@ object takes a name of its own, which every link to it follows.
   - a bank at any other path gets a unit with events of its own. The events that reach an
     own clip are cut from the game's events bank at the unit's events path, else from the
     mod's own events bank of the client's version (#ADR-0030), the first whose events reach an
-    own clip (#ADR-0075). Every other object of the
+    own clip (#ADR-0075), else from the game's events bank at the target build at a path where
+    one of the unit's older events banks was the game's (#ADR-0084). Every other object of the
     source stays (#GAME-BEHAVIOR-0017). A kept event is renamed under the mod's tag,
     `<base tag>Mod<id>`, token by token, and the tag goes after the game's
     (#GAME-BEHAVIOR-0011);

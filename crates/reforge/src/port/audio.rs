@@ -9,10 +9,11 @@
 //!   unit holds a media bank of the own clips and an events bank with no object.
 //! - **Of its own.** The bank sits at any other path. The events that reach an own clip are
 //!   cut from the game's events bank at the unit's events path, else from the mod's own of the
-//!   client's version (#ADR-0030), the first that plays one (#ADR-0075). Every other object of
-//!   the source stays
-//!   (#GAME-BEHAVIOR-0017). A kept event is renamed under the mod's tag, token by token, and
-//!   the tag goes after the game's (#GAME-BEHAVIOR-0011).
+//!   client's version (#ADR-0030), the first that plays one (#ADR-0075), else from the game's
+//!   at the target build at a path where one of the unit's older events banks was the game's
+//!   (#ADR-0084). Every other object of the source stays (#GAME-BEHAVIOR-0017). A kept event is
+//!   renamed under the mod's tag, token by token, and the tag goes after the game's
+//!   (#GAME-BEHAVIOR-0011).
 //!
 //! Every bank made takes its header from an events bank of the game's units at the target, so
 //! it is of the version the client loads (#GAME-BEHAVIOR-0015), and its id is the hash of its
@@ -36,10 +37,11 @@ use super::reach::{Fate, Reach};
 use super::shipping::Shipping;
 use crate::diag::Sink;
 use crate::facts::{BankFile, SoundUnit, Sounds, UnitSounds};
+use crate::load::provenance::BytesOrigin;
 use crate::model::entity::{FileId, Mod, UnitId};
 use crate::model::{
-    AudioBlock, BankRole, ChunkPath, Dump, DumpCx, EventsBank, INIT_BANK, Layer, WadName, clean,
-    game_bank_path, path_hash, value,
+    AudioBlock, BankRole, ChunkPath, Dump, DumpCx, EventsBank, INIT_BANK, Layer, Spell, WadHash,
+    WadName, clean, game_bank_path, path_hash, value,
 };
 
 /// One clip of a bank: the bank's path and the clip's id in it.
@@ -254,6 +256,37 @@ impl Planning<'_> {
         }
     }
 
+    /// The game's events bank at the target build at a path where one of the unit's events
+    /// banks of another version than the client's was the game's (#ADR-0084): the first whose
+    /// events reach one of the clips, else the first. With the path.
+    fn successor_events(
+        &self,
+        unit: &SoundUnit,
+        own: &BTreeSet<u32>,
+    ) -> Result<Option<(Bank, WadHash)>, PlanError> {
+        let older = unit
+            .files
+            .iter()
+            .filter(|file| file.role == BankRole::Events && file.version != CLIENT_VERSION);
+        let mut banks = Vec::new();
+        for file in older {
+            let origin = self.inputs.files.fact(file.file).map(|fact| &fact.origin);
+            let Some(BytesOrigin::History { path, .. }) = origin else {
+                continue;
+            };
+            if let Some(bank) = self.inputs.env.game().events_bank(*path)? {
+                banks.push((bank.bank(), *path));
+            }
+        }
+        let playing = banks
+            .iter()
+            .position(|(bank, _)| !bank.cut_to(own).events.is_empty());
+        Ok(match playing {
+            Some(at) => Some(banks.swap_remove(at)),
+            None => banks.into_iter().next(),
+        })
+    }
+
     /// The events of a unit of its own, cut to the own clips and renamed. None when no events
     /// bank plays the clips, which is noted.
     fn own_events(
@@ -263,7 +296,17 @@ impl Planning<'_> {
         (name, layer): (&str, &Layer),
     ) -> Result<Option<OwnEvents>, PlanError> {
         let source_name = &unit.unit.name;
-        let game_source = self.game_events(unit)?;
+        let mut game_source = self.game_events(unit)?;
+        let mut successor = None;
+        // #ADR-0084
+        if game_source.is_none()
+            && self.mod_events(unit, own).is_none()
+            && let Some((bank, path)) = self.successor_events(unit, own)?
+        {
+            game_source = Some(bank);
+            let spelled = self.inputs.names.path(path);
+            successor = Some(spelled.unwrap_or_else(|| format!("{:016x}", path.0)));
+        }
         let Some(mut source) = game_source.clone().or_else(|| self.mod_events(unit, own)) else {
             self.left.push(NotCarried::NoEventsBank {
                 clips: own.len(),
@@ -342,6 +385,7 @@ impl Planning<'_> {
             shared,
             silent: cut.silent,
             unnamed,
+            successor,
         };
         Ok(Some(OwnEvents { cut, names, carry }))
     }

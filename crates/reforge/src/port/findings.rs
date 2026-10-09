@@ -727,6 +727,11 @@ pub enum Carry {
         silent: usize,
         /// The kept events no unit's list names, by id: they keep their ids.
         unnamed: Vec<u32>,
+        /// The path of the game's events bank at the target build the events are cut from in
+        /// place of the unit's own, which the client no longer loads: the path their bytes
+        /// held at an older build (#ADR-0084).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        successor: Option<String>,
     },
 }
 
@@ -797,11 +802,15 @@ impl Diag for AudioCarried {
                     shared,
                     silent,
                     unnamed,
+                    successor,
                 } => {
                     f.text(" under the tag ").spelled(tag);
                     let _ = write!(f, " ({events} events kept");
                     if *from_mod {
                         let _ = write!(f, " from the mod's own events bank, {shared} shared");
+                    }
+                    if let Some(path) = successor {
+                        f.text(" from the game's ").spelled(path);
                     }
                     if *silent > 0 {
                         let _ = write!(f, ", {silent} sounds silent");
