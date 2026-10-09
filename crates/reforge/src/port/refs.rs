@@ -201,8 +201,9 @@ impl Finder<'_> {
 }
 
 impl FileRefs {
-    /// The verdict of every file the units of `reach` name, the mod's objects read as
-    /// `objects` holds them. Of a skin entry only the fields a port carries count.
+    /// The verdict of every file the units of `reach` name, by their ported objects and their
+    /// copies, the mod's objects read as `objects` holds them. Of a skin entry only the fields
+    /// a port carries count.
     pub fn find(
         inputs: &PortInputs<'_>,
         objects: &Objects<'_>,
@@ -233,16 +234,21 @@ impl FileRefs {
             let champion = m.characters[champion].name.as_str();
             let mut refs = UnitRefs::default();
             let mut former = 0;
-            for (object, fate) in reached.ported() {
+            let ported = reached.ported().map(|(object, fate)| {
                 let value = objects.value(object);
-                let named = match fate {
+                match fate {
                     Fate::Entry => {
                         let mut entry = value.clone();
                         entry.properties.retain(|field, _| carried.contains(field));
                         value::file_refs(&entry)
                     }
                     _ => value::file_refs(value),
-                };
+                }
+            });
+            // The files a copy names are the port's to place too (#ADR-0088).
+            let copies = reached.copies.iter();
+            let copies = copies.map(|copied| value::file_refs(&copied.object));
+            for named in ported.chain(copies) {
                 for file in named {
                     let path = file.hash();
                     if refs.refs.contains_key(&path) {

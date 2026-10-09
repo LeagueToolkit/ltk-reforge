@@ -6,7 +6,7 @@ use ltk_meta::property::values;
 use ltk_meta::{BinObject, PropertyValueEnum};
 use reforge::env::Env;
 use reforge::history::NoHistory;
-use reforge::model::entity::ObjectId;
+use reforge::model::entity::{ObjectId, UnitId};
 use reforge::model::{Slot, WadHash, name_hash, path_hash, value};
 use reforge::port::{
     Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, ObjectsCopied, PlanError, Policy,
@@ -18,10 +18,11 @@ use reforge_testkit::bins::{
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
 use reforge_testkit::packs::{DdsPixels, dds};
 use reforge_testkit::plans::{
-    champion_and_unbound_pet, old_model_and_pet, paste_and_own_skin3, reworked,
+    champion_and_pet, champion_and_unbound_pet, old_model_and_pet, paste_and_own_skin3,
+    paste_and_two_pets, pets_on_own_models, reworked,
 };
 use reforge_testkit::skins::{
-    self, BASE_PARTICLE, BASE_PARTICLE_TEX, BASE_TEX, S3_TEX, WAD, base_skin, skin_bin,
+    self, BASE_PARTICLE, BASE_PARTICLE_TEX, BASE_TEX, S3_CLIPS, S3_TEX, WAD, base_skin, skin_bin,
 };
 use reforge_testkit::{
     BrokenGame, BrokenHistory, FactRun, MemoryHistory, ModArchive, PlanRun, PortRun, rigs,
@@ -145,6 +146,162 @@ fn a_name_only_another_skins_bins_hold_is_copied_under_the_targets_names() {
         .map(value::FileRef::hash)
         .collect();
     assert_eq!(named, clips);
+}
+
+#[test]
+fn a_file_a_copy_names_that_the_mod_holds_ships_under_the_namespace() {
+    // #ADR-0088: the mod's own bytes at the path of a clip skin 3's graph names, copied.
+    let graph3 = "Characters/Test/Animations/Skin3";
+    let overridden = S3_CLIPS[0];
+    let mut files = own_mod(&[("fx", graph3)], vec![]);
+    files.push((overridden.into(), blob("the mod's own idle clip")));
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let port = run.port.unit(run.unit("test", 0)).expect("the unit ships");
+    let [copy] = port.copies.as_slice() else {
+        panic!("one copy: {}", run.dump());
+    };
+    let m = &run.facts.fix.fixed;
+    let mut shipped = run.port.files.iter();
+    let place = shipped.find(|(file, _)| m.files[**file].hash == path_hash(overridden));
+    let (_, place) = place.unwrap_or_else(|| panic!("the own clip ships: {}", run.dump()));
+    let prefix = format!("mods/{NS}/characters/test/skin0/");
+    assert!(place.as_str().starts_with(&prefix), "{place}");
+    // The copy's link follows, and the other clip stays the game's.
+    let named: Vec<WadHash> = value::file_refs(copy)
+        .iter()
+        .map(value::FileRef::hash)
+        .collect();
+    assert_eq!(named, [place.hash(), path_hash(S3_CLIPS[1])]);
+    assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
+}
+
+#[test]
+fn a_name_a_champion_and_its_sub_character_both_copy_ships_once_in_the_group() {
+    // The game's skin 7 bins of both characters hold one particle, which the champion's paste
+    // of skin 3 and the pet link: at skin 3 both copy it.
+    let shared = "Characters/Test/Skins/Skin7/Particles/Shared";
+    let mut game = skins::game();
+    game.insert(
+        &skin_bin("test", 7),
+        bin(vec![
+            entry("Characters/Test/Skins/Skin7", &skins::skin7()),
+            resolver("Characters/Test/Skins/Skin7/Resources"),
+            particle(shared, S3_TEX),
+        ]),
+    );
+    game.insert(
+        &skin_bin("testpet", 7),
+        bin(vec![
+            entry("Characters/TestPet/Skins/Skin7", &skins::pet_skin()),
+            particle(shared, S3_TEX),
+        ]),
+    );
+    let mut files = champion_and_pet();
+    let champion = with_link(entry(SKIN0, &skins::skin3()), "fx", shared);
+    files[0] = (skin_bin("test", 0), bin(vec![champion]));
+    let pet = Skin {
+        texture: "assets/mod/pet/body.tex".into(),
+        ..skins::pet_skin()
+    };
+    let pet = with_link(entry("Characters/TestPet/Skins/Skin0", &pet), "fx", shared);
+    files[2] = (skin_bin("testpet", 0), bin(vec![pet]));
+    let env = env(game, NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let (champion, pet) = (run.unit("test", 0), run.unit("testpet", 0));
+    assert_eq!(run.found::<ObjectsCopied>().len(), 2, "{}", run.dump());
+    let copies = |unit: UnitId| run.port.unit(unit).expect("ships").copies.len();
+    assert_eq!((copies(champion), copies(pet)), (1, 0));
+    // One name for the group, which both entries link.
+    let group = (run.facts.fix.fixed.units[champion].character, Slot(3));
+    let renames = run.port.renames.of_group(group);
+    let new = *renames
+        .get(&name_hash(shared))
+        .expect("the copy is renamed");
+    let pairs = &run.port.renames.namespaced[&group];
+    assert_eq!(
+        pairs
+            .iter()
+            .filter(|(from, _)| *from == name_hash(shared))
+            .count(),
+        1
+    );
+    for unit in [champion, pet] {
+        let entry = run.port.unit(unit).expect("ships").entry;
+        let entry = run.port.object(entry).expect("the entry is ported");
+        assert!(value::links(entry).contains(&new), "{}", run.dump());
+    }
+}
+
+/// The game with these objects in skin 3's bin beside its entry, graph and resolver.
+fn game_with_in_skin3(extra: Vec<BinObject>) -> reforge_testkit::MemoryGame {
+    let mut game = skins::game();
+    let mut objects = vec![
+        entry("Characters/Test/Skins/Skin3", &skins::skin3()),
+        graph("Characters/Test/Animations/Skin3", skins::S3_CLIPS),
+        resolver("Characters/Test/Skins/Skin3/Resources"),
+    ];
+    objects.extend(extra);
+    game.insert(&skin_bin("test", 3), bin(objects));
+    game
+}
+
+#[test]
+fn a_copy_is_of_the_units_premium_origin_though_a_lower_slot_holds_the_name_too() {
+    // #ADR-0083: a paste of skin 7 on the base's rig stays on skin0, and links a particle the
+    // game holds in skin 3's bin and in skin 7's.
+    let shared = "Characters/Test/Skins/Skin7/Particles/Shared";
+    let mut game = game_with_in_skin3(vec![particle(shared, S3_TEX)]);
+    game.insert(
+        &skin_bin("test", 7),
+        bin(vec![
+            entry("Characters/Test/Skins/Skin7", &skins::skin7()),
+            resolver("Characters/Test/Skins/Skin7/Resources"),
+            particle(shared, S3_TEX),
+        ]),
+    );
+    let pasted = with_link(entry(SKIN0, &skins::skin7()), "fx", shared);
+    let files = [(skin_bin("test", 0), bin(vec![pasted]))];
+    let env = env(game, NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let port = run.port.unit(run.unit("test", 0)).expect("the unit ships");
+    assert_eq!(port.target, Slot(0), "{}", run.dump());
+    // Skin 7's resolver, which nothing loads at skin0 either, is copied beside it.
+    let copied = run.only::<ObjectsCopied>();
+    let found = copied.objects.iter().find(|c| c.name == name_hash(shared));
+    assert_eq!(found.map(|c| c.from), Some(Slot(7)), "{}", run.dump());
+}
+
+#[test]
+fn a_copy_that_names_another_skins_only_object_is_followed_link_by_link() {
+    // #ADR-0083: skin 3's bin holds a particle linking a second one, both only there.
+    let (first, second) = (
+        "Characters/Test/Skins/Skin3/Particles/First",
+        "Characters/Test/Skins/Skin3/Particles/Second",
+    );
+    let game = game_with_in_skin3(vec![
+        with_link(particle(first, S3_TEX), "child", second),
+        particle(second, S3_TEX),
+    ]);
+    let files = own_mod(&[("fx", first)], vec![]);
+    let env = env(game, NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    assert!(run.found::<LinkDangling>().is_empty(), "{}", run.dump());
+    let copied = run.only::<ObjectsCopied>();
+    let found: Vec<_> = copied.objects.iter().map(|c| c.name).collect();
+    assert_eq!(found, [name_hash(first), name_hash(second)]);
+    // The first copy links the second under its new name.
+    let port = run.port.unit(run.unit("test", 0)).expect("the unit ships");
+    let [copy_first, copy_second] = port.copies.as_slice() else {
+        panic!("two copies: {}", run.dump());
+    };
+    assert!(value::links(copy_first).contains(&copy_second.path_hash));
+    assert!(!value::links(copy_first).contains(&name_hash(second)));
+    assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
 }
 
 #[test]
@@ -579,20 +736,8 @@ fn the_games_own_skin_beside_the_mods_leaves_the_port() {
 fn units_of_one_rank_on_one_slot_leave_the_port_and_the_champion_ships() {
     // #ADR-0076: two pets on models of their own at slots 1 and 2 follow the champion's paste
     // of skin 3 there.
-    let mut files = vec![mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
-    for slot in [1, 2] {
-        let prefix = format!("pet{slot}");
-        files.extend(own_files(&prefix));
-        let pet = own_skin(
-            &prefix,
-            &format!("Characters/TestPet/Animations/Skin{slot}"),
-            &format!("Characters/TestPet/Skins/Skin{slot}/Resources"),
-        );
-        let entry = format!("Characters/TestPet/Skins/Skin{slot}");
-        files.push(mod_skin("testpet", slot, &entry, &pet, vec![]));
-    }
     let env = env(skins::game(), NoHistory);
-    let run = PortRun::of(&env, &archive(&files));
+    let run = PortRun::of(&env, &archive(&paste_and_two_pets()));
 
     assert_eq!(
         run.port.shipping.ships,
@@ -671,6 +816,29 @@ fn a_chroma_that_is_its_parents_work_folds_into_it() {
     assert_eq!(run.port.shipping.ships, [parent], "{}", run.dump());
     let left = &run.port.shipping.left[&chroma];
     assert_eq!(left.why, Left::ChromaFolded { into: parent });
+}
+
+#[test]
+fn a_chroma_with_work_of_its_own_leaves_without_the_option_that_keeps_other_slots() {
+    // #ADR-0082: the mod's rig at skin0, and at skin 9, a chroma of 3, a rig of its own.
+    let mut files = own_mod(&[], vec![]);
+    files.extend(own_files("b"));
+    files.push(own_rig_at(9, "b"));
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    let (target, chroma) = (run.unit("test", 0), run.unit("test", 9));
+    assert_eq!(run.port.shipping.ships, [target], "{}", run.dump());
+    assert_eq!(
+        run.port.shipping.left[&chroma].why,
+        Left::OffTarget { target }
+    );
+    // Its files are blobs of no kind: other files, which the port does not support.
+    let [row] = run.only::<WorkLeft>().units.as_slice() else {
+        panic!("one unit with work: {}", run.dump());
+    };
+    assert_eq!((row.unit, row.slot), (chroma, Slot(9)));
+    assert!(row.files > 0, "{row:?}");
 }
 
 #[test]
@@ -801,7 +969,7 @@ fn rigs_at_skin0_and_skin3() -> Vec<(String, Vec<u8>)> {
     files
 }
 
-fn sorted(mut units: Vec<reforge::model::entity::UnitId>) -> Vec<reforge::model::entity::UnitId> {
+fn sorted(mut units: Vec<UnitId>) -> Vec<UnitId> {
     units.sort();
     units
 }
@@ -819,7 +987,9 @@ fn a_unit_at_a_slot_the_port_does_not_change_leaves_with_its_own_work_named() {
     );
     let work = run.only::<WorkLeft>();
     assert_eq!(work.target, target);
-    let row = work.units[0];
+    let [row] = work.units.as_slice() else {
+        panic!("one unit with work: {}", run.dump());
+    };
     let found = (row.unit, row.slot, row.kind);
     assert_eq!(found, (other, Slot(3), WorkKind::SlotWork));
     // Its mesh, skeleton, texture and two clips are bytes the unit at skin0 does not ship.
@@ -860,7 +1030,9 @@ fn own_objects_alone_at_a_slot_the_port_does_not_change_are_not_supported() {
     let (target, other) = (run.unit("test", 0), run.unit("test", 3));
     let left = &run.port.shipping.left[&other];
     assert_eq!(left.why, Left::OffTarget { target }, "{}", run.dump());
-    let row = run.only::<WorkLeft>().units[0];
+    let [row] = run.only::<WorkLeft>().units.as_slice() else {
+        panic!("one unit with work: {}", run.dump());
+    };
     assert_eq!(row.kind, WorkKind::Unsupported);
     assert_eq!((row.models, row.skeletons, row.textures), (0, 0, 0));
     assert!(row.objects > 0, "{row:?}");
@@ -907,16 +1079,7 @@ fn the_games_own_skin0_leaves_and_the_mods_work_at_another_slot_ships() {
 fn a_sub_characters_unit_at_another_slot_leaves_with_its_champions() {
     // The champion's rigs at skin0 and skin 3, and models of the pet's own at both.
     let mut files = rigs_at_skin0_and_skin3();
-    for (slot, prefix) in [(0, "p"), (3, "q")] {
-        files.extend(own_files(prefix));
-        let pet = own_skin(
-            prefix,
-            &format!("Characters/TestPet/Animations/Skin{slot}"),
-            &format!("Characters/TestPet/Skins/Skin{slot}/Resources"),
-        );
-        let entry = format!("Characters/TestPet/Skins/Skin{slot}");
-        files.push(mod_skin("testpet", slot, &entry, &pet, vec![]));
-    }
+    files.extend(pets_on_own_models(&[(0, "p"), (3, "q")]));
     let env = env(skins::game(), NoHistory);
     let run = PortRun::of(&env, &archive(&files));
 

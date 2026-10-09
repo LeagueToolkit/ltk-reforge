@@ -10,7 +10,7 @@ use reforge::diag::{Action, DiagnosticPolicy, Filter, Stage};
 use reforge::env::Env;
 use reforge::facts::FactsError;
 use reforge::fixups::{FixError, FixupSet};
-use reforge::game::MAX_CHAIN;
+use reforge::game::{MAX_CHAIN, SHADERS_BIN};
 use reforge::history::NoHistory;
 use reforge::load::{Dating, Fault, LoadError, NoSkin, ReworkTable};
 use reforge::model::{ContentId, path_hash};
@@ -19,7 +19,7 @@ use reforge::package::{
     EvidenceUnit, MAX_OVERLAY_BINS, Made, Modpkg, OverlayCapped, PackageWriter, PieceKind,
     ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
-use reforge::port::{AnimReuse, PlanError, Policy, SHADERS_BIN, TargetPolicy};
+use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
 use reforge::{Evidence, Porter, Repairer, Run, RunError};
 use reforge_testkit::bins::{bin, blob, entry, linked_bin, particle, resolver_with};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};

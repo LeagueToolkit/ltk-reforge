@@ -36,6 +36,32 @@ pub fn champion_and_pet() -> Vec<(String, Vec<u8>)> {
     ]
 }
 
+/// The sub-character on models of the mod's own, one per slot named, each under the prefix
+/// of its files: its skin bin at the slot, and the files of [`own_files`].
+pub fn pets_on_own_models(slots: &[(u16, &str)]) -> Vec<(String, Vec<u8>)> {
+    let mut files = Vec::new();
+    for &(slot, prefix) in slots {
+        files.extend(own_files(prefix));
+        let pet = own_skin(
+            prefix,
+            &format!("Characters/TestPet/Animations/Skin{slot}"),
+            &format!("Characters/TestPet/Skins/Skin{slot}/Resources"),
+        );
+        let entry = format!("Characters/TestPet/Skins/Skin{slot}");
+        files.push(mod_skin("testpet", slot, &entry, &pet, vec![]));
+    }
+    files
+}
+
+/// The champion pasted from skin 3 in its skin0 bin, beside two pets on models of their own
+/// at slots 1 and 2: both follow the champion to skin 3, neither written for it nor at skin0,
+/// and tie there (#ADR-0076).
+pub fn paste_and_two_pets() -> Vec<(String, Vec<u8>)> {
+    let mut files = vec![mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    files.extend(pets_on_own_models(&[(1, "pet1"), (2, "pet2")]));
+    files
+}
+
 /// A paste of skin 3 in the skin0 bin, and the mod's own rig written for slot 3: two units
 /// that both go to skin 3.
 pub fn paste_and_own_skin3() -> Vec<(String, Vec<u8>)> {

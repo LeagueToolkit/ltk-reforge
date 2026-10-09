@@ -19,6 +19,7 @@ use super::findings::{
 };
 use super::plan::{Objects, PlanError, PortInputs};
 use crate::diag::Sink;
+use crate::game::SkinCatalog;
 use crate::load::provenance::{AtPath, BytesOrigin};
 use crate::model::entity::{CharId, LinkTo, Mod, ObjectId, UnitId};
 use crate::model::hash::skin_paths;
@@ -27,7 +28,7 @@ use crate::model::{
     BinHash, ChunkPath, Dump, DumpCx, SkinEntry, Slot, WadHash, clean, name_hash, path_hash, value,
 };
 
-pub use crate::game::SHADERS_BIN;
+use crate::game::SHADERS_BIN;
 
 /// What becomes of an object the entry reaches.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -216,6 +217,39 @@ impl Walk<'_, '_> {
         Ok(out)
     }
 
+    /// The game's object under a name only the bins of other skins of the character hold: of
+    /// the unit's premium origin when its bins hold it, else of the lowest slot whose bins
+    /// hold it (#ADR-0083). The slot and the object are read off one chain of bins.
+    fn copy_of(
+        &self,
+        catalog: Option<&SkinCatalog>,
+        origin: Option<Slot>,
+        name: BinHash,
+    ) -> Result<Option<Copied>, PlanError> {
+        let Some(slots) = catalog.and_then(|catalog| catalog.slots_of(name)) else {
+            return Ok(None);
+        };
+        let from_origin = origin.filter(|slot| slots.contains(slot));
+        let candidates = from_origin.into_iter().chain(slots.iter().copied());
+        for from in candidates {
+            let Some(skin) = catalog.and_then(|catalog| catalog.skin(from)) else {
+                continue;
+            };
+            let loaded = self.base.loaded(&skin.chain)?;
+            let Some(object) = loaded.object(name) else {
+                continue;
+            };
+            let name = CopiedName {
+                name,
+                class: object.value.class_hash,
+                from,
+            };
+            let object = object.value.clone();
+            return Ok(Some(Copied { name, object }));
+        }
+        Ok(None)
+    }
+
     fn unit(&self, unit: UnitId, t: Slot, done: &Reach) -> Result<Option<UnitReach>, PlanError> {
         let m: &Mod = self.inputs.fixed;
         let node = &m.units[unit];
@@ -285,36 +319,11 @@ impl Walk<'_, '_> {
             linked
         };
 
-        // #ADR-0083: a copy is of the unit's premium origin when its bins hold the name, else of
-        // the lowest slot whose bins hold it.
         let catalog = self.inputs.facts.catalogs.of(node.character);
         let origin = targets
             .decisions
             .get(&unit)
             .and_then(|decision| decision.premium);
-        let origin_skin = origin
-            .zip(catalog)
-            .and_then(|(slot, catalog)| catalog.skin(slot));
-        let at_origin = match origin_skin {
-            Some(skin) => self.base.loaded(&skin.chain)?,
-            None => BaseObjects::default(),
-        };
-        let copy_of = |name: BinHash| -> Option<Copied> {
-            let slots = catalog?.slots_of(name)?;
-            let from_origin = origin.filter(|slot| slots.contains(slot));
-            let held = from_origin.and_then(|slot| Some((slot, at_origin.object(name)?.value)));
-            let (from, object) = match held {
-                Some(held) => held,
-                None => (*slots.first()?, catalog?.object(name)?),
-            };
-            let name = CopiedName {
-                name,
-                class: object.class_hash,
-                from,
-            };
-            let object = object.clone();
-            Some(Copied { name, object })
-        };
 
         let mut reach = UnitReach {
             target: t,
@@ -368,8 +377,10 @@ impl Walk<'_, '_> {
                         reach.game_links.push(bin.clone());
                     }
                     reach.game.insert(name);
-                } else if let Some(copied) = copy_of(name) {
-                    // What the copy names is the port's to resolve as well.
+                } else if let Some(copied) = self.copy_of(catalog, origin, name)? {
+                    // What the copy names is the port's to resolve as well. An object first
+                    // reached through a copy has no parent to carry, which is harmless: a
+                    // copy is a game object.
                     let links = value::links(&copied.object).into_iter();
                     queue.extend(links.map(|link| (link, None, false)));
                     reach.copies.push(copied);

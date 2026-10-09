@@ -207,6 +207,8 @@ struct Linking<'a, 'b> {
     units: Vec<PortUnit>,
     /// The objects each unit answers for, with the group whose renames they follow.
     by_group: Vec<(Vec<ObjectId>, Group)>,
+    /// The names copied so far, by group: a group ships one copy of a name.
+    copied: HashSet<(Group, BinHash)>,
 }
 
 impl Linking<'_, '_> {
@@ -293,32 +295,36 @@ impl Linking<'_, '_> {
                 .push((old, new));
         }
         // A copy of another skin's object takes a name of the target's, as a carried object
-        // does, and every link to it follows (#ADR-0083).
-        let mut copies = Vec::new();
+        // does, and every link to it follows (#ADR-0083). The group copies a name once: the
+        // first unit ships the object, and the links of the others follow its name.
+        let mut copies: Vec<(BinObject, String)> = Vec::new();
         for copied in &reached.copies {
+            let old = copied.name.name;
+            if !self.copied.insert((group, old)) {
+                continue;
+            }
             let mut object = copied.object.clone();
             let leaf = Layout::leaf(inputs.names, &object);
             let new = self
                 .layout
                 .name_object(&character.spelled, t, object.class_hash, &leaf);
-            let pair = (object.path_hash, new);
-            self.renames.namespaced.entry(group).or_default().push(pair);
+            self.renames
+                .namespaced
+                .entry(group)
+                .or_default()
+                .push((old, new));
             object.path_hash = new;
-            copies.push(object);
+            copies.push((object, leaf));
         }
         let ported: Vec<(ObjectId, Fate)> = reached.ported().collect();
         self.by_group
             .push((ported.iter().map(|(o, _)| *o).collect(), group));
 
-        // Each file a ported value names, with the folder of its first user. The entry comes
-        // first, so the skin's own textures stay the skin's.
+        // Each file a ported value or a copy names, with the folder of its first user. The
+        // entry comes first, so the skin's own textures stay the skin's.
         let mut named: HashSet<WadHash> = HashSet::new();
         let mut owner: HashMap<WadHash, String> = HashMap::new();
-        for &(object, fate) in &ported {
-            let held = self.objects.value(object);
-            let name = keys.get(&object).or_else(|| leaves.get(&object));
-            let folder = name.filter(|_| fate == Fate::Carried);
-            let folder = folder.and_then(|name| self.layout.owner_folder(held, name));
+        let mut name_files = |held: &BinObject, folder: Option<String>| {
             for file in value::file_refs(held) {
                 if named.insert(file.hash())
                     && let Some(folder) = &folder
@@ -326,6 +332,16 @@ impl Linking<'_, '_> {
                     owner.insert(file.hash(), folder.clone());
                 }
             }
+        };
+        for &(object, fate) in &ported {
+            let held = self.objects.value(object);
+            let name = keys.get(&object).or_else(|| leaves.get(&object));
+            let folder = name.filter(|_| fate == Fate::Carried);
+            let folder = folder.and_then(|name| self.layout.owner_folder(held, name));
+            name_files(held, folder);
+        }
+        for (copy, leaf) in &copies {
+            name_files(copy, self.layout.owner_folder(copy, leaf));
         }
         // Own bytes ship under the namespace. Game bytes are named where the game has them.
         let mut to: HashMap<WadHash, String> = HashMap::new();
@@ -362,11 +378,19 @@ impl Linking<'_, '_> {
                 _ => {}
             }
         }
+        let moved = |held: &BinObject| {
+            let moves = value::file_refs(held);
+            moves.iter().any(|file| to.contains_key(&file.hash()))
+        };
         for &(object, _) in &ported {
-            let moves = value::file_refs(self.objects.value(object));
-            if moves.iter().any(|file| to.contains_key(&file.hash())) {
+            if moved(self.objects.value(object)) {
                 value::rewrite_files(self.objects.edit(object), &|hash| to.get(&hash).cloned());
             }
+        }
+        // #ADR-0088: an own file a copy names ships as a carried object's does.
+        let mut copies: Vec<BinObject> = copies.into_iter().map(|(copy, _)| copy).collect();
+        for copy in copies.iter_mut().filter(|copy| moved(copy)) {
+            value::rewrite_files(copy, &|hash| to.get(&hash).cloned());
         }
         self.units.push(PortUnit {
             unit,
@@ -467,6 +491,7 @@ impl Port {
             repointed: 0,
             units: Vec::new(),
             by_group: Vec::new(),
+            copied: HashSet::new(),
         };
         for &unit in &shipping.ships {
             linking.unit(unit, &reach, &refs);

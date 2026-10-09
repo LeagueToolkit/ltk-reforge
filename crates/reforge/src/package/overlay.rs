@@ -12,9 +12,8 @@ use ltk_game_data::{ApplyDiagnosticKind, NoSchema, Selector};
 use ltk_meta::BinObject;
 
 use super::{Layer, Package};
-use crate::game::{GameBin, GameError, GameSource};
+use crate::game::{GameBin, GameError, GameSource, SHADERS_BIN};
 use crate::model::{BinHash, ChunkPath, WadHash, WadName, bin, path_hash};
-use crate::port::SHADERS_BIN;
 
 /// How many bins the load of one patched bin follows.
 // #ADR-0070: twice the bins read of one game skin, so a skin's chain and the package's own bins
