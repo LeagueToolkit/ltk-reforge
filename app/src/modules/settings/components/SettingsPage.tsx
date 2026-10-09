@@ -1,4 +1,7 @@
-import { FailureNote, SectionCard, SegmentedControl, Spinner } from "@/components";
+// The inputs module's picker is behind a barrel that reads the settings: a cycle.
+import { open } from "@tauri-apps/plugin-dialog";
+
+import { Button, FailureNote, SectionCard, SegmentedControl, Spinner } from "@/components";
 import { m } from "@/i18n";
 import type { Theme } from "@/lib/bindings.gen";
 
@@ -20,6 +23,15 @@ export function SettingsPage() {
 
   const current = settings.data;
   const options = THEMES.map((theme) => ({ value: theme, label: m[`theme.${theme}.label`]() }));
+  const chosenOut = current["output.folder"];
+
+  const chooseOut = async () => {
+    const picked = await open({ directory: true, multiple: false });
+    if (typeof picked === "string") {
+      save.mutate({ ...current, "output.folder": picked });
+    }
+  };
+  const resetOut = () => save.mutate({ ...current, "output.folder": null });
 
   return (
     <div className="flex max-w-2xl flex-col gap-6" data-ui="SettingsPage">
@@ -41,8 +53,30 @@ export function SettingsPage() {
             aria-label={m["setting.appearance.theme.label"]()}
           />
         </div>
-        {save.isError && <FailureNote failure={save.error} />}
       </SectionCard>
+      <SectionCard title={m.settings_output_title()}>
+        <div className="flex items-start justify-between gap-4" data-ui="SettingsPage:output">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-surface-100">{m["setting.output.folder.label"]()}</p>
+            {chosenOut ? (
+              <p className="font-mono text-xs break-all text-surface-300">{chosenOut}</p>
+            ) : (
+              <p className="text-xs text-surface-400">{m["setting.output.folder.description"]()}</p>
+            )}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {chosenOut && (
+              <Button size="sm" variant="ghost" onClick={resetOut}>
+                {m.settings_output_reset_action()}
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => void chooseOut()}>
+              {m.settings_output_choose_action()}
+            </Button>
+          </div>
+        </div>
+      </SectionCard>
+      {save.isError && <FailureNote failure={save.error} />}
     </div>
   );
 }
