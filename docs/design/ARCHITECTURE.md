@@ -85,7 +85,9 @@ let report = run.report();
   empty `MemoryStore` unless given), and every byte a stage makes, the entries' among them,
   goes into the layer and none into the store under it (#ADR-0093). `Run::into_layer` gives
   the layer's blobs, which the caller flushes into a store it keeps; a run dropped leaves
-  nothing. `run.read_file` reads an archive file.
+  nothing. `run.read_file` reads an archive file entry by entry and never holds it whole
+  (`archive::Archive::file`, #ADR-0100): its SHA-256 is taken in one pass, and a packed WAD
+  stored as it is is mounted over its part of the file, which `ltk_wad` reads chunk by chunk.
 - **A run reads archives through a cache when given one** (`Run::in_cache`, a
   `snapshot::RawCache`; #ADR-0095). `read` looks the archive up by its SHA-256 before it
   inflates anything: on a hit the raw snapshot is the result, its findings raised again and
@@ -947,9 +949,9 @@ object takes a name of its own, which every link to it follows.
 
 ## Untrusted input
 
-- `archive` is the only module that reads a zip, under the caller's `Caps`. It holds the
-  archive's bytes once, and the entries' bytes go into the blob store under their content id
-  and nowhere else (#ADR-0093). On disk that is the ingest store, a file per blob named by its
+- `archive` is the only module that reads a zip, under the caller's `Caps`. It reads an
+  archive file entry by entry, holds an archive in memory once, and puts the entries' bytes
+  into the blob store under their content id and nowhere else (#ADR-0093, #ADR-0100). On disk that is the ingest store, a file per blob named by its
   id; the raw cache's entry beside the blobs is named by the archive's SHA-256, the reading
   and the caps, and holds the raw snapshot's JSON, the mod's names in it as JSON strings.
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an

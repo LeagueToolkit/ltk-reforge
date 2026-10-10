@@ -1,8 +1,9 @@
-//! A packed WAD (#MOD-ARTIFACT-0009): a whole WAD as one entry, mounted from memory with
-//! `ltk_wad`. Its bytes are a mod's, so every size its table declares is checked before it is
-//! used, and the reader runs where a panic is caught.
+//! A packed WAD (#MOD-ARTIFACT-0009): a whole WAD as one entry, mounted with `ltk_wad` over a
+//! reader of its bytes, which seeks to each chunk and reads it alone. Its bytes are a mod's, so
+//! every size its table declares is checked before it is used, and the reader runs where a
+//! panic is caught.
 
-use std::io::Cursor;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use ltk_wad::{Wad, WadChunk, WadChunkCompression};
@@ -113,44 +114,48 @@ fn declared_size(entry: &WadChunk) -> u64 {
     }
 }
 
-/// The bytes of a packed WAD, to be read under the archive's caps.
-pub(super) struct PackedWad<'a> {
-    bytes: &'a [u8],
+/// The first bytes of a WAD of version 3: the magic and version, a 256-byte signature, an
+/// 8-byte checksum and the count of its chunks. The table follows, 32 bytes a chunk.
+const COUNT_AT: usize = 4 + 256 + 8;
+const TABLE_AT: usize = COUNT_AT + 4;
+const ENTRY_BYTES: u64 = 32;
+
+/// A packed WAD, to be read under the archive's caps: a reader of its bytes, and their size.
+pub(super) struct PackedWad<'a, R> {
+    bytes: R,
+    len: u64,
     caps: &'a Caps,
 }
 
-impl<'a> PackedWad<'a> {
-    /// A packed WAD's bytes, not read yet.
-    pub(super) fn new(bytes: &'a [u8], caps: &'a Caps) -> Self {
-        Self { bytes, caps }
+impl<'a, R: Read + Seek> PackedWad<'a, R> {
+    /// A packed WAD's bytes, `len` of them, not read yet.
+    pub(super) fn new(bytes: R, len: u64, caps: &'a Caps) -> Self {
+        Self { bytes, len, caps }
     }
 
     /// The WAD's chunks, decompressed, in path-hash order as `ltk_wad` gives them. Each is
     /// charged to the budget before it is decompressed.
-    pub(super) fn chunks(&self, budget: &mut Budget) -> Result<Vec<Chunk>, PackedFailure> {
+    pub(super) fn chunks(mut self, budget: &mut Budget) -> Result<Vec<Chunk>, PackedFailure> {
         self.check_header()?;
         guarded(|| self.read(budget))
     }
 
     /// Refuses a header that declares more chunks than the WAD's bytes can list, or more than
     /// the cap, before `ltk_wad` mounts it.
-    fn check_header(&self) -> Result<(), PackedError> {
+    fn check_header(&mut self) -> Result<(), PackedError> {
         // `Wad::mount` reserves memory for the count the header declares before it reads one
         // chunk. An allocation that fails aborts the process, which `catch_unwind` does not
-        // catch. It reads the chunks of version 3 only, so the count is looked for there alone:
-        // after the magic and version, a 256-byte signature and an 8-byte checksum. The table
-        // follows the count, 32 bytes a chunk.
-        const COUNT_AT: usize = 4 + 256 + 8;
-        const TABLE_AT: usize = COUNT_AT + 4;
-        const ENTRY_BYTES: u64 = 32;
-        let Some(&[b'R', b'W', major, _]) = self.bytes.first_chunk::<4>() else {
+        // catch. It reads the chunks of version 3 only, so the count is looked for there alone.
+        let head = self.head().map_err(|e| PackedError::Mount {
+            reason: e.to_string(),
+        })?;
+        let Some(&[b'R', b'W', major, _]) = head.first_chunk::<4>() else {
             return Ok(());
         };
         if major < 3 {
             return Err(PackedError::Version { major });
         }
-        let declared = self
-            .bytes
+        let declared = head
             .get(COUNT_AT..)
             .and_then(|rest| rest.first_chunk::<4>());
         let Some(chunks) = declared.map(|count| u64::from(u32::from_le_bytes(*count))) else {
@@ -161,11 +166,11 @@ impl<'a> PackedWad<'a> {
         }
         // The impossible count comes first: the cap is set well above the game's own WADs, and
         // a count the bytes cannot list is wrong whatever the cap.
-        let fit = (self.bytes.len() - TABLE_AT) as u64 / ENTRY_BYTES;
+        let fit = (self.len - TABLE_AT as u64) / ENTRY_BYTES;
         if chunks > fit {
             return Err(PackedError::TableLargerThanData {
                 chunks,
-                bytes: self.bytes.len() as u64,
+                bytes: self.len,
                 fit,
             });
         }
@@ -178,30 +183,48 @@ impl<'a> PackedWad<'a> {
         Ok(())
     }
 
-    fn read(&self, budget: &mut Budget) -> Result<Vec<Chunk>, PackedFailure> {
-        let mut wad = Wad::mount(Cursor::new(self.bytes)).map_err(|e| PackedError::Mount {
+    /// The bytes up to the table, or fewer when the WAD is shorter, with the reader left at
+    /// the start, where `Wad::mount` begins.
+    fn head(&mut self) -> io::Result<Vec<u8>> {
+        let mut head = Vec::with_capacity(TABLE_AT);
+        self.bytes.seek(SeekFrom::Start(0))?;
+        (&mut self.bytes)
+            .take(TABLE_AT as u64)
+            .read_to_end(&mut head)?;
+        self.bytes.seek(SeekFrom::Start(0))?;
+        Ok(head)
+    }
+
+    fn read(self, budget: &mut Budget) -> Result<Vec<Chunk>, PackedFailure> {
+        let (len, caps) = (self.len, self.caps);
+        let wad = Wad::mount(self.bytes).map_err(|e| PackedError::Mount {
             reason: e.to_string(),
         })?;
         let entries: Vec<WadChunk> = wad.chunks().iter().copied().collect();
-        if entries.len() > self.caps.packed_chunks {
+        if entries.len() > caps.packed_chunks {
             return Err(PackedError::TooManyChunks {
                 chunks: entries.len() as u64,
-                cap: self.caps.packed_chunks,
+                cap: caps.packed_chunks,
             }
             .into());
         }
+        let mut mounted = Mounted { wad, len, caps };
         entries
             .iter()
-            .map(|entry| self.chunk(&mut wad, entry, budget))
+            .map(|entry| mounted.chunk(entry, budget))
             .collect()
     }
+}
 
-    fn chunk(
-        &self,
-        wad: &mut Wad<Cursor<&[u8]>>,
-        entry: &WadChunk,
-        budget: &mut Budget,
-    ) -> Result<Chunk, PackedFailure> {
+/// A packed WAD that `ltk_wad` mounted, its chunks to be read one at a time.
+struct Mounted<'a, R: Read + Seek> {
+    wad: Wad<R>,
+    len: u64,
+    caps: &'a Caps,
+}
+
+impl<R: Read + Seek> Mounted<'_, R> {
+    fn chunk(&mut self, entry: &WadChunk, budget: &mut Budget) -> Result<Chunk, PackedFailure> {
         let chunk = entry.path_hash();
         let bytes = declared_size(entry);
         if bytes > self.caps.entry_bytes {
@@ -214,12 +237,13 @@ impl<'a> PackedWad<'a> {
         }
         // `ltk_wad` allocates the compressed size the entry declares before it reads.
         let end = (entry.data_offset() as u64).saturating_add(entry.compressed_size() as u64);
-        if end > self.bytes.len() as u64 {
+        if end > self.len {
             return Err(PackedError::ChunkPastEnd { chunk }.into());
         }
         budget.charge(bytes)?;
         let data =
-            wad.load_chunk_decompressed(entry)
+            self.wad
+                .load_chunk_decompressed(entry)
                 .map_err(|e| PackedError::ChunkUnreadable {
                     chunk,
                     reason: e.to_string(),
@@ -257,8 +281,12 @@ mod tests {
         let mut bytes = vec![0u8; 4 + 256 + 8 + 4 + 5 * 32];
         bytes[..4].copy_from_slice(&[b'R', b'W', 3, 4]);
         bytes[268..272].copy_from_slice(&u32::MAX.to_le_bytes());
+        let header = |bytes: &[u8]| {
+            let len = bytes.len() as u64;
+            PackedWad::new(io::Cursor::new(bytes), len, &caps).check_header()
+        };
         assert_eq!(
-            PackedWad::new(&bytes, &caps).check_header(),
+            header(&bytes),
             Err(PackedError::TableLargerThanData {
                 chunks: u64::from(u32::MAX),
                 bytes: bytes.len() as u64,
@@ -267,17 +295,14 @@ mod tests {
         );
         bytes[268..272].copy_from_slice(&5u32.to_le_bytes());
         assert_eq!(
-            PackedWad::new(&bytes, &caps).check_header(),
+            header(&bytes),
             Err(PackedError::TooManyChunks { chunks: 5, cap: 4 })
         );
         bytes[268..272].copy_from_slice(&4u32.to_le_bytes());
-        assert_eq!(PackedWad::new(&bytes, &caps).check_header(), Ok(()));
+        assert_eq!(header(&bytes), Ok(()));
         bytes[2] = 1;
-        assert_eq!(
-            PackedWad::new(&bytes, &caps).check_header(),
-            Err(PackedError::Version { major: 1 })
-        );
-        assert_eq!(PackedWad::new(b"RW", &caps).check_header(), Ok(()));
-        assert_eq!(PackedWad::new(b"PK\x03\x04", &caps).check_header(), Ok(()));
+        assert_eq!(header(&bytes), Err(PackedError::Version { major: 1 }));
+        assert_eq!(header(b"RW"), Ok(()));
+        assert_eq!(header(b"PK\x03\x04"), Ok(()));
     }
 }

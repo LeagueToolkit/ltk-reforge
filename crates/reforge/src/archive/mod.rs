@@ -1,8 +1,9 @@
 //! The archive: a `.fantome` or a plain zip of the same layout, from an untrusted site. This is
 //! the only reader of untrusted zips.
 //!
-//! Everything is read into memory under caps, and nothing is extracted to disk (#ADR-0024). The
-//! archive's bytes are borrowed and held once. Only deflate and stored entries are read. No name
+//! Everything is read under caps, and nothing is extracted to disk (#ADR-0024). An archive file
+//! is read entry by entry and never held whole; bytes in memory are borrowed and held once
+//! (#ADR-0100). Only deflate and stored entries are read. No name
 //! the archive spells leaves this module as a string that could become a path: a WAD's name is a
 //! `WadName`, a chunk's path a `ChunkPath` or a hash, and every other text a `Spelled`. An
 //! archive broken by its format is reported and not recovered (#ADR-0025).
@@ -21,6 +22,7 @@ mod kind;
 mod name;
 mod packed;
 mod reader;
+mod source;
 
 use std::collections::BTreeMap;
 
@@ -37,6 +39,7 @@ pub use self::findings::{
 pub use self::kind::file_kind;
 pub use self::packed::PackedError;
 use self::reader::{Parts, Reader};
+use self::source::Source;
 use crate::diag::{Halted, Logged, Sink};
 use crate::model::entity::{Extra, ModImage, ModMeta, WadLayout};
 use crate::model::{ByteView, ChunkPath, ContentId, Spelled, WadHash, WadName};
@@ -284,11 +287,107 @@ impl RawSnapshot {
     }
 }
 
+/// An archive to be read: its bytes in memory or its file, with its SHA-256, which identifies
+/// it before anything is inflated.
+#[derive(Debug, Clone, Copy)]
+pub struct Archive<'a> {
+    source: Source<'a>,
+    file_name: &'a str,
+    sha256: ContentId,
+}
+
+impl<'a> Archive<'a> {
+    /// An archive in memory, borrowed for the read and not kept. `file_name` is for display and
+    /// is never opened.
+    pub fn bytes(bytes: &'a [u8], file_name: &'a str) -> Self {
+        Self {
+            source: Source::Bytes(bytes),
+            file_name,
+            sha256: ContentId::of(bytes),
+        }
+    }
+
+    /// An archive file, its SHA-256 taken in one pass that holds nothing of it. A file over the
+    /// cap for the archive file, or one that does not read, ends the read.
+    pub fn file(path: &'a Utf8Path, caps: &Caps, sink: &mut Sink<'_>) -> Result<Self, Halted> {
+        let not_read = |error: std::io::Error| NotZip {
+            file: Spelled::new(file_name_of(path)),
+            reason: error.to_string(),
+        };
+        let len = match fs_err::metadata(path) {
+            Ok(metadata) => metadata.len(),
+            Err(error) => return Err(sink.halt(not_read(error))),
+        };
+        if len > caps.archive_bytes {
+            return Err(sink.halt(BudgetExceeded::ArchiveFile {
+                bytes: len,
+                cap: caps.archive_bytes,
+            }));
+        }
+        let sha256 = fs_err::File::open(path)
+            .map(std::io::BufReader::new)
+            .and_then(ContentId::of_reader)
+            .map_err(|error| sink.halt(not_read(error)))?;
+        Ok(Self {
+            source: Source::File { path, len },
+            file_name: file_name_of(path),
+            sha256,
+        })
+    }
+
+    /// The archive's SHA-256.
+    pub fn sha256(&self) -> ContentId {
+        self.sha256
+    }
+
+    /// The name it is shown by.
+    pub fn file_name(&self) -> &'a str {
+        self.file_name
+    }
+
+    /// Reads the archive into the store: the stage `read`. A file is read entry by entry, and
+    /// a stored packed WAD where it lies in it (#ADR-0100).
+    ///
+    /// A problem short of a fatal one is a diagnostic, and the archive is read as far as it
+    /// reads.
+    pub fn read(
+        &self,
+        caps: &Caps,
+        store: &dyn BlobStore,
+        sink: &mut Sink<'_>,
+    ) -> Result<RawSnapshot, Halted> {
+        let file_name = Spelled::new(self.file_name);
+        let _span = tracing::info_span!("read", archive = %file_name).entered();
+        let mark = sink.mark();
+        let mut reader = match Reader::open(self.source, &file_name, caps) {
+            Ok(reader) => reader,
+            Err(fatal) => return Err(fatal.halt(sink)),
+        };
+        let outcome = reader.read_entries(sink);
+        let mut parts = reader.finish();
+        // The findings of the entries read are raised also when the read ends early.
+        std::mem::take(&mut parts.findings).raise(caps, sink);
+        if let Err(fatal) = outcome {
+            return Err(fatal.halt(sink));
+        }
+        let info = std::mem::take(&mut parts.info);
+        let meta = ModMeta {
+            file_name,
+            sha256: self.sha256,
+            mod_id: self.sha256.hex()[..12].to_string(),
+            name: info.name,
+            author: info.author,
+            version: info.version,
+            description: info.description,
+        };
+        let mut raw = RawSnapshot::of(meta, *caps, parts, store);
+        raw.findings = sink.logged_since(mark);
+        Ok(raw)
+    }
+}
+
 /// Reads an archive from its bytes, which are borrowed for the call and not kept, into the
-/// store: the stage `read`.
-///
-/// A problem short of a fatal one is a diagnostic, and the archive is read as far as it reads.
-/// `file_name` is for display and is never opened.
+/// store: the stage `read`. `file_name` is for display and is never opened.
 pub fn read(
     bytes: &[u8],
     file_name: &str,
@@ -296,69 +395,21 @@ pub fn read(
     store: &dyn BlobStore,
     sink: &mut Sink<'_>,
 ) -> Result<RawSnapshot, Halted> {
-    let file_name = Spelled::new(file_name);
-    let _span = tracing::info_span!("read", archive = %file_name).entered();
-    let mark = sink.mark();
-    let mut reader = match Reader::open(bytes, &file_name, caps) {
-        Ok(reader) => reader,
-        Err(fatal) => return Err(fatal.halt(sink)),
-    };
-    let outcome = reader.read_entries(sink);
-    let mut parts = reader.finish();
-    // The findings of the entries read are raised also when the read ends early.
-    std::mem::take(&mut parts.findings).raise(caps, sink);
-    if let Err(fatal) = outcome {
-        return Err(fatal.halt(sink));
-    }
-    let sha256 = ContentId::of(bytes);
-    let mod_id = sha256.hex()[..12].to_string();
-    let info = std::mem::take(&mut parts.info);
-    let meta = ModMeta {
-        file_name,
-        sha256,
-        mod_id,
-        name: info.name,
-        author: info.author,
-        version: info.version,
-        description: info.description,
-    };
-    let mut raw = RawSnapshot::of(meta, *caps, parts, store);
-    raw.findings = sink.logged_since(mark);
-    Ok(raw)
+    Archive::bytes(bytes, file_name).read(caps, store, sink)
 }
 
-/// Reads an archive file into the store. A file over the cap for the archive file is not read.
+/// Reads an archive file into the store, entry by entry. A file over the cap for the archive
+/// file is not read.
 pub fn read_file(
     path: &Utf8Path,
     caps: &Caps,
     store: &dyn BlobStore,
     sink: &mut Sink<'_>,
 ) -> Result<RawSnapshot, Halted> {
-    let bytes = file_bytes(path, caps, sink)?;
-    read(&bytes, file_name_of(path), caps, store, sink)
+    Archive::file(path, caps, sink)?.read(caps, store, sink)
 }
 
 /// The name of an archive file, as `read` takes it for display.
 pub fn file_name_of(path: &Utf8Path) -> &str {
     path.file_name().unwrap_or(path.as_str())
-}
-
-/// The bytes of an archive file, to be read. A file over the cap for the archive file is not
-/// read, and a file that does not read ends the read.
-pub fn file_bytes(path: &Utf8Path, caps: &Caps, sink: &mut Sink<'_>) -> Result<Vec<u8>, Halted> {
-    let not_read = |error: std::io::Error| NotZip {
-        file: Spelled::new(file_name_of(path)),
-        reason: error.to_string(),
-    };
-    let size = match fs_err::metadata(path) {
-        Ok(metadata) => metadata.len(),
-        Err(error) => return Err(sink.halt(not_read(error))),
-    };
-    if size > caps.archive_bytes {
-        return Err(sink.halt(BudgetExceeded::ArchiveFile {
-            bytes: size,
-            cap: caps.archive_bytes,
-        }));
-    }
-    fs_err::read(path).map_err(|error| sink.halt(not_read(error)))
 }

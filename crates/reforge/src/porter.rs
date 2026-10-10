@@ -18,7 +18,7 @@ use zip::CompressionMethod;
 use zip::result::ZipError;
 use zip::write::SimpleFileOptions;
 
-use crate::archive::{self, Caps, RawSnapshot};
+use crate::archive::{self, Archive, Caps, RawSnapshot};
 use crate::diag::{
     Cancel, Cancelled, Code, DiagnosticPolicy, Diagnostics, Halted, Parts, Render, Stage, Step,
     Steps,
@@ -836,15 +836,28 @@ impl<'a> Run<'a> {
     pub fn read(&mut self, bytes: &[u8], file_name: &str) -> Result<&RawSnapshot, RunError> {
         self.going()?;
         self.first = self.log.len();
-        if let Some(raw) = self.cached(bytes, file_name) {
+        self.read_archive(&Archive::bytes(bytes, file_name))
+    }
+
+    /// The stage `read`, of an archive file, which is read entry by entry and never held whole
+    /// (#ADR-0100).
+    pub fn read_file(&mut self, path: &Utf8Path) -> Result<&RawSnapshot, RunError> {
+        self.going()?;
+        self.first = self.log.len();
+        let archive = Archive::file(path, &self.settings.caps, &mut self.log.at(Stage::Read))?;
+        self.read_archive(&archive)
+    }
+
+    fn read_archive(&mut self, archive: &Archive<'_>) -> Result<&RawSnapshot, RunError> {
+        if let Some(raw) = self.cached(archive) {
             return Ok(self.raw.insert(raw));
         }
         let mut sink = self.log.at(Stage::Read);
         let caps = &self.settings.caps;
         let raw = match &self.cache {
-            None => archive::read(bytes, file_name, caps, &self.store, &mut sink)?,
+            None => archive.read(caps, &self.store, &mut sink)?,
             Some(cache) => {
-                let raw = archive::read(bytes, file_name, caps, cache.store(), &mut sink)?;
+                let raw = archive.read(caps, cache.store(), &mut sink)?;
                 if let Err(error) = cache.put(&raw) {
                     // The run goes on: the next run of the archive reads it again.
                     tracing::warn!(%error, "a raw snapshot is not kept in the cache");
@@ -858,22 +871,13 @@ impl<'a> Run<'a> {
     /// The raw snapshot the run's cache holds of an archive, its findings raised again, under
     /// the caller's name for the archive. None without a cache, for an archive it does not
     /// hold, and for a snapshot whose findings name a code this program does not declare.
-    fn cached(&mut self, bytes: &[u8], file_name: &str) -> Option<RawSnapshot> {
+    fn cached(&mut self, archive: &Archive<'_>) -> Option<RawSnapshot> {
         let cache = self.cache.as_ref()?;
-        let mut raw = cache.get(ContentId::of(bytes), &self.settings.caps)?;
+        let mut raw = cache.get(archive.sha256(), &self.settings.caps)?;
         let codes: Vec<Code> = codes().collect();
         self.log.restore(&raw.findings, &codes).ok()?;
-        raw.meta.file_name = Spelled::new(file_name);
+        raw.meta.file_name = Spelled::new(archive.file_name());
         Some(raw)
-    }
-
-    /// The stage `read`, of an archive file.
-    pub fn read_file(&mut self, path: &Utf8Path) -> Result<&RawSnapshot, RunError> {
-        self.going()?;
-        self.first = self.log.len();
-        let mut sink = self.log.at(Stage::Read);
-        let bytes = archive::file_bytes(path, &self.settings.caps, &mut sink)?;
-        self.read(&bytes, archive::file_name_of(path))
     }
 
     /// Starts the run from a snapshot in place of `read`, with the bytes it names in the run's

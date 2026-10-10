@@ -41,6 +41,13 @@ impl ContentId {
         Self(Sha256::digest(bytes).into())
     }
 
+    /// The content id of the bytes a reader gives, read to the end and not held.
+    pub fn of_reader(mut read: impl std::io::Read) -> std::io::Result<Self> {
+        let mut digest = Sha256::new();
+        std::io::copy(&mut read, &mut digest)?;
+        Ok(Self(digest.finalize().into()))
+    }
+
     /// The digest as 64 hex digits.
     pub fn hex(&self) -> String {
         hex(&self.0)

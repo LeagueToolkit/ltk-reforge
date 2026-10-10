@@ -1,10 +1,11 @@
 //! The reader: one pass over the zip's entries, in archive order. Each entry is named, opened,
-//! inflated under the caps and put where its name says. What an entry is found to be is held in
+//! inflated under the caps and put where its name says. A packed WAD stored as it is is read
+//! where it lies in the archive, never copied whole. What an entry is found to be is held in
 //! `Findings` and raised by the caller, also when the read ends early.
 
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{self, Cursor, Read};
+use std::io::{self, Cursor, Read, Seek, Write};
 
 use reforge_magic::HEAD_LEN;
 use zip::result::ZipError;
@@ -15,6 +16,7 @@ use super::findings::{BudgetExceeded, Fatal, Findings, NotZip, TooManyEntries};
 use super::info::Info;
 use super::name::{EntryName, WadPart};
 use super::packed::{PackedFailure, PackedWad};
+use super::source::{Input, Source, Window};
 use super::{ArchiveWad, Chunk};
 use crate::diag::{Sink, Step, Steps};
 use crate::model::entity::{Extra, MAX_IMAGE_BYTES, ModImage, WadLayout};
@@ -88,9 +90,11 @@ impl From<EntryError> for Failure {
     }
 }
 
-/// An entry's bytes, inflated.
-struct Inflated {
-    bytes: Vec<u8>,
+/// An entry passed through to an output: its bytes inflated into memory, or counted.
+struct Passed<W> {
+    out: W,
+    /// The bytes it inflated to.
+    len: u64,
     /// The entry is stored and its recorded checksum is wrong.
     crc_wrong: bool,
 }
@@ -104,11 +108,20 @@ fn is_checksum_failure(error: &ZipError) -> bool {
         if e.kind() == io::ErrorKind::InvalidData && e.to_string() == "Invalid checksum")
 }
 
-/// Reads to the end, or gives nothing when more than `cap` bytes come.
-fn read_capped(reader: &mut impl Read, cap: u64) -> io::Result<Option<Vec<u8>>> {
-    let mut out = Vec::new();
-    reader.take(cap.saturating_add(1)).read_to_end(&mut out)?;
-    Ok((out.len() as u64 <= cap).then_some(out))
+/// Reads to the end into `out`, or gives nothing when more than `cap` bytes come.
+fn read_capped(reader: &mut impl Read, cap: u64, out: &mut impl Write) -> io::Result<Option<u64>> {
+    let len = io::copy(&mut reader.take(cap.saturating_add(1)), out)?;
+    Ok((len <= cap).then_some(len))
+}
+
+/// Mounts a packed WAD over a reader of its bytes and reads its chunks.
+fn mount(
+    bytes: impl Read + Seek,
+    len: u64,
+    caps: &Caps,
+    budget: &mut Budget,
+) -> Result<Vec<Chunk>, PackedFailure> {
+    PackedWad::new(bytes, len, caps).chunks(budget)
 }
 
 /// A WAD as its entries come in.
@@ -152,7 +165,8 @@ const IMAGE_ENTRY: &str = "META/image.png";
 
 /// The pass over the archive's entries.
 pub(super) struct Reader<'a> {
-    zip: ZipArchive<Cursor<&'a [u8]>>,
+    source: Source<'a>,
+    zip: ZipArchive<Input<'a>>,
     caps: &'a Caps,
     budget: Budget,
     info: Info,
@@ -164,20 +178,22 @@ pub(super) struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    /// Opens the zip's directory. The bytes are borrowed and never copied whole.
-    pub(super) fn open(bytes: &'a [u8], file: &Spelled, caps: &'a Caps) -> Result<Self, Fatal> {
-        if bytes.len() as u64 > caps.archive_bytes {
+    /// Opens the zip's directory. The archive's bytes are never copied whole.
+    pub(super) fn open(source: Source<'a>, file: &Spelled, caps: &'a Caps) -> Result<Self, Fatal> {
+        if source.len() > caps.archive_bytes {
             return Err(Fatal::BudgetExceeded(BudgetExceeded::ArchiveFile {
-                bytes: bytes.len() as u64,
+                bytes: source.len(),
                 cap: caps.archive_bytes,
             }));
         }
-        let zip = ZipArchive::new(Cursor::new(bytes)).map_err(|e| {
+        let not_zip = |reason: String| {
             Fatal::NotZip(NotZip {
                 file: file.clone(),
-                reason: e.to_string(),
+                reason,
             })
-        })?;
+        };
+        let input = source.open().map_err(|e| not_zip(e.to_string()))?;
+        let zip = ZipArchive::new(input).map_err(|e| not_zip(e.to_string()))?;
         if zip.len() > caps.entries {
             return Err(Fatal::TooManyEntries(TooManyEntries {
                 entries: zip.len(),
@@ -185,6 +201,7 @@ impl<'a> Reader<'a> {
             }));
         }
         Ok(Self {
+            source,
             zip,
             caps,
             budget: Budget::new(caps.total_bytes),
@@ -340,10 +357,23 @@ impl<'a> Reader<'a> {
         key: &str,
         subject: &Spelled,
     ) -> Result<(), Fatal> {
-        let Some(bytes) = self.inflate(index, name, subject)? else {
-            return Ok(());
+        let stored = self
+            .declared(index)
+            .is_ok_and(|declared| declared.method == CompressionMethod::Stored);
+        let read = if stored {
+            let Some(window) = self.window(index, name, subject)? else {
+                return Ok(());
+            };
+            let len = window.len();
+            mount(window, len, self.caps, &mut self.budget)
+        } else {
+            let Some(bytes) = self.inflate(index, name, subject)? else {
+                return Ok(());
+            };
+            let len = bytes.len() as u64;
+            mount(Cursor::new(bytes), len, self.caps, &mut self.budget)
         };
-        let chunks = match PackedWad::new(&bytes, self.caps).chunks(&mut self.budget) {
+        let chunks = match read {
             Ok(chunks) => chunks,
             Err(PackedFailure::OverBudget(_)) => return Err(self.over_budget(name)),
             Err(PackedFailure::Unreadable(why)) => {
@@ -413,12 +443,10 @@ impl<'a> Reader<'a> {
         if declared > MAX_IMAGE_BYTES {
             return ModImage::TooLarge(declared);
         }
-        match self.bytes_of(index) {
+        match self.through(index, Vec::new) {
             // The declared size is the archive's word.
-            Ok(inflated) if inflated.bytes.len() as u64 > MAX_IMAGE_BYTES => {
-                ModImage::TooLarge(inflated.bytes.len() as u64)
-            }
-            Ok(inflated) => ModImage::Held(ByteView::from(inflated.bytes)),
+            Ok(inflated) if inflated.len > MAX_IMAGE_BYTES => ModImage::TooLarge(inflated.len),
+            Ok(inflated) => ModImage::Held(ByteView::from(inflated.out)),
             Err(_) => ModImage::Unreadable,
         }
     }
@@ -430,12 +458,52 @@ impl<'a> Reader<'a> {
         name: &Spelled,
         within: &Spelled,
     ) -> Result<Option<Vec<u8>>, Fatal> {
-        match self.bytes_of(index) {
-            Ok(inflated) => {
-                if inflated.crc_wrong {
+        let passed = self.through(index, Vec::new);
+        Ok(self
+            .kept(passed, name, within)?
+            .map(|inflated| inflated.out))
+    }
+
+    /// A stored entry where it lies in the archive, its bytes checked and counted but not
+    /// held, or none when the entry is skipped with a finding.
+    fn window(
+        &mut self,
+        index: usize,
+        name: &Spelled,
+        within: &Spelled,
+    ) -> Result<Option<Window<Input<'a>>>, Fatal> {
+        let passed = self.through(index, io::sink);
+        let Some(passed) = self.kept(passed, name, within)? else {
+            return Ok(None);
+        };
+        let start = self.zip.by_index_raw(index).map(|file| file.data_start());
+        let window = start.map_err(|e| e.to_string()).and_then(|start| {
+            self.source
+                .window(start, passed.len)
+                .map_err(|e| e.to_string())
+        });
+        match window {
+            Ok(window) => Ok(Some(window)),
+            Err(reason) => {
+                self.findings.unreadable(within, name, reason);
+                Ok(None)
+            }
+        }
+    }
+
+    /// What passed through, or none when the entry is skipped with a finding.
+    fn kept<W>(
+        &mut self,
+        passed: Result<Passed<W>, Failure>,
+        name: &Spelled,
+        within: &Spelled,
+    ) -> Result<Option<Passed<W>>, Fatal> {
+        match passed {
+            Ok(passed) => {
+                if passed.crc_wrong {
                     self.findings.stored_crc_wrong(within, name);
                 }
-                Ok(Some(inflated.bytes))
+                Ok(Some(passed))
             }
             Err(Failure::OverBudget) => Err(self.over_budget(name)),
             Err(Failure::Entry(error)) => {
@@ -469,7 +537,12 @@ impl<'a> Reader<'a> {
         })
     }
 
-    fn bytes_of(&mut self, index: usize) -> Result<Inflated, Failure> {
+    /// The entry inflated into a fresh output under the caps, and charged to the budget.
+    fn through<W: Write>(
+        &mut self,
+        index: usize,
+        fresh: impl Fn() -> W,
+    ) -> Result<Passed<W>, Failure> {
         let declared = self.declared(index)?;
         let codec = declared.codec()?;
         let too_large = EntryError::TooLarge {
@@ -481,38 +554,53 @@ impl<'a> Reader<'a> {
         // The declared size is the archive's word. The read itself stops at the smaller of the
         // entry cap and what is left of the budget.
         let cap = self.caps.entry_bytes.min(self.budget.left());
-        let (bytes, crc_wrong) = match self.checked(index, cap) {
-            Ok(bytes) => (bytes, false),
+        let mut out = fresh();
+        let (len, crc_wrong) = match self.checked(index, cap, &mut out) {
+            Ok(len) => (len, false),
             // Some packers write a stored entry's checksum wrong. The bytes are what they are,
             // and a WAD that is damaged fails to mount on its own terms.
             Err(e) if is_checksum_failure(&e) && codec == Codec::Stored => {
-                (self.unchecked(index, cap).map_err(EntryError::from)?, true)
+                out = fresh();
+                let len = self.unchecked(index, cap, &mut out);
+                (len.map_err(EntryError::from)?, true)
             }
             Err(e) if is_checksum_failure(&e) => return Err(EntryError::Corrupt.into()),
             Err(e) => return Err(EntryError::from(e).into()),
         };
-        let Some(bytes) = bytes else {
+        let Some(len) = len else {
             return Err(if cap < self.caps.entry_bytes {
                 Failure::OverBudget
             } else {
                 too_large.into()
             });
         };
-        self.budget
-            .charge(bytes.len() as u64)
-            .map_err(|_| Failure::OverBudget)?;
-        Ok(Inflated { bytes, crc_wrong })
+        self.budget.charge(len).map_err(|_| Failure::OverBudget)?;
+        Ok(Passed {
+            out,
+            len,
+            crc_wrong,
+        })
     }
 
     /// The entry inflated and held to its checksum.
-    fn checked(&mut self, index: usize, cap: u64) -> Result<Option<Vec<u8>>, ZipError> {
+    fn checked(
+        &mut self,
+        index: usize,
+        cap: u64,
+        out: &mut impl Write,
+    ) -> Result<Option<u64>, ZipError> {
         let mut file = self.zip.by_index(index)?;
-        Ok(read_capped(&mut file, cap)?)
+        Ok(read_capped(&mut file, cap, out)?)
     }
 
     /// The entry's bytes as the archive holds them, which for a stored entry are its content.
-    fn unchecked(&mut self, index: usize, cap: u64) -> Result<Option<Vec<u8>>, ZipError> {
+    fn unchecked(
+        &mut self,
+        index: usize,
+        cap: u64,
+        out: &mut impl Write,
+    ) -> Result<Option<u64>, ZipError> {
         let mut file = self.zip.by_index_raw(index)?;
-        Ok(read_capped(&mut file, cap)?)
+        Ok(read_capped(&mut file, cap, out)?)
     }
 }
