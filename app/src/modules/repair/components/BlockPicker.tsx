@@ -1,7 +1,8 @@
 import { Checkbox, Disclosure } from "@/components";
 import { m } from "@/i18n";
 
-import { AREAS, hasLine, SEVERITIES, severityLine, withLine } from "./blockLines";
+import { AREA_GROUPS, AREAS, hasLine, SEVERITIES, severityLine, withLine } from "./blockLines";
+import { stageLabel } from "./StageStrip";
 
 export interface BlockPickerProps {
   /** The filter lines, the one source: a checkbox reads and writes its line in them. */
@@ -39,16 +40,28 @@ export function BlockPicker({ block, onChange }: BlockPickerProps) {
           ))}
         </div>
       </div>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         <p className="text-xs text-surface-400 select-none">{m.advanced_block_area_label()}</p>
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {AREAS.map((area) => (
-            <Checkbox
-              key={area}
-              checked={hasLine(block, area)}
-              onCheckedChange={(on) => onChange(withLine(block, area, on))}
-              label={<span className="font-mono text-xs">{area}</span>}
-            />
+        <div
+          className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-x-4 gap-y-3"
+          data-ui="BlockPicker:areas"
+        >
+          {AREA_GROUPS.map((group) => (
+            <div key={group.stage} className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-surface-300 select-none">
+                {group.stage === "inputs"
+                  ? m.advanced_block_inputs_label()
+                  : stageLabel(group.stage)}
+              </p>
+              {group.areas.map((area) => (
+                <Checkbox
+                  key={area}
+                  checked={hasLine(block, area)}
+                  onCheckedChange={(on) => onChange(withLine(block, area, on))}
+                  label={<span className="font-mono text-xs">{area}</span>}
+                />
+              ))}
+            </div>
           ))}
         </div>
       </div>

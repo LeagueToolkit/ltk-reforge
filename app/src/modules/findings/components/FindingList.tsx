@@ -7,7 +7,7 @@ import { m } from "@/i18n";
 import type { Finding, Severity } from "@/lib/bindings.gen";
 import { twMerge } from "@/utils";
 
-import { DataTree, hasFields, type IdNames } from "./DataTree";
+import { DataTree, hasFields, type IdNames, subjectName } from "./DataTree";
 
 function severityIcon(severity: Severity): ReactNode {
   return match(severity)
@@ -23,7 +23,13 @@ export function severityLabel(severity: Severity): string {
   return m[`severity.${severity}.label`]();
 }
 
-function FindingHead({ finding, folds }: { finding: Finding; folds: boolean }) {
+interface FindingHeadProps {
+  finding: Finding;
+  folds: boolean;
+  names: IdNames | undefined;
+}
+
+function FindingHead({ finding, folds, names }: FindingHeadProps) {
   return (
     <span className="flex items-start gap-3">
       <span className="mt-0.5 shrink-0" title={severityLabel(finding.severity)}>
@@ -40,7 +46,7 @@ function FindingHead({ finding, folds }: { finding: Finding; folds: boolean }) {
         </span>
         <span className="flex flex-wrap gap-x-2 font-mono text-xs text-surface-400">
           <span className="text-surface-300">{finding.code}</span>
-          <span className="break-all">{finding.subject.name}</span>
+          <span className="break-all">{subjectName(finding.subject, names)}</span>
           {finding.by && <span>{m.findings_by_label({ by: finding.by })}</span>}
           {finding.record && <span className="text-accent-300">{finding.record}</span>}
         </span>
@@ -60,14 +66,14 @@ function FindingRow({ finding, detail, names }: FindingRowProps) {
   if (!opens) {
     return (
       <li className="py-2 pl-5" data-ui="FindingList:row">
-        <FindingHead finding={finding} folds={false} />
+        <FindingHead finding={finding} folds={false} names={names} />
       </li>
     );
   }
   return (
     <li data-ui="FindingList:row">
       <Disclosure
-        summary={<FindingHead finding={finding} folds />}
+        summary={<FindingHead finding={finding} folds names={names} />}
         summaryClassName="py-2"
         panelClassName="pb-3 pl-12"
       >

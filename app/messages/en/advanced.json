@@ -1,6 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "advanced_block_area_label": "Any finding of an area",
+  "advanced_block_inputs_label": "Inputs",
   "advanced_block_description": "A finding that matches refuses the write. The run still shows what it found.",
   "advanced_block_label": "Refuse the write on",
   "advanced_block_raw_description": "One filter per line: a code, an area, or a term like severity=error, channel=input, stage=fix, record=#GAME-CHANGE-0005",

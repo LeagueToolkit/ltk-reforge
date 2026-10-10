@@ -309,15 +309,16 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
 (the pages that explore). The steps, in order:
 
 1. **The pages that exist, made plain.** Each a change of its own:
-   - the mod read on pick: name, author, version, image and units shown at once, from a read
-     of the archive alone;
+   - the mod read on pick, or dropped on the window: name, author, version, image and units
+     shown at once, from a read of the archive alone;
    - the result banner names the package, with a button that shows it in its folder, the path
      on hover;
    - the Targets card in words: where each unit ships and why, what fits, and the other levels
      of animation reuse folded under one line, shown where they differ;
    - the advanced view in tabs: Result, Settings, Fixups and checks, Rules, with the mod card
      and the Run button above them;
-   - what refuses the write picked by severity and area, the filter under a disclosure; a
+   - what refuses the write picked by severity and by area under its stage, the filter under
+     a disclosure; a
      target skin picked by its name among the champion's skins;
    - ids in live findings spelled as each stage ends, and "converted" where "kept" stood;
    - the output folder in Settings, the mod card saying where the package goes;

@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { hasLine, severityLine, withLine } from "./blockLines";
+import { AREA_GROUPS, AREAS, hasLine, severityLine, withLine } from "./blockLines";
+
+describe("area groups", () => {
+  it("offer each area once, under one stage, the run's inputs last", () => {
+    expect(new Set(AREAS).size).toBe(AREAS.length);
+    expect(AREAS).toHaveLength(25);
+    expect(AREA_GROUPS.at(-1)?.stage).toBe("inputs");
+    expect(AREA_GROUPS.find((group) => group.stage === "read")?.areas).toContain("archive");
+  });
+});
 
 describe("block lines", () => {
   it("a checkbox adds its line and takes it out again", () => {

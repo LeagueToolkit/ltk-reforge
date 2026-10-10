@@ -1,15 +1,16 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 
 import { Button, FailureNote, SectionCard } from "@/components";
 import { m } from "@/i18n";
 import { commands } from "@/lib/bindings.gen";
 import { pickFile } from "@/modules/inputs";
 import { useSettings } from "@/modules/settings";
-import { queryFn } from "@/utils";
+import { queryFn, twMerge } from "@/utils";
 
-import { folderOf } from "../api/run";
+import { ARCHIVE_EXTENSIONS, useArchiveDrop } from "../api/drop";
+import { folderOf, useRunRunning } from "../api/run";
 import { useRepairStore } from "../state/repairStore";
 
 /** The folder a package is written in: the chosen one, else the mod's own. */
@@ -46,12 +47,14 @@ function usePeek(archive: string | null) {
 }
 
 /**
- * The mod to repair: as its archive names it when it is picked, as the last run named it
- * after, and where its package goes.
+ * The mod to repair, picked with a dialog or dropped on the window: as its archive names it
+ * when it is picked, as the last run named it after, and where its package goes. The mod does
+ * not change during a run, whose result would otherwise be shown as the new mod's.
  */
 export function ModCard() {
   const archive = useRepairStore((state) => state.archive);
   const setArchive = useRepairStore((state) => state.setArchive);
+  const running = useRunRunning();
   const ran = useRepairStore((state) => state.last?.meta);
   const built = useRepairStore(
     (state) => (state.live ? state.live.package : state.last?.package)?.thumbnail,
@@ -63,18 +66,39 @@ export function ModCard() {
   const thumbnail = built ?? peek.data?.thumbnail;
   const chosenOut = settings.data?.["output.folder"];
 
-  const chooseMod = async () => {
-    const picked = await pickFile(["fantome", "zip"], m.repair_archive_filter_label());
-    if (picked) {
+  const takeMod = useCallback(
+    async (picked: string) => {
       // The file at the path may have changed since it was last read.
       await queryClient.invalidateQueries({ queryKey: peekKey });
       setArchive(picked);
+    },
+    [queryClient, setArchive],
+  );
+  const chooseMod = async () => {
+    const picked = await pickFile([...ARCHIVE_EXTENSIONS], m.repair_archive_filter_label());
+    if (picked) {
+      await takeMod(picked);
     }
   };
+  const onDrop = useCallback(
+    (dropped: string) => {
+      if (!running) {
+        void takeMod(dropped);
+      }
+    },
+    [running, takeMod],
+  );
+  const over = useArchiveDrop(onDrop);
 
   return (
     <SectionCard title={m.repair_mod_title()}>
-      <div className="flex items-start justify-between gap-4" data-ui="ModCard:mod">
+      <div
+        className={twMerge(
+          "flex items-start justify-between gap-4 rounded-md",
+          over && !running && "outline-2 outline-offset-8 outline-accent-500 outline-dashed",
+        )}
+        data-ui="ModCard:mod"
+      >
         {thumbnail && (
           <img
             src={thumbnail}
@@ -110,10 +134,12 @@ export function ModCard() {
           {archive && <p className="font-mono text-xs break-all text-surface-300">{archive}</p>}
           {peek.isError && <FailureNote failure={peek.error} />}
           {!archive && (
-            <p className="text-sm text-surface-400 select-none">{m.repair_mod_none()}</p>
+            <p className="text-sm text-surface-400 select-none">
+              {over && !running ? m.repair_mod_drop_label() : m.repair_mod_none()}
+            </p>
           )}
         </div>
-        <Button size="sm" variant="outline" onClick={() => void chooseMod()}>
+        <Button size="sm" variant="outline" disabled={running} onClick={() => void chooseMod()}>
           {m.repair_mod_choose_action()}
         </Button>
       </div>

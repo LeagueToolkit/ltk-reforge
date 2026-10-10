@@ -8,6 +8,14 @@ const PAGE = 20;
 /** A name for each id a finding's fields can hold: `%f12` is a file's path. */
 export type IdNames = Partial<Record<string, string>>;
 
+/**
+ * A subject's name for a person: the name the run gave its id, else the one the finding
+ * carries. A finding raised before a stage named its tables carries the id as its name.
+ */
+export function subjectName(subject: { id: string; name: string }, names: IdNames = {}): string {
+  return names[subject.id] ?? subject.name;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

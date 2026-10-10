@@ -4,37 +4,36 @@
  * the raw field's alone.
  */
 
+import type { StageName } from "@/lib/bindings.gen";
+
 /** The severities a checkbox offers, each meaning that severity or worse. */
 export const SEVERITIES = ["error", "warning", "note"] as const;
 
-/** The areas a code is in, in the order `docs/design/CODES.md` lists them. */
-export const AREAS = [
-  "archive",
-  "inventory",
-  "wad",
-  "character",
-  "file",
-  "bin",
-  "rework",
-  "fixup",
-  "catalog",
-  "copies",
-  "origin",
-  "rig",
-  "target",
-  "unit",
-  "object",
-  "ref",
-  "audio",
-  "hud",
-  "package",
-  "check",
-  "write",
-  "install",
-  "names",
-  "history",
-  "schema",
-] as const;
+/** A group of areas: the stage that raises them, or the run's inputs, which no stage owns. */
+export interface AreaGroup {
+  stage: StageName | "inputs";
+  areas: readonly string[];
+}
+
+/**
+ * The areas a code is in, under the stage `docs/design/CODES.md` lists them with. An area a
+ * later stage also raises (`audio`, `catalog`) sits with the stage that raises most of it.
+ */
+export const AREA_GROUPS: readonly AreaGroup[] = [
+  { stage: "read", areas: ["archive", "inventory"] },
+  { stage: "load", areas: ["wad", "character", "file", "bin", "rework"] },
+  { stage: "fix", areas: ["fixup", "catalog"] },
+  { stage: "facts", areas: ["copies", "origin", "rig"] },
+  { stage: "decide", areas: ["target"] },
+  { stage: "plan", areas: ["unit", "object", "ref", "audio", "hud"] },
+  { stage: "build", areas: ["package"] },
+  { stage: "check", areas: ["check"] },
+  { stage: "write", areas: ["write"] },
+  { stage: "inputs", areas: ["install", "names", "history", "schema"] },
+];
+
+/** Every area a checkbox offers, in the groups' order. */
+export const AREAS: readonly string[] = AREA_GROUPS.flatMap((group) => group.areas);
 
 /** The line a severity checkbox owns. */
 export function severityLine(severity: string): string {
