@@ -10,6 +10,7 @@ use clap::Args;
 use reforge::Repairer;
 use reforge::diag::{Diagnostics, Stage};
 use reforge::fixups::FixupSet;
+use reforge::load::KeptFile;
 use reforge::model::{Dump, DumpCx};
 use reforge::report::AgainRow;
 
@@ -44,6 +45,11 @@ pub struct Repair {
     /// Carry stale copies as the mod's own files.
     #[arg(long)]
     keep_stale: bool,
+    /// Carry this file as the mod's own where it is a stale copy: `<wad>/<path>`, or
+    /// `<wad>/<hash>.<ext>` with the path hash's sixteen hex digits for a file no table names.
+    /// Repeatable.
+    #[arg(long = "keep-file", value_parser = KeptFile::parse)]
+    keep_file: Vec<KeptFile>,
     /// Ship each DDS as it is, put in TEX's container nowhere.
     #[arg(long)]
     keep_dds: bool,
@@ -75,6 +81,7 @@ impl Repair {
             .fixups(set)
             .checks(checks)
             .keep_stale(self.keep_stale)
+            .keep_files(self.keep_file.clone())
             .keep_dds(self.keep_dds)
             .cancel(run::interrupt()?);
         let mut run = repairer.run().log_from(log);

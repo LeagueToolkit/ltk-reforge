@@ -223,6 +223,7 @@ The settings a run takes, each where the library keeps it, and nothing beside th
 | a fixup on or off, and rules added | `FixupSelection` | yes | yes |
 | a check on or off | `CheckSet` | yes | yes |
 | the target policy (auto, base, origin, slot, a skin) and the level of animation reuse | `Policy` | | yes |
+| one unit's own target, or none (#ADR-0098) | `UnitTarget` | | yes |
 | keep stale copies | `Repairer`, `Porter` | yes | yes |
 | keep one stale copy, by its WAD and path (#ADR-0098) | `KeptFile` | yes | yes |
 | keep each DDS as it is, out of TEX's container (#ADR-0055) | `Repairer`, `Porter` | yes | yes |
@@ -242,7 +243,8 @@ user picks another policy and runs again.
 - A mod's name, description and paths reach the screen through `clean`: the crate reads its
   views of a run from `Report::to_json`, which writes every character a terminal acts on as an
   escape.
-- Wanted, and a library change: a target per unit. The policy chooses for all units at once.
+- A unit's own target stands in place of the policy's for that unit alone (#ADR-0098); the
+  app passes it as it passes the policy.
 - A port compares the policy with the other levels of animation reuse (`Porter::compare`),
   and the decide stage's view runs any of them with one button.
 - The stages a view lists are the library's, `Run::stages()` of a run of the kind
@@ -327,7 +329,8 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    - the census history's group folded under a disclosure for maintainers.
 2. **The Mod page** and the **History page** (#ADR-0091), which share a renderer of values with
    names, and the library's read of an archive alone and its spelled history queries.
-3. **The guided view** (#ADR-0090), once the library takes a target per unit.
+3. **The guided view** (#ADR-0090), its answers the library's settings, a unit's own target
+   and a file kept among them (#ADR-0098).
 4. **Runs** and **Records** (#ADR-0091): the reports kept and reopened, a package's evidence
    read, two runs compared; the records bundled and opened from a fixup or a finding.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
