@@ -18,7 +18,8 @@ use crate::run::{self, Cache, Inputs, SchemaInput};
 
 #[derive(Args)]
 pub struct Inspect {
-    /// The mod archive: a `.fantome`, or a zip of the same layout.
+    /// The mod archive: a `.fantome`, or a zip of the same layout. With `--store`, the
+    /// archive's SHA-256 in its place starts from what the store holds of it.
     archive: Utf8PathBuf,
     #[command(flatten)]
     inputs: Inputs,
@@ -65,7 +66,10 @@ impl Inspect {
             .compare(policy.other_levels())
             .fixups(set)
             .keep_stale(self.keep_stale);
-        let mut run = self.cache.over(porter.run().log_from(log));
+        let caps = porter.settings().caps();
+        let mut run = self
+            .cache
+            .over(porter.run().log_from(log), &self.archive, caps)?;
         run::through(&mut run, &self.archive, Stage::Decide)?;
 
         run::print(&run, &DiagnosticPolicy::default());

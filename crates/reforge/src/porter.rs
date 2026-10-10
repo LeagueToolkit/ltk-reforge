@@ -258,6 +258,11 @@ impl From<LoadSnapshot> for Start {
 }
 
 impl Settings {
+    /// The caps a run reads under: the raw snapshot it starts from holds the same.
+    pub fn caps(&self) -> &Caps {
+        &self.caps
+    }
+
     /// The options `load` runs under, and a repair's textures are judged under.
     fn load_options(&self) -> LoadOptions {
         LoadOptions::new()

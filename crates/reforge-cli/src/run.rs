@@ -7,10 +7,12 @@ use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Args;
 use fs_err as fs;
+use reforge::archive::Caps;
 use reforge::diag::{Action, Cancel, DiagnosticPolicy, Filter, Render, Sink, Stage};
 use reforge::env::Env;
 use reforge::game::{Game, Install, MimirAbsent, Names, Schema, mimir_cache_dir};
 use reforge::history;
+use reforge::model::ContentId;
 use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter, ProjectDir};
 use reforge::snapshot::RawCache;
 use reforge::{Run, RunError};
@@ -80,13 +82,34 @@ pub struct Cache {
 }
 
 impl Cache {
-    /// The run, reading its archive through the cache when the command line names one.
-    pub fn over<'a>(&self, run: Run<'a>) -> Run<'a> {
-        match &self.store {
-            Some(dir) => run.in_cache(RawCache::new(dir.clone())),
-            None => run,
-        }
+    /// The run, reading its archive through the cache when the command line names one. With
+    /// a store, an archive named by its SHA-256 starts the run from the raw snapshot the store
+    /// holds of it, read under `caps` (#ADR-0094); a store that holds none is refused.
+    pub fn over<'a>(&self, run: Run<'a>, archive: &Utf8Path, caps: &Caps) -> Result<Run<'a>> {
+        let hash = by_hash(archive);
+        let Some(dir) = &self.store else {
+            if hash.is_some() {
+                bail!("{archive} is a SHA-256: an archive is named by it only with --store");
+            }
+            return Ok(run);
+        };
+        let cache = RawCache::new(dir.clone());
+        let run = run.in_cache(cache.clone());
+        let Some(sha256) = hash else {
+            return Ok(run);
+        };
+        let Some(raw) = cache.get(sha256, caps) else {
+            bail!("the store {dir} holds no archive of SHA-256 {archive}");
+        };
+        run.resume(raw)
+            .with_context(|| format!("starting from the store's snapshot of {archive}"))
     }
+}
+
+/// The SHA-256 an archive argument names in place of a path: 64 hex digits, and no file of
+/// that name.
+fn by_hash(archive: &Utf8Path) -> Option<ContentId> {
+    ContentId::parse(archive.as_str()).filter(|_| !archive.is_file())
 }
 
 /// Which meta schema database a run reads.
@@ -154,12 +177,15 @@ impl Inputs {
     }
 }
 
-/// Reads the archive file into a run, and takes the run through its stages up to `last`. A
-/// fatal diagnostic ends the run early and is no error.
+/// Reads the archive file into a run, unless the run started from its raw snapshot, and
+/// takes the run through its stages up to `last`. A fatal diagnostic ends the run early and
+/// is no error.
 pub fn through(run: &mut Run<'_>, archive: &Utf8Path, last: Stage) -> Result<()> {
-    match run.read_file(archive) {
-        Ok(_) | Err(RunError::Halted(_)) => {}
-        Err(error) => return Err(error.into()),
+    if !run.ran(Stage::Read) {
+        match run.read_file(archive) {
+            Ok(_) | Err(RunError::Halted(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
     }
     Ok(run.through(last)?)
 }
@@ -267,6 +293,15 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
+
+    #[test]
+    fn an_archive_argument_of_64_hex_digits_is_a_sha256() {
+        let hex = "9F86D081884C7D659A2FEAA0C55AD015A3BF4F1B2B0B822CD15D6C15B0F00A08";
+        let named = by_hash(Utf8Path::new(hex)).expect("a SHA-256");
+        assert_eq!(named.hex(), hex.to_ascii_lowercase());
+        assert_eq!(by_hash(Utf8Path::new("mod.fantome")), None);
+        assert_eq!(by_hash(Utf8Path::new(&hex[1..])), None, "63 digits");
+    }
 
     #[test]
     fn a_cancelled_run_exits_with_its_own_code_beside_the_halted_one() {

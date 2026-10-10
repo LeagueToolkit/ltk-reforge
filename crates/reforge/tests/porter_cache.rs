@@ -205,3 +205,25 @@ fn a_raw_snapshot_naming_a_blob_the_store_lacks_is_a_miss_and_no_fault() {
     assert!(cache.store().contains(id), "the miss put the blob back");
     assert_eq!(cache.get(sha256, &Caps::default()), Some(raw));
 }
+
+#[test]
+fn a_run_started_from_the_raw_snapshot_the_cache_holds_by_hash_reports_as_one_that_read() {
+    // `reforge port <sha256> --store`: no archive file is read, and its bytes are the store's.
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let bytes = own_mod();
+    let (_scratch, cache) = scratch();
+    let (report, _) = port(&porter, Some(&cache), &bytes);
+
+    let sha256 = ContentId::of(&bytes);
+    let raw = cache
+        .get(sha256, porter.settings().caps())
+        .expect("the cache holds it");
+    let run = porter.run().in_cache(cache.clone());
+    let mut run = run.resume(raw).expect("the snapshot is this program's");
+    assert!(run.ran(Stage::Read));
+    run.through(Stage::Check).expect("no fault");
+    assert_eq!(run.report().to_json(), report);
+    let absent = ContentId::of(b"no archive the cache read");
+    assert_eq!(cache.get(absent, porter.settings().caps()), None);
+}

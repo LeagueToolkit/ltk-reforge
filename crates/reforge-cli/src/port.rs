@@ -20,7 +20,8 @@ use crate::run::{self, Cache, Inputs, SchemaInput};
 
 #[derive(Args)]
 pub struct PortCommand {
-    /// The mod archive: a `.fantome`, or a zip of the same layout.
+    /// The mod archive: a `.fantome`, or a zip of the same layout. With `--store`, the
+    /// archive's SHA-256 in its place starts from what the store holds of it.
     archive: Utf8PathBuf,
     #[command(flatten)]
     inputs: Inputs,
@@ -97,7 +98,10 @@ impl PortCommand {
 
         let porter = self.porter(&env)?.fixups(set).checks(checks);
         let porter = porter.cancel(run::interrupt()?);
-        let mut run = self.cache.over(porter.run().log_from(log));
+        let caps = porter.settings().caps();
+        let mut run = self
+            .cache
+            .over(porter.run().log_from(log), &self.archive, caps)?;
         run::through(&mut run, &self.archive, Stage::Check)?;
 
         let out = self.out.as_ref().filter(|_| !self.no_write);

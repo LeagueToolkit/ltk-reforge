@@ -15,6 +15,9 @@ Inputs, each an argument, else an environment variable:
                                     and files in, and reads them from in the runs after
                                     (#ADR-0095); a directory under data/corpus/. None by default:
                                     each run reads every archive in memory
+  --from-store                      the program is given each mod's SHA-256 in place of its
+                                    archive, and reads it from the store: no dataset is read,
+                                    and a mod the store lacks has no report
 
 mod_classes.tsv holds one mod per line: SHA-256, dataset, class, how many characters, the
 characters separated by commas. dedup_map.tsv holds one byte-identical archive per line: its
@@ -81,8 +84,10 @@ def add_program(parser):
 
 
 def add_store(parser):
-    """The argument that names the directory the program keeps archives' raw snapshots in."""
+    """The arguments that name the directory the program keeps archives' raw snapshots in, and
+    say whether the program reads each mod from there by its SHA-256 alone."""
     parser.add_argument("--store", default=env("REFORGE_STORE"), help="the raw snapshots' directory (#ADR-0095)")
+    parser.add_argument("--from-store", action="store_true", help="give the program each mod's SHA-256, not its archive: the store holds them all")
 
 
 def add_jobs(parser):
@@ -97,9 +102,9 @@ def require(parser, args, *names):
             parser.error(f"--{name} is required (or its environment variable)")
 
 
-def mods_in_scope(datasets, meta):
-    """The archives in scope, SHA-256 to path, with how many mods the class table holds and
-    how many of them are in scope. The first dataset holding an archive gives its path."""
+def scope_of(meta):
+    """The SHA-256s of the mods in scope, by the class table alone, with how many mods the
+    table holds."""
     with open(os.path.join(meta, "dedup_map.tsv"), encoding="utf-8") as f:
         duplicates = {line.split("\t")[0] for line in f if line.strip()}
     with open(os.path.join(meta, "mod_classes.tsv"), encoding="utf-8") as f:
@@ -110,13 +115,28 @@ def mods_in_scope(datasets, meta):
         champions = not any(NOT_CHAMPION.search(c) for c in characters)
         if klass in IN_SCOPE and sha not in duplicates and len(characters) <= MAX_CHARACTERS and champions:
             scope.add(sha)
+    return scope, len(classes)
+
+
+def mods_by_hash(meta):
+    """The mods in scope, each SHA-256 to itself: what the program is given for a mod whose
+    archive a store holds (`--from-store`), with how many mods the class table holds and how
+    many of them are in scope."""
+    scope, classed = scope_of(meta)
+    return {sha: sha for sha in sorted(scope)}, classed, len(scope)
+
+
+def mods_in_scope(datasets, meta):
+    """The archives in scope, SHA-256 to path, with how many mods the class table holds and
+    how many of them are in scope. The first dataset holding an archive gives its path."""
+    scope, classed = scope_of(meta)
     where = {}
     for directory in datasets:
         for name in sorted(os.listdir(directory)):
             sha, extension = os.path.splitext(name)
             if extension == ".fantome" and sha in scope:
                 where.setdefault(sha, os.path.join(directory, name))
-    return where, len(classes), len(scope)
+    return where, classed, len(scope)
 
 
 def listed(path):

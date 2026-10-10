@@ -15,7 +15,9 @@ What follows `--` is passed to the command.
 
 Inputs: `corpus.py` lists them. `--datasets`, `--meta`, `--game` and `--index` are required.
 `--store` is passed to the command: the first run over a mod keeps its raw snapshot there, and
-every run after reads it in place of the archive (#ADR-0095). The reports are the same.
+every run after reads it in place of the archive (#ADR-0095). The reports are the same. With
+`--from-store` the command is given each mod's SHA-256 in place of its archive and starts from
+the store's raw snapshot of it: `--store` is required and `--datasets` is not.
 
 Outputs, in DIR:
 
@@ -52,10 +54,14 @@ def main():
     corpus.add_store(ap)
     ap.add_argument("extra", nargs="*", help="after `--`: arguments passed to the command")
     args = ap.parse_args()
-    corpus.require(ap, args, "datasets", "meta", "game", "index")
-
-    where, classed, in_scope = corpus.mods_in_scope(args.datasets, args.meta)
-    print(f"datasets: {classed} mods classed, {in_scope} in scope, {len(where)} found", flush=True)
+    if args.from_store:
+        corpus.require(ap, args, "store", "meta", "game", "index")
+        where, classed, in_scope = corpus.mods_by_hash(args.meta)
+        print(f"store: {classed} mods classed, {in_scope} in scope, each named by its SHA-256", flush=True)
+    else:
+        corpus.require(ap, args, "datasets", "meta", "game", "index")
+        where, classed, in_scope = corpus.mods_in_scope(args.datasets, args.meta)
+        print(f"datasets: {classed} mods classed, {in_scope} in scope, {len(where)} found", flush=True)
     shas = corpus.chosen(args, where)
 
     inputs = ["--game", args.game, "--index", args.index]

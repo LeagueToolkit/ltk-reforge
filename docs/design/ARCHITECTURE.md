@@ -105,7 +105,11 @@ let report = run.report();
   `in_store`'s is, and no setting a snapshot names. A run with a cache and one without give
   one report. `reforge port`, `repair`, `load` and `inspect` take the cache's directory as
   `--store`, and the corpus scripts as `--store` or `REFORGE_STORE`; without it a run holds
-  the archive in memory alone. `load` opens the mod from the
+  the archive in memory alone. With `--store` the commands take the archive's SHA-256 in
+  place of its path: the run starts from the raw snapshot the store holds of it
+  (`Start::Raw`), its file name the one it was read under, and a store that holds none is
+  refused. The corpus scripts' `--from-store` gives each mod by its SHA-256, so a corpus run
+  reads no archive. `load` opens the mod from the
   raw snapshot and the store.
 - **A stage reads a mod's bytes from the store on use** (#ADR-0100). The mod and its package
   hold the run's store as `Blobs` (`Run::blobs`), and a file node holds the content id of its

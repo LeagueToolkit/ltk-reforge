@@ -19,7 +19,8 @@ use crate::run::{self, Cache, Inputs, SchemaInput};
 
 #[derive(Args)]
 pub struct Repair {
-    /// The mod archive: a `.fantome`, or a zip of the same layout.
+    /// The mod archive: a `.fantome`, or a zip of the same layout. With `--store`, the
+    /// archive's SHA-256 in its place starts from what the store holds of it.
     archive: Utf8PathBuf,
     #[command(flatten)]
     inputs: Inputs,
@@ -86,7 +87,10 @@ impl Repair {
             .keep_files(self.keep_file.clone())
             .keep_dds(self.keep_dds)
             .cancel(run::interrupt()?);
-        let mut run = self.cache.over(repairer.run().log_from(log));
+        let caps = repairer.settings().caps();
+        let mut run = self
+            .cache
+            .over(repairer.run().log_from(log), &self.archive, caps)?;
         run::through(&mut run, &self.archive, Stage::Check)?;
         // Before the write: the report beside the package holds the second run.
         if self.again && run.package().is_some() && run.cancelled_at().is_none() {

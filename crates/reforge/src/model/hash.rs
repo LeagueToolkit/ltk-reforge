@@ -52,6 +52,16 @@ impl ContentId {
     pub fn hex(&self) -> String {
         hex(&self.0)
     }
+
+    /// The digest that 64 hex digits, in either case, write. None for any other text.
+    pub fn parse(text: &str) -> Option<Self> {
+        let digits = hex_digits(text, 64)?;
+        let mut digest = [0u8; 32];
+        for (byte, pair) in digest.iter_mut().zip(digits.chunks(2)) {
+            *byte = pair.iter().fold(0, |byte, &digit| byte << 4 | digit);
+        }
+        Some(Self(digest))
+    }
 }
 
 impl fmt::Debug for ContentId {
@@ -69,15 +79,7 @@ impl serde::Serialize for ContentId {
 impl<'de> serde::Deserialize<'de> for ContentId {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = <String as serde::Deserialize>::deserialize(d)?;
-        let digest = hex_digits(&text, 64).map(|digits| {
-            let mut digest = [0u8; 32];
-            for (byte, pair) in digest.iter_mut().zip(digits.chunks(2)) {
-                *byte = pair.iter().fold(0, |byte, &digit| byte << 4 | digit);
-            }
-            digest
-        });
-        digest
-            .map(Self)
+        Self::parse(&text)
             .ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no SHA-256")))
     }
 }
