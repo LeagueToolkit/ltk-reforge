@@ -61,6 +61,7 @@ run and writes the report, in some two hundred lines.
 | a port | `Porter::new(&env)`, with a `Policy` and the policies to compare with |
 | a run a stage at a time | `Run::read`, `load`, `fix`, `gather`, `decide`, `plan`, `build`, `check`, `write`, or `Run::through(stage)`. A stage runs once, and the run holds every result: `module()`, `changes()`, `facts()`, `targets()`, `port()`, `package()`. `Run::stages()` lists the stages of the run's kind, `Run::ran(stage)` says whether one ran to its end, and `Run::halted_at()` names the stage a fatal finding ended |
 | a way to stop a run | `Run::cancel(Cancel)`: a flag set from any thread ends the stage under way after the step it is on (#ADR-0097). `Run::cancelled_at()` names the stage, and the snapshots of the stages before it stand |
+| progress inside a stage | `Diagnostics::listen_progress`: each step of a stage as it begins, a `Progress` with the stage, the step's kind and name, its number and the count (#ADR-0097) |
 | the result as data | `Run::report()`: a `Report` (`reforge.report/1`) with a part per stage reached, each serialisable |
 | the fixups as a list | `FixupSet::catalog()`: each `FixupInfo` has an id, a title, the records it implements, its phase and its default |
 | a choice of fixups | `FixupSelection`: the ids turned off and on and the rules added, as JSON that is saved and loaded. A `Rule` (remove, rename or move a field) is data |
@@ -76,8 +77,6 @@ show it where it shows the fixup.
 
 ## What the library lacks for the app
 
-- **Progress inside a stage.** A stage tells nothing between its start and its end. Most
-  mods take one to five seconds through every stage, the slowest of the datasets about 45.
 - **The report's types as TypeScript.** The parts of a `Report` are Rust types with `Serialize`
   only. The `port` part is a JSON value with no type of its own.
 - **A summary for a person.** The report is JSON. What a person reads of a run is the app's to
@@ -260,8 +259,9 @@ user picks another policy and runs again.
   starts and ends, and each finding as it is raised. A stage that gives a part sends it as it
   ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the
   changes, `decide` the decisions, `build` the package. The window shows each part as it
-  comes, in the same place it shows the ended run's (`reforge_app::run`, `drawn`). Progress
-  inside a stage waits on the library.
+  comes, in the same place it shows the ended run's (`reforge_app::run`, `drawn`). The app
+  carries no progress inside a stage and no cancel of a run: the library has both
+  (#ADR-0097), and the app's run events do not carry them.
 - Every finding opens to its details. A fixup's `fixup.*` finding opens to the values it
   counts, object by object, each with its path and its value before and after. Another
   finding opens to its fields, and an id among them (`%f12`) shows the name the report's

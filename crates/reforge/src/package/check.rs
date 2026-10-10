@@ -24,7 +24,7 @@ use super::findings::{
 };
 use super::overlay::{Loaded, MAX_OVERLAY_BINS, Outcome, Overlay};
 use super::{Layer, Origin, Package, PatchOf, WrittenBin};
-use crate::diag::{Cancelled, Record, Sink};
+use crate::diag::{Cancelled, Record, Sink, Step, Steps};
 use crate::fixups::{TargetTypes, TypeSource};
 use crate::game::{FieldType, GameBin, GameSource};
 use crate::model::entity::UnitId;
@@ -244,14 +244,36 @@ impl CheckSet {
         self.checks.iter().map(|check| check.info()).collect()
     }
 
+    /// How many checks the set holds.
+    pub fn len(&self) -> usize {
+        self.checks.len()
+    }
+
+    /// Whether the set holds no check.
+    pub fn is_empty(&self) -> bool {
+        self.checks.is_empty()
+    }
+
     /// The stage `check`: runs each check on the package, each through a sink that names the
-    /// check and the record it rests on. The run's cancel ends the stage between two checks
-    /// (#ADR-0097).
+    /// check and the record it rests on. Each check is a step, and the run's cancel ends the
+    /// stage between two (#ADR-0097).
     pub fn run(&self, cx: &CheckCx<'_>, sink: &mut Sink<'_>) -> Result<(), Cancelled> {
+        self.run_counted(cx, &mut Steps::new(self.len()), sink)
+    }
+
+    /// [`CheckSet::run`] in a stage whose steps before the checks `steps` counts.
+    pub fn run_counted(
+        &self,
+        cx: &CheckCx<'_>,
+        steps: &mut Steps,
+        sink: &mut Sink<'_>,
+    ) -> Result<(), Cancelled> {
         let _span = tracing::info_span!("check", checks = self.checks.len()).entered();
         for check in &self.checks {
-            sink.next_step()?;
             let info = check.info();
+            steps.begin(sink, || Step::Check {
+                check: info.id.to_string(),
+            })?;
             check.run(cx, &mut sink.by(info.id.as_str(), info.record));
         }
         Ok(())

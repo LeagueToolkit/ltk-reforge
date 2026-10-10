@@ -19,13 +19,17 @@ use zip::result::ZipError;
 use zip::write::SimpleFileOptions;
 
 use crate::archive::{self, Caps, RawSnapshot};
-use crate::diag::{Cancel, Cancelled, Code, DiagnosticPolicy, Diagnostics, Halted, Render, Stage};
+use crate::diag::{
+    Cancel, Cancelled, Code, DiagnosticPolicy, Diagnostics, Halted, Parts, Render, Stage, Step,
+    Steps,
+};
 use crate::env::Env;
 use crate::facts::{FactInputs, Facts, FactsError};
 use crate::fixups::{Changes, FixError, FixInputs, FixedMod, FixupSet, ObjectSet, TargetTypes};
 use crate::game::{GameError, NameBook, Speller};
 use crate::load::{
-    Dating, Fault, FileProvenance, Inventory, LoadError, LoadOptions, Loader, ReworkTable, against,
+    Dating, Fault, FileProvenance, Inventory, LOAD_PARTS, LoadError, LoadOptions, Loader,
+    ReworkTable, against,
 };
 use crate::model::{ByteView, ContentId, Mod};
 use crate::package::{
@@ -976,7 +980,12 @@ impl<'a> Run<'a> {
         let mut loader = Loader::new(env).options(options).book(book);
         let mut sink = self.log.at(Stage::Load);
         let raw = held(self.raw.as_ref(), Stage::Load, Stage::Read)?;
-        let opened = sink.next_step().map_err(LoadError::from);
+        // A repair takes no inventory and no file provenance, the last two parts.
+        let mut parts = Parts::new(match self.mode {
+            Mode::Port => LOAD_PARTS,
+            Mode::InPlace => &LOAD_PARTS[..LOAD_PARTS.len() - 2],
+        });
+        let opened = parts.begin(&mut sink).map_err(LoadError::from);
         let mut module = match opened.and_then(|()| loader.open(raw, &self.store)) {
             Ok(module) => module,
             Err(error) => {
@@ -986,9 +995,9 @@ impl<'a> Run<'a> {
         };
         let known = self.known.as_ref();
         let mut steps = || -> Result<(), LoadError> {
-            sink.next_step()?;
+            parts.begin(&mut sink)?;
             loader.fix_files(&mut module, &mut sink)?;
-            sink.next_step()?;
+            parts.begin(&mut sink)?;
             loader.take_game_bins(&mut module, &mut sink)?;
             if let Some(known) = known {
                 let wads = module.wads.iter();
@@ -998,9 +1007,9 @@ impl<'a> Run<'a> {
                     .collect();
                 module.restorations.extend(restored);
             }
-            sink.next_step()?;
+            parts.begin(&mut sink)?;
             loader.survey(&mut module, &mut sink)?;
-            sink.next_step()?;
+            parts.begin(&mut sink)?;
             loader.resolve(&mut module, &mut sink)?;
             Ok(())
         };
@@ -1015,7 +1024,7 @@ impl<'a> Run<'a> {
             Err(fault) => return Err(RunError::Load(fault)),
         }
 
-        let (found, taken) = match self.files_known(&module) {
+        let (found, taken) = match self.files_known(&module, &mut parts) {
             Ok(known) => known,
             Err(error) => {
                 if matches!(error, RunError::Cancelled(_)) {
@@ -1038,20 +1047,24 @@ impl<'a> Run<'a> {
 
     /// The steps of `load` after the mod is resolved, what is known of its files: the dating,
     /// and in a port the inventory and the file provenance, which the run holds.
-    fn files_known(&mut self, module: &Mod) -> Result<(Dating, Option<Inventory>), RunError> {
+    fn files_known(
+        &mut self,
+        module: &Mod,
+        parts: &mut Parts,
+    ) -> Result<(Dating, Option<Inventory>), RunError> {
         let env = self.env;
         let mut sink = self.log.at(Stage::Load);
-        sink.next_step()?;
+        parts.begin(&mut sink)?;
         let found = Dating::find(module, env.history());
         let found = found.map_err(|error| RunError::Load(LoadError::History(error)))?;
         if self.mode == Mode::InPlace {
             return Ok((found, None));
         }
         let speller = Speller::new(&self.book, env.names());
-        sink.next_step()?;
+        parts.begin(&mut sink)?;
         let inventory = Inventory::take(module, &speller);
         inventory.report(&mut sink);
-        sink.next_step()?;
+        parts.begin(&mut sink)?;
         let provenance = FileProvenance::find(module, &against(env, &speller));
         let provenance = provenance.map_err(|fault| RunError::Load(fault.into()))?;
         provenance.report(&mut sink);
@@ -1192,11 +1205,16 @@ impl<'a> Run<'a> {
             let facts = held(self.facts.as_ref(), Stage::Decide, Stage::Facts)?;
             // A step is a policy's decisions: the porter's, then each compared with it.
             let mut sink = self.log.at(Stage::Decide);
-            sink.next_step()?;
-            let mut targets = self.settings.policy.decide(facts);
+            let policy = self.settings.policy;
+            let mut steps = Steps::new(1 + self.settings.compared.len());
+            let named = |policy: &Policy| Step::Policy {
+                policy: policy.label(),
+            };
+            steps.begin(&mut sink, || named(&policy))?;
+            let mut targets = policy.decide(facts);
             targets.report(&mut sink);
             for compared in &self.settings.compared {
-                sink.next_step()?;
+                steps.begin(&mut sink, || named(compared))?;
                 targets = targets.compared(facts, std::slice::from_ref(compared));
             }
             let findings = self.log.logged_from(self.first);
@@ -1326,11 +1344,12 @@ impl<'a> Run<'a> {
                 let port = held(self.plan.as_ref(), Stage::Check, Stage::Plan)?;
                 let game = self.env.game();
                 // The patches applied are a step before the checks that read them.
-                sink.next_step()?;
+                let mut steps = Steps::new(1 + checks.len());
+                steps.begin(&mut sink, || Step::part("patches applied"))?;
                 let overlay = Overlay::apply(package, game).map_err(RunError::Check)?;
                 let types = TargetTypes::of(fixed, self.env).map_err(RunError::Check)?;
                 let cx = CheckCx::new(package, &types).of_port(game, &overlay, port);
-                checks.run(&cx, &mut sink)?;
+                checks.run_counted(&cx, &mut steps, &mut sink)?;
                 Some(overlay)
             }
             Mode::InPlace => {

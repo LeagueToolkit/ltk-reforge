@@ -17,9 +17,9 @@ use super::rule::Rule;
 use super::scope::ObjectSet;
 use super::types::TargetTypes;
 use super::{BinFixup, built_in, findings};
-use crate::diag::{Cancelled, Sink};
+use crate::diag::{Cancelled, Sink, Step, Steps};
 use crate::env::Env;
-use crate::game::{GameError, MAX_CHAIN, NameBook, NameHashError};
+use crate::game::{GameError, MAX_CHAIN, NameBook, NameHashError, Speller};
 use crate::history::HistoryError;
 use crate::load::{Dating, FileFixup, LoadOptions};
 use crate::model::entity::ObjectId;
@@ -348,10 +348,19 @@ impl FixupSet {
             .collect();
         let mut changes = Changes::default();
         let mut fault = None;
-        for fixup in self.bins.iter().filter(|fixup| fixup.applies(&types)) {
+        let applying: Vec<_> = self.bins.iter().filter(|f| f.applies(&types)).collect();
+        let mut steps = Steps::new(applying.len() * by_bin.len());
+        for fixup in applying {
             let classes = fixup.classes();
             for &bin in &by_bin {
-                sink.next_step()?;
+                steps.begin(sink, || {
+                    let file = m.bins[m.objects[bin[0]].bin].file;
+                    let speller = Speller::new(&*inputs.names, inputs.env.names());
+                    Step::Fixup {
+                        fixup: fixup.info().id.to_string(),
+                        bin: m.file_name(file, &speller),
+                    }
+                })?;
                 for &object in bin {
                     let mut cx = FixCx {
                         types: &types,

@@ -30,7 +30,7 @@ use super::reach::{Fate, Reach};
 use super::refs::{FileRefs, FileVerdict};
 use super::renames::{Group, Renames};
 use super::shipping::Shipping;
-use crate::diag::{Cancelled, Sink};
+use crate::diag::{Cancelled, Parts, Sink};
 use crate::env::Env;
 use crate::facts::Facts;
 use crate::fixups::FixedMod;
@@ -452,25 +452,39 @@ impl Linking<'_, '_> {
     }
 }
 
+/// The steps of `plan`, in their order (#ADR-0097).
+pub const PLAN_PARTS: &[&str] = &[
+    "reach",
+    "file refs",
+    "shipping",
+    "renames",
+    "audio",
+    "reach at the targets",
+    "file refs at the targets",
+    "linking",
+    "hud",
+];
+
 impl Port {
-    /// The stage `plan`. It raises what each step found. The run's cancel ends the stage
-    /// between two steps (#ADR-0097).
+    /// The stage `plan`. It raises what each step found. Each step ([`PLAN_PARTS`]) is reported,
+    /// and the run's cancel ends the stage between two (#ADR-0097).
     pub fn plan(inputs: &PortInputs<'_>, sink: &mut Sink<'_>) -> Result<Self, PlanError> {
         let _span = tracing::info_span!("plan").entered();
         let m: &Mod = inputs.fixed;
         let mut objects = Objects::of(m);
         let mut layout = Layout::of(m);
+        let mut parts = Parts::new(PLAN_PARTS);
 
         // The units are sorted under the names the mod gives them.
-        sink.next_step()?;
+        parts.begin(sink)?;
         let reach = Reach::find(inputs, &objects)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         let refs = FileRefs::find(inputs, &objects, &reach)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         let clips = OwnClips::found(&inputs.facts.sounds);
         let shipping = Shipping::find(inputs, (&reach, &refs), &clips, sink);
 
-        sink.next_step()?;
+        parts.begin(sink)?;
         let renames = Renames::retarget(
             inputs,
             &shipping,
@@ -478,22 +492,22 @@ impl Port {
             &mut layout.made.entries,
             sink,
         );
-        sink.next_step()?;
+        parts.begin(sink)?;
         let audio = AudioPlan::plan(inputs, &shipping, &mut layout, sink)?;
 
         // At the target, under the target's names. A literal sound name is rewritten in the
         // objects the entry reaches, and what it reaches is found again once one changed.
-        sink.next_step()?;
+        parts.begin(sink)?;
         let mut reach = Reach::find(inputs, &objects)?;
         if audio.rewrite_literals(inputs, &shipping, &reach, &mut objects, sink) {
             reach = Reach::find(inputs, &objects)?;
         }
         reach.report(&shipping.ships, sink);
-        sink.next_step()?;
+        parts.begin(sink)?;
         let refs = FileRefs::find(inputs, &objects, &reach)?;
         refs.report(&shipping.ships, sink);
 
-        sink.next_step()?;
+        parts.begin(sink)?;
         let mut linking = Linking {
             inputs,
             objects,
@@ -538,7 +552,7 @@ impl Port {
         });
 
         let shipped: BTreeSet<FileId> = files.keys().copied().collect();
-        sink.next_step()?;
+        parts.begin(sink)?;
         let hud = HudPlan::find(inputs, &mut layout, &shipped, sink)?;
         for (_, place) in hud.champions.iter().flat_map(|hud| &hud.files) {
             layout.made_path(place);

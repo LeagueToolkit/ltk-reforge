@@ -34,7 +34,7 @@ pub use self::findings::{
 };
 pub use self::hud::{FieldEdit, HudEdits, HudPlan};
 pub use self::layout::{Layout, MadeNames, folder_name, tidy_stem};
-pub use self::plan::{Objects, PlanError, Port, PortInputs, PortOptions, PortUnit};
+pub use self::plan::{Objects, PLAN_PARTS, PlanError, Port, PortInputs, PortOptions, PortUnit};
 pub use self::reach::{Copied, Fate, Reach, UnitReach};
 pub use self::refs::{
     ALWAYS_MOUNTED, CARRIED_FIELDS, FileRefs, FileVerdict, ICON_FIELDS, UnitRefs,

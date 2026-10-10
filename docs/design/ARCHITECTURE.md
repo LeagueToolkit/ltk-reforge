@@ -162,23 +162,29 @@ against an input it could not read does not answer as if the input held nothing.
 
 - **A cancel is a flag the caller hands the run** (`Cancel`, an atomic shared by its clones):
   `Run::cancel`, or `Porter::cancel` and `Repairer::cancel` for each of their runs. A cancel
-  is no setting, and no snapshot names it. The run's log carries it to each stage's sink,
-  and a stage asks `Sink::next_step` before each of its steps, which reads the flag. The log
-  holds the stage a cancel ended (`Run::cancelled_at`), and the report names it
+  is no setting, and no snapshot names it. The run's log carries it to each stage's sink.
+  The log holds the stage a cancel ended (`Run::cancelled_at`), and the report names it
   (`cancelled`), beside `halted`. A cancelled run writes nothing and is not repaired again;
   the snapshots of the stages that ended are whole, and a new run resumes from the last.
-- **A step runs to its end.** `read` reads no cancel: its bytes are under the caps. The
-  steps of the other stages:
+- **A stage reports its progress in its steps.** A stage counts its steps before the first
+  (`Steps`, or `Parts` for a stage of named parts) and begins each through its sink, which
+  reads the cancel and tells the log's progress listener (`Diagnostics::listen_progress`) a
+  `Progress`: the stage, the step's kind and name as a `Step`, its number from 1 and the
+  count. Progress holds no clock, and a step is named only for a log with a listener. The
+  command registers none.
+- **A step runs to its end.** `read` reports its steps and reads no cancel: its bytes are
+  under the caps. The steps, each named:
 
-  | stage | a step |
-  |---|---|
-  | load | one part: the WADs and files opened, the file fixups, the game's bins for a WAD with no skin bin, the survey, the client's load, the dating, and in a port the inventory and the file provenance |
-  | fix | one fixup over the objects of one bin |
-  | facts | one result: the catalogs, the copies, the objects' provenance, the origins, the rigs, the clips, the reworks, the sounds, the candidates |
-  | decide | one policy's decisions: the porter's, then each compared with it |
-  | plan | one step of the plan: the reach and the file refs under the mod's names, the shipping, the renames, the audio, the reach and the file refs at the target, the units linked, the HUD |
-  | build | in a port one unit, one bank, one file or one champion's HUD; in a repair one file |
-  | check | in a port the patches applied; then one check |
+  | stage | a step | named |
+  |---|---|---|
+  | read | one WAD, begun at its first entry | `wad`: its name |
+  | load | one part (`LOAD_PARTS`): the WADs and files opened, the file fixups, the game's bins for a WAD with no skin bin, the survey, the client's load, the dating, and in a port the inventory and the file provenance | `part` |
+  | fix | one fixup over the objects of one bin | `fixup`: its id and the bin's path |
+  | facts | one result (`FACTS_PARTS`): the catalogs, the copies, the objects' provenance, the origins, the rigs, the clips, the reworks, the sounds, the candidates | `part` |
+  | decide | one policy's decisions: the porter's, then each compared with it | `policy`: as `auto/own-rig` |
+  | plan | one step of the plan (`PLAN_PARTS`): the reach and the file refs under the mod's names, the shipping, the renames, the audio, the reach and the file refs at the target, the units linked, the HUD | `part` |
+  | build | in a port one unit, one bank, one file or one champion's HUD; in a repair one file | `unit`, `file`: its path, `hud`: the champion |
+  | check | in a port the patches applied; then one check | `part`, `check`: its id |
 
   A step of `facts` or `plan` is one of its results, not one unit: each result is found for
   every unit at once, and reads the results before it.
@@ -224,7 +230,7 @@ The modules of `reforge`, each using only the ones above it:
 | module | holds |
 |---|---|
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
-| `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); the run's `Cancel`, which the log carries to the stages |
+| `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); a stage's steps: the run's `Cancel`, which the log carries to the stages, and the `Progress` it tells a listener |
 | `store` | `BlobStore`: bytes by content id (#ADR-0093); `MemoryStore`, and `Layered`, a store over another |
 | `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store, and what the read raised |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |

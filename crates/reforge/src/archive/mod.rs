@@ -245,7 +245,7 @@ pub fn read(
         Ok(reader) => reader,
         Err(fatal) => return Err(fatal.halt(sink)),
     };
-    let outcome = reader.read_entries();
+    let outcome = reader.read_entries(sink);
     let mut parts = reader.finish();
     // The findings of the entries read are raised also when the read ends early.
     std::mem::take(&mut parts.findings).raise(caps, sink);

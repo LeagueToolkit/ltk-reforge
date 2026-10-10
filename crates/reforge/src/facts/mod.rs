@@ -42,7 +42,7 @@ pub use self::rig::{COPIED_SHARE, RigInputs, Rigs, Source, UnitRig, Visibility};
 pub use self::sounds::{
     BankFile, ClipOrigin, LeftOut, SoundClip, SoundInputs, SoundUnit, Sounds, UnitSounds,
 };
-use crate::diag::{Cancelled, Sink};
+use crate::diag::{Cancelled, Parts, Sink};
 use crate::env::Env;
 use crate::fixups::FixedMod;
 use crate::game::{GameError, SkinCatalog};
@@ -228,10 +228,23 @@ pub struct Facts {
     pub sounds: Sounds,
 }
 
+/// The steps of `facts`, one result each, in the order they are found (#ADR-0097).
+pub const FACTS_PARTS: &[&str] = &[
+    "catalogs",
+    "copies",
+    "objects",
+    "origins",
+    "rigs",
+    "clips",
+    "reworks",
+    "sounds",
+    "candidates",
+];
+
 impl Facts {
     /// The stage `facts`: every result, in the order of what each is found from. Each result
-    /// is a step, and the run's cancel ends the stage between two (#ADR-0097). The facts raise
-    /// nothing until they are reported.
+    /// is a step ([`FACTS_PARTS`]), and the run's cancel ends the stage between two
+    /// (#ADR-0097). The facts raise nothing until they are reported.
     pub fn gather(
         fixed: &FixedMod,
         inputs: &FactInputs<'_>,
@@ -245,11 +258,12 @@ impl Facts {
             names,
             reworks,
         } = *inputs;
-        sink.next_step()?;
+        let mut parts = Parts::new(FACTS_PARTS);
+        parts.begin(sink)?;
         let catalogs = Catalogs::find(fixed, env)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         let copies = Copies::find(fixed, env)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         let objects = ObjectProvenance::find(fixed, env, &catalogs)?;
         let origin_inputs = OriginInputs {
             catalogs: &catalogs,
@@ -258,7 +272,7 @@ impl Facts {
             objects: &objects,
             names,
         };
-        sink.next_step()?;
+        parts.begin(sink)?;
         let origins = Origins::find(fixed, &origin_inputs);
         let rig_inputs = RigInputs {
             env,
@@ -268,11 +282,11 @@ impl Facts {
             origins: &origins,
             names,
         };
-        sink.next_step()?;
+        parts.begin(sink)?;
         let rigs = Rigs::find(fixed, &rig_inputs)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         let clips = Clips::find(fixed, env, &catalogs, &copies, &origins, &rigs)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         let reworks = Reworks::find(fixed, env.history(), dating, reworks)?;
         let sound_inputs = SoundInputs {
             env,
@@ -280,7 +294,7 @@ impl Facts {
             catalogs: &catalogs,
             dating,
         };
-        sink.next_step()?;
+        parts.begin(sink)?;
         let sounds = Sounds::find(fixed, &sound_inputs)?;
         let mut facts = Self {
             roster: Roster::of(fixed),
@@ -294,7 +308,7 @@ impl Facts {
             reworks,
             sounds,
         };
-        sink.next_step()?;
+        parts.begin(sink)?;
         facts.candidates = facts.find_candidates(fixed);
         Ok(facts)
     }

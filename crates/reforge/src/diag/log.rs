@@ -7,7 +7,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::message::{Message, Part, Render};
-use super::steps::{Cancel, Cancelled};
+use super::steps::{Cancel, Cancelled, Progress, Step};
 use super::{Channel, Code, Diag, Filter, Record, Severity, Stage, Subject};
 
 /// A diagnostic's place in the run's log, from 0. A result that a diagnostic explains holds
@@ -201,15 +201,19 @@ impl fmt::Debug for Diagnostic {
 /// Hears each diagnostic as it is raised.
 type Listener = Box<dyn FnMut(&Diagnostic) + Send>;
 
+/// Hears each step of a stage as it begins.
+type ProgressListener = Box<dyn FnMut(&Progress) + Send>;
+
 /// The ordered, append-only log of a run. The order is the order raised, which is the same for
 /// the same inputs.
 ///
-/// The log carries the run's cancel to the stages, and holds the stage a cancel ended
-/// (#ADR-0097). A cancel is no diagnostic.
+/// The log carries the run's cancel to the stages and their progress to a listener, and holds
+/// the stage a cancel ended (#ADR-0097). Neither is a diagnostic.
 #[derive(Default)]
 pub struct Diagnostics {
     items: Vec<Diagnostic>,
     listener: Option<Listener>,
+    progress: Option<ProgressListener>,
     cancel: Option<Cancel>,
     cancelled: Option<Cancelled>,
 }
@@ -223,6 +227,12 @@ impl Diagnostics {
     /// Sets what hears each diagnostic as it is raised, so a caller shows a run as it goes.
     pub fn listen(&mut self, listener: impl FnMut(&Diagnostic) + Send + 'static) {
         self.listener = Some(Box::new(listener));
+    }
+
+    /// Sets what hears each step of a stage as it begins, so a caller shows how far a stage
+    /// went.
+    pub fn listen_progress(&mut self, listener: impl FnMut(&Progress) + Send + 'static) {
+        self.progress = Some(Box::new(listener));
     }
 
     /// Sets the cancel the stages read between their steps.
@@ -381,14 +391,26 @@ impl Sink<'_> {
         self.stage
     }
 
-    /// Begins a step of the stage, or ends the stage where the run's cancel is set. The log
-    /// then holds the stage it ended (#ADR-0097).
-    pub fn next_step(&mut self) -> Result<(), Cancelled> {
+    /// Ends the stage where the run's cancel is set, before its next step. The log then holds
+    /// the stage it ended (#ADR-0097).
+    pub(super) fn next_step(&mut self) -> Result<(), Cancelled> {
         if !self.log.cancel.as_ref().is_some_and(Cancel::is_set) {
             return Ok(());
         }
         let cancelled = *self.log.cancelled.get_or_insert(Cancelled(self.stage));
         Err(cancelled)
+    }
+
+    /// Tells the listener of the log, when it has one, that step `number` of `count` began.
+    pub(super) fn progress(&mut self, number: usize, count: usize, step: impl FnOnce() -> Step) {
+        if let Some(listener) = &mut self.log.progress {
+            listener(&Progress {
+                stage: self.stage,
+                step: step(),
+                number,
+                count,
+            });
+        }
     }
 
     /// How many diagnostics the log holds: the place of the next one raised.

@@ -56,7 +56,7 @@ pub use self::rework::{Around, ReworkTable};
 pub use self::stale::Staleness;
 use self::survey::Survey;
 use crate::archive::{RawSnapshot, file_kind};
-use crate::diag::{Cancelled, Halted, Sink};
+use crate::diag::{Cancelled, Halted, Parts, Sink};
 use crate::env::Env;
 use crate::game::{GameError, NameBook, Speller};
 use crate::history::HistoryError;
@@ -484,9 +484,9 @@ impl<'a> Loader<'a> {
         self.run_file_fixups(FileStep::AfterResolve, m, sink)
     }
 
-    /// The whole stage: the five steps in order, the run's cancel read before each
-    /// (#ADR-0097). The results on the files (`Dating`, `Inventory`, `FileProvenance`) are
-    /// the caller's to gather on the mod returned.
+    /// The whole stage: the five steps in order, each reported and the run's cancel read
+    /// before each (#ADR-0097). The results on the files (`Dating`, `Inventory`,
+    /// `FileProvenance`) are the caller's to gather on the mod returned.
     pub fn load(
         &mut self,
         raw: &RawSnapshot,
@@ -494,19 +494,33 @@ impl<'a> Loader<'a> {
         sink: &mut Sink<'_>,
     ) -> Result<Mod, LoadError> {
         let _span = tracing::info_span!("load", archive = %raw.meta.file_name).entered();
-        sink.next_step()?;
+        let mut parts = Parts::new(&LOAD_PARTS[..5]);
+        parts.begin(sink)?;
         let mut m = self.open(raw, store)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         self.fix_files(&mut m, sink)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         self.take_game_bins(&mut m, sink)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         self.survey(&mut m, sink)?;
-        sink.next_step()?;
+        parts.begin(sink)?;
         self.resolve(&mut m, sink)?;
         Ok(m)
     }
 }
+
+/// The steps of `load` (#ADR-0097): the five of the loader, then what is known of the files,
+/// the inventory and the file provenance in a port alone.
+pub const LOAD_PARTS: &[&str] = &[
+    "open",
+    "file fixups",
+    "game bins",
+    "survey",
+    "client load",
+    "dating",
+    "inventory",
+    "provenance",
+];
 
 #[cfg(test)]
 mod tests {

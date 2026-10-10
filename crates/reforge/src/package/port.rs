@@ -32,7 +32,7 @@ use super::shaders;
 use super::texture::TexContainer;
 use super::wired::{LeftBehind, LeftOut, Wired};
 use super::{BinWrite, Chunk, ChunkKey, Layer, Origin, Package, Patch, PatchOf, WrittenBin};
-use crate::diag::Sink;
+use crate::diag::{Sink, Step, Steps};
 use crate::env::Env;
 use crate::fixups::FixedMod;
 use crate::game::GameBin;
@@ -210,9 +210,14 @@ impl<'a> PortBuilder<'a> {
         };
         let mut voiced: BTreeSet<(UnitId, Layer)> = BTreeSet::new();
         let shipped: BTreeSet<WadHash> = port.files.values().map(ChunkPath::hash).collect();
+        let count =
+            port.units.len() + port.audio.banks.len() + port.files.len() + port.hud.champions.len();
+        let mut steps = Steps::new(count);
 
         for unit in &port.units {
-            sink.next_step()?;
+            steps.begin(sink, || Step::Unit {
+                unit: m.unit_name(unit.unit),
+            })?;
             let wad = m.wads[m.characters[unit.character].wad].name.clone();
             let Some(lowered) = self.unit(unit, &shipped, sink)? else {
                 continue;
@@ -236,7 +241,9 @@ impl<'a> PortBuilder<'a> {
         // #ADR-0039: a bank ships with the record that names it.
         let mut recut: BTreeSet<FileId> = BTreeSet::new();
         for bank in &port.audio.banks {
-            sink.next_step()?;
+            steps.begin(sink, || Step::File {
+                path: bank.path.to_string(),
+            })?;
             if !voiced.contains(&(bank.unit, bank.layer.clone())) {
                 continue;
             }
@@ -267,12 +274,16 @@ impl<'a> PortBuilder<'a> {
             package.insert(layer, key, chunk);
         };
         for (&file, place) in &port.files {
-            sink.next_step()?;
+            steps.begin(sink, || Step::File {
+                path: place.to_string(),
+            })?;
             found.files += 1;
             ship(&mut package, Layer::Base, file, place);
         }
         for hud in &port.hud.champions {
-            sink.next_step()?;
+            steps.begin(sink, || Step::Hud {
+                character: m.characters[hud.character].name.clone(),
+            })?;
             for (file, place) in &hud.files {
                 found.files += 1;
                 ship(&mut package, Layer::Hud, *file, place);

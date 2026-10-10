@@ -2,8 +2,8 @@
 //! inflated under the caps and put where its name says. What an entry is found to be is held in
 //! `Findings` and raised by the caller, also when the read ends early.
 
-use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Cursor, Read};
 
 use reforge_magic::HEAD_LEN;
@@ -16,6 +16,7 @@ use super::info::Info;
 use super::name::{EntryName, WadPart};
 use super::packed::{PackedFailure, PackedWad};
 use super::{ArchiveWad, Chunk};
+use crate::diag::{Sink, Step, Steps};
 use crate::model::entity::{Extra, MAX_IMAGE_BYTES, ModImage, WadLayout};
 use crate::model::{ByteView, ChunkPath, Spelled, WadHash, WadName};
 
@@ -195,12 +196,24 @@ impl<'a> Reader<'a> {
         })
     }
 
-    /// Reads every entry, in archive order.
-    pub(super) fn read_entries(&mut self) -> Result<(), Fatal> {
+    /// Reads every entry, in archive order. Each WAD is a step, begun at its first entry
+    /// (#ADR-0097). `read` reads no cancel: what it reads is under the caps.
+    pub(super) fn read_entries(&mut self, sink: &mut Sink<'_>) -> Result<(), Fatal> {
+        let mut steps = Steps::new(self.wads_named());
         for index in 0..self.zip.len() {
-            self.entry(index)?;
+            self.entry(index, &mut steps, sink)?;
         }
         Ok(())
+    }
+
+    /// How many WADs the entries name, the loose and the packed forms of one WAD as one.
+    fn wads_named(&self) -> usize {
+        let names = self.zip.file_names().map(|name| name.replace('\\', "/"));
+        let wads = names.filter_map(|name| match EntryName::parse(&name) {
+            EntryName::InWad { wad, .. } => Some(wad.lower().to_string()),
+            _ => None,
+        });
+        wads.collect::<BTreeSet<String>>().len()
     }
 
     /// What was read: the WADs in lowercase name order, each one's chunks in path-hash order.
@@ -225,7 +238,7 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn entry(&mut self, index: usize) -> Result<(), Fatal> {
+    fn entry(&mut self, index: usize, steps: &mut Steps, sink: &mut Sink<'_>) -> Result<(), Fatal> {
         let Some(name) = self.zip.name_for_index(index) else {
             return Ok(());
         };
@@ -243,6 +256,11 @@ impl<'a> Reader<'a> {
                 Ok(())
             }
             EntryName::InWad { wad, part } => {
+                if !self.wads.contains_key(wad.lower()) {
+                    steps.tell(sink, || Step::Wad {
+                        wad: wad.to_string(),
+                    });
+                }
                 let key = self.open_wad(wad);
                 self.wad_entry(index, &name, &key, part)
             }

@@ -11,14 +11,14 @@ use super::texture::TexContainer;
 use super::wired::LeftOut;
 use super::wired::{LeftBehind, Wired};
 use super::{BinWrite, Chunk, ChunkKey, Layer, Origin, Package, WrittenBin};
-use crate::diag::{Cancelled, Halted, Sink};
+use crate::diag::{Cancelled, Halted, Sink, Step, Steps};
 use crate::env::Env;
 use crate::fixups::{Changes, FixedMod};
 use crate::game::{GameSource, NameBook, Names, Speller};
 use crate::load::{Fault, LoadOptions, Staleness};
 use crate::model::entity::{BinId, FileKind, FileNode, FileSource};
 use crate::model::value::{self, FileRef};
-use crate::model::{ChunkPath, Mod, Spell};
+use crate::model::{ChunkPath, Mod, NoNames, Spell};
 
 /// Why a build gives no package.
 #[derive(Debug, thiserror::Error)]
@@ -113,8 +113,18 @@ impl<'a> InPlaceBuilder<'a> {
             unnamed: 0,
         };
         let mut container = TexContainer::new().keep_dds(self.keep_dds);
+        let speller = self
+            .names
+            .map(|(learnt, tables)| Speller::new(learnt, tables));
+        let spell: &dyn Spell = match &speller {
+            Some(speller) => speller,
+            None => &NoNames,
+        };
+        let mut steps = Steps::new(m.files.len());
         for (id, file) in m.files.iter() {
-            sink.next_step()?;
+            steps.begin(sink, || Step::File {
+                path: m.file_name(id, spell),
+            })?;
             if let Err(reason) = wired.judge(file) {
                 found.left.count(reason);
                 continue;
