@@ -117,6 +117,14 @@ ltk_meta = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521
 ltk_hash = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
 ltk_primitives = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
 ltk_io_ext = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
+# LeagueToolkit/league-mod#302 at 1fbf4c8, until it is released: the release before it orders the
+# chunks of one WAD and layer as a HashMap gives them, so two writes of one package differ. Every
+# league-mod crate the workspace uses comes from the same commit, so the build holds one of each.
+ltk_modpkg = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
+ltk_mod_project = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
+ltk_hashtable = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
+ltk_game_data = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
+ltk_mod_core = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
 
 [profile.release]
 debug = "line-tables-only"

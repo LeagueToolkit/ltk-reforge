@@ -1004,13 +1004,12 @@ fn legacy_env() -> Env {
     env(game, NoHistory)
 }
 
-/// The report of a run after it wrote a project, and every file it wrote, by its path under
-/// the output. A `.modpkg` is left out: `ltk_modpkg` orders the chunks of one WAD and layer as
-/// a `HashMap` gives them, so two writes of one package differ in their bytes.
+/// The report of a run after it wrote a project and a `.modpkg`, and every file it wrote, by
+/// its path under the output.
 fn written(run: &mut Run<'_>) -> (String, BTreeMap<String, Vec<u8>>) {
     let (_guard, out) = scratch();
-    let project = ProjectDir::new(&out);
-    let writers: [&dyn PackageWriter; 1] = [&project];
+    let (project, packed) = (ProjectDir::new(&out), Modpkg::new(&out));
+    let writers: [&dyn PackageWriter; 2] = [&project, &packed];
     run.write(&writers, &DiagnosticPolicy::default())
         .expect("the package writes");
     let mut files = BTreeMap::new();
