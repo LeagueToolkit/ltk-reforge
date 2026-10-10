@@ -36,6 +36,7 @@ use crate::snapshot::{
     self, BuildSettings, BuildSnapshot, CheckSettings, CheckSnapshot, DecideSettings,
     DecideSnapshot, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot, LoadSettings,
     LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, ResumeError, Setting, Snapshots,
+    StageSettings,
 };
 use crate::store::{BlobStore, Layered, MemoryStore};
 
@@ -146,10 +147,11 @@ pub struct Evidence {
     pub restored: BTreeSet<String>,
 }
 
-/// What a caller chose for the stages of a run. The default of each set and table is its
-/// standard one.
+/// What a caller chose for the stages of a run, as data: each stage declares the part it
+/// reads (#ADR-0094). The default of each set and table is its standard one.
 #[derive(Debug, Clone, Default)]
-struct Settings {
+pub struct Settings {
+    mode: Mode,
     fixups: FixupSet,
     checks: CheckSet,
     caps: Caps,
@@ -213,6 +215,36 @@ impl Settings {
         }
     }
 
+    /// The settings `load` reads.
+    fn load_settings(&self) -> LoadSettings {
+        LoadSettings::of(self.mode.snapshot(), &self.load_options())
+    }
+
+    /// The settings `fix` reads.
+    fn fix_settings(&self) -> FixSettings {
+        FixSettings::of(&self.fixups)
+    }
+
+    /// The settings `facts` reads.
+    fn facts_settings(&self) -> FactsSettings {
+        FactsSettings {
+            reworks: self.reworks.clone(),
+        }
+    }
+
+    /// The settings `decide` reads.
+    fn decide_settings(&self) -> DecideSettings {
+        DecideSettings {
+            policy: self.policy,
+            compared: self.compared.clone(),
+        }
+    }
+
+    /// The settings `plan` reads.
+    fn plan_settings(&self) -> PlanSettings {
+        PlanSettings::of(&self.port_options())
+    }
+
     /// The settings `build` reads.
     fn build_settings(&self) -> BuildSettings {
         BuildSettings {
@@ -220,12 +252,41 @@ impl Settings {
             keep_stale: self.keep_stale,
         }
     }
+
+    /// The settings `check` reads.
+    fn check_settings(&self) -> CheckSettings {
+        CheckSettings::of(&self.checks)
+    }
+
+    /// The settings a stage reads, as its snapshot declares them (#ADR-0094).
+    pub fn declared(&self, stage: Stage) -> StageSettings {
+        match stage {
+            Stage::Read => StageSettings::Read(self.caps),
+            Stage::Load => StageSettings::Load(self.load_settings()),
+            Stage::Fix => StageSettings::Fix(self.fix_settings()),
+            Stage::Facts => StageSettings::Facts(self.facts_settings()),
+            Stage::Decide => StageSettings::Decide(self.decide_settings()),
+            Stage::Plan => StageSettings::Plan(self.plan_settings()),
+            Stage::Build => StageSettings::Build(self.build_settings()),
+            Stage::Check => StageSettings::Check(self.check_settings()),
+            Stage::Write => StageSettings::Write,
+        }
+    }
+
+    /// The first stage of a run under these settings, in run order, whose declared settings
+    /// differ from `other`'s: the stage a rerun under `other` resumes from, after the
+    /// snapshot before it (#ADR-0094). None when every stage reads the same.
+    pub fn earliest_changed(&self, other: &Self) -> Option<Stage> {
+        let mut stages = self.mode.stages().iter().copied();
+        stages.find(|&stage| self.declared(stage) != other.declared(stage))
+    }
 }
 
 /// What a run builds its package from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum Mode {
     /// The plan of a port.
+    #[default]
     Port,
     /// The fixed mod, in place (#ADR-0011).
     InPlace,
@@ -366,7 +427,12 @@ impl<'a> Porter<'a> {
 
     /// A run of one archive, with nothing read.
     pub fn run(&self) -> Run<'_> {
-        Run::new(self.env, &self.settings, Mode::Port)
+        Run::new(self.env, &self.settings)
+    }
+
+    /// What the porter's runs are run under.
+    pub fn settings(&self) -> &Settings {
+        &self.settings
     }
 
     /// Takes an archive's bytes through every stage but `write`. A fatal diagnostic ends the
@@ -402,7 +468,10 @@ impl<'a> Repairer<'a> {
     pub fn new(env: &'a Env) -> Self {
         Self {
             env,
-            settings: Settings::default(),
+            settings: Settings {
+                mode: Mode::InPlace,
+                ..Settings::default()
+            },
         }
     }
 
@@ -450,7 +519,12 @@ impl<'a> Repairer<'a> {
 
     /// A run of one archive, with nothing read.
     pub fn run(&self) -> Run<'_> {
-        Run::new(self.env, &self.settings, Mode::InPlace)
+        Run::new(self.env, &self.settings)
+    }
+
+    /// What the repairer's runs are run under.
+    pub fn settings(&self) -> &Settings {
+        &self.settings
     }
 
     /// Takes an archive's bytes through every stage but `write`. A fatal diagnostic ends the
@@ -549,11 +623,11 @@ pub struct Run<'a> {
 }
 
 impl<'a> Run<'a> {
-    fn new(env: &'a Env, settings: &'a Settings, mode: Mode) -> Self {
+    fn new(env: &'a Env, settings: &'a Settings) -> Self {
         Self {
             env,
             settings,
-            mode,
+            mode: settings.mode,
             known: None,
             log: Diagnostics::new(),
             book: NameBook::new(),
@@ -716,18 +790,18 @@ impl<'a> Run<'a> {
         let fixed = self.reopen_fix(module, &load, &fix)?;
         let mut findings = fix.findings();
         if let Some(facts) = &facts {
-            facts.holds(&self.facts_settings())?;
+            facts.holds(&self.settings.facts_settings())?;
             let found = facts.found().clone();
             let reopened = Facts::reopen(&fixed, self.env, found);
             self.facts = Some(reopened.map_err(ResumeError::Facts)?);
             findings = facts.findings();
         }
         if let Some(decide) = &decide {
-            decide.holds(&self.decide_settings())?;
+            decide.holds(&self.settings.decide_settings())?;
             findings = decide.findings();
         }
         if let Some(plan) = &plan {
-            plan.holds(&PlanSettings::of(&self.settings.port_options()))?;
+            plan.holds(&self.settings.plan_settings())?;
             self.plan = Some(plan.port(&self.store)?);
             self.book = plan.names().clone();
             findings = plan.findings();
@@ -737,7 +811,7 @@ impl<'a> Run<'a> {
             self.package = Some(build.package(&self.store)?);
             findings = build.findings();
             if let Some(check) = &check {
-                check.holds(&CheckSettings::of(&self.settings.checks))?;
+                check.holds(&self.settings.check_settings())?;
                 let patches = build.part().patches.len();
                 let (applied, bins) = (check.applied().len(), check.bins().len());
                 if applied != patches || bins != patches {
@@ -759,26 +833,11 @@ impl<'a> Run<'a> {
         Ok(())
     }
 
-    /// The settings `decide` reads in this run.
-    fn decide_settings(&self) -> DecideSettings {
-        DecideSettings {
-            policy: self.settings.policy,
-            compared: self.settings.compared.clone(),
-        }
-    }
-
-    /// The settings `facts` reads in this run.
-    fn facts_settings(&self) -> FactsSettings {
-        FactsSettings {
-            reworks: self.settings.reworks.clone(),
-        }
-    }
-
     /// The mod as the load snapshot left it, and what the run holds once `load` ends: the
     /// names, the dating, the inventory and the file provenance.
     fn reopen_load(&mut self, load: &LoadSnapshot) -> Result<Mod, ResumeError> {
         let inputs = snapshot::LoadInputs::of(self.env);
-        load.holds(&inputs, &self.load_settings())?;
+        load.holds(&inputs, &self.settings.load_settings())?;
         let reopened = load.reopen(&self.store)?;
         self.book = reopened.names;
         self.dating = Some(reopened.dating);
@@ -794,7 +853,10 @@ impl<'a> Run<'a> {
         load: &LoadSnapshot,
         fix: &FixSnapshot,
     ) -> Result<FixedMod, ResumeError> {
-        fix.holds(&snapshot::FixInputs::of(self.env), &self.fix_settings())?;
+        fix.holds(
+            &snapshot::FixInputs::of(self.env),
+            &self.settings.fix_settings(),
+        )?;
         let rewritten = fix.rewritten(load)?.into_iter().map(|(file, content)| {
             let bytes = self.store.get(content).ok_or(ResumeError::Store(content))?;
             Ok((file, bytes))
@@ -804,16 +866,6 @@ impl<'a> Run<'a> {
         self.changes = Some(fix.changes()?);
         self.book = fix.names().clone();
         Ok(fixed)
-    }
-
-    /// The settings `fix` reads in this run.
-    fn fix_settings(&self) -> FixSettings {
-        FixSettings::of(&self.settings.fixups)
-    }
-
-    /// The settings `load` reads in this run.
-    fn load_settings(&self) -> LoadSettings {
-        LoadSettings::of(self.mode.snapshot(), &self.settings.load_options())
     }
 
     /// The stage `load`: the mod from the raw snapshot and the store, then what is known of
@@ -923,7 +975,7 @@ impl<'a> Run<'a> {
         LoadSnapshot::of(
             &state,
             self.env,
-            self.load_settings(),
+            self.settings.load_settings(),
             findings,
             &self.store,
         )
@@ -977,7 +1029,10 @@ impl<'a> Run<'a> {
         let load = held(self.loaded.as_ref(), Stage::Fix, Stage::Load)?;
         let rewritten = fixed.rewritten(changes).into_iter();
         let rewritten = rewritten.map(|(file, bin)| (file, self.store.put(bin.bytes.into())));
-        let declared = (snapshot::FixInputs::of(self.env), self.fix_settings());
+        let declared = (
+            snapshot::FixInputs::of(self.env),
+            self.settings.fix_settings(),
+        );
         let findings = self.log.logged_from(self.first);
         Ok(FixSnapshot::of(
             load,
@@ -1014,7 +1069,7 @@ impl<'a> Run<'a> {
             let facts = Facts::gather(fixed, &inputs).map_err(RunError::Facts)?;
             facts.report(&mut self.log.at(Stage::Facts));
             let findings = self.log.logged_from(self.first);
-            let snapshot = FactsSnapshot::of(&facts, self.facts_settings(), findings);
+            let snapshot = FactsSnapshot::of(&facts, self.settings.facts_settings(), findings);
             self.facts_snapshot = Some(snapshot);
             self.facts = Some(facts);
         }
@@ -1032,7 +1087,7 @@ impl<'a> Run<'a> {
             targets.report(&mut self.log.at(Stage::Decide));
             let targets = targets.compared(facts, &self.settings.compared);
             let findings = self.log.logged_from(self.first);
-            let snapshot = DecideSnapshot::of(targets, self.decide_settings(), findings);
+            let snapshot = DecideSnapshot::of(targets, self.settings.decide_settings(), findings);
             self.decide_snapshot = Some(snapshot);
         }
         held(self.targets(), Stage::Decide, Stage::Facts)
@@ -1069,7 +1124,7 @@ impl<'a> Run<'a> {
                 self.book.learn_entry(entry);
             }
             let fixed = self.module.fixed(Stage::Plan)?;
-            let settings = PlanSettings::of(&self.settings.port_options());
+            let settings = self.settings.plan_settings();
             let declared = (settings, self.log.logged_from(self.first));
             let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
             self.plan_snapshot = Some(snapshot);
@@ -1177,7 +1232,10 @@ impl<'a> Run<'a> {
             .iter()
             .map(|patched| patched.map(|patched| AppliedRow::of(&patched.outcome)))
             .collect();
-        let declared = (CheckSettings::of(checks), self.log.logged_from(self.first));
+        let declared = (
+            self.settings.check_settings(),
+            self.log.logged_from(self.first),
+        );
         let snapshot = CheckSnapshot::of(applied, &patched, declared, &self.store);
         self.check_snapshot = Some(snapshot);
         Ok(())
@@ -1244,7 +1302,7 @@ impl<'a> Run<'a> {
                     .collect(),
             };
             let bytes = archive_of(first).map_err(RunError::Again)?;
-            let mut second = Run::new(self.env, self.settings, Mode::InPlace).known(evidence);
+            let mut second = Run::new(self.env, self.settings).known(evidence);
             let loaded = second.read(&bytes, REPAIRED_NAME).map(drop);
             let loaded = loaded.and_then(|()| second.load().map(drop));
             let row = match loaded {

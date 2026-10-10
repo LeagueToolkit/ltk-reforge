@@ -35,4 +35,4 @@ pub mod snapshot;
 
 pub mod porter;
 
-pub use self::porter::{Evidence, Porter, Repairer, Run, RunError, Start, codes};
+pub use self::porter::{Evidence, Porter, Repairer, Run, RunError, Settings, Start, codes};

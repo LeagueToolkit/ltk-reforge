@@ -62,7 +62,11 @@ let report = run.report();
 - **A `Porter` holds what a caller chose**, built once and used for any number of runs: the
   policy and the policies compared with it, the fixups, the checks, the caps, the reworks,
   whether stale copies are carried, whether a bank's events are cut from the game's events
-  bank only. `Porter::new` takes the standard of each.
+  bank only. `Porter::new` takes the standard of each. They are its `Settings`, data a
+  caller reads (`Porter::settings`): `declared(stage)` is the part a stage reads, as its
+  snapshot holds it (`StageSettings`), and `earliest_changed(other)` the first stage, in run
+  order, whose declared part differs, which is the stage a rerun under `other` resumes from
+  (#ADR-0094).
 - **A `Run` takes one archive through the stages and owns what passes between them**: the
   log, the names learnt (`NameBook`), the mod, the dating, the inventory, the file
   provenance, what the fixups changed, and every stage's result. A caller reads each by its

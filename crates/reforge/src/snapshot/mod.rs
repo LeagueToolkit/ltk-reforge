@@ -30,7 +30,7 @@ pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
 pub use self::plan::{PlanSettings, PlanSnapshot};
-use crate::archive::{RawExtra, RawImage};
+use crate::archive::{Caps, RawExtra, RawImage};
 use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
 use crate::facts::FactsError;
@@ -226,6 +226,29 @@ pub enum Setting {
     KeepDds,
     /// The checks and their order.
     Checks,
+}
+
+/// The settings a stage reads, as its snapshot declares them (#ADR-0094).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StageSettings {
+    /// `read`: the caps an archive is read under (#ADR-0095).
+    Read(Caps),
+    /// `load`.
+    Load(LoadSettings),
+    /// `fix`.
+    Fix(FixSettings),
+    /// `facts`.
+    Facts(FactsSettings),
+    /// `decide`.
+    Decide(DecideSettings),
+    /// `plan`.
+    Plan(PlanSettings),
+    /// `build`.
+    Build(BuildSettings),
+    /// `check`.
+    Check(CheckSettings),
+    /// `write`, which reads none: its writers and its policy are the caller's at the call.
+    Write,
 }
 
 /// The settings `load` reads (#ADR-0094).
