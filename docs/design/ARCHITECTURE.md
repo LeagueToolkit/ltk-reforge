@@ -825,8 +825,8 @@ object takes a name of its own, which every link to it follows.
   every chunk's digest and, for a bin, the digest of each object as
   `ltk_meta` writes it, and every patch with the game bin it patches and the digest of each
   object of that bin after the patch, and as the part `evidence` the document the package
-  embeds ([Package](#package)), field for field. A run writes the package part from its
-  build snapshot's, with each patch's outcome as `check` applied it
+  embeds ([Package](#package)), field for field. A run writes the package part and the
+  evidence from its build snapshot, with each patch's outcome from its check snapshot
   (`AppliedRow`, `PackageRow::apply`). `reforge repair --again` adds what repairing
   the package a second time, in memory, changed.
 - The rows `load` gives, the WADs, files, characters and units, the dating, and in a port the

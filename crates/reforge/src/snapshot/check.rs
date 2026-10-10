@@ -35,48 +35,40 @@ impl CheckSettings {
     }
 }
 
-/// What applying a patch came to, and the bin after it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AppliedRecord {
-    row: AppliedRow,
-    /// The patched bin's bytes, when the patch applied.
-    bin: Option<ContentId>,
-}
-
 /// The snapshot after `check` (#ADR-0094).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckSnapshot {
     format: u32,
     program: Program,
     settings: CheckSettings,
-    applied: Vec<Option<AppliedRecord>>,
+    applied: Vec<Option<AppliedRow>>,
+    bins: Vec<Option<ContentId>>,
     findings: Vec<Logged>,
 }
 
 impl CheckSnapshot {
     /// The snapshot of the checks under `settings`, with what applying each patch of the
-    /// package came to in the package's order (`rows`, made from `patched`), the bins after
-    /// the patches put into `store`, and the findings raised from the start of `read` to the
-    /// end of `check`.
+    /// package came to in the package's order (`applied`, made from `patched`), the bins
+    /// after the patches put into `store`, and the findings raised from the start of `read`
+    /// to the end of `check`.
     pub fn of(
-        rows: &[Option<AppliedRow>],
+        applied: Vec<Option<AppliedRow>>,
         patched: &[Option<&AppliedPatch>],
         (settings, findings): (CheckSettings, Vec<Logged>),
         store: &dyn BlobStore,
     ) -> Self {
-        let applied = rows.iter().zip(patched).map(|(row, patched)| {
-            let row = row.clone()?;
-            let bin = match &patched.as_ref()?.outcome {
+        let bins = patched
+            .iter()
+            .map(|patched| match &patched.as_ref()?.outcome {
                 Outcome::Applied(bin) => Some(store.put(bin.bytes.clone().into())),
                 Outcome::NoGameBin | Outcome::Failed { .. } => None,
-            };
-            Some(AppliedRecord { row, bin })
-        });
+            });
         Self {
             format: SNAPSHOT_FORMAT,
             program: Program::this(),
             settings,
-            applied: applied.collect(),
+            applied,
+            bins: bins.collect(),
             findings,
         }
     }
@@ -91,21 +83,16 @@ impl CheckSnapshot {
         &self.settings
     }
 
-    /// What applying each patch came to, in the package's order, as the report holds it.
-    pub fn applied(&self) -> Vec<Option<AppliedRow>> {
-        let applied = self.applied.iter();
-        applied
-            .map(|record| record.as_ref().map(|record| record.row.clone()))
-            .collect()
+    /// What applying each patch came to, in the package's order, as the report holds it:
+    /// none for a patch the run did not apply.
+    pub fn applied(&self) -> &[Option<AppliedRow>] {
+        &self.applied
     }
 
     /// The id of each patched bin's bytes, in the package's order: none for a patch that did
     /// not apply.
-    pub fn bins(&self) -> Vec<Option<ContentId>> {
-        let applied = self.applied.iter();
-        applied
-            .map(|record| record.as_ref().and_then(|record| record.bin))
-            .collect()
+    pub fn bins(&self) -> &[Option<ContentId>] {
+        &self.bins
     }
 
     /// The findings from the start of `read` to the end of `check`, in order.

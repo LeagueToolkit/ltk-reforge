@@ -545,10 +545,6 @@ pub struct Run<'a> {
     facts: Option<Facts>,
     plan: Option<Port>,
     package: Option<Package>,
-    /// The package's part of the report, as the build snapshot holds it.
-    package_part: Option<PackageRow>,
-    /// What applying each patch of the package came to, in its order, once `check` ended.
-    applied: Option<Vec<Option<AppliedRow>>>,
     written: bool,
     again: Option<AgainRow>,
 }
@@ -581,8 +577,6 @@ impl<'a> Run<'a> {
             facts: None,
             plan: None,
             package: None,
-            package_part: None,
-            applied: None,
             written: false,
             again: None,
         }
@@ -743,17 +737,15 @@ impl<'a> Run<'a> {
         if let Some(build) = &build {
             build.holds(&self.settings.build_settings())?;
             self.package = Some(build.package(&self.store)?);
-            self.package_part = Some(build.part().clone());
             findings = build.findings();
             if let Some(check) = &check {
                 check.holds(&CheckSettings::of(&self.settings.checks))?;
-                let applied = check.applied();
                 let patches = build.part().patches.len();
-                if applied.len() != patches {
-                    let what = format!("{} outcomes of {patches} patches", applied.len());
+                let (applied, bins) = (check.applied().len(), check.bins().len());
+                if applied != patches || bins != patches {
+                    let what = format!("{applied} outcomes and {bins} bins of {patches} patches");
                     return Err(ResumeError::Malformed(what));
                 }
-                self.applied = Some(applied);
                 findings = check.findings();
             }
         }
@@ -1120,9 +1112,8 @@ impl<'a> Run<'a> {
                 self.settings.build_settings(),
                 self.log.logged_from(self.first),
             );
-            let snapshot = BuildSnapshot::of(&package, &part, declared, &self.store);
+            let snapshot = BuildSnapshot::of(&package, part, declared, &self.store);
             self.build_snapshot = Some(snapshot);
-            self.package_part = Some(part);
             self.package = Some(package);
         }
         held(self.package.as_ref(), Stage::Build, Stage::Fix)
@@ -1183,9 +1174,8 @@ impl<'a> Run<'a> {
             .map(|patched| patched.map(|patched| AppliedRow::of(&patched.outcome)))
             .collect();
         let declared = (CheckSettings::of(checks), self.log.logged_from(self.first));
-        let snapshot = CheckSnapshot::of(&applied, &patched, declared, &self.store);
+        let snapshot = CheckSnapshot::of(applied, &patched, declared, &self.store);
         self.check_snapshot = Some(snapshot);
-        self.applied = Some(applied);
         Ok(())
     }
 
@@ -1335,13 +1325,12 @@ impl<'a> Run<'a> {
         if let Some(port) = &self.plan {
             report = report.port(port);
         }
-        if let Some(package) = &self.package {
-            let part = self.package_part.clone();
-            let mut part = part.unwrap_or_else(|| PackageRow::of(package));
-            if let Some(applied) = &self.applied {
-                part.apply(applied);
+        if let Some(build) = &self.build_snapshot {
+            let mut part = build.part().clone();
+            if let Some(check) = &self.check_snapshot {
+                part.apply(check.applied());
             }
-            report = report.package_row(part, package.evidence.as_ref());
+            report = report.package_row(part, build.evidence());
         }
         if let Some(again) = &self.again {
             report = report.again(again.clone());
@@ -1543,7 +1532,7 @@ impl<'a> Run<'a> {
     /// What applying each patch of the package to the game's bins came to, in the package's
     /// order, once the run is checked: none for a patch a repair's run does not apply.
     pub fn applied(&self) -> Option<&[Option<AppliedRow>]> {
-        self.applied.as_deref()
+        self.check_snapshot.as_ref().map(CheckSnapshot::applied)
     }
 
     /// What repairing the package a second time changed, once asked.

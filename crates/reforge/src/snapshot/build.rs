@@ -303,7 +303,7 @@ impl BuildSnapshot {
     /// end of `build`.
     pub fn of(
         package: &Package,
-        part: &PackageRow,
+        part: PackageRow,
         (settings, findings): (BuildSettings, Vec<Logged>),
         store: &dyn BlobStore,
     ) -> Self {
@@ -312,9 +312,14 @@ impl BuildSnapshot {
             program: Program::this(),
             settings,
             package: PackageRecord::of(package, store),
-            part: part.clone(),
+            part,
             findings,
         }
+    }
+
+    /// The evidence the package embeds (#ADR-0041), when the run gave it one.
+    pub fn evidence(&self) -> Option<&EvidenceDoc> {
+        self.package.evidence.as_ref()
     }
 
     /// The program that wrote it.
