@@ -7,7 +7,8 @@ are named by what they are (a WAD's name, a file's WAD and path hash, a characte
 unit's character and slot), so an id that moved is no difference. The sections:
 
   parts        the parts the report holds: one that came or went, whichever section reads it
-  run          the diagnostic that ended the run, the install's build, the history's head
+  run          the diagnostic that ended the run, the install's build, the history's head,
+               the schema's build and a digest of the hash tables' stamp
   wads, files, characters, dating, inventory, provenance
                the mod as loaded, row by row and field by field
   units        per unit: its bin and entry, whether it ships, why it left the port otherwise
@@ -105,7 +106,10 @@ def halt(report):
 def run(report):
     inputs = report.get("inputs") or {}
     history = inputs.get("history") or {}
-    return {"-": {"halted": halt(report), "build": inputs.get("build"), "history": history.get("head"), "schema": report.get("schema")}}
+    schema = inputs.get("schema") or {}
+    names = inputs.get("names")
+    names = hashlib.sha256(json.dumps(names, sort_keys=True).encode()).hexdigest()[:16] if names is not None else None
+    return {"-": {"halted": halt(report), "build": inputs.get("build"), "history": history.get("head"), "schema": report.get("schema"), "schema_build": schema.get("latest"), "names": names}}
 
 
 def wads(report):
