@@ -1927,3 +1927,32 @@ snapshot at the end of its stage and resumes from none.
   and a check run of the same code before the settings and the JSON edge landed took 50 s:
   a repair's second run now keeps its snapshots as its state, the package's part of the
   report among them, which it did not before.
+
+## A cancel and progress in steps (2026-10-10)
+
+The branch `run-state-store` at `cc78439`: a stage reads the run's cancel before each of its
+steps and reports each step to a progress listener (#ADR-0097), and the command sets the
+cancel on the terminal's interrupt. The same inputs as "The load snapshot", over the reduced
+corpus, compared with `baseline-port-6` and `baseline-repair-6`. No run is cancelled and no
+listener is registered: the cost measured is the check of the flag, the count of the steps
+and the call that finds no listener. The base commit `7c0e579` (the snapshots through check)
+ran over the same mods in the same session, each command twice, alternated with the branch's
+runs.
+
+| run | command | done | ended by a fatal diagnostic | time | sum of the mods' times |
+|---|---|---:|---|---|---|
+| `cancel-port`, `cancel-port-2` | `port --no-write` | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 33 s, 33 s | 327.5 s, 323.9 s |
+| `cancel-base-port`, `cancel-base-port-2` | the same, at `7c0e579` | 63 | the same | 33 s, 33 s | 323.2 s, 322.9 s |
+| `cancel-repair`, `cancel-repair-2` | `repair --no-write --again` | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 50 s, 50 s | 320.8 s, 322.7 s |
+| `cancel-base-repair`, `cancel-base-repair-2` | the same, at `7c0e579` | 65 | the same | 50 s, 50 s | 321.2 s, 321.3 s |
+
+- **Against the baselines** (`cancel-{port,repair}-vs-baseline-6`, expected as "The load
+  snapshot"): the 68 mods of each command differ in the report's two inputs alone, 136
+  differences each, all expected. A run not cancelled writes no `cancelled` field, and the
+  exits are the baselines', mod for mod.
+- **Against the base commit** (`cancel-{port,repair}-vs-base`): the reports are equal in all
+  68 mods of each command.
+- **Time.** The runs take the base commit's wall time to the second, 33 s a port and 50 s a
+  repair. The sums of the mods' own times differ by at most 4.6 s in 323 s, 1.4 %, and the
+  base commit's two runs of a port differ from the branch's second by 1 s: the check and the
+  progress call do not show above the run-to-run spread.
