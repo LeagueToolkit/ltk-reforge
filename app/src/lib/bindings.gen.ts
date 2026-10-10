@@ -30,6 +30,20 @@ export const commands = {
 	peekMod: (archive: string) => __TAURI_INVOKE<({ ok: true; value: ModPeek }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("peek_mod", { archive }),
 	/**  The stages of a run of the kind, in order, as the library names them. */
 	runStages: (kind: RunKind) => __TAURI_INVOKE<({ ok: true; value: StageName[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_stages", { kind }),
+	/**  The runs the app's store keeps, newest first (#ADR-0096). */
+	listRuns: () => __TAURI_INVOKE<({ ok: true; value: RunRow[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("list_runs"),
+	/**  The report of a kept run, as JSON. None for a number no run has. */
+	runReport: (id: number) => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_report", { id }),
+	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
+	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
+	/**  Removes a kept run, and what no other run names. */
+	removeRun: (id: number) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_run", { id }),
+	/**  Removes every kept run of the mod whose archive has this SHA-256, as hex. */
+	removeModRuns: (sha256: string) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_mod_runs", { sha256 }),
+	/**  Removes every kept run. */
+	removeAllRuns: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_all_runs"),
+	/**  What the app's store holds and its bytes on disk, for the settings page. */
+	storeView: () => __TAURI_INVOKE<({ ok: true; value: StoreView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("store_view"),
 	/**  Saves a choice of fixups as a selection file the command reads with `--fixups`. */
 	saveSelection: (path: string, choice: FixupChoice) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("save_selection", { path, choice }),
 	/**  The choice of fixups a selection file holds. */
@@ -751,6 +765,32 @@ export type RunRequest = {
 	out: string | null,
 };
 
+/**  A run the store keeps, as the Runs page lists it. */
+export type RunRow = {
+	/**  Its number: the order the runs were written in. */
+	id: number,
+	/**  When the store wrote it, by the store's clock. Shown, never part of a report. */
+	made_at: string,
+	/**  A repair or a port. */
+	kind: RunKind,
+	/**  Whether a person marked it kept, so that the bound does not remove it. */
+	kept: boolean,
+	/**  The archive's SHA-256, as hex. */
+	sha256: string,
+	/**  The archive's file name. */
+	file_name: string,
+	/**  The mod's name, as its archive says. */
+	name: string | null,
+	/**  The mod's author, as its archive says. */
+	author: string | null,
+	/**  The mod's version, as its archive says. */
+	version: string | null,
+	/**  The `.modpkg` written. */
+	package: string | null,
+	/**  The stages it keeps a snapshot of, in stage order, `load` first. */
+	reached: StageName[],
+};
+
 /**
  *  The settings a run takes, each one the library's (`docs/design/ROADMAP-UX.md`, "Two views
  *  of one run"). The default is the standard set and the default policy.
@@ -954,6 +994,22 @@ export type StorageView = {
 	census_bytes: number,
 	/**  The bytes of the downloads kept to resume. */
 	downloads_bytes: number,
+};
+
+/**  What the store holds, as the settings page's storage group shows it. */
+export type StoreView = {
+	/**  The runs kept. */
+	runs: number,
+	/**  The runs marked kept. */
+	kept: number,
+	/**  The mods the runs are of. */
+	mods: number,
+	/**  The bytes of the rows' file. */
+	rows_bytes: number,
+	/**  The bytes of the run tier. */
+	tier_bytes: number,
+	/**  The bytes of the ingest tier. */
+	ingest_bytes: number,
 };
 
 /**  What a finding is about. */

@@ -29,7 +29,7 @@ use tauri::Manager;
 
 use crate::archive::Clones;
 use crate::settings::SettingsStore;
-use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, SchemaJob};
+use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
 
 /// Starts the app and returns when its window closes.
 pub fn run() -> tauri::Result<()> {
@@ -74,6 +74,7 @@ pub fn run() -> tauri::Result<()> {
             app.manage(Arc::new(HashesJob::default()));
             app.manage(Arc::new(SchemaJob::default()));
             app.manage(Arc::new(RunJob::default()));
+            app.manage(RunStore::open(&data.join("store")));
             Ok(())
         })
         .run(tauri::generate_context!())

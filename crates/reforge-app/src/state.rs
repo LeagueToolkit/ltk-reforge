@@ -1,16 +1,17 @@
 //! What the app holds while it runs, beside its settings: the inputs opened for the settings
-//! as they stand, and the downloads under way.
+//! as they stand, the downloads under way, and the store of runs.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use parking_lot::Mutex;
 
 use crate::archive::Clones;
 use crate::error::AppError;
 use crate::inputs::{Choice, Inputs};
 use crate::storage::Storage;
+use crate::store::AppStore;
 
 /// Work the window starts, one at a time, and can stop.
 pub struct Job {
@@ -41,6 +42,11 @@ impl Job {
     /// Marks the work ended.
     pub fn end(&self) {
         self.running.store(false, Ordering::Release);
+    }
+
+    /// Whether work is under way.
+    pub fn running(&self) -> bool {
+        self.running.load(Ordering::Acquire)
     }
 }
 
@@ -117,6 +123,27 @@ impl RunJob {
     /// The package the last run wrote, while one did.
     pub fn written(&self) -> Option<Utf8PathBuf> {
         self.written.lock().clone()
+    }
+}
+
+/// The app's store of runs (#ADR-0096), opened at start, or why it did not open. A store that
+/// does not open, such as one another instance of the app holds, leaves the runs unkept and
+/// the app running.
+pub struct RunStore(Result<Arc<AppStore>, AppError>);
+
+impl RunStore {
+    /// The store in `dir`.
+    pub fn open(dir: &Utf8Path) -> Self {
+        let opened = AppStore::open(dir).map(Arc::new);
+        if let Err(error) = &opened {
+            tracing::warn!(%dir, %error, "the store of runs does not open");
+        }
+        Self(opened)
+    }
+
+    /// The store, or why it did not open.
+    pub fn get(&self) -> Result<Arc<AppStore>, AppError> {
+        self.0.clone()
     }
 }
 

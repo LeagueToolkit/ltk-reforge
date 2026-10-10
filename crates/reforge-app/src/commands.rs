@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use camino::{Utf8Path, Utf8PathBuf};
 use parking_lot::Mutex;
 use reforge::game::{meta_cache_dir, mimir_cache_dir};
+use reforge::model::ContentId;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
@@ -26,8 +27,9 @@ use crate::run::{
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
-use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, SchemaJob};
+use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
 use crate::storage::StorageView;
+use crate::store::{AppStore, RunRow, StoreView};
 use crate::view::Finding;
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
@@ -137,6 +139,8 @@ impl Watch for Window {
 pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> {
     let choice = Choice::from(&app.state::<SettingsStore>().get());
     let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    // A store that did not open leaves the run unkept.
+    let store = app.state::<RunStore>().get().ok();
     off_thread(move || {
         let job = Arc::clone(&app.state::<Arc<RunJob>>());
         if !job.run.start() {
@@ -144,7 +148,7 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
         }
         let ran = open
             .get(&choice)
-            .and_then(|inputs| run::run(&inputs, &request, None, &mut Window(app)));
+            .and_then(|inputs| run::run(&inputs, &request, store.as_deref(), &mut Window(app)));
         if let Ok(view) = &ran {
             job.set_written(view.written.as_deref().map(Utf8PathBuf::from));
         }
@@ -152,6 +156,74 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
         ran
     })
     .await
+}
+
+/// The runs the app's store keeps, newest first (#ADR-0096).
+#[tauri::command]
+#[specta::specta]
+pub async fn list_runs(app: AppHandle) -> IpcResult<Vec<RunRow>> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.list()).await
+}
+
+/// The report of a kept run, as JSON. None for a number no run has.
+#[tauri::command]
+#[specta::specta]
+pub async fn run_report(app: AppHandle, id: u64) -> IpcResult<Option<String>> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.report(id)).await
+}
+
+/// Marks a kept run so that the store's bound does not remove it, or unmarks it.
+#[tauri::command]
+#[specta::specta]
+pub async fn keep_run(app: AppHandle, id: u64, kept: bool) -> IpcResult<()> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.keep(id, kept)).await
+}
+
+/// The store, unless a run is under way: a removal waits for none.
+fn idle_store(app: &AppHandle) -> Result<Arc<AppStore>, AppError> {
+    if app.state::<Arc<RunJob>>().run.running() {
+        return Err(AppError::RunBusy);
+    }
+    app.state::<RunStore>().get()
+}
+
+/// Removes a kept run, and what no other run names.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_run(app: AppHandle, id: u64) -> IpcResult<()> {
+    off_thread(move || idle_store(&app)?.remove_run(id)).await
+}
+
+/// Removes every kept run of the mod whose archive has this SHA-256, as hex.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_mod_runs(app: AppHandle, sha256: String) -> IpcResult<()> {
+    off_thread(move || {
+        let store = idle_store(&app)?;
+        let sha256 = ContentId::parse(&sha256).ok_or_else(|| AppError::Internal {
+            detail: format!("{sha256:?} is no SHA-256"),
+        })?;
+        store.remove_mod(sha256)
+    })
+    .await
+}
+
+/// Removes every kept run.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_all_runs(app: AppHandle) -> IpcResult<()> {
+    off_thread(move || idle_store(&app)?.remove_all()).await
+}
+
+/// What the app's store holds and its bytes on disk, for the settings page.
+#[tauri::command]
+#[specta::specta]
+pub async fn store_view(app: AppHandle) -> IpcResult<StoreView> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.view()).await
 }
 
 /// A mod archive read alone: what it says of itself, its characters and its thumbnail, for
