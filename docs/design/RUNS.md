@@ -2146,3 +2146,65 @@ from the store by hash.
 - The store after: 136,315,016,480 bytes in 419,305 files and 65,677 folders, 4,909 of the
   files the per-archive entries. The file rows of `baseline-port-6` name 417,503 distinct
   contents of 130.4 GB ("What a blob store holds"), so the tier holds each once.
+
+## A file's kind from its head, kept per blob (2026-10-11)
+
+The branch `run-state-store` at `9cea5b5`: a stage ended at the first fetch its store does
+not answer, the empty blob answered by every store, a file's kind and size read from its
+first 64 bytes, the kind kept per blob in a table beside the ingest tier under the matcher's
+generation, and an LRU between the run's memory layer and a store on disk, holding a quarter
+of the working-set cap (#ADR-0100). The same inputs as "The load snapshot", and the ingest
+tier warmed in "The ingest tier warmed with the datasets".
+
+- **The bytes each stage fetched over the reduced corpus**, from a counting store in the
+  caller's place over the ingest tier, each run started from the tier's raw snapshot by the
+  archive's SHA-256, in a program of the library's API, not kept. It counts the reads that
+  reach the stores under the run's memory layer: under the LRU where the run has one. A stage
+  a fatal diagnostic ended is not counted. The before is `a9c51ec`, after the empty blob and
+  before the kind from the head; its counts are those of "A file node by id" but for the 8
+  reads of the empty blob in a port and the 4 in a repair, which no store reads any more.
+  The after is `9cea5b5`, with no LRU (the counting store said to be in memory) and a table of
+  facts of the run's own, then with the LRU and the tier's table.
+
+  | stage | before: fetches | before: bytes | no LRU: fetches | no LRU: bytes | after: fetches | after: bytes |
+  |---|---:|---:|---:|---:|---:|---:|
+  | port: load | 65,675 | 13,422,376,110 | 11,391 | 1,853,279,772 | 8,216 | 1,309,801,779 |
+  | port: fix | 1,695 | 465,850,674 | 1,695 | 465,850,674 | 0 | 0 |
+  | port: facts | 1,795 | 665,841,380 | 1,795 | 665,841,380 | 1,033 | 366,870,488 |
+  | port: decide | 0 | 0 | 0 | 0 | 0 | 0 |
+  | port: plan | 28 | 154,466,407 | 28 | 154,466,407 | 0 | 0 |
+  | port: build | 4,624 | 1,414,782,304 | 4,624 | 1,414,782,304 | 3,623 | 1,143,871,248 |
+  | port: check | 0 | 0 | 0 | 0 | 0 | 0 |
+  | repair: load | 38,548 | 7,689,454,447 | 11,391 | 1,853,279,772 | 8,216 | 1,309,801,779 |
+  | repair: fix | 1,695 | 465,850,674 | 1,695 | 465,850,674 | 0 | 0 |
+  | repair: build | 5,845 | 1,557,136,131 | 5,845 | 1,557,136,131 | 2,628 | 665,894,460 |
+  | repair: check | 239 | 20,807,636 | 239 | 20,807,636 | 0 | 0 |
+
+  `load` reads beside these the head of each file: 22,740 heads of 1,454,212 bytes with a
+  table of the run's own, one less through the LRU, and none with the tier's table once it
+  holds the rows. Its whole reads are the bins it parses, each more than once without the
+  LRU. With the LRU, `fix` and `plan` read nothing from disk, and `facts` and `build` read
+  what no earlier stage read or what the LRU dropped.
+- **The table of facts.** The first run after it landed, `kinds-port-from`, wrote 19,426
+  rows, all of generation 1, for blobs of 5,230,669,247 bytes; every later run of the reduced
+  corpus wrote none, and no raw snapshot entry of the tier was written. 80 of the rows are of
+  blobs the tier does not hold, made in a run's own layer and read by the inventory: 51 bins
+  and 29 banks. The table's file is 1.4 MB.
+- **The reduced corpus**, each command from the tier by the archive's SHA-256
+  (`--from-store`) and from the archives with no store:
+
+  | run | command | store | done | ended by a fatal diagnostic | time |
+  |---|---|---|---:|---|---|
+  | `kinds-port-from` | `port --no-write` | the tier by hash, the table written | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 45 s |
+  | `kinds-port-from-2`, `-3` | the same | the tier by hash, the table read | 63 | the same | 32 s, 33 s |
+  | `kinds-port`, `-2` | the same | none | 63 | the same | 32 s, 33 s |
+  | `kinds-repair-from`, `-2` | `repair --no-write --again` | the tier by hash, the table read | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 52 s, 48 s |
+  | `kinds-repair`, `-2` | the same | none | 65 | the same | 51 s, 52 s |
+
+  Against the baselines (`kinds-*-vs-baseline-6`, expected as "The load snapshot"), the 68
+  mods of each run differ in the report's two inputs alone, 136 differences each, all
+  expected. With each other, the report files from the tier and from the archives are equal
+  byte for byte, and equal to those of `final-port` and `final-repair` in "A file node by
+  id". A port from the tier takes the time of a port from the archives once the table holds
+  its rows, where "A file node by id" measured 43 s against 33 s; the first run, which reads
+  every head and writes the rows, takes 45 s. A repair takes the same time either way.
