@@ -17,7 +17,7 @@ mod shipping;
 
 use std::fmt;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 pub use self::audio::{AudioPlan, BankUnit, ClipRef, MadeBank, OwnClips, UnitAudio};
 pub use self::base::{Base, BaseObject, BaseObjects};
@@ -105,9 +105,18 @@ impl Serialize for TargetPolicy {
     }
 }
 
+impl<'de> Deserialize<'de> for TargetPolicy {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        Self::parse(&text).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Whether a slot fits when the unit's graph plays game clips that only other skins play
 /// (#ADR-0014).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum AnimReuse {
     /// Such a clip blocks the slot.
@@ -149,7 +158,9 @@ impl AnimReuse {
 }
 
 /// One policy: how the target is chosen, and how much animation reuse is accepted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 pub struct Policy {
     /// How the target is chosen.
     pub target: TargetPolicy,

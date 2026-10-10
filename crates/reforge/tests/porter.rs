@@ -26,7 +26,8 @@ use reforge::package::{
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
 use reforge::snapshot::{
-    FactsSnapshot, FixSnapshot, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
+    DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT,
+    Setting, Snapshots,
 };
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
@@ -1193,6 +1194,12 @@ fn through_json(snapshots: &Snapshots) -> Snapshots {
         assert_eq!(facts.to_json(), json, "the facts snapshot reads back");
         back.facts = Some(facts);
     }
+    if let Some(decide) = &snapshots.decide {
+        let json = decide.to_json();
+        let decide = DecideSnapshot::from_json(&json).expect("the decide snapshot reads");
+        assert_eq!(decide.to_json(), json, "the decide snapshot reads back");
+        back.decide = Some(decide);
+    }
     back
 }
 
@@ -1307,6 +1314,40 @@ fn a_run_resumed_after_fix_writes_the_report_and_package_of_the_straight_run() {
 #[test]
 fn a_port_resumed_after_facts_writes_the_report_and_package_of_the_straight_run() {
     every_run_resumed_after(Stage::Facts, |s| Start::Facts(Box::new(s)));
+}
+
+#[test]
+fn a_port_resumed_after_decide_writes_the_report_and_package_of_the_straight_run() {
+    every_run_resumed_after(Stage::Decide, |s| Start::Decide(Box::new(s)));
+}
+
+#[test]
+fn a_decide_snapshot_is_refused_when_the_policy_or_a_compared_one_is_not_the_runs() {
+    let env = legacy_env();
+    let (snapshots, store) = legacy_snapshots(&Porter::new(&env), Stage::Decide);
+    let resume = |porter: Porter<'_>, snapshots: Snapshots| {
+        let start = Start::Decide(Box::new(snapshots));
+        porter.resume(start, Arc::clone(&store)).map(drop)
+    };
+    assert!(resume(Porter::new(&env), snapshots.clone()).is_ok());
+    let base = Policy {
+        target: TargetPolicy::Base,
+        anim_reuse: AnimReuse::Allow,
+    };
+    let refused = resume(Porter::new(&env).policy(base), snapshots.clone());
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::Policy))
+    ));
+    let refused = resume(Porter::new(&env).compare(vec![base]), snapshots.clone());
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::Compared))
+    ));
+    // A resume after `facts` does not read the decisions, so a policy of another run's holds.
+    let start = Start::Facts(Box::new(snapshots));
+    let porter = Porter::new(&env).policy(base);
+    assert!(porter.resume(start, Arc::clone(&store)).is_ok());
 }
 
 #[test]

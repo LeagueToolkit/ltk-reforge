@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::findings::{
     ForcedUnfit, Infeasible, PreRework, SubLeft, Superseded, TargetChosen, TargetConflict, Unjudged,
@@ -31,7 +31,7 @@ use crate::model::entity::{CharId, UnitId};
 use crate::model::{Dump, DumpCx, Slot, clean};
 
 /// Why a unit goes where it goes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Reason {
     /// A skin0 unit on the base.
@@ -123,8 +123,24 @@ impl Serialize for Considered {
     }
 }
 
+impl<'de> Deserialize<'de> for Considered {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(d)?;
+        let every = [
+            Considered::BaseFirst,
+            Considered::PremiumOrigin,
+            Considered::ClipsSkin,
+            Considered::SkeletonSkin,
+            Considered::ChampionTarget,
+            Considered::Policy,
+        ];
+        let named = every.into_iter().find(|why| why.as_str() == text);
+        named.ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no reason")))
+    }
+}
+
 /// A slot the policy weighed, with every check judged under it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Candidate {
     /// The slot.
     pub slot: Slot,
@@ -216,7 +232,7 @@ pub fn clip_fit(at: &ClipsAt, anim: AnimReuse) -> Fit {
 }
 
 /// What a rework says of a champion's unit that is left to the game.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MadeBefore {
     /// The champion.
     pub champion: CharId,
@@ -229,7 +245,7 @@ pub struct MadeBefore {
 }
 
 /// The decision for one representative unit.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Decision {
     /// The unit.
     pub unit: UnitId,
@@ -268,7 +284,7 @@ pub struct Decision {
 }
 
 /// What another policy chooses for a unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Alternative {
     /// The policy.
     pub policy: Policy,
@@ -279,7 +295,7 @@ pub struct Alternative {
 }
 
 /// Two units of one character on one slot, of the same rank.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Conflict {
     /// The character.
     pub character: CharId,
@@ -290,7 +306,7 @@ pub struct Conflict {
 }
 
 /// The decisions of one policy, and what the policies compared with it choose.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Targets {
     /// The policy.
     pub policy: Policy,

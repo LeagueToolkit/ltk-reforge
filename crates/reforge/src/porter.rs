@@ -33,8 +33,8 @@ use crate::package::{
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
 use crate::snapshot::{
-    self, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot, LoadSettings, LoadSnapshot,
-    LoadState, ResumeError, Setting, Snapshots,
+    self, DecideSettings, DecideSnapshot, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot,
+    LoadSettings, LoadSnapshot, LoadState, ResumeError, Setting, Snapshots,
 };
 use crate::store::{BlobStore, Layered, MemoryStore};
 
@@ -173,6 +173,8 @@ pub enum Start {
     Fix(Box<Snapshots>),
     /// The snapshots through `facts`: the run starts at `decide`. A port's alone.
     Facts(Box<Snapshots>),
+    /// The snapshots through `decide`: the run starts at `plan`. A port's alone.
+    Decide(Box<Snapshots>),
 }
 
 impl From<RawSnapshot> for Start {
@@ -515,6 +517,7 @@ pub struct Run<'a> {
     loaded: Option<LoadSnapshot>,
     fix_snapshot: Option<FixSnapshot>,
     facts_snapshot: Option<FactsSnapshot>,
+    decide_snapshot: Option<DecideSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -546,6 +549,7 @@ impl<'a> Run<'a> {
             loaded: None,
             fix_snapshot: None,
             facts_snapshot: None,
+            decide_snapshot: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -658,6 +662,7 @@ impl<'a> Run<'a> {
             }
             Start::Fix(snapshots) => self.reopen_run(*snapshots, Stage::Fix, &codes)?,
             Start::Facts(snapshots) => self.reopen_run(*snapshots, Stage::Facts, &codes)?,
+            Start::Decide(snapshots) => self.reopen_run(*snapshots, Stage::Decide, &codes)?,
         }
         Ok(self)
     }
@@ -673,30 +678,45 @@ impl<'a> Run<'a> {
         if !self.mode.stages().contains(&last) {
             return Err(ResumeError::NotInARepair(last));
         }
-        let Snapshots { load, fix, facts } = snapshots;
+        let Snapshots {
+            load,
+            fix,
+            facts,
+            decide,
+        } = snapshots;
         let fix = snapshot::after(fix, Stage::Fix)?;
+        let facts = snapshot::through(facts, Stage::Facts, last)?;
+        let decide = snapshot::through(decide, Stage::Decide, last)?;
         let module = self.reopen_load(&load)?;
         let fixed = self.reopen_fix(module, &load, &fix)?;
         let mut findings = fix.findings();
-        let facts = if last >= Stage::Facts {
-            let facts = snapshot::after(facts, Stage::Facts)?;
+        if let Some(facts) = &facts {
             facts.holds(&self.facts_settings())?;
             let found = facts.found().clone();
             let reopened = Facts::reopen(&fixed, self.env, found);
             self.facts = Some(reopened.map_err(ResumeError::Facts)?);
-            Some(facts)
-        } else {
-            None
-        };
-        if let Some(facts) = &facts {
             findings = facts.findings();
+        }
+        if let Some(decide) = &decide {
+            decide.holds(&self.decide_settings())?;
+            self.targets = Some(decide.targets().clone());
+            findings = decide.findings();
         }
         self.log.restore(findings, codes)?;
         self.module = Reached::Fixed(fixed);
         self.loaded = Some(load);
         self.fix_snapshot = Some(fix);
         self.facts_snapshot = facts;
+        self.decide_snapshot = decide;
         Ok(())
+    }
+
+    /// The settings `decide` reads in this run.
+    fn decide_settings(&self) -> DecideSettings {
+        DecideSettings {
+            policy: self.settings.policy,
+            compared: self.settings.compared.clone(),
+        }
     }
 
     /// The settings `facts` reads in this run.
@@ -958,7 +978,13 @@ impl<'a> Run<'a> {
             let facts = held(self.facts.as_ref(), Stage::Decide, Stage::Facts)?;
             let targets = self.settings.policy.decide(facts);
             targets.report(&mut self.log.at(Stage::Decide));
-            self.targets = Some(targets.compared(facts, &self.settings.compared));
+            let targets = targets.compared(facts, &self.settings.compared);
+            if self.facts_snapshot.is_some() {
+                let findings = self.log.logged_from(self.first);
+                let snapshot = DecideSnapshot::of(&targets, self.decide_settings(), findings);
+                self.decide_snapshot = Some(snapshot);
+            }
+            self.targets = Some(targets);
         }
         held(self.targets.as_ref(), Stage::Decide, Stage::Facts)
     }
@@ -1307,7 +1333,13 @@ impl<'a> Run<'a> {
         let mut snapshots = Snapshots::new(self.loaded.clone()?);
         snapshots.fix = self.fix_snapshot.clone();
         snapshots.facts = self.facts_snapshot.clone();
+        snapshots.decide = self.decide_snapshot.clone();
         Some(snapshots)
+    }
+
+    /// The decide snapshot, once `decide` ended or the run started from one (#ADR-0094).
+    pub fn decide_snapshot(&self) -> Option<&DecideSnapshot> {
+        self.decide_snapshot.as_ref()
     }
 
     /// The facts snapshot, once `facts` ended or the run started from one (#ADR-0094).

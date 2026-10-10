@@ -12,6 +12,7 @@
 //!
 //! `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump".
 
+mod decide;
 mod facts;
 mod fix;
 
@@ -20,6 +21,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
 use crate::archive::{RawExtra, RawImage};
@@ -66,6 +68,8 @@ pub struct Snapshots {
     pub fix: Option<FixSnapshot>,
     /// The snapshot after `facts`.
     pub facts: Option<FactsSnapshot>,
+    /// The snapshot after `decide`.
+    pub decide: Option<DecideSnapshot>,
 }
 
 impl Snapshots {
@@ -75,6 +79,7 @@ impl Snapshots {
             load,
             fix: None,
             facts: None,
+            decide: None,
         }
     }
 }
@@ -82,6 +87,16 @@ impl Snapshots {
 /// The snapshot after a stage, or the refusal of a resume after it.
 pub(crate) fn after<T>(snapshot: Option<T>, stage: Stage) -> Result<T, ResumeError> {
     snapshot.ok_or(ResumeError::Missing(stage))
+}
+
+/// The snapshot after a stage, for a resume after `last`: none for a stage after it, and the
+/// refusal where the stage is up to it and the snapshot is missing.
+pub(crate) fn through<T>(
+    snapshot: Option<T>,
+    stage: Stage,
+    last: Stage,
+) -> Result<Option<T>, ResumeError> {
+    (stage <= last).then(|| after(snapshot, stage)).transpose()
 }
 
 /// The program that wrote a snapshot.
@@ -183,6 +198,10 @@ pub enum Setting {
     BinFixups,
     /// The table rules among them.
     Rules,
+    /// The policy targets are chosen under.
+    Policy,
+    /// The policies compared with it.
+    Compared,
 }
 
 /// The settings `load` reads (#ADR-0094).

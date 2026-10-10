@@ -79,7 +79,8 @@ let report = run.report();
   the layer's blobs, which the caller flushes into a store it keeps; a run dropped leaves
   nothing. `run.read_file` reads an archive file. `load` opens the mod from the
   raw snapshot and the store. The run keeps the raw snapshot, and a snapshot at the end of
-  each stage from `load` on (#ADR-0094): `load_snapshot`, `fix_snapshot`, `facts_snapshot`.
+  each stage from `load` on (#ADR-0094): `load_snapshot`, `fix_snapshot`, `facts_snapshot`,
+  `decide_snapshot`.
   A run keeps a snapshot after a stage only where it kept the ones before it.
   `Run::snapshots` gives them together as `Snapshots`, what a caller keeps to resume after
   any of them.
@@ -87,10 +88,11 @@ let report = run.report();
   `Porter::resume(from, store)`, takes a `Start`: the raw snapshot, after which `load` runs;
   the load snapshot, after which `fix` does; or `Snapshots`, after the stage the variant
   names (`Start::Fix`: `facts` runs next in a port, `build` in a repair; `Start::Facts`:
-  `decide`). The load snapshot reopens the mod from the store's bytes and parses its bins
+  `decide`; `Start::Decide`: `plan`). The load snapshot reopens the mod from the store's bytes and parses its bins
   again; the fix snapshot reads the objects of each bin `fix` wrote again from its new
   bytes (`FixedMod::reopen`) and its changes from the snapshot; the facts snapshot gives
-  what the facts found, and the game the catalogs again (`Facts::reopen`). The parsed
+  what the facts found, and the game the catalogs again (`Facts::reopen`); the decide
+  snapshot gives the targets. The parsed
   objects are a cache of the snapshots. A run resumed from any of them writes the report
   and the package of the run that wrote them.
 - **A snapshot is refused** with a `ResumeError` that says why: a raw snapshot of another
@@ -110,6 +112,7 @@ let report = run.report();
   | load | `LoadSnapshot` | `LoadInputs`: the install's build, the history, the hash tables' stamp | `LoadSettings`: the mode, the file fixups, the stale keep, the reworks |
   | fix | `FixSnapshot` | `FixInputs`: the schema | `FixSettings`: the fixups on bin values, and the table rules among them as data |
   | facts | `FactsSnapshot` | none of its own | `FactsSettings`: the reworks |
+  | decide | `DecideSnapshot` | none | `DecideSettings`: the policy, the policies compared with it |
 - **A stage runs once.** Its method asked again gives the result the run holds. The stage
   types keep the order in their signatures. The run holds the results, so a method called
   before the result it reads is held answers `RunError::NotReached` with both stages.
@@ -189,7 +192,7 @@ The modules of `reforge`, each using only the ones above it:
 | `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers, `EvidenceDoc` |
 | `peek` | `Peek`: an archive read alone, its characters by path and its thumbnail, for a page that shows a mod before a run |
 | `report` | `Report` and its rows; `LoadPart`, the rows `load` gives |
-| `snapshot` | the snapshot after each stage from `load` on, the mod as the stage left it named by content id (#ADR-0094), with what it was judged under: `LoadSnapshot` with `LoadInputs` and `LoadSettings`, `FixSnapshot` with `FixInputs` and `FixSettings`, `FactsSnapshot` with `FactsSettings`, `Program`; `Snapshots`, a run's together; how each reopens, and `ResumeError` |
+| `snapshot` | the snapshot after each stage from `load` on, the mod as the stage left it named by content id (#ADR-0094), with what it was judged under: `LoadSnapshot` with `LoadInputs` and `LoadSettings`, `FixSnapshot` with `FixInputs` and `FixSettings`, `FactsSnapshot` with `FactsSettings`, `DecideSnapshot` with `DecideSettings`, `Program`; `Snapshots`, a run's together; how each reopens, and `ResumeError` |
 | `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)), and started from a snapshot; `codes()`, every code a run can raise |
 
 A test (`tests/layers.rs`) reads every `crate::` path of the sources and fails when a module
@@ -825,6 +828,8 @@ object takes a name of its own, which every link to it follows.
   end of `fix`. A repair's second run, judged with the first's evidence, keeps no snapshot.
 - The facts snapshot holds what the facts found (Facts, "What a snapshot keeps") and the
   findings to the end of `facts`. Its files are the fix snapshot's: `facts` changes none.
+- The decide snapshot holds the `Targets` with what the compared policies choose, and the
+  findings to the end of `decide`. Its files are the fix snapshot's.
 - The corpus scripts (`scripts/corpus/`) compare the reports of a run with the baseline's
   reports of the same mods (#ADR-0044).
 
