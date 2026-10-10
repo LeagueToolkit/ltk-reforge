@@ -2,9 +2,11 @@
 //! [`Run`] takes one archive through the stages with it: one method per stage, each handing
 //! its stage the stage's sink and options.
 //!
-//! The run owns what passes between the stages: the log, the names learnt, the mod, the
-//! evidence of its files and every stage's result. A caller stops after any stage and reads
-//! what the run holds. The report is written from the run as far as it went.
+//! The run owns what passes between the stages: the log, the names learnt, each stage's
+//! snapshot (#ADR-0094), and the parsed objects beside them, a cache of the snapshots. A stage
+//! ran when the run holds its snapshot, and `Run::through` folds the stages over them. A
+//! caller stops after any stage and reads what the run holds. The report is written from the
+//! run as far as it went.
 //!
 //! `docs/design/ARCHITECTURE.md`, "Shape".
 

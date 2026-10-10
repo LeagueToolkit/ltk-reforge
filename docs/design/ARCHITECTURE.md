@@ -68,8 +68,11 @@ let report = run.report();
   order, whose declared part differs, which is the stage a rerun under `other` resumes from
   (#ADR-0094).
 - **A `Run` takes one archive through the stages and owns what passes between them**: the
-  log, the names learnt (`NameBook`), the mod, the dating, the inventory, the file
-  provenance, what the fixups changed, and every stage's result. A caller reads each by its
+  log, the names learnt (`NameBook`), each stage's snapshot, and beside them the parsed
+  objects the stages work on: the mod, the dating, the file provenance, what the fixups
+  changed, the facts, the port and the package. The inventory, the targets, the package's
+  part of the report and what each patch came to are read from their snapshots. A caller
+  reads each by its
   accessor (`archive`, the raw snapshot, `load_snapshot`, `store`, `module`, `fixed`,
   `dating`, `changes`, `facts`, `targets`, `port`, `package`, `applied`, `log`, `names`)
   after any stage. `Run::log_from` starts a run from a log of the caller's: one that holds
