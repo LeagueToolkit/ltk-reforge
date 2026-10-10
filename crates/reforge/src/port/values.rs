@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use ltk_meta::{Bin, BinObject, PropertyValueEnum};
+use ltk_meta::{BinObject, PropertyValueEnum};
 use reforge_wwise::Bank;
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +48,7 @@ pub struct PortValues {
 const HELD: BinHash = BinHash(0);
 
 fn object_bytes(object: &BinObject) -> ByteView {
-    bin::write(&Bin::new([object.clone()], Vec::<String>::new())).into()
+    bin::write_one(object).into()
 }
 
 fn value_bytes(value: &PropertyValueEnum) -> ByteView {
@@ -98,12 +98,7 @@ impl PortValues {
     pub fn reopen(&self, mut port: Port, store: &dyn BlobStore) -> Result<Port, ValuesError> {
         let bytes = |id: ContentId| store.get(id).ok_or(ValuesError::Missing(id));
         let object = |id: ContentId| -> Result<BinObject, ValuesError> {
-            let parsed = bin::parse(&bytes(id)?).map_err(|e| unreadable(e.to_string()))?;
-            let mut objects = parsed.objects.into_iter();
-            let object = objects.next().filter(|_| objects.next().is_none());
-            object
-                .map(|object| object.value)
-                .ok_or_else(|| unreadable(format!("{id:?} is no bin of one object")))
+            bin::read_one(&bytes(id)?).map_err(|e| unreadable(format!("{id:?}: {e}")))
         };
         port.objects = self
             .objects

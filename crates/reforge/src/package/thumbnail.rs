@@ -84,6 +84,14 @@ impl Thumbnail {
     pub fn bytes(&self) -> &[u8] {
         &self.webp
     }
+
+    /// The thumbnail a snapshot names, from the bytes this module encoded when the package
+    /// was built (#ADR-0094).
+    pub(crate) fn reopen(webp: &[u8]) -> Self {
+        Self {
+            webp: Arc::from(webp),
+        }
+    }
 }
 
 fn decode(bytes: &[u8]) -> Option<DynamicImage> {

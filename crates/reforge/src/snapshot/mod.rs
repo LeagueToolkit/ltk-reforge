@@ -12,6 +12,7 @@
 //!
 //! `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump".
 
+mod build;
 mod decide;
 mod facts;
 mod fix;
@@ -22,6 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+pub use self::build::{BuildSettings, BuildSnapshot};
 pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
@@ -74,6 +76,8 @@ pub struct Snapshots {
     pub decide: Option<DecideSnapshot>,
     /// The snapshot after `plan`.
     pub plan: Option<PlanSnapshot>,
+    /// The snapshot after `build`.
+    pub build: Option<BuildSnapshot>,
 }
 
 impl Snapshots {
@@ -85,6 +89,7 @@ impl Snapshots {
             facts: None,
             decide: None,
             plan: None,
+            build: None,
         }
     }
 }
@@ -94,14 +99,15 @@ pub(crate) fn after<T>(snapshot: Option<T>, stage: Stage) -> Result<T, ResumeErr
     snapshot.ok_or(ResumeError::Missing(stage))
 }
 
-/// The snapshot after a stage, for a resume after `last`: none for a stage after it, and the
-/// refusal where the stage is up to it and the snapshot is missing.
+/// The snapshot after a stage, for a resume that reads the stages `through` says: none for a
+/// stage it does not read, and the refusal where it reads the stage and the snapshot is
+/// missing.
 pub(crate) fn through<T>(
     snapshot: Option<T>,
     stage: Stage,
-    last: Stage,
+    through: impl Fn(Stage) -> bool,
 ) -> Result<Option<T>, ResumeError> {
-    (stage <= last).then(|| after(snapshot, stage)).transpose()
+    through(stage).then(|| after(snapshot, stage)).transpose()
 }
 
 /// The program that wrote a snapshot.
@@ -211,6 +217,8 @@ pub enum Setting {
     GameEventsOnly,
     /// Whether the units at slots other than their champion's target ship.
     KeepOtherSlots,
+    /// Whether each DDS ships as it is.
+    KeepDds,
 }
 
 /// The settings `load` reads (#ADR-0094).

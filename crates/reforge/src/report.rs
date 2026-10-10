@@ -294,7 +294,7 @@ pub struct FixupRow {
 }
 
 /// A chunk of the package.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChunkRow {
     /// The layer it is in.
     pub layer: String,
@@ -309,7 +309,7 @@ pub struct ChunkRow {
     /// Where its bytes come from: `kept` for the file's own, `delta` or `whole` for a bin
     /// written again, `contained` for a DDS put in TEX's container, `made` for a bin a port
     /// made.
-    pub origin: &'static str,
+    pub origin: String,
     /// Its size in bytes.
     pub size: u64,
     /// The SHA-256 of its bytes as written.
@@ -320,21 +320,21 @@ pub struct ChunkRow {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub objects: Option<IndexMap<String, String>>,
     /// For a bin written again: the entry hashes of the objects a fixup changed.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub edited: Vec<String>,
     /// For each of those objects: its digest with the fields of every struct in the order of
     /// their hashes. The client finds a field by its hash, so two repairs that leave the same
     /// values in another order of fields differ in `objects` and are equal here.
-    #[serde(skip_serializing_if = "IndexMap::is_empty")]
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
     pub values: IndexMap<String, String>,
 }
 
 /// A game bin after a patch, as the overlay applies it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedRow {
     /// `applied`, `failed` for a patch the overlay refused, `no-game-bin` where the game has
     /// no bin at the target.
-    pub outcome: &'static str,
+    pub outcome: String,
     /// Why the overlay refused the patch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
@@ -347,8 +347,33 @@ pub struct AppliedRow {
     pub objects: IndexMap<String, String>,
 }
 
+/// What a patch is of, as the report names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "of", rename_all = "lowercase")]
+pub enum PatchOfRow {
+    /// A unit's skin bin at its target.
+    Skin {
+        /// The unit.
+        unit: UnitId,
+    },
+    /// A champion's root bin.
+    Root {
+        /// The champion.
+        character: CharId,
+    },
+}
+
+impl From<PatchOf> for PatchOfRow {
+    fn from(of: PatchOf) -> Self {
+        match of {
+            PatchOf::Skin { unit, .. } => PatchOfRow::Skin { unit },
+            PatchOf::Root { character } => PatchOfRow::Root { character },
+        }
+    }
+}
+
 /// A patch of the package.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PatchRow {
     /// The layer it is in.
     pub layer: String,
@@ -358,7 +383,7 @@ pub struct PatchRow {
     pub path: ChunkPath,
     /// What it is of.
     #[serde(flatten)]
-    pub of: PatchOf,
+    pub of: PatchOfRow,
     /// The bins the manifest links to the patched bin.
     pub links: Vec<ChunkPath>,
     /// How many records and whole objects the PTCH holds.
@@ -371,54 +396,54 @@ pub struct PatchRow {
     pub applied: Option<AppliedRow>,
 }
 
-impl PatchRow {
-    fn of(layer: &Layer, at: usize, patch: &Patch, overlay: Option<&Overlay>) -> Self {
-        let applied = overlay.and_then(|overlay| overlay.of(layer, at));
-        let applied = applied.map(|applied| match &applied.outcome {
-            Outcome::NoGameBin => AppliedRow {
-                outcome: "no-game-bin",
-                reason: None,
-                skipped: Vec::new(),
-                links: Vec::new(),
-                objects: IndexMap::new(),
-            },
-            Outcome::Failed { reason } => AppliedRow {
-                outcome: "failed",
-                reason: Some(reason.clone()),
-                skipped: Vec::new(),
-                links: Vec::new(),
-                objects: IndexMap::new(),
-            },
+impl AppliedRow {
+    /// What applying a patch came to.
+    pub fn of(outcome: &Outcome) -> Self {
+        let empty = |outcome: &str, reason: Option<String>| AppliedRow {
+            outcome: outcome.to_string(),
+            reason,
+            skipped: Vec::new(),
+            links: Vec::new(),
+            objects: IndexMap::new(),
+        };
+        match outcome {
+            Outcome::NoGameBin => empty("no-game-bin", None),
+            Outcome::Failed { reason } => empty("failed", Some(reason.clone())),
             Outcome::Applied(bin) => {
                 let digests = bin.objects.iter().map(|object| {
                     let entry = format!("{:08x}", object.path_hash.0);
                     (entry, hex(&value::digest(object)))
                 });
                 AppliedRow {
-                    outcome: "applied",
+                    outcome: "applied".to_string(),
                     reason: None,
                     skipped: bin.skipped.clone(),
                     links: bin.dependencies.clone(),
                     objects: digests.collect(),
                 }
             }
-        });
+        }
+    }
+}
+
+impl PatchRow {
+    fn of(layer: &Layer, patch: &Patch) -> Self {
         Self {
             layer: layer.name(),
             target: patch.target.clone(),
             path: patch.path.clone(),
-            of: patch.of,
+            of: patch.of.into(),
             links: patch.links.clone(),
             records: patch.records,
             size: patch.bytes.len() as u64,
             content: ContentId::of(&patch.bytes),
-            applied,
+            applied: None,
         }
     }
 }
 
 /// The package a run built.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackageRow {
     /// The project's name.
     pub name: String,
@@ -427,7 +452,7 @@ pub struct PackageRow {
     /// Its chunks, layer by layer, by WAD and path.
     pub chunks: Vec<ChunkRow>,
     /// Its patches of game bins, layer by layer, in the order of each layer's manifest.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub patches: Vec<PatchRow>,
     /// The chunk paths its hash table names.
     pub paths: Vec<String>,
@@ -1083,8 +1108,47 @@ impl ReportBuilder {
     /// digest of each object of the patched bin. The evidence the package embeds is a part of
     /// its own.
     #[must_use]
-    pub fn package_applied(mut self, package: &Package, overlay: Option<&Overlay>) -> Self {
-        self.report.evidence = package.evidence.clone();
+    pub fn package_applied(self, package: &Package, overlay: Option<&Overlay>) -> Self {
+        let mut row = PackageRow::of(package);
+        if let Some(overlay) = overlay {
+            row.apply(package, overlay);
+        }
+        self.package_row(row, package.evidence.as_ref())
+    }
+
+    /// The package's part as a run holds it, and the evidence the package embeds.
+    #[must_use]
+    pub fn package_row(mut self, row: PackageRow, evidence: Option<&EvidenceDoc>) -> Self {
+        self.report.evidence = evidence.cloned();
+        self.report.package = Some(row);
+        self
+    }
+
+    /// What repairing the repaired mod again came to.
+    #[must_use]
+    pub fn again(mut self, again: AgainRow) -> Self {
+        self.report.again = Some(again);
+        self
+    }
+
+    /// Every diagnostic of the log, each written with `cx`, and the one that ended the run.
+    #[must_use]
+    pub fn diagnostics(mut self, log: &Diagnostics, cx: &Render<'_>) -> Self {
+        self.report.diagnostics = log.iter().map(|d| DiagnosticRow::of(d, cx)).collect();
+        self.report.halted = log.halted().map(|halted| halted.0.0);
+        self
+    }
+
+    /// The report.
+    pub fn build(self) -> Report {
+        self.report
+    }
+}
+
+impl PackageRow {
+    /// The report's part of a package as `build` gave it: every chunk with the digest of its
+    /// bytes, for a bin the digest of each object it holds, and every patch, none applied.
+    pub fn of(package: &Package) -> Self {
         let chunks = package.chunks().map(|(layer, key, chunk)| {
             let is_bin = key.path.extension() == Some("bin");
             let parsed = is_bin.then(|| bin::parse(&chunk.bytes).ok()).flatten();
@@ -1119,7 +1183,7 @@ impl ReportBuilder {
                 path: key.path.clone(),
                 hash: format!("{:016x}", key.hash().0),
                 file: chunk.origin.file(),
-                origin: chunk.origin.name(),
+                origin: chunk.origin.name().to_string(),
                 size: chunk.bytes.len() as u64,
                 content: ContentId::of(&chunk.bytes),
                 objects,
@@ -1127,11 +1191,10 @@ impl ReportBuilder {
                 values,
             }
         });
-        let patches = package.layers().flat_map(|layer| {
-            let patches = package.patches(layer).iter().enumerate();
-            patches.map(move |(at, patch)| PatchRow::of(layer, at, patch, overlay))
-        });
-        self.report.package = Some(PackageRow {
+        let patches = package
+            .all_patches()
+            .map(|(layer, patch)| PatchRow::of(layer, patch));
+        PackageRow {
             name: package.config.name.clone(),
             version: package.config.version.clone(),
             chunks: chunks.collect(),
@@ -1139,28 +1202,19 @@ impl ReportBuilder {
             paths: package.tables.paths().map(str::to_string).collect(),
             entries: package.tables.entries().map(str::to_string).collect(),
             thumbnail: package.thumbnail.as_ref().map(|t| ContentId::of(t.bytes())),
+        }
+    }
+
+    /// Sets each patch's outcome as the overlay applied the package's patches. The rows are
+    /// the package's, in its order.
+    pub fn apply(&mut self, package: &Package, overlay: &Overlay) {
+        let layers = package.layers().flat_map(|layer| {
+            let patches = 0..package.patches(layer).len();
+            patches.map(move |at| overlay.of(layer, at))
         });
-        self
-    }
-
-    /// What repairing the repaired mod again came to.
-    #[must_use]
-    pub fn again(mut self, again: AgainRow) -> Self {
-        self.report.again = Some(again);
-        self
-    }
-
-    /// Every diagnostic of the log, each written with `cx`, and the one that ended the run.
-    #[must_use]
-    pub fn diagnostics(mut self, log: &Diagnostics, cx: &Render<'_>) -> Self {
-        self.report.diagnostics = log.iter().map(|d| DiagnosticRow::of(d, cx)).collect();
-        self.report.halted = log.halted().map(|halted| halted.0.0);
-        self
-    }
-
-    /// The report.
-    pub fn build(self) -> Report {
-        self.report
+        for (row, applied) in self.patches.iter_mut().zip(layers) {
+            row.applied = applied.map(|applied| AppliedRow::of(&applied.outcome));
+        }
     }
 }
 

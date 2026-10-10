@@ -37,6 +37,9 @@ pub enum BinError {
         /// How many objects the reader gave.
         read: usize,
     },
+    /// A bin that should hold one object alone holds another number.
+    #[error("the bin holds {0} objects, not one")]
+    NotOne(usize),
 }
 
 /// One object of a bin, with the digests of its bytes.
@@ -153,4 +156,21 @@ pub fn write(bin: &Bin) -> Vec<u8> {
         )
     });
     out.into_inner()
+}
+
+/// One object as the bytes of a bin that holds it alone: how a snapshot keeps an object by
+/// content id (#ADR-0094).
+pub fn write_one(object: &BinObject) -> Vec<u8> {
+    write(&Bin::new([object.clone()], Vec::<String>::new()))
+}
+
+/// The object of a bin that holds one alone, as [`write_one`] wrote it.
+pub fn read_one(bytes: &[u8]) -> Result<BinObject, BinError> {
+    let parsed = parse(bytes)?;
+    let count = parsed.objects.len() + parsed.duplicates.len();
+    let mut objects = parsed.objects.into_iter();
+    match (objects.next(), count) {
+        (Some(object), 1) => Ok(object.value),
+        _ => Err(BinError::NotOne(count)),
+    }
 }

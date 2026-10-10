@@ -38,7 +38,7 @@ impl Made {
 }
 
 /// What a mod project says of the mod it holds.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProjectConfig {
     /// The project's name: letters, digits, `_` and `-`. A writer names a directory and a
     /// file by it.

@@ -6,14 +6,14 @@ use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use ltk_meta::{Bin, BinDelta, BinObject, BinStream};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{Changes, FixedMod};
 use crate::model::entity::{BinId, FileId, FileKind};
 use crate::model::{ByteView, Mod, bin};
 
 /// How a bin was written again.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BinWrite {
     /// Through `ltk_meta`'s delta writer: every object no fixup changed is copied byte for

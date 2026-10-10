@@ -80,7 +80,7 @@ let report = run.report();
   nothing. `run.read_file` reads an archive file. `load` opens the mod from the
   raw snapshot and the store. The run keeps the raw snapshot, and a snapshot at the end of
   each stage from `load` on (#ADR-0094): `load_snapshot`, `fix_snapshot`, `facts_snapshot`,
-  `decide_snapshot`, `plan_snapshot`.
+  `decide_snapshot`, `plan_snapshot`, `build_snapshot`.
   A run keeps a snapshot after a stage only where it kept the ones before it.
   `Run::snapshots` gives them together as `Snapshots`, what a caller keeps to resume after
   any of them.
@@ -88,12 +88,14 @@ let report = run.report();
   `Porter::resume(from, store)`, takes a `Start`: the raw snapshot, after which `load` runs;
   the load snapshot, after which `fix` does; or `Snapshots`, after the stage the variant
   names (`Start::Fix`: `facts` runs next in a port, `build` in a repair; `Start::Facts`:
-  `decide`; `Start::Decide`: `plan`; `Start::Plan`: `build`). The load snapshot reopens the mod from the store's bytes and parses its bins
+  `decide`; `Start::Decide`: `plan`; `Start::Plan`: `build`; `Start::Build`: `check`). The
+  load snapshot reopens the mod from the store's bytes and parses its bins
   again; the fix snapshot reads the objects of each bin `fix` wrote again from its new
   bytes (`FixedMod::reopen`) and its changes from the snapshot; the facts snapshot gives
   what the facts found, and the game the catalogs again (`Facts::reopen`); the decide
   snapshot gives the targets; the plan snapshot gives the port, its values read back from
-  the store (`PortValues`). The parsed
+  the store (`PortValues`); the build snapshot gives the package, its chunks, patches and
+  thumbnail read back from the store. The parsed
   objects are a cache of the snapshots. A run resumed from any of them writes the report
   and the package of the run that wrote them.
 - **A snapshot is refused** with a `ResumeError` that says why: a raw snapshot of another
@@ -115,6 +117,7 @@ let report = run.report();
   | facts | `FactsSnapshot` | none of its own | `FactsSettings`: the reworks |
   | decide | `DecideSnapshot` | none | `DecideSettings`: the policy, the policies compared with it |
   | plan | `PlanSnapshot` | none of its own | `PlanSettings`: the stale keep, the game's events only, the other slots kept |
+  | build | `BuildSnapshot` | none of its own: the install's shader bin and shader cache, the game's skin bins a port patches and a sub-character's skin0 bin it copies, the game's files and the history a repair's texture is judged stale against, the hash tables that spell a repair's paths and a patch's fields | `BuildSettings`: the DDS keep, the stale keep |
 - **A stage runs once.** Its method asked again gives the result the run holds. The stage
   types keep the order in their signatures. The run holds the results, so a method called
   before the result it reads is held answers `RunError::NotReached` with both stages.
@@ -814,7 +817,9 @@ object takes a name of its own, which every link to it follows.
   every chunk's digest and, for a bin, the digest of each object as
   `ltk_meta` writes it, and every patch with the game bin it patches and the digest of each
   object of that bin after the patch, and as the part `evidence` the document the package
-  embeds ([Package](#package)), field for field. `reforge repair --again` adds what repairing
+  embeds ([Package](#package)), field for field. A run that keeps a build snapshot writes the
+  package part from the snapshot's, with each patch's outcome set by the overlay
+  (`PackageRow::apply`). `reforge repair --again` adds what repairing
   the package a second time, in memory, changed.
 - The rows `load` gives, the WADs, files, characters and units, the dating, and in a port the
   inventory and the file provenance, are `LoadPart`. The report holds them under the same
@@ -840,6 +845,14 @@ object takes a name of its own, which every link to it follows.
   places them, the banks made among them; the names learnt; and the findings to the end
   of `plan`. The plan's working state that no later stage reads is not kept
   (`port::values`).
+- The build snapshot holds the package's part of the report as `build` gave it, no patch
+  applied (`PackageRow`), and the package by the content id of its bytes: each layer's chunks
+  by WAD and path, each patch's PTCH, the thumbnail. Beside each id is what a check and a
+  writer read that the bytes do not say: the project's config, the hash tables, the
+  evidence, where each chunk's bytes come from, a patch's links and the skin entry it
+  patches, and for a bin the run wrote, the entries it was built with and each object
+  written as a bin of that object alone (`model::bin::write_one`); and the findings to the
+  end of `build`.
 - The corpus scripts (`scripts/corpus/`) compare the reports of a run with the baseline's
   reports of the same mods (#ADR-0044).
 

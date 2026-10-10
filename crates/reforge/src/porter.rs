@@ -31,11 +31,11 @@ use crate::package::{
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
-use crate::report::{AgainRow, Report};
+use crate::report::{AgainRow, PackageRow, Report};
 use crate::snapshot::{
-    self, DecideSettings, DecideSnapshot, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot,
-    LoadSettings, LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, ResumeError, Setting,
-    Snapshots,
+    self, BuildSettings, BuildSnapshot, DecideSettings, DecideSnapshot, FactsSettings,
+    FactsSnapshot, FixSettings, FixSnapshot, LoadSettings, LoadSnapshot, LoadState, PlanSettings,
+    PlanSnapshot, ResumeError, Setting, Snapshots,
 };
 use crate::store::{BlobStore, Layered, MemoryStore};
 
@@ -178,6 +178,8 @@ pub enum Start {
     Decide(Box<Snapshots>),
     /// The snapshots through `plan`: the run starts at `build`. A port's alone.
     Plan(Box<Snapshots>),
+    /// The snapshots through `build`: the run starts at `check`.
+    Build(Box<Snapshots>),
 }
 
 impl From<RawSnapshot> for Start {
@@ -206,6 +208,14 @@ impl Settings {
             keep_stale: self.keep_stale,
             game_events_only: self.game_events_only,
             keep_other_slots: self.keep_other_slots,
+        }
+    }
+
+    /// The settings `build` reads.
+    fn build_settings(&self) -> BuildSettings {
+        BuildSettings {
+            keep_dds: self.keep_dds,
+            keep_stale: self.keep_stale,
         }
     }
 }
@@ -522,6 +532,7 @@ pub struct Run<'a> {
     facts_snapshot: Option<FactsSnapshot>,
     decide_snapshot: Option<DecideSnapshot>,
     plan_snapshot: Option<PlanSnapshot>,
+    build_snapshot: Option<BuildSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -532,6 +543,8 @@ pub struct Run<'a> {
     targets: Option<Targets>,
     plan: Option<Port>,
     package: Option<Package>,
+    /// The package's part of the report, as the build snapshot holds it.
+    package_part: Option<PackageRow>,
     overlay: Option<Overlay>,
     checked: bool,
     written: bool,
@@ -555,6 +568,7 @@ impl<'a> Run<'a> {
             facts_snapshot: None,
             decide_snapshot: None,
             plan_snapshot: None,
+            build_snapshot: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -565,6 +579,7 @@ impl<'a> Run<'a> {
             targets: None,
             plan: None,
             package: None,
+            package_part: None,
             overlay: None,
             checked: false,
             written: false,
@@ -669,6 +684,7 @@ impl<'a> Run<'a> {
             Start::Facts(snapshots) => self.reopen_run(*snapshots, Stage::Facts, &codes)?,
             Start::Decide(snapshots) => self.reopen_run(*snapshots, Stage::Decide, &codes)?,
             Start::Plan(snapshots) => self.reopen_run(*snapshots, Stage::Plan, &codes)?,
+            Start::Build(snapshots) => self.reopen_run(*snapshots, Stage::Build, &codes)?,
         }
         Ok(self)
     }
@@ -690,11 +706,16 @@ impl<'a> Run<'a> {
             facts,
             decide,
             plan,
+            build,
         } = snapshots;
+        let stages = self.mode.stages();
+        // A stage the run's mode has not keeps no snapshot to resume after.
+        let through = |stage: Stage| stages.contains(&stage) && stage <= last;
         let fix = snapshot::after(fix, Stage::Fix)?;
-        let facts = snapshot::through(facts, Stage::Facts, last)?;
-        let decide = snapshot::through(decide, Stage::Decide, last)?;
-        let plan = snapshot::through(plan, Stage::Plan, last)?;
+        let facts = snapshot::through(facts, Stage::Facts, through)?;
+        let decide = snapshot::through(decide, Stage::Decide, through)?;
+        let plan = snapshot::through(plan, Stage::Plan, through)?;
+        let build = snapshot::through(build, Stage::Build, through)?;
         let module = self.reopen_load(&load)?;
         let fixed = self.reopen_fix(module, &load, &fix)?;
         let mut findings = fix.findings();
@@ -716,6 +737,12 @@ impl<'a> Run<'a> {
             self.book = plan.names().clone();
             findings = plan.findings();
         }
+        if let Some(build) = &build {
+            build.holds(&self.settings.build_settings())?;
+            self.package = Some(build.package(&self.store)?);
+            self.package_part = Some(build.part().clone());
+            findings = build.findings();
+        }
         self.log.restore(findings, codes)?;
         self.module = Reached::Fixed(fixed);
         self.loaded = Some(load);
@@ -723,6 +750,7 @@ impl<'a> Run<'a> {
         self.facts_snapshot = facts;
         self.decide_snapshot = decide;
         self.plan_snapshot = plan;
+        self.build_snapshot = build;
         Ok(())
     }
 
@@ -1075,6 +1103,20 @@ impl<'a> Run<'a> {
             if let Some(image) = self.module.module().and_then(|m| m.image.as_ref()) {
                 package.carry_image(image, &mut self.log.at(Stage::Build));
             }
+            let before = match self.mode {
+                Mode::Port => self.plan_snapshot.is_some(),
+                Mode::InPlace => self.fix_snapshot.is_some(),
+            };
+            if before {
+                let part = PackageRow::of(&package);
+                let declared = (
+                    self.settings.build_settings(),
+                    self.log.logged_from(self.first),
+                );
+                let snapshot = BuildSnapshot::of(&package, &part, declared, &self.store);
+                self.build_snapshot = Some(snapshot);
+                self.package_part = Some(part);
+            }
             self.package = Some(package);
         }
         held(self.package.as_ref(), Stage::Build, Stage::Fix)
@@ -1267,7 +1309,12 @@ impl<'a> Run<'a> {
             report = report.port(port);
         }
         if let Some(package) = &self.package {
-            report = report.package_applied(package, self.overlay.as_ref());
+            let part = self.package_part.clone();
+            let mut part = part.unwrap_or_else(|| PackageRow::of(package));
+            if let Some(overlay) = &self.overlay {
+                part.apply(package, overlay);
+            }
+            report = report.package_row(part, package.evidence.as_ref());
         }
         if let Some(again) = &self.again {
             report = report.again(again.clone());
@@ -1357,7 +1404,13 @@ impl<'a> Run<'a> {
         snapshots.facts = self.facts_snapshot.clone();
         snapshots.decide = self.decide_snapshot.clone();
         snapshots.plan = self.plan_snapshot.clone();
+        snapshots.build = self.build_snapshot.clone();
         Some(snapshots)
+    }
+
+    /// The build snapshot, once `build` ended or the run started from one (#ADR-0094).
+    pub fn build_snapshot(&self) -> Option<&BuildSnapshot> {
+        self.build_snapshot.as_ref()
     }
 
     /// The plan snapshot, once `plan` ended or the run started from one (#ADR-0094).

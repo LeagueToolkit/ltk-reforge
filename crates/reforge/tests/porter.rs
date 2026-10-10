@@ -7,6 +7,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
 use ltk_meta::BinObject;
 use reforge::archive::{Caps, RAW_VERSION};
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Input, Stage};
@@ -26,8 +27,8 @@ use reforge::package::{
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
 use reforge::snapshot::{
-    DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, PlanSnapshot, ResumeError,
-    SNAPSHOT_FORMAT, Setting, Snapshots,
+    BuildSnapshot, DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, PlanSnapshot,
+    ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
 };
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
@@ -1206,6 +1207,12 @@ fn through_json(snapshots: &Snapshots) -> Snapshots {
         assert_eq!(plan.to_json(), json, "the plan snapshot reads back");
         back.plan = Some(plan);
     }
+    if let Some(build) = &snapshots.build {
+        let json = build.to_json();
+        let build = BuildSnapshot::from_json(&json).expect("the build snapshot reads");
+        assert_eq!(build.to_json(), json, "the build snapshot reads back");
+        back.build = Some(build);
+    }
     back
 }
 
@@ -1330,6 +1337,111 @@ fn a_port_resumed_after_decide_writes_the_report_and_package_of_the_straight_run
 #[test]
 fn a_port_resumed_after_plan_writes_the_report_and_package_of_the_straight_run() {
     every_run_resumed_after(Stage::Plan, |s| Start::Plan(Box::new(s)));
+}
+
+/// A picture of two colours, 3 by 2, as a PNG.
+fn picture() -> Vec<u8> {
+    let image = RgbImage::from_fn(3, 2, |x, _| Rgb([if x == 0 { 255 } else { 0 }, 64, 128]));
+    let mut bytes = Vec::new();
+    DynamicImage::ImageRgb8(image)
+        .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Png)
+        .expect("the picture encodes");
+    bytes
+}
+
+/// [`own_archive`] with its particle's texture a DDS, which ships in TEX's container, and an
+/// image, which is the package's thumbnail.
+fn pictured_mod() -> Vec<u8> {
+    let objects = vec![
+        entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0)),
+        own_graph("a", GRAPH0),
+        resolver_with(RESOURCES0, &[("Test_Q_Cast", OWN_PARTICLE)]),
+        particle(OWN_PARTICLE, OWN_TEX),
+    ];
+    let mut files = own_files("a");
+    files.push((OWN_TEX.into(), dds(DdsPixels::Dxt1, (8, 8), 4)));
+    files.push((skin_bin("test", 0), bin(objects)));
+    archive(&files).extra("META/image.png", picture()).build()
+}
+
+/// The origins of the chunks a build snapshot names.
+fn origins(snapshots: &Snapshots) -> BTreeSet<String> {
+    let build = snapshots.build.as_ref().expect("the build snapshot");
+    let chunks = build.part().chunks.iter();
+    chunks.map(|chunk| chunk.origin.clone()).collect()
+}
+
+#[test]
+fn a_run_resumed_after_build_writes_the_report_and_package_of_the_straight_run() {
+    let start = |s| Start::Build(Box::new(s));
+    every_run_resumed_after(Stage::Build, start);
+
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let kept = resumed_after_writes_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &pictured_mod(),
+        Stage::Build,
+        start,
+    );
+    let shipped = origins(&kept);
+    assert!(
+        shipped.contains("contained") && shipped.contains("made"),
+        "{shipped:?}"
+    );
+    let build = kept.build.as_ref().expect("the build snapshot");
+    assert!(build.part().thumbnail.is_some(), "the thumbnail");
+    assert!(!build.part().patches.is_empty(), "a patch");
+    let repairer = Repairer::new(&env);
+    let kept = resumed_after_writes_as_the_straight_run(
+        || repairer.run(),
+        |from, store| repairer.resume(from, store),
+        &pictured_mod(),
+        Stage::Build,
+        start,
+    );
+    assert!(origins(&kept).contains("contained"));
+
+    let env = legacy_env();
+    let repairer = Repairer::new(&env);
+    let kept = resumed_after_writes_as_the_straight_run(
+        || repairer.run(),
+        |from, store| repairer.resume(from, store),
+        &legacy_archive().build(),
+        Stage::Build,
+        start,
+    );
+    let shipped = origins(&kept);
+    assert!(
+        shipped.contains("delta") || shipped.contains("whole"),
+        "{shipped:?}"
+    );
+}
+
+#[test]
+fn a_build_snapshot_is_refused_when_a_setting_build_reads_is_not_the_runs() {
+    let env = legacy_env();
+    let (snapshots, store) = legacy_snapshots(&Porter::new(&env), Stage::Build);
+    let resume = |porter: Porter<'_>, snapshots: Snapshots| {
+        let start = Start::Build(Box::new(snapshots));
+        porter.resume(start, Arc::clone(&store)).map(drop)
+    };
+    assert!(resume(Porter::new(&env), snapshots.clone()).is_ok());
+    let refused = resume(Porter::new(&env).keep_dds(true), snapshots.clone());
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::KeepDds))
+    ));
+    // A resume after `plan` does not read the package, so a choice of DDS of another run's
+    // holds.
+    let start = Start::Plan(Box::new(snapshots.clone()));
+    let porter = Porter::new(&env).keep_dds(true);
+    assert!(porter.resume(start, Arc::clone(&store)).is_ok());
+    let mut none = snapshots;
+    none.build = None;
+    let refused = resume(Porter::new(&env), none);
+    assert!(matches!(refused, Err(ResumeError::Missing(Stage::Build))));
 }
 
 #[test]
