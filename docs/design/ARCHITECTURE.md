@@ -85,7 +85,16 @@ let report = run.report();
   empty `MemoryStore` unless given), and every byte a stage makes, the entries' among them,
   goes into the layer and none into the store under it (#ADR-0093). `Run::into_layer` gives
   the layer's blobs, which the caller flushes into a store it keeps; a run dropped leaves
-  nothing. `run.read_file` reads an archive file. `load` opens the mod from the
+  nothing. `run.read_file` reads an archive file.
+- **A run reads archives through a cache when given one** (`Run::in_cache`, a
+  `snapshot::RawCache`; #ADR-0095). `read` looks the archive up by its SHA-256 before it
+  inflates anything: on a hit the raw snapshot is the result, its findings raised again and
+  the caller's file name in it; on a miss it reads the archive into the cache's ingest store
+  (`IngestStore`), not the run's layer, and keeps the snapshot there. The ingest store sits
+  under the caller's store, so the stages after `read` find the archive's bytes through the
+  layer. The run takes the cache, not the porter: it is a store the run reads through, as
+  `in_store`'s is, and no setting a snapshot names. A run with a cache and one without give
+  one report. `load` opens the mod from the
   raw snapshot and the store. The run keeps the raw snapshot, and each stage from `load` on
   ends by writing its snapshot (#ADR-0094): `load_snapshot`, `fix_snapshot`,
   `facts_snapshot`, `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.
@@ -252,7 +261,7 @@ The modules of `reforge`, each using only the ones above it:
 | `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers, `EvidenceDoc` |
 | `peek` | `Peek`: an archive read alone, its characters by path and its thumbnail, for a page that shows a mod before a run |
 | `report` | `Report` and its rows; `LoadPart`, the rows `load` gives |
-| `snapshot` | the snapshot after each stage from `load` on, the mod as the stage left it named by content id (#ADR-0094), with what it was judged under: `LoadSnapshot` with `LoadInputs` and `LoadSettings`, `FixSnapshot` with `FixInputs` and `FixSettings`, `FactsSnapshot` with `FactsSettings`, `DecideSnapshot` with `DecideSettings`, `PlanSnapshot` with `PlanSettings`, `Program`; `Snapshots`, a run's together; how each reopens, and `ResumeError` |
+| `snapshot` | the snapshot after each stage from `load` on, the mod as the stage left it named by content id (#ADR-0094), with what it was judged under: `LoadSnapshot` with `LoadInputs` and `LoadSettings`, `FixSnapshot` with `FixInputs` and `FixSettings`, `FactsSnapshot` with `FactsSettings`, `DecideSnapshot` with `DecideSettings`, `PlanSnapshot` with `PlanSettings`, `Program`; `Snapshots`, a run's together; how each reopens, and `ResumeError`; `RawCache`, the raw snapshots by archive with their bytes in an ingest store (#ADR-0095) |
 | `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)), and started from a snapshot; `codes()`, every code a run can raise |
 
 A test (`tests/layers.rs`) reads every `crate::` path of the sources and fails when a module
@@ -938,7 +947,9 @@ object takes a name of its own, which every link to it follows.
 
 - `archive` is the only module that reads a zip, under the caller's `Caps`. It holds the
   archive's bytes once, and the entries' bytes go into the blob store under their content id
-  and nowhere else (#ADR-0093).
+  and nowhere else (#ADR-0093). On disk that is the ingest store, a file per blob named by its
+  id; the raw cache's entry beside the blobs is named by the archive's SHA-256, the reading
+  and the caps, and holds the raw snapshot's JSON, the mod's names in it as JSON strings.
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
   error on any input (banks, file kinds). A reader from another crate runs where its panic is
   caught (bins, packed WADs, meshes, skeletons, clips, the mod's image).

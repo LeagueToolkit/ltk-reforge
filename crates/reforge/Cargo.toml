@@ -45,6 +45,7 @@ rayon.workspace = true
 fs-err.workspace = true
 camino.workspace = true
 tracing.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
 reforge-testkit.workspace = true

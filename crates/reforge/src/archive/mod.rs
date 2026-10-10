@@ -225,6 +225,18 @@ impl RawSnapshot {
         self.extras.iter().map(|extra| extra.open(store)).collect()
     }
 
+    /// Every id it names: its files', its extras' first bytes' and its image's.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        let files = self.wads.iter().flat_map(|wad| wad.files.values());
+        let image = self.image.and_then(|image| match image {
+            RawImage::Held(id) => Some(id),
+            RawImage::TooLarge(_) | RawImage::Unreadable => None,
+        });
+        let files = files.map(|file| file.content);
+        let heads = self.extras.iter().map(|extra| extra.head);
+        files.chain(heads).chain(image)
+    }
+
     /// What the reader found, its bytes put into the store.
     fn of(meta: ModMeta, caps: Caps, parts: Parts, store: &dyn BlobStore) -> Self {
         let wads = parts
@@ -322,9 +334,20 @@ pub fn read_file(
     store: &dyn BlobStore,
     sink: &mut Sink<'_>,
 ) -> Result<RawSnapshot, Halted> {
-    let file_name = path.file_name().unwrap_or(path.as_str());
+    let bytes = file_bytes(path, caps, sink)?;
+    read(&bytes, file_name_of(path), caps, store, sink)
+}
+
+/// The name of an archive file, as `read` takes it for display.
+pub fn file_name_of(path: &Utf8Path) -> &str {
+    path.file_name().unwrap_or(path.as_str())
+}
+
+/// The bytes of an archive file, to be read. A file over the cap for the archive file is not
+/// read, and a file that does not read ends the read.
+pub fn file_bytes(path: &Utf8Path, caps: &Caps, sink: &mut Sink<'_>) -> Result<Vec<u8>, Halted> {
     let not_read = |error: std::io::Error| NotZip {
-        file: Spelled::new(file_name),
+        file: Spelled::new(file_name_of(path)),
         reason: error.to_string(),
     };
     let size = match fs_err::metadata(path) {
@@ -337,8 +360,5 @@ pub fn read_file(
             cap: caps.archive_bytes,
         }));
     }
-    match fs_err::read(path) {
-        Ok(bytes) => read(&bytes, file_name, caps, store, sink),
-        Err(error) => Err(sink.halt(not_read(error))),
-    }
+    fs_err::read(path).map_err(|error| sink.halt(not_read(error)))
 }

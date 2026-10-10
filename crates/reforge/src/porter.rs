@@ -31,7 +31,7 @@ use crate::load::{
     Dating, Fault, FileProvenance, Inventory, KeptFile, LOAD_PARTS, LoadError, LoadOptions, Loader,
     ReworkTable, against,
 };
-use crate::model::{ByteView, ContentId, Mod};
+use crate::model::{ByteView, ContentId, Mod, Spelled};
 use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
@@ -41,7 +41,7 @@ use crate::report::{AgainRow, AppliedRow, PackageRow, Report};
 use crate::snapshot::{
     self, BuildSettings, BuildSnapshot, CheckSettings, CheckSnapshot, DecideSettings,
     DecideSnapshot, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot, LoadSettings,
-    LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, ResumeError, Setting, Snapshots,
+    LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, RawCache, ResumeError, Setting, Snapshots,
     StageSettings,
 };
 use crate::store::{BlobStore, Layered, MemoryStore};
@@ -680,6 +680,10 @@ fn held<T>(result: Option<&T>, stage: Stage, needs: Stage) -> Result<&T, RunErro
     result.ok_or(RunError::NotReached { stage, needs })
 }
 
+/// What a run's memory layer reads through to: the caller's store over the cache's ingest
+/// store, each an empty memory store unless given.
+type Under = Layered<Box<dyn BlobStore>, Box<dyn BlobStore>>;
+
 /// One archive taken through the stages, with everything the stages gave.
 ///
 /// A stage runs once: asked again, its method gives the result the run holds. After a fatal
@@ -692,9 +696,11 @@ pub struct Run<'a> {
     known: Option<Evidence>,
     log: Diagnostics,
     book: NameBook,
-    /// The run's memory layer over the caller's store (#ADR-0093): every byte a stage makes
-    /// goes into the layer, and the caller flushes it.
-    store: Layered<MemoryStore, Box<dyn BlobStore>>,
+    /// The run's memory layer over the caller's store, over the cache's ingest store
+    /// (#ADR-0093): every byte a stage makes goes into the layer, and the caller flushes it.
+    store: Layered<MemoryStore, Under>,
+    /// The raw snapshots `read` takes in place of reading an archive, and leaves (#ADR-0095).
+    cache: Option<RawCache>,
     /// Where the findings of `read` begin in the log.
     first: usize,
     raw: Option<RawSnapshot>,
@@ -730,7 +736,11 @@ impl<'a> Run<'a> {
             known: None,
             log,
             book: NameBook::new(),
-            store: Layered::new(MemoryStore::new(), Box::new(MemoryStore::new())),
+            store: Layered::new(
+                MemoryStore::new(),
+                Layered::new(Box::new(MemoryStore::new()), Box::new(MemoryStore::new())),
+            ),
+            cache: None,
             first: 0,
             raw: None,
             loaded: None,
@@ -786,8 +796,23 @@ impl<'a> Run<'a> {
     /// ([`Run::into_layer`]).
     #[must_use]
     pub fn in_store(mut self, store: impl BlobStore + 'static) -> Self {
-        let (layer, _) = self.store.into_parts();
-        self.store = Layered::new(layer, Box::new(store));
+        let (layer, under) = self.store.into_parts();
+        let (_, ingest) = under.into_parts();
+        self.store = Layered::new(layer, Layered::new(Box::new(store), ingest));
+        self
+    }
+
+    /// Reads archives through this cache (#ADR-0095): `read` takes the raw snapshot it holds of
+    /// an archive in place of reading it, and puts what it reads of another into the cache's
+    /// ingest store with the snapshot beside it. The run reads through to the ingest store
+    /// under the caller's store, and writes nothing else into it.
+    #[must_use]
+    pub fn in_cache(mut self, cache: RawCache) -> Self {
+        let (layer, under) = self.store.into_parts();
+        let (store, _) = under.into_parts();
+        let ingest: Box<dyn BlobStore> = Box::new(cache.store().clone());
+        self.store = Layered::new(layer, Layered::new(store, ingest));
+        self.cache = Some(cache);
         self
     }
 
@@ -804,13 +829,42 @@ impl<'a> Run<'a> {
     /// The stage `read`: the archive from its bytes, which are borrowed for the call, read
     /// into the run's store. The run holds the raw snapshot (#ADR-0094). `file_name` is for
     /// display and is never opened.
+    ///
+    /// With a cache ([`Run::in_cache`]) the raw snapshot it holds of the archive is the
+    /// result, its findings raised again, and no entry is inflated. An archive it does not
+    /// hold is read into the cache's ingest store, and its snapshot kept there.
     pub fn read(&mut self, bytes: &[u8], file_name: &str) -> Result<&RawSnapshot, RunError> {
         self.going()?;
         self.first = self.log.len();
+        if let Some(raw) = self.cached(bytes, file_name) {
+            return Ok(self.raw.insert(raw));
+        }
         let mut sink = self.log.at(Stage::Read);
         let caps = &self.settings.caps;
-        let raw = archive::read(bytes, file_name, caps, &self.store, &mut sink)?;
+        let raw = match &self.cache {
+            None => archive::read(bytes, file_name, caps, &self.store, &mut sink)?,
+            Some(cache) => {
+                let raw = archive::read(bytes, file_name, caps, cache.store(), &mut sink)?;
+                if let Err(error) = cache.put(&raw) {
+                    // The run goes on: the next run of the archive reads it again.
+                    tracing::warn!(%error, "a raw snapshot is not kept in the cache");
+                }
+                raw
+            }
+        };
         Ok(self.raw.insert(raw))
+    }
+
+    /// The raw snapshot the run's cache holds of an archive, its findings raised again, under
+    /// the caller's name for the archive. None without a cache, for an archive it does not
+    /// hold, and for a snapshot whose findings name a code this program does not declare.
+    fn cached(&mut self, bytes: &[u8], file_name: &str) -> Option<RawSnapshot> {
+        let cache = self.cache.as_ref()?;
+        let mut raw = cache.get(ContentId::of(bytes), &self.settings.caps)?;
+        let codes: Vec<Code> = codes().collect();
+        self.log.restore(&raw.findings, &codes).ok()?;
+        raw.meta.file_name = Spelled::new(file_name);
+        Some(raw)
     }
 
     /// The stage `read`, of an archive file.
@@ -818,9 +872,8 @@ impl<'a> Run<'a> {
         self.going()?;
         self.first = self.log.len();
         let mut sink = self.log.at(Stage::Read);
-        let caps = &self.settings.caps;
-        let raw = archive::read_file(path, caps, &self.store, &mut sink)?;
-        Ok(self.raw.insert(raw))
+        let bytes = archive::file_bytes(path, &self.settings.caps, &mut sink)?;
+        self.read(&bytes, archive::file_name_of(path))
     }
 
     /// Starts the run from a snapshot in place of `read`, with the bytes it names in the run's

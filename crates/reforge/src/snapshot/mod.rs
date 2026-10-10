@@ -12,7 +12,7 @@
 //!
 //! The raw snapshot is `archive`'s, and becomes JSON at the same edge as these: its reading
 //! version and its caps are in it, and a resume from one read back refuses them as it refuses
-//! the snapshot `read` gave.
+//! the snapshot `read` gave. Kept by its archive, it is a cache ([`RawCache`]).
 //!
 //! `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump".
 
@@ -22,6 +22,7 @@ mod decide;
 mod facts;
 mod fix;
 mod plan;
+mod raw;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -34,6 +35,7 @@ pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
 pub use self::plan::{PlanSettings, PlanSnapshot};
+pub use self::raw::RawCache;
 use crate::archive::{Caps, RawExtra, RawImage, RawSnapshot};
 use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
