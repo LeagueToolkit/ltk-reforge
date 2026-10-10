@@ -31,11 +31,11 @@ use crate::package::{
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
-use crate::report::{AgainRow, PackageRow, Report};
+use crate::report::{AgainRow, AppliedRow, PackageRow, Report};
 use crate::snapshot::{
-    self, BuildSettings, BuildSnapshot, DecideSettings, DecideSnapshot, FactsSettings,
-    FactsSnapshot, FixSettings, FixSnapshot, LoadSettings, LoadSnapshot, LoadState, PlanSettings,
-    PlanSnapshot, ResumeError, Setting, Snapshots,
+    self, BuildSettings, BuildSnapshot, CheckSettings, CheckSnapshot, DecideSettings,
+    DecideSnapshot, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot, LoadSettings,
+    LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, ResumeError, Setting, Snapshots,
 };
 use crate::store::{BlobStore, Layered, MemoryStore};
 
@@ -180,6 +180,8 @@ pub enum Start {
     Plan(Box<Snapshots>),
     /// The snapshots through `build`: the run starts at `check`.
     Build(Box<Snapshots>),
+    /// The snapshots through `check`: `write` runs next.
+    Check(Box<Snapshots>),
 }
 
 impl From<RawSnapshot> for Start {
@@ -533,6 +535,7 @@ pub struct Run<'a> {
     decide_snapshot: Option<DecideSnapshot>,
     plan_snapshot: Option<PlanSnapshot>,
     build_snapshot: Option<BuildSnapshot>,
+    check_snapshot: Option<CheckSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -545,8 +548,8 @@ pub struct Run<'a> {
     package: Option<Package>,
     /// The package's part of the report, as the build snapshot holds it.
     package_part: Option<PackageRow>,
-    overlay: Option<Overlay>,
-    checked: bool,
+    /// What applying each patch of the package came to, in its order, once `check` ended.
+    applied: Option<Vec<Option<AppliedRow>>>,
     written: bool,
     again: Option<AgainRow>,
 }
@@ -569,6 +572,7 @@ impl<'a> Run<'a> {
             decide_snapshot: None,
             plan_snapshot: None,
             build_snapshot: None,
+            check_snapshot: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -580,8 +584,7 @@ impl<'a> Run<'a> {
             plan: None,
             package: None,
             package_part: None,
-            overlay: None,
-            checked: false,
+            applied: None,
             written: false,
             again: None,
         }
@@ -685,6 +688,7 @@ impl<'a> Run<'a> {
             Start::Decide(snapshots) => self.reopen_run(*snapshots, Stage::Decide, &codes)?,
             Start::Plan(snapshots) => self.reopen_run(*snapshots, Stage::Plan, &codes)?,
             Start::Build(snapshots) => self.reopen_run(*snapshots, Stage::Build, &codes)?,
+            Start::Check(snapshots) => self.reopen_run(*snapshots, Stage::Check, &codes)?,
         }
         Ok(self)
     }
@@ -707,6 +711,7 @@ impl<'a> Run<'a> {
             decide,
             plan,
             build,
+            check,
         } = snapshots;
         let stages = self.mode.stages();
         // A stage the run's mode has not keeps no snapshot to resume after.
@@ -716,6 +721,7 @@ impl<'a> Run<'a> {
         let decide = snapshot::through(decide, Stage::Decide, through)?;
         let plan = snapshot::through(plan, Stage::Plan, through)?;
         let build = snapshot::through(build, Stage::Build, through)?;
+        let check = snapshot::through(check, Stage::Check, through)?;
         let module = self.reopen_load(&load)?;
         let fixed = self.reopen_fix(module, &load, &fix)?;
         let mut findings = fix.findings();
@@ -742,6 +748,17 @@ impl<'a> Run<'a> {
             self.package = Some(build.package(&self.store)?);
             self.package_part = Some(build.part().clone());
             findings = build.findings();
+            if let Some(check) = &check {
+                check.holds(&CheckSettings::of(&self.settings.checks))?;
+                let applied = check.applied();
+                let patches = build.part().patches.len();
+                if applied.len() != patches {
+                    let what = format!("{} outcomes of {patches} patches", applied.len());
+                    return Err(ResumeError::Malformed(what));
+                }
+                self.applied = Some(applied);
+                findings = check.findings();
+            }
         }
         self.log.restore(findings, codes)?;
         self.module = Reached::Fixed(fixed);
@@ -751,6 +768,7 @@ impl<'a> Run<'a> {
         self.decide_snapshot = decide;
         self.plan_snapshot = plan;
         self.build_snapshot = build;
+        self.check_snapshot = check;
         Ok(())
     }
 
@@ -1141,17 +1159,17 @@ impl<'a> Run<'a> {
     }
 
     /// The stage `check`: the chosen checks on the package. A porter's run applies the
-    /// package's patches to the game's bins first, and holds the result. What a check finds
-    /// is a diagnostic and no error (#ADR-0003).
+    /// package's patches to the game's bins first, and holds what each came to. What a check
+    /// finds is a diagnostic and no error (#ADR-0003).
     pub fn check(&mut self) -> Result<(), RunError> {
         self.going()?;
-        if self.checked {
+        if self.applied.is_some() {
             return Ok(());
         }
         let fixed = self.module.fixed(Stage::Check)?;
         let package = held(self.package.as_ref(), Stage::Check, Stage::Build)?;
         let checks = &self.settings.checks;
-        match self.mode {
+        let overlay = match self.mode {
             Mode::Port => {
                 let port = held(self.plan.as_ref(), Stage::Check, Stage::Plan)?;
                 let game = self.env.game();
@@ -1159,15 +1177,29 @@ impl<'a> Run<'a> {
                 let types = TargetTypes::of(fixed, self.env).map_err(RunError::Check)?;
                 let cx = CheckCx::new(package, &types).of_port(game, &overlay, port);
                 checks.run(&cx, &mut self.log.at(Stage::Check));
-                self.overlay = Some(overlay);
+                Some(overlay)
             }
             Mode::InPlace => {
                 let types = TargetTypes::of(fixed, self.env).map_err(RunError::Check)?;
                 let cx = CheckCx::new(package, &types);
                 checks.run(&cx, &mut self.log.at(Stage::Check));
+                None
             }
+        };
+        let patched = match &overlay {
+            Some(overlay) => overlay.in_order(package),
+            None => vec![None; package.all_patches().count()],
+        };
+        let applied: Vec<Option<AppliedRow>> = patched
+            .iter()
+            .map(|patched| patched.map(|patched| AppliedRow::of(&patched.outcome)))
+            .collect();
+        if self.build_snapshot.is_some() {
+            let declared = (CheckSettings::of(checks), self.log.logged_from(self.first));
+            let snapshot = CheckSnapshot::of(&applied, &patched, declared, &self.store);
+            self.check_snapshot = Some(snapshot);
         }
-        self.checked = true;
+        self.applied = Some(applied);
         Ok(())
     }
 
@@ -1311,8 +1343,8 @@ impl<'a> Run<'a> {
         if let Some(package) = &self.package {
             let part = self.package_part.clone();
             let mut part = part.unwrap_or_else(|| PackageRow::of(package));
-            if let Some(overlay) = &self.overlay {
-                part.apply(package, overlay);
+            if let Some(applied) = &self.applied {
+                part.apply(applied);
             }
             report = report.package_row(part, package.evidence.as_ref());
         }
@@ -1359,7 +1391,7 @@ impl<'a> Run<'a> {
             Stage::Decide => self.targets.is_some(),
             Stage::Plan => self.plan.is_some(),
             Stage::Build => self.package.is_some(),
-            Stage::Check => self.checked,
+            Stage::Check => self.applied.is_some(),
             Stage::Write => self.written,
         }
     }
@@ -1405,7 +1437,13 @@ impl<'a> Run<'a> {
         snapshots.decide = self.decide_snapshot.clone();
         snapshots.plan = self.plan_snapshot.clone();
         snapshots.build = self.build_snapshot.clone();
+        snapshots.check = self.check_snapshot.clone();
         Some(snapshots)
+    }
+
+    /// The check snapshot, once `check` ended or the run started from one (#ADR-0094).
+    pub fn check_snapshot(&self) -> Option<&CheckSnapshot> {
+        self.check_snapshot.as_ref()
     }
 
     /// The build snapshot, once `build` ended or the run started from one (#ADR-0094).
@@ -1499,9 +1537,10 @@ impl<'a> Run<'a> {
         self.package.as_ref()
     }
 
-    /// The package's patches applied to the game's bins, once a porter's run is checked.
-    pub fn overlay(&self) -> Option<&Overlay> {
-        self.overlay.as_ref()
+    /// What applying each patch of the package to the game's bins came to, in the package's
+    /// order, once the run is checked: none for a patch a repair's run does not apply.
+    pub fn applied(&self) -> Option<&[Option<AppliedRow>]> {
+        self.applied.as_deref()
     }
 
     /// What repairing the package a second time changed, once asked.

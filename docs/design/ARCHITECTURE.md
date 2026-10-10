@@ -54,7 +54,7 @@ run.gather()?;                // &Facts, the stage `facts`
 run.decide()?;                // &Targets
 run.plan()?;                  // &Port
 run.build()?;                 // &Package
-run.check()?;                 // the checks' diagnostics; the run holds the Overlay
+run.check()?;                 // the checks' diagnostics; the run holds what each patch came to
 run.write(&[&ProjectDir::new(out)], &DiagnosticPolicy::default())?;
 let report = run.report();
 ```
@@ -67,7 +67,7 @@ let report = run.report();
   log, the names learnt (`NameBook`), the mod, the dating, the inventory, the file
   provenance, what the fixups changed, and every stage's result. A caller reads each by its
   accessor (`archive`, the raw snapshot, `load_snapshot`, `store`, `module`, `fixed`,
-  `dating`, `changes`, `facts`, `targets`, `port`, `package`, `overlay`, `log`, `names`)
+  `dating`, `changes`, `facts`, `targets`, `port`, `package`, `applied`, `log`, `names`)
   after any stage. `Run::log_from` starts a run from a log of the caller's: one that holds
   what the inputs raised when the environment was built, or one with a listener.
 - **Each method hands its stage the stage's sink and options** and gives the stage's result.
@@ -80,7 +80,7 @@ let report = run.report();
   nothing. `run.read_file` reads an archive file. `load` opens the mod from the
   raw snapshot and the store. The run keeps the raw snapshot, and a snapshot at the end of
   each stage from `load` on (#ADR-0094): `load_snapshot`, `fix_snapshot`, `facts_snapshot`,
-  `decide_snapshot`, `plan_snapshot`, `build_snapshot`.
+  `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.
   A run keeps a snapshot after a stage only where it kept the ones before it.
   `Run::snapshots` gives them together as `Snapshots`, what a caller keeps to resume after
   any of them.
@@ -88,14 +88,16 @@ let report = run.report();
   `Porter::resume(from, store)`, takes a `Start`: the raw snapshot, after which `load` runs;
   the load snapshot, after which `fix` does; or `Snapshots`, after the stage the variant
   names (`Start::Fix`: `facts` runs next in a port, `build` in a repair; `Start::Facts`:
-  `decide`; `Start::Decide`: `plan`; `Start::Plan`: `build`; `Start::Build`: `check`). The
+  `decide`; `Start::Decide`: `plan`; `Start::Plan`: `build`; `Start::Build`: `check`;
+  `Start::Check`: `write`). The
   load snapshot reopens the mod from the store's bytes and parses its bins
   again; the fix snapshot reads the objects of each bin `fix` wrote again from its new
   bytes (`FixedMod::reopen`) and its changes from the snapshot; the facts snapshot gives
   what the facts found, and the game the catalogs again (`Facts::reopen`); the decide
   snapshot gives the targets; the plan snapshot gives the port, its values read back from
   the store (`PortValues`); the build snapshot gives the package, its chunks, patches and
-  thumbnail read back from the store. The parsed
+  thumbnail read back from the store; the check snapshot gives what each patch came to. The
+  parsed
   objects are a cache of the snapshots. A run resumed from any of them writes the report
   and the package of the run that wrote them.
 - **A snapshot is refused** with a `ResumeError` that says why: a raw snapshot of another
@@ -118,6 +120,7 @@ let report = run.report();
   | decide | `DecideSnapshot` | none | `DecideSettings`: the policy, the policies compared with it |
   | plan | `PlanSnapshot` | none of its own | `PlanSettings`: the stale keep, the game's events only, the other slots kept |
   | build | `BuildSnapshot` | none of its own: the install's shader bin and shader cache, the game's skin bins a port patches and a sub-character's skin0 bin it copies, the game's files and the history a repair's texture is judged stale against, the hash tables that spell a repair's paths and a patch's fields | `BuildSettings`: the DDS keep, the stale keep |
+  | check | `CheckSnapshot` | none of its own: the install's bins the patches apply to, every bin a patched bin loads and the shader bin; the target build's types, from the schema and the install | `CheckSettings`: the checks |
 - **A stage runs once.** Its method asked again gives the result the run holds. The stage
   types keep the order in their signatures. The run holds the results, so a method called
   before the result it reads is held answers `RunError::NotReached` with both stages.
@@ -818,8 +821,8 @@ object takes a name of its own, which every link to it follows.
   `ltk_meta` writes it, and every patch with the game bin it patches and the digest of each
   object of that bin after the patch, and as the part `evidence` the document the package
   embeds ([Package](#package)), field for field. A run that keeps a build snapshot writes the
-  package part from the snapshot's, with each patch's outcome set by the overlay
-  (`PackageRow::apply`). `reforge repair --again` adds what repairing
+  package part from the snapshot's, with each patch's outcome as `check` applied it
+  (`AppliedRow`, `PackageRow::apply`). `reforge repair --again` adds what repairing
   the package a second time, in memory, changed.
 - The rows `load` gives, the WADs, files, characters and units, the dating, and in a port the
   inventory and the file provenance, are `LoadPart`. The report holds them under the same
@@ -853,6 +856,11 @@ object takes a name of its own, which every link to it follows.
   patches, and for a bin the run wrote, the entries it was built with and each object
   written as a bin of that object alone (`model::bin::write_one`); and the findings to the
   end of `build`.
+- The check snapshot holds what applying each patch came to, in the package's order, as the
+  report writes it (`AppliedRow`), with the bytes of the bin after the patch by content id,
+  and the findings to the end of `check`. Its package is the build snapshot's: `check`
+  changes none. What the checks read of the overlay besides, the fields each patch changed
+  and every object a patched bin loads, is not kept: `write` reads none of it.
 - The corpus scripts (`scripts/corpus/`) compare the reports of a run with the baseline's
   reports of the same mods (#ADR-0044).
 

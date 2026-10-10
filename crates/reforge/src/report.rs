@@ -397,6 +397,15 @@ pub struct PatchRow {
 }
 
 impl AppliedRow {
+    /// What applying each patch of a package came to, in the package's order: none for a
+    /// patch of a layer whose manifest does not load.
+    pub fn of_package(package: &Package, overlay: &Overlay) -> Vec<Option<Self>> {
+        let applied = overlay.in_order(package).into_iter();
+        applied
+            .map(|applied| applied.map(|applied| Self::of(&applied.outcome)))
+            .collect()
+    }
+
     /// What applying a patch came to.
     pub fn of(outcome: &Outcome) -> Self {
         let empty = |outcome: &str, reason: Option<String>| AppliedRow {
@@ -1111,7 +1120,7 @@ impl ReportBuilder {
     pub fn package_applied(self, package: &Package, overlay: Option<&Overlay>) -> Self {
         let mut row = PackageRow::of(package);
         if let Some(overlay) = overlay {
-            row.apply(package, overlay);
+            row.apply(&AppliedRow::of_package(package, overlay));
         }
         self.package_row(row, package.evidence.as_ref())
     }
@@ -1205,15 +1214,11 @@ impl PackageRow {
         }
     }
 
-    /// Sets each patch's outcome as the overlay applied the package's patches. The rows are
-    /// the package's, in its order.
-    pub fn apply(&mut self, package: &Package, overlay: &Overlay) {
-        let layers = package.layers().flat_map(|layer| {
-            let patches = 0..package.patches(layer).len();
-            patches.map(move |at| overlay.of(layer, at))
-        });
-        for (row, applied) in self.patches.iter_mut().zip(layers) {
-            row.applied = applied.map(|applied| AppliedRow::of(&applied.outcome));
+    /// Sets each patch's outcome, the outcomes in the order of the rows
+    /// ([`AppliedRow::of_package`]).
+    pub fn apply(&mut self, applied: &[Option<AppliedRow>]) {
+        for (row, applied) in self.patches.iter_mut().zip(applied) {
+            row.applied.clone_from(applied);
         }
     }
 }

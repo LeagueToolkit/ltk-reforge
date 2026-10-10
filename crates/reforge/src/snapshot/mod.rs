@@ -13,6 +13,7 @@
 //! `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump".
 
 mod build;
+mod check;
 mod decide;
 mod facts;
 mod fix;
@@ -24,6 +25,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 pub use self::build::{BuildSettings, BuildSnapshot};
+pub use self::check::{CheckSettings, CheckSnapshot};
 pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
@@ -78,6 +80,8 @@ pub struct Snapshots {
     pub plan: Option<PlanSnapshot>,
     /// The snapshot after `build`.
     pub build: Option<BuildSnapshot>,
+    /// The snapshot after `check`.
+    pub check: Option<CheckSnapshot>,
 }
 
 impl Snapshots {
@@ -90,6 +94,7 @@ impl Snapshots {
             decide: None,
             plan: None,
             build: None,
+            check: None,
         }
     }
 }
@@ -219,6 +224,8 @@ pub enum Setting {
     KeepOtherSlots,
     /// Whether each DDS ships as it is.
     KeepDds,
+    /// The checks and their order.
+    Checks,
 }
 
 /// The settings `load` reads (#ADR-0094).

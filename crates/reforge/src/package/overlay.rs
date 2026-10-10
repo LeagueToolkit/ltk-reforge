@@ -296,4 +296,17 @@ impl Overlay {
         let mut patches = self.patches.iter();
         patches.find(|patch| patch.layer == *layer && patch.index == index)
     }
+
+    /// The outcome of each patch of the package, in the package's order
+    /// ([`Package::all_patches`]): none for a patch of a layer whose manifest does not load.
+    pub fn in_order<'a>(&'a self, package: &'a Package) -> Vec<Option<&'a AppliedPatch>> {
+        let mut at: BTreeMap<&Layer, usize> = BTreeMap::new();
+        let patches = package.all_patches().map(|(layer, _)| {
+            let index = at.entry(layer).or_default();
+            let applied = self.of(layer, *index);
+            *index += 1;
+            applied
+        });
+        patches.collect()
+    }
 }

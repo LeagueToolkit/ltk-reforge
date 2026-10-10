@@ -21,14 +21,14 @@ use reforge::model::entity::FileSource;
 use reforge::model::{BinHash, name_hash};
 use reforge::model::{ContentId, path_hash};
 use reforge::package::{
-    Blocked, EVIDENCE_FORMAT, EvidenceBound, EvidenceDoc, EvidencePiece, EvidencePolicy,
+    Blocked, CheckSet, EVIDENCE_FORMAT, EvidenceBound, EvidenceDoc, EvidencePiece, EvidencePolicy,
     EvidenceUnit, MAX_OVERLAY_BINS, Made, Modpkg, OverlayCapped, PackageWriter, PieceKind,
     ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
 use reforge::snapshot::{
-    BuildSnapshot, DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, PlanSnapshot,
-    ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
+    BuildSnapshot, CheckSnapshot, DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot,
+    PlanSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
 };
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
@@ -120,7 +120,11 @@ fn a_port_runs_every_stage_but_the_write() {
     assert!(run.port().is_some());
     let package = run.package().expect("a package");
     assert!(!package.is_empty());
-    assert!(run.overlay().is_some(), "the patches were applied");
+    let applied = run.applied().expect("the package is checked");
+    assert!(
+        !applied.is_empty() && applied.iter().all(Option::is_some),
+        "the patches were applied"
+    );
     let stages: Vec<Stage> = run.log().iter().map(|d| d.stage).collect();
     assert!(stages.contains(&Stage::Check), "{stages:?}");
     assert!(!stages.contains(&Stage::Write), "{stages:?}");
@@ -200,9 +204,9 @@ fn a_run_a_stage_at_a_time_holds_each_result_and_reports_as_the_whole_run() {
         "the run learns the paths the plan makes"
     );
     assert!(!run.build().expect("the package is built").is_empty());
-    assert!(run.overlay().is_none());
+    assert!(run.applied().is_none());
     run.check().expect("the package is checked");
-    assert!(run.overlay().is_some());
+    assert!(run.applied().is_some());
 
     let whole = porter.port(&bytes, FILE_NAME).expect("no fault");
     assert_eq!(run.report().to_json(), whole.report().to_json());
@@ -255,7 +259,7 @@ fn a_run_stopped_after_a_stage_reports_the_stages_it_ran() {
         assert_eq!(parts(&run), expected, "stopped after {last}");
         let latest = run.log().iter().map(|d| d.stage).max();
         assert!(latest <= Some(last), "stopped after {last}: {latest:?}");
-        assert_eq!(run.overlay().is_some(), last == Stage::Check);
+        assert_eq!(run.applied().is_some(), last == Stage::Check);
     }
 }
 
@@ -372,7 +376,7 @@ fn a_repair_builds_in_place_with_no_facts_and_is_whole_when_repaired_again() {
     assert!(run.fixed().is_some() && run.package().is_some());
     assert!(run.inventory().is_none() && run.provenance().is_none());
     assert!(run.facts().is_none() && run.targets().is_none() && run.port().is_none());
-    assert!(run.overlay().is_none());
+    assert_eq!(run.applied(), Some(&[][..]), "a repair applies no patch");
     assert!(matches!(
         run.gather(),
         Err(RunError::NotInARepair(Stage::Facts))
@@ -645,7 +649,7 @@ fn a_game_bin_that_does_not_read_while_the_patches_are_applied_is_a_fault_of_che
     assert!(matches!(checked, Err(RunError::Check(_))), "{checked:?}");
     assert_eq!(run.halted(), None);
     // The package stands, unchecked.
-    assert!(run.package().is_some() && run.overlay().is_none());
+    assert!(run.package().is_some() && run.applied().is_none());
     let checks = run.log().iter().filter(|d| d.stage == Stage::Check);
     assert_eq!(checks.count(), 0);
 }
@@ -1213,6 +1217,12 @@ fn through_json(snapshots: &Snapshots) -> Snapshots {
         assert_eq!(build.to_json(), json, "the build snapshot reads back");
         back.build = Some(build);
     }
+    if let Some(check) = &snapshots.check {
+        let json = check.to_json();
+        let check = CheckSnapshot::from_json(&json).expect("the check snapshot reads");
+        assert_eq!(check.to_json(), json, "the check snapshot reads back");
+        back.check = Some(check);
+    }
     back
 }
 
@@ -1417,6 +1427,57 @@ fn a_run_resumed_after_build_writes_the_report_and_package_of_the_straight_run()
         shipped.contains("delta") || shipped.contains("whole"),
         "{shipped:?}"
     );
+}
+
+#[test]
+fn a_run_resumed_after_check_writes_the_report_and_package_of_the_straight_run() {
+    let start = |s| Start::Check(Box::new(s));
+    every_run_resumed_after(Stage::Check, start);
+
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let kept = resumed_after_writes_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &pictured_mod(),
+        Stage::Check,
+        start,
+    );
+    let check = kept.check.as_ref().expect("the check snapshot");
+    let applied = check.applied();
+    let outcomes = applied.iter().flatten().map(|row| row.outcome.as_str());
+    assert!(outcomes.collect::<Vec<_>>().contains(&"applied"));
+    assert_eq!(check.bins().len(), applied.len());
+    assert!(check.bins().iter().any(Option::is_some), "a patched bin");
+    let codes = check.findings().iter().map(|f| f.code.as_str());
+    assert!(codes.collect::<Vec<_>>().contains(&"check.done"));
+}
+
+#[test]
+fn a_check_snapshot_is_refused_when_the_checks_are_not_the_runs() {
+    let env = legacy_env();
+    let (snapshots, store) = legacy_snapshots(&Porter::new(&env), Stage::Check);
+    let resume = |porter: Porter<'_>, snapshots: Snapshots| {
+        let start = Start::Check(Box::new(snapshots));
+        porter.resume(start, Arc::clone(&store)).map(drop)
+    };
+    assert!(resume(Porter::new(&env), snapshots.clone()).is_ok());
+    let refused = resume(
+        Porter::new(&env).checks(CheckSet::empty()),
+        snapshots.clone(),
+    );
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::Checks))
+    ));
+    // A resume after `build` runs the checks again, so other checks of another run's hold.
+    let start = Start::Build(Box::new(snapshots.clone()));
+    let porter = Porter::new(&env).checks(CheckSet::empty());
+    assert!(porter.resume(start, Arc::clone(&store)).is_ok());
+    let mut none = snapshots;
+    none.check = None;
+    let refused = resume(Porter::new(&env), none);
+    assert!(matches!(refused, Err(ResumeError::Missing(Stage::Check))));
 }
 
 #[test]
