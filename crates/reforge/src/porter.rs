@@ -539,7 +539,6 @@ pub struct Run<'a> {
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
-    inventory: Option<Inventory>,
     provenance: Option<FileProvenance>,
     changes: Option<Changes>,
     facts: Option<Facts>,
@@ -571,7 +570,6 @@ impl<'a> Run<'a> {
             module: Reached::Nothing,
             dating: None,
             redated: None,
-            inventory: None,
             provenance: None,
             changes: None,
             facts: None,
@@ -784,7 +782,6 @@ impl<'a> Run<'a> {
         let reopened = load.reopen(&self.store)?;
         self.book = reopened.names;
         self.dating = Some(reopened.dating);
-        self.inventory = reopened.inventory;
         self.provenance = reopened.provenance;
         Ok(reopened.module)
     }
@@ -881,6 +878,7 @@ impl<'a> Run<'a> {
 
         let found = Dating::find(&module, env.history());
         let found = found.map_err(|error| RunError::Load(LoadError::History(error)))?;
+        let mut taken = None;
         if self.mode == Mode::Port {
             let speller = Speller::new(&self.book, env.names());
             let inventory = Inventory::take(&module, &speller);
@@ -888,10 +886,10 @@ impl<'a> Run<'a> {
             let provenance = FileProvenance::find(&module, &against(env, &speller));
             let provenance = provenance.map_err(|fault| RunError::Load(fault.into()))?;
             provenance.report(&mut sink);
-            self.inventory = Some(inventory);
+            taken = Some(inventory);
             self.provenance = Some(provenance);
         }
-        self.loaded = Some(self.snapshot_of(&module, &found));
+        self.loaded = Some(self.snapshot_of(&module, &found, taken.as_ref()));
         match &self.known {
             Some(known) => {
                 self.dating = Some(known.dating.clone());
@@ -903,13 +901,19 @@ impl<'a> Run<'a> {
         Ok(())
     }
 
-    /// The load snapshot of the mod `load` left, at the dating `load` found.
-    fn snapshot_of(&self, module: &Mod, dating: &Dating) -> LoadSnapshot {
+    /// The load snapshot of the mod `load` left, at the dating `load` found, with what the
+    /// archive carries in a port.
+    fn snapshot_of(
+        &self,
+        module: &Mod,
+        dating: &Dating,
+        inventory: Option<&Inventory>,
+    ) -> LoadSnapshot {
         let raw = self.raw.as_ref();
         let state = LoadState {
             module,
             dating,
-            inventory: self.inventory.as_ref(),
+            inventory,
             provenance: self.provenance.as_ref(),
             names: &self.book,
             extras: raw.map_or(&[], |raw| raw.extras.as_slice()),
@@ -1306,7 +1310,7 @@ impl<'a> Run<'a> {
             if let Some(dating) = &self.dating {
                 report = report.dating(dating, m);
             }
-            if let Some(inventory) = &self.inventory {
+            if let Some(inventory) = self.inventory() {
                 report = report.inventory(inventory);
             }
             if let Some(provenance) = &self.provenance {
@@ -1496,7 +1500,7 @@ impl<'a> Run<'a> {
 
     /// What the archive carries.
     pub fn inventory(&self) -> Option<&Inventory> {
-        self.inventory.as_ref()
+        self.loaded.as_ref()?.part().inventory.as_ref()
     }
 
     /// Whose bytes the mod's files are.

@@ -367,14 +367,13 @@ pub struct LoadState<'a> {
     pub image: Option<RawImage>,
 }
 
-/// What a load snapshot reopens to: the state a run holds once `load` ends.
+/// What a load snapshot reopens to: the state a run holds once `load` ends that its part
+/// does not hold as it is.
 pub struct Reopened {
     /// The mod, its bins parsed again from the store's bytes.
     pub module: Mod,
     /// Its dating.
     pub dating: Dating,
-    /// What the archive carries, in a port.
-    pub inventory: Option<Inventory>,
     /// Whose bytes its files are, in a port.
     pub provenance: Option<FileProvenance>,
     /// The names the run learnt.
@@ -578,7 +577,6 @@ impl LoadSnapshot {
         Ok(Reopened {
             module: m,
             dating,
-            inventory: self.part.inventory.clone(),
             provenance,
             names: self.names.clone(),
         })
