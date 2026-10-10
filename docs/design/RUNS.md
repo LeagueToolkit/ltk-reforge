@@ -2072,3 +2072,65 @@ handle after it exits.
   5,133,110,290 bytes, as the cache's did, and no scratch file. The times are those of the
   cache's runs, 31 s and 45 s a port and 47 s and 61 s a repair, within the spread of two
   runs.
+
+## A file node by id (2026-10-10)
+
+The branch `run-state-store` at `322e8ce`: a file node holds the content id of its bytes and a
+stage fetches them where it reads them, a carried file named by its id in the package and
+fetched by the writer, a cap on what a stage holds at once, and a run from the store by the
+archive's SHA-256 (#ADR-0100). The same inputs as "The load snapshot". Peak memory is
+measured as in "A read streamed into the store".
+
+- **One mod of 256 MB with three packed WADs, one a map's**, `port --no-write`, each run
+  twice, one process at a time; the two runs agree within 2 MiB. The before is the branch at
+  `db3091e`, from "A read streamed into the store". The reports of the six runs are equal
+  byte for byte.
+
+  | store | before: peak | after: peak | after: time |
+  |---|---:|---:|---:|
+  | none | 923 MiB | 917 to 919 MiB | 3.9 to 4.4 s |
+  | fresh | 979 MiB | 559 to 560 MiB | 8.2 to 8.8 s |
+  | populated | 979 MiB | 559 MiB | 3.8 to 4.9 s |
+
+  With a store the files' bytes leave memory once each stage has read them; the rest of the
+  peak is the environment, the parsed bins and what the stages make. A run with no store
+  holds every file in its memory store, as #ADR-0100 says.
+- **The bytes each stage fetched over the reduced corpus**, from a counting store under the
+  run's layer, in a program of the library's API, not kept, that reads each archive into a
+  store in memory and starts the run from its raw snapshot. A stage a fatal diagnostic ended
+  is not counted. The 68 archives hold 19,365 distinct blobs of 5,133,110,290 bytes.
+
+  | stage | port: fetches | port: bytes | repair: fetches | repair: bytes |
+  |---|---:|---:|---:|---:|
+  | load | 65,683 | 13,422,376,110 | 38,552 | 7,689,454,447 |
+  | fix | 1,695 | 465,850,674 | 1,695 | 465,850,674 |
+  | facts | 1,795 | 665,841,380 | | |
+  | decide | 0 | 0 | | |
+  | plan | 28 | 154,466,407 | | |
+  | build | 4,624 | 1,414,782,304 | 5,845 | 1,557,136,131 |
+  | check | 0 | 0 | 239 | 20,807,636 |
+
+  `load` reads every file once for its kind and, in a port, once more for the inventory,
+  besides the bins it parses: its fetches are a whole file each for a few bytes of it. The
+  most a stage held at once is its largest file read: 157,525,890 bytes in `load`,
+  32,786,671 in `facts` and `plan`, 22,369,776 in `build`, 4,728,210 in `fix` and 1,962,531
+  in `check` (`held-port`, `held-repair`, a build with no working-set cap, at `13cca10`'s
+  code). The cap is 1 GiB.
+- **The reduced corpus**, each command without a store from the archives (`final-port`,
+  `final-repair`), into a fresh store (`hash-port-store`, `hash-repair-store`), and from that
+  store by the archive's SHA-256 (`hash-port-from`, `hash-repair-from`, `--from-store`):
+
+  | run | command | store | done | ended by a fatal diagnostic | time |
+  |---|---|---|---:|---|---|
+  | `final-port` | `port --no-write` | none | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 33 s |
+  | `hash-port-store` | the same | fresh | 63 | the same | 57 s |
+  | `hash-port-from` | the same | populated, by hash | 63 | the same | 43 s |
+  | `final-repair` | `repair --no-write --again` | none | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 48 s |
+  | `hash-repair-store` | the same | fresh | 65 | the same | 66 s |
+  | `hash-repair-from` | the same | populated, by hash | 65 | the same | 57 s |
+
+  Against the baselines (`*-vs-baseline-6`, expected as "The load snapshot"), the 68 mods of
+  each run differ in the report's two inputs alone, 136 differences each, all expected, and
+  the exits are the baselines', mod for mod. With each other, the report files without a
+  store, with a fresh one and from the store by hash are equal byte for byte. The store after
+  the populating run holds the 19,365 blobs and no scratch file.
