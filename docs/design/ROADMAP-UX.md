@@ -62,6 +62,10 @@ run and writes the report, in some two hundred lines.
 | a run a stage at a time | `Run::read`, `load`, `fix`, `gather`, `decide`, `plan`, `build`, `check`, `write`, or `Run::through(stage)`. A stage runs once, and the run holds every result: `module()`, `changes()`, `facts()`, `targets()`, `port()`, `package()`. `Run::stages()` lists the stages of the run's kind, `Run::ran(stage)` says whether one ran to its end, and `Run::halted_at()` names the stage a fatal finding ended |
 | a way to stop a run | `Run::cancel(Cancel)`: a flag set from any thread ends the stage under way after the step it is on (#ADR-0097). `Run::cancelled_at()` names the stage, and the snapshots of the stages before it stand |
 | progress inside a stage | `Diagnostics::listen_progress`: each step of a stage as it begins, a `Progress` with the stage, the step's kind and name, its number and the count (#ADR-0097) |
+| a mod's bytes | `BlobStore` (#ADR-0093): bytes by content id, a memory store, a layered store, an LRU and the ingest store on disk (`cacache`). A run writes into a memory layer of its own (`Run::in_store`, `Run::into_layer`), reads a file's bytes on use (#ADR-0100) and never holds the mod whole; `read` streams the archive from its file |
+| a run's state | a snapshot after every stage (#ADR-0094), `Run::snapshots()`, JSON at one edge. `Run::resume(Start)` starts after any stage from them, refusing with a `ResumeError` that names the input, setting or program that differs. `Settings::declared(stage)` and `earliest_changed` say which stage a changed setting resumes from |
+| a mod ingested once | `RawCache` (#ADR-0095, #ADR-0100): the raw snapshot kept per archive beside the ingest store, a run started from it by the archive's SHA-256, and the kind of each blob kept by the matcher's generation |
+| the guided view's answers | a unit's own target and a file kept (#ADR-0098, #ADR-0099), settings the run declares and the command takes |
 | the result as data | `Run::report()`: a `Report` (`reforge.report/1`) with a part per stage reached, each serialisable |
 | the fixups as a list | `FixupSet::catalog()`: each `FixupInfo` has an id, a title, the records it implements, its phase and its default |
 | a choice of fixups | `FixupSelection`: the ids turned off and on and the rules added, as JSON that is saved and loaded. A `Rule` (remove, rename or move a field) is data |
@@ -78,7 +82,9 @@ show it where it shows the fixup.
 ## What the library lacks for the app
 
 - **The report's types as TypeScript.** The parts of a `Report` are Rust types with `Serialize`
-  only. The `port` part is a JSON value with no type of its own.
+  only; the app's bindings are generated from its own views of them.
+- **The app's store.** The library writes snapshots and a run's bytes in memory; the SQLite
+  rows, the run tier and the sweep of #ADR-0096 are the app crate's to build.
 - **A summary for a person.** The report is JSON. What a person reads of a run is the app's to
   render.
 - **A run over several mods.** A `Run` takes one archive. The caches of an `Env` grow with
@@ -331,8 +337,10 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    names, and the library's read of an archive alone and its spelled history queries.
 3. **The guided view** (#ADR-0090), its answers the library's settings, a unit's own target
    and a file kept among them (#ADR-0098).
-4. **Runs** and **Records** (#ADR-0091): the reports kept and reopened, a package's evidence
-   read, two runs compared; the records bundled and opened from a fixup or a finding.
+4. **Runs** and **Records** (#ADR-0091): the runs kept in the app's store with their
+   snapshots and bytes (#ADR-0096), reopened and resumed, a package's evidence read, two runs
+   compared, a run removed and the store swept; the records bundled and opened from a fixup
+   or a finding.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
 
 Each library change is one rule with its test (#ADR-0045), made before the page that needs it.
