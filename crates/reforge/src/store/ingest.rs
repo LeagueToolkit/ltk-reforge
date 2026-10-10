@@ -5,12 +5,24 @@
 //! so a blob is whole or absent; a get checks the bytes against the hash before it answers.
 //! The store uses it by hash alone, with SHA-256 as the algorithm, so a blob's address is its
 //! content id. `cacache`'s index, a key to a hash, is never written.
+//!
+//! A spool is a scratch file under a temporary name in a directory of the store's own, never a
+//! blob (#ADR-0100): its bytes are read once and kept as what is read of them. The file is
+//! removed when its reader is dropped, on an error too, and a file a process that died left is
+//! removed when the store is next opened.
+
+use std::io::{self, BufWriter, Seek, SeekFrom, Write};
 
 use cacache::{Algorithm, Integrity};
 use camino::{Utf8Path, Utf8PathBuf};
+use fs_err as fs;
+use tempfile::NamedTempFile;
 
-use super::BlobStore;
+use super::{BlobStore, ReadSeek, Spool};
 use crate::model::{ByteView, ContentId};
+
+/// The directory of the spools' scratch files, beside the blobs.
+const SCRATCH: &str = "scratch";
 
 /// A store of blobs in a directory, by content id.
 ///
@@ -24,9 +36,23 @@ pub struct IngestStore {
 }
 
 impl IngestStore {
-    /// The store in a directory, made at the first put when absent.
+    /// The store in a directory, made at the first put when absent. The scratch files a process
+    /// that died left are removed.
     pub fn new(dir: impl Into<Utf8PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        let store = Self { dir: dir.into() };
+        store.clear_scratch();
+        store
+    }
+
+    /// Removes the spools' scratch files. A file another process is reading is removed from
+    /// the directory and stays readable through its handle; one that does not remove stays.
+    fn clear_scratch(&self) {
+        let Ok(files) = fs::read_dir(self.dir.join(SCRATCH)) else {
+            return;
+        };
+        for file in files.flatten() {
+            let _ = fs::remove_file(file.path());
+        }
     }
 
     /// The directory it keeps its blobs in.
@@ -44,6 +70,32 @@ impl IngestStore {
 fn integrity(id: ContentId) -> Integrity {
     Integrity::from_hex(id.hex(), Algorithm::Sha256)
         .unwrap_or_else(|error| panic!("the content id {id:?} is no SHA-256 to cacache: {error}"))
+}
+
+/// Bytes being written into a scratch file of the store's, removed when dropped.
+struct DiskSpool {
+    file: BufWriter<NamedTempFile>,
+}
+
+impl Write for DiskSpool {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.file.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.file.flush()
+    }
+}
+
+impl Spool for DiskSpool {
+    fn finish(self: Box<Self>) -> io::Result<Box<dyn ReadSeek>> {
+        let mut scratch = self
+            .file
+            .into_inner()
+            .map_err(io::IntoInnerError::into_error)?;
+        scratch.seek(SeekFrom::Start(0))?;
+        Ok(Box::new(scratch))
+    }
 }
 
 impl BlobStore for IngestStore {
@@ -74,5 +126,13 @@ impl BlobStore for IngestStore {
             Err(error) => tracing::warn!(?id, %error, "a blob is not written to the ingest store"),
         }
         id
+    }
+
+    fn spool(&self) -> io::Result<Box<dyn Spool>> {
+        let scratch = self.dir.join(SCRATCH);
+        fs::create_dir_all(&scratch)?;
+        Ok(Box::new(DiskSpool {
+            file: BufWriter::new(NamedTempFile::new_in(&scratch)?),
+        }))
     }
 }

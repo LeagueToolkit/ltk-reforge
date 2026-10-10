@@ -10,6 +10,7 @@
 mod ingest;
 
 use std::collections::BTreeMap;
+use std::io::{self, Cursor, Read, Seek, Write};
 use std::sync::{Arc, PoisonError, RwLock};
 
 pub use self::ingest::IngestStore;
@@ -22,6 +23,47 @@ pub trait BlobStore: Send + Sync {
 
     /// Keeps bytes under their id, which it gives. Bytes already held are not written twice.
     fn put(&self, bytes: ByteView) -> ContentId;
+
+    /// A place for bytes too large to hold in memory, written in one pass and then read in
+    /// part (#ADR-0100). Nothing of them is kept: they go when their reader is dropped. A
+    /// store on disk writes them to a scratch file under a temporary name in its directory; a
+    /// store in memory holds them in memory.
+    fn spool(&self) -> io::Result<Box<dyn Spool>> {
+        Ok(Box::new(MemorySpool::default()))
+    }
+}
+
+/// Bytes read in part, from any offset.
+pub trait ReadSeek: Read + Seek + Send {}
+
+impl<T: Read + Seek + Send> ReadSeek for T {}
+
+/// Bytes being written where a store keeps what is too large to hold in memory.
+pub trait Spool: Write + Send {
+    /// The bytes written, to be read from the start.
+    fn finish(self: Box<Self>) -> io::Result<Box<dyn ReadSeek>>;
+}
+
+/// A spool in memory, the default of a store that holds no bytes on disk.
+#[derive(Debug, Default)]
+struct MemorySpool {
+    bytes: Vec<u8>,
+}
+
+impl Write for MemorySpool {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.bytes.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Spool for MemorySpool {
+    fn finish(self: Box<Self>) -> io::Result<Box<dyn ReadSeek>> {
+        Ok(Box::new(Cursor::new(self.bytes)))
+    }
 }
 
 impl<S: BlobStore + ?Sized> BlobStore for &S {
@@ -31,6 +73,10 @@ impl<S: BlobStore + ?Sized> BlobStore for &S {
 
     fn put(&self, bytes: ByteView) -> ContentId {
         (**self).put(bytes)
+    }
+
+    fn spool(&self) -> io::Result<Box<dyn Spool>> {
+        (**self).spool()
     }
 }
 
@@ -42,6 +88,10 @@ impl<S: BlobStore + ?Sized> BlobStore for Arc<S> {
     fn put(&self, bytes: ByteView) -> ContentId {
         (**self).put(bytes)
     }
+
+    fn spool(&self) -> io::Result<Box<dyn Spool>> {
+        (**self).spool()
+    }
 }
 
 impl<S: BlobStore + ?Sized> BlobStore for Box<S> {
@@ -51,6 +101,10 @@ impl<S: BlobStore + ?Sized> BlobStore for Box<S> {
 
     fn put(&self, bytes: ByteView) -> ContentId {
         (**self).put(bytes)
+    }
+
+    fn spool(&self) -> io::Result<Box<dyn Spool>> {
+        (**self).spool()
     }
 }
 
@@ -155,5 +209,9 @@ impl<T: BlobStore, U: BlobStore> BlobStore for Layered<T, U> {
 
     fn put(&self, bytes: ByteView) -> ContentId {
         self.top.put(bytes)
+    }
+
+    fn spool(&self) -> io::Result<Box<dyn Spool>> {
+        self.top.spool()
     }
 }

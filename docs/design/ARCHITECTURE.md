@@ -88,6 +88,10 @@ let report = run.report();
   nothing. `run.read_file` reads an archive file entry by entry and never holds it whole
   (`archive::Archive::file`, #ADR-0100): its SHA-256 is taken in one pass, and a packed WAD
   stored as it is is mounted over its part of the file, which `ltk_wad` reads chunk by chunk.
+  A deflated packed WAD is inflated once into the store's spool (`BlobStore::spool`) and
+  mounted from there: the ingest store writes it to a scratch file under a temporary name in
+  its directory, and a store in memory holds it in memory. Its chunks are the blobs; the spool
+  is removed once they are read, and kept by neither store.
 - **A run reads archives through a cache when given one** (`Run::in_cache`, a
   `snapshot::RawCache`; #ADR-0095). `read` looks the archive up by its SHA-256 before it
   inflates anything: on a hit the raw snapshot is the result, its findings raised again and
@@ -253,7 +257,7 @@ The modules of `reforge`, each using only the ones above it:
 |---|---|
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); a stage's steps: the run's `Cancel`, which the log carries to the stages, and the `Progress` it tells a listener |
-| `store` | `BlobStore`: bytes by content id (#ADR-0093); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share |
+| `store` | `BlobStore`: bytes by content id (#ADR-0093), and a spool for bytes too large to hold, read in part (#ADR-0100); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share |
 | `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store, and what the read raised |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
@@ -951,8 +955,11 @@ object takes a name of its own, which every link to it follows.
 
 - `archive` is the only module that reads a zip, under the caller's `Caps`. It reads an
   archive file entry by entry, holds an archive in memory once, and puts the entries' bytes
-  into the blob store under their content id and nowhere else (#ADR-0093, #ADR-0100). On disk that is the ingest store, a file per blob named by its
-  id; the raw cache's entry beside the blobs is named by the archive's SHA-256, the reading
+  into the blob store under their content id and nowhere else (#ADR-0093, #ADR-0100). On
+  disk that is the ingest store, a file per blob named by its id. A deflated packed WAD is
+  inflated there into a scratch file under a temporary name, never the archive's, removed
+  once its chunks are read and on an error too; one a process that died left is removed when
+  the store is next opened. The raw cache's entry beside the blobs is named by the archive's SHA-256, the reading
   and the caps, and holds the raw snapshot's JSON, the mod's names in it as JSON strings.
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
   error on any input (banks, file kinds). A reader from another crate runs where its panic is

@@ -1,6 +1,7 @@
 //! The blob store (#ADR-0093): the memory store, a layer over another store, and the ingest
-//! store on disk.
+//! store on disk; and each one's spool (#ADR-0100).
 
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
@@ -88,6 +89,69 @@ fn a_blob_that_fails_its_hash_answers_nothing_and_is_written_again() {
         store.get(id).as_deref(),
         Some(&b"bytes a disk will spoil"[..])
     );
+}
+
+/// Writes bytes into a store's spool in two parts and reads them back from the second byte,
+/// with what the store's directory holds while the reader is open.
+fn spooled(store: &dyn BlobStore, dir: &camino::Utf8Path, bytes: &[u8]) -> (Vec<u8>, usize) {
+    let mut spool = store.spool().expect("a spool opens");
+    let (first, rest) = bytes.split_at(bytes.len() / 2);
+    spool.write_all(first).expect("the spool writes");
+    spool.write_all(rest).expect("the spool writes");
+    let mut read = spool.finish().expect("the spool reads");
+    read.seek(SeekFrom::Start(1)).expect("the bytes seek");
+    let mut back = Vec::new();
+    read.read_to_end(&mut back).expect("the bytes read");
+    let held = if dir.exists() { files(dir).len() } else { 0 };
+    (back, held)
+}
+
+#[test]
+fn a_spool_of_the_ingest_store_is_a_scratch_file_removed_once_read() {
+    // #ADR-0100: a large entry inflated once onto disk, never kept as a blob.
+    let (_scratch, dir) = scratch();
+    let store = IngestStore::new(&dir);
+    let bytes = b"an entry too large to hold in memory, in two parts";
+    let (back, held) = spooled(&store, &dir, bytes);
+    assert_eq!(back, &bytes[1..]);
+    assert_eq!(held, 1, "the scratch file, while it is read");
+    assert!(!store.contains(ContentId::of(bytes)), "no blob");
+    assert_eq!(
+        files(&dir),
+        Vec::<Utf8PathBuf>::new(),
+        "removed when dropped"
+    );
+
+    let mut spool = store.spool().expect("a spool opens");
+    spool.write_all(bytes).expect("the spool writes");
+    drop(spool);
+    assert_eq!(files(&dir), Vec::<Utf8PathBuf>::new(), "removed unfinished");
+}
+
+#[test]
+fn a_scratch_file_a_process_left_is_removed_when_the_store_opens() {
+    let (_scratch, dir) = scratch();
+    fs_err::create_dir_all(dir.join("scratch")).expect("the directory is made");
+    fs_err::write(dir.join("scratch").join(".tmp-left"), b"left").expect("the file writes");
+    let store = IngestStore::new(&dir);
+    assert_eq!(files(&dir), Vec::<Utf8PathBuf>::new());
+    store.put(ByteView::from(b"a blob"));
+    IngestStore::new(&dir);
+    assert_eq!(files(&dir).len(), 1, "the blobs stay");
+}
+
+#[test]
+fn a_spool_of_a_store_in_memory_keeps_nothing_in_it() {
+    let (_scratch, dir) = scratch();
+    let memory = MemoryStore::new();
+    let bytes = b"held by the spool alone";
+    assert_eq!(spooled(&memory, &dir, bytes), (bytes[1..].to_vec(), 0));
+    assert!(memory.is_empty());
+    let layered = Layered::new(MemoryStore::new(), IngestStore::new(&dir));
+    let (back, _) = spooled(&layered, &dir, bytes);
+    assert_eq!(back, &bytes[1..], "the layer's own");
+    assert!(layered.top().is_empty());
+    assert!(!dir.exists(), "nothing reaches the store under the layer");
 }
 
 #[test]

@@ -359,7 +359,7 @@ impl<'a> Archive<'a> {
         let file_name = Spelled::new(self.file_name);
         let _span = tracing::info_span!("read", archive = %file_name).entered();
         let mark = sink.mark();
-        let mut reader = match Reader::open(self.source, &file_name, caps) {
+        let mut reader = match Reader::open(self.source, &file_name, caps, store) {
             Ok(reader) => reader,
             Err(fatal) => return Err(fatal.halt(sink)),
         };

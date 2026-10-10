@@ -21,6 +21,7 @@ use super::{ArchiveWad, Chunk};
 use crate::diag::{Sink, Step, Steps};
 use crate::model::entity::{Extra, MAX_IMAGE_BYTES, ModImage, WadLayout};
 use crate::model::{ByteView, ChunkPath, Spelled, WadHash, WadName};
+use crate::store::{BlobStore, ReadSeek, Spool};
 
 /// The two codecs a run reads. Fewer decoders are fewer for an untrusted archive to reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,6 +83,8 @@ impl From<ZipError> for EntryError {
 enum Failure {
     Entry(EntryError),
     OverBudget,
+    /// The bytes did not write where they were going: a spool of the store's on disk.
+    Out(io::Error),
 }
 
 impl From<EntryError> for Failure {
@@ -90,9 +93,44 @@ impl From<EntryError> for Failure {
     }
 }
 
-/// An entry passed through to an output: its bytes inflated into memory, or counted.
-struct Passed<W> {
-    out: W,
+/// Where an entry's bytes go as they inflate, and what they are once all have come.
+trait Out: Write {
+    type Done;
+
+    fn done(self) -> io::Result<Self::Done>;
+}
+
+/// The bytes held in memory.
+impl Out for Vec<u8> {
+    type Done = Vec<u8>;
+
+    fn done(self) -> io::Result<Vec<u8>> {
+        Ok(self)
+    }
+}
+
+/// The bytes counted and dropped.
+impl Out for io::Sink {
+    type Done = ();
+
+    fn done(self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The bytes where the store keeps what is too large to hold, to be read in part.
+impl Out for Box<dyn Spool> {
+    type Done = Box<dyn ReadSeek>;
+
+    fn done(self) -> io::Result<Box<dyn ReadSeek>> {
+        self.finish()
+    }
+}
+
+/// An entry passed through to an output: its bytes inflated into memory or the store's spool,
+/// or counted.
+struct Passed<T> {
+    out: T,
     /// The bytes it inflated to.
     len: u64,
     /// The entry is stored and its recorded checksum is wrong.
@@ -108,9 +146,33 @@ fn is_checksum_failure(error: &ZipError) -> bool {
         if e.kind() == io::ErrorKind::InvalidData && e.to_string() == "Invalid checksum")
 }
 
+/// Why a pass over an entry stopped.
+enum Stopped {
+    /// The entry did not open or read.
+    Zip(ZipError),
+    /// Its bytes did not write.
+    Out(io::Error),
+}
+
 /// Reads to the end into `out`, or gives nothing when more than `cap` bytes come.
-fn read_capped(reader: &mut impl Read, cap: u64, out: &mut impl Write) -> io::Result<Option<u64>> {
-    let len = io::copy(&mut reader.take(cap.saturating_add(1)), out)?;
+fn read_capped(
+    reader: &mut impl Read,
+    cap: u64,
+    out: &mut impl Write,
+) -> Result<Option<u64>, Stopped> {
+    let mut buf = [0u8; 1 << 14];
+    let mut reader = reader.take(cap.saturating_add(1));
+    let mut len = 0u64;
+    loop {
+        let read = match reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(Stopped::Zip(e.into())),
+        };
+        out.write_all(&buf[..read]).map_err(Stopped::Out)?;
+        len += read as u64;
+    }
     Ok((len <= cap).then_some(len))
 }
 
@@ -168,6 +230,7 @@ pub(super) struct Reader<'a> {
     source: Source<'a>,
     zip: ZipArchive<Input<'a>>,
     caps: &'a Caps,
+    store: &'a dyn BlobStore,
     budget: Budget,
     info: Info,
     /// By lowercase name: the loose and the packed forms of one WAD are one WAD, in any case.
@@ -179,7 +242,12 @@ pub(super) struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     /// Opens the zip's directory. The archive's bytes are never copied whole.
-    pub(super) fn open(source: Source<'a>, file: &Spelled, caps: &'a Caps) -> Result<Self, Fatal> {
+    pub(super) fn open(
+        source: Source<'a>,
+        file: &Spelled,
+        caps: &'a Caps,
+        store: &'a dyn BlobStore,
+    ) -> Result<Self, Fatal> {
         if source.len() > caps.archive_bytes {
             return Err(Fatal::BudgetExceeded(BudgetExceeded::ArchiveFile {
                 bytes: source.len(),
@@ -204,6 +272,7 @@ impl<'a> Reader<'a> {
             source,
             zip,
             caps,
+            store,
             budget: Budget::new(caps.total_bytes),
             info: Info::default(),
             wads: BTreeMap::new(),
@@ -367,11 +436,10 @@ impl<'a> Reader<'a> {
             let len = window.len();
             mount(window, len, self.caps, &mut self.budget)
         } else {
-            let Some(bytes) = self.inflate(index, name, subject)? else {
+            let Some(spooled) = self.spooled(index, name, subject)? else {
                 return Ok(());
             };
-            let len = bytes.len() as u64;
-            mount(Cursor::new(bytes), len, self.caps, &mut self.budget)
+            mount(spooled.out, spooled.len, self.caps, &mut self.budget)
         };
         let chunks = match read {
             Ok(chunks) => chunks,
@@ -443,7 +511,7 @@ impl<'a> Reader<'a> {
         if declared > MAX_IMAGE_BYTES {
             return ModImage::TooLarge(declared);
         }
-        match self.through(index, Vec::new) {
+        match self.through(index, || Ok(Vec::new())) {
             // The declared size is the archive's word.
             Ok(inflated) if inflated.len > MAX_IMAGE_BYTES => ModImage::TooLarge(inflated.len),
             Ok(inflated) => ModImage::Held(ByteView::from(inflated.out)),
@@ -458,10 +526,36 @@ impl<'a> Reader<'a> {
         name: &Spelled,
         within: &Spelled,
     ) -> Result<Option<Vec<u8>>, Fatal> {
-        let passed = self.through(index, Vec::new);
+        let passed = self.through(index, || Ok(Vec::new()));
         Ok(self
             .kept(passed, name, within)?
             .map(|inflated| inflated.out))
+    }
+
+    /// A compressed entry inflated once into the store's spool, to be read in part: a scratch
+    /// file for a store on disk, removed when the reader is dropped, and memory for a store in
+    /// memory (#ADR-0100). None when the entry is skipped with a finding.
+    fn spooled(
+        &mut self,
+        index: usize,
+        name: &Spelled,
+        within: &Spelled,
+    ) -> Result<Option<Passed<Box<dyn ReadSeek>>>, Fatal> {
+        let store = self.store;
+        let passed = match self.through(index, || store.spool()) {
+            Err(Failure::Out(error)) => {
+                // A full disk changes no result: the bytes inflate into memory instead.
+                tracing::warn!(%error, "an entry does not spool, and inflates in memory");
+                self.through(index, || Ok(Vec::new()))
+                    .map(|inflated| Passed {
+                        out: Box::new(Cursor::new(inflated.out)) as Box<dyn ReadSeek>,
+                        len: inflated.len,
+                        crc_wrong: inflated.crc_wrong,
+                    })
+            }
+            passed => passed,
+        };
+        self.kept(passed, name, within)
     }
 
     /// A stored entry where it lies in the archive, its bytes checked and counted but not
@@ -472,7 +566,7 @@ impl<'a> Reader<'a> {
         name: &Spelled,
         within: &Spelled,
     ) -> Result<Option<Window<Input<'a>>>, Fatal> {
-        let passed = self.through(index, io::sink);
+        let passed = self.through(index, || Ok(io::sink()));
         let Some(passed) = self.kept(passed, name, within)? else {
             return Ok(None);
         };
@@ -506,6 +600,11 @@ impl<'a> Reader<'a> {
                 Ok(Some(passed))
             }
             Err(Failure::OverBudget) => Err(self.over_budget(name)),
+            // Only a spool writes where it can fail, and its caller inflates in memory instead.
+            Err(Failure::Out(error)) => {
+                self.findings.unreadable(within, name, error.to_string());
+                Ok(None)
+            }
             Err(Failure::Entry(error)) => {
                 match error {
                     EntryError::Codec(method) => self.findings.codec(within, name, method),
@@ -538,11 +637,11 @@ impl<'a> Reader<'a> {
     }
 
     /// The entry inflated into a fresh output under the caps, and charged to the budget.
-    fn through<W: Write>(
+    fn through<W: Out>(
         &mut self,
         index: usize,
-        fresh: impl Fn() -> W,
-    ) -> Result<Passed<W>, Failure> {
+        fresh: impl Fn() -> io::Result<W>,
+    ) -> Result<Passed<W::Done>, Failure> {
         let declared = self.declared(index)?;
         let codec = declared.codec()?;
         let too_large = EntryError::TooLarge {
@@ -554,18 +653,24 @@ impl<'a> Reader<'a> {
         // The declared size is the archive's word. The read itself stops at the smaller of the
         // entry cap and what is left of the budget.
         let cap = self.caps.entry_bytes.min(self.budget.left());
-        let mut out = fresh();
+        let mut out = fresh().map_err(Failure::Out)?;
         let (len, crc_wrong) = match self.checked(index, cap, &mut out) {
             Ok(len) => (len, false),
             // Some packers write a stored entry's checksum wrong. The bytes are what they are,
             // and a WAD that is damaged fails to mount on its own terms.
-            Err(e) if is_checksum_failure(&e) && codec == Codec::Stored => {
-                out = fresh();
-                let len = self.unchecked(index, cap, &mut out);
-                (len.map_err(EntryError::from)?, true)
+            Err(Stopped::Zip(e)) if is_checksum_failure(&e) && codec == Codec::Stored => {
+                out = fresh().map_err(Failure::Out)?;
+                match self.unchecked(index, cap, &mut out) {
+                    Ok(len) => (len, true),
+                    Err(Stopped::Zip(e)) => return Err(EntryError::from(e).into()),
+                    Err(Stopped::Out(e)) => return Err(Failure::Out(e)),
+                }
             }
-            Err(e) if is_checksum_failure(&e) => return Err(EntryError::Corrupt.into()),
-            Err(e) => return Err(EntryError::from(e).into()),
+            Err(Stopped::Zip(e)) if is_checksum_failure(&e) => {
+                return Err(EntryError::Corrupt.into());
+            }
+            Err(Stopped::Zip(e)) => return Err(EntryError::from(e).into()),
+            Err(Stopped::Out(e)) => return Err(Failure::Out(e)),
         };
         let Some(len) = len else {
             return Err(if cap < self.caps.entry_bytes {
@@ -574,6 +679,7 @@ impl<'a> Reader<'a> {
                 too_large.into()
             });
         };
+        let out = out.done().map_err(Failure::Out)?;
         self.budget.charge(len).map_err(|_| Failure::OverBudget)?;
         Ok(Passed {
             out,
@@ -588,9 +694,9 @@ impl<'a> Reader<'a> {
         index: usize,
         cap: u64,
         out: &mut impl Write,
-    ) -> Result<Option<u64>, ZipError> {
-        let mut file = self.zip.by_index(index)?;
-        Ok(read_capped(&mut file, cap, out)?)
+    ) -> Result<Option<u64>, Stopped> {
+        let mut file = self.zip.by_index(index).map_err(Stopped::Zip)?;
+        read_capped(&mut file, cap, out)
     }
 
     /// The entry's bytes as the archive holds them, which for a stored entry are its content.
@@ -599,8 +705,8 @@ impl<'a> Reader<'a> {
         index: usize,
         cap: u64,
         out: &mut impl Write,
-    ) -> Result<Option<u64>, ZipError> {
-        let mut file = self.zip.by_index_raw(index)?;
-        Ok(read_capped(&mut file, cap, out)?)
+    ) -> Result<Option<u64>, Stopped> {
+        let mut file = self.zip.by_index_raw(index).map_err(Stopped::Zip)?;
+        read_capped(&mut file, cap, out)
     }
 }
