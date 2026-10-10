@@ -36,7 +36,7 @@ pub use self::findings::{
     NotZip, RepackDuplicates, StoredCrcWrong, TooManyEntries, UnreadableEntry, UnreadableWad,
     UnsafeName, WadUnreadable,
 };
-pub use self::kind::file_kind;
+pub use self::kind::{file_kind, kind_of};
 pub use self::packed::PackedError;
 use self::reader::{Parts, Reader};
 use self::source::Source;

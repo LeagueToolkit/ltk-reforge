@@ -95,6 +95,29 @@ fn every_store_answers_the_empty_blob_without_holding_it() {
 }
 
 #[test]
+fn a_head_is_the_first_bytes_and_the_whole_size_in_every_store() {
+    let (_scratch, dir) = scratch();
+    let ingest = IngestStore::new(&dir);
+    let memory = MemoryStore::new();
+    let layered = Layered::new(MemoryStore::new(), MemoryStore::new());
+    let bytes = b"a blob longer than the head it is asked for";
+    let stores: [&dyn BlobStore; 3] = [&ingest, &memory, &layered];
+    for store in stores {
+        let id = store.put(ByteView::from(&bytes[..]));
+        let head = store.get_head(id, 7).expect("the store holds it");
+        assert_eq!((&*head.bytes, head.size), (&bytes[..7], bytes.len() as u64));
+        let whole = store.get_head(id, 4096).expect("the store holds it");
+        assert_eq!(&*whole.bytes, &bytes[..], "a short blob is all head");
+        assert_eq!(store.get_head(ContentId::of(b"absent"), 7), None);
+        let empty = store.get_head(ContentId::EMPTY, 7).expect("the empty blob");
+        assert_eq!((empty.bytes.len(), empty.size), (0, 0));
+    }
+    let under = layered.under().put(ByteView::from(&b"under the layer"[..]));
+    let head = layered.get_head(under, 5).expect("a layer reads through");
+    assert_eq!(&*head.bytes, b"under");
+}
+
+#[test]
 fn the_ingest_store_answers_nothing_for_an_id_it_lacks() {
     let (_scratch, dir) = scratch();
     let store = IngestStore::new(&dir);

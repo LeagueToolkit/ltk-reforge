@@ -115,7 +115,8 @@ let report = run.report();
   hold the run's store as `Blobs` (`Run::blobs`), and a file node holds the content id of its
   bytes and their size, not the bytes. A stage fetches a file's bytes where it reads them
   (`Mod::bytes`, `FileNode::bytes`) and drops them, or holds them for its own duration in a
-  local: `load` each file once for its kind and the bins it parses, the file fixups what they
+  local: `load` the head of each file for its kind and size and the whole of each bin it
+  parses, the file fixups what they
   make files from, `facts` the meshes, skeletons, clips and banks it judges, `fix` a bin it
   writes again, `plan` the banks it cuts, `build` the textures it puts in TEX's container and
   the bins it writes again or reports, `check` the bins and banks it reads back. The parsed
@@ -270,7 +271,7 @@ a crate.
 
 | crate | holds |
 |---|---|
-| `reforge-magic` | what a file is by its first bytes and name |
+| `reforge-magic` | what a file is by its first bytes and name: `HeadKind`, what the first `HEAD_LEN` bytes say, the longest prefix any check reads, and the name read after it |
 | `reforge-wwise` | Wwise banks and packages, read and written; a bank whose clips are larger than its data is refused |
 | `reforge` | the stages, `Report`, `Porter`, `Repairer` |
 | `reforge-census` | the census history (format 2) read with gix; builds and appends the history index (#ADR-0005); with the feature `fetch`, fetches the history as far as an append reads it (#ADR-0057) |
@@ -284,7 +285,7 @@ The modules of `reforge`, each using only the ones above it:
 |---|---|
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod` and `Blobs`, the run's store its files' bytes are fetched from, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); a stage's steps: the run's `Cancel`, which the log carries to the stages, and the `Progress` it tells a listener |
-| `store` | `BlobStore`: bytes by content id (#ADR-0093), read checked or unchecked, and a spool for bytes too large to hold, read in part (#ADR-0100); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share. Every store answers the empty blob, `ContentId::EMPTY`, without holding it, so no file of no bytes is written |
+| `store` | `BlobStore`: bytes by content id (#ADR-0093), read checked or unchecked, the first bytes alone with the size (`get_head`), and a spool for bytes too large to hold, read in part (#ADR-0100); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share. Every store answers the empty blob, `ContentId::EMPTY`, without holding it, so no file of no bytes is written |
 | `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store, and what the read raised |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
@@ -333,7 +334,11 @@ tables (`history`) and the bin value helpers (`model`).
   bytes and their size, and gives the bytes from the run's store when a stage asks
   (`FileNode::bytes`, `Mod::bytes`), through `Blobs`, the run's store as the model names it:
   `BlobAccess`, which every store answers, a fetch and a keep by id. Nothing on the node keeps
-  them. A fetch the store does not answer gives no bytes: it unwinds with `Missing`, which no
+  them. A file's kind and size are what is known of its blob (`Blobs::facts`): the kind what
+  its first `HEAD_LEN` bytes say (`HeadKind`), read alone (`BlobStore::get_head`), and no
+  kind needs more of the file, since every check of `reforge-magic` reads within the head.
+  What a run learns of a blob it keeps, so the inventory reads each file's kind with its name
+  and no bytes. A bin is read whole where it is parsed, which is no part of its kind. A fetch the store does not answer gives no bytes: it unwinds with `Missing`, which no
   panic hook sees, and the run takes it back where it ends the stage with a fault
   (`Missing::catch`). The unwind is the way out because a fetch sits deep in every stage's
   readers, under signatures that have no store fault to give. The id is remembered too

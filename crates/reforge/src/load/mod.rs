@@ -55,7 +55,7 @@ pub use self::provenance::{Against, FileProvenance};
 pub use self::rework::{Around, ReworkTable};
 pub use self::stale::{KeptFile, KeptFileError, Staleness};
 use self::survey::Survey;
-use crate::archive::{RawSnapshot, file_kind};
+use crate::archive::{RawSnapshot, kind_of};
 use crate::diag::{Cancelled, Halted, Parts, Sink};
 use crate::env::Env;
 use crate::game::{GameError, NameBook, Speller};
@@ -390,8 +390,9 @@ impl<'a> Loader<'a> {
 
     /// Step 1: the mod's WADs and files as the archive ships them, from its raw snapshot and
     /// the run's store `blobs`, which its bytes are in. No WAD has a role and no file a use
-    /// yet. Each file's bytes are fetched once, for its kind, and not kept. A store that holds
-    /// nothing under an id the snapshot names is a fault, `LoadError::Store`.
+    /// yet. A file's kind and size come from what the store knows of its blob
+    /// ([`Blobs::facts`]): its first bytes alone are read. A store that holds nothing under an
+    /// id the snapshot names is a fault, `LoadError::Store`.
     pub fn open(&mut self, raw: &RawSnapshot, blobs: &Blobs) -> Result<Mod, LoadError> {
         // The names a run reads by are spelled whatever tables are installed.
         for name in field::ALL {
@@ -416,8 +417,8 @@ impl<'a> Loader<'a> {
                 if let Some(path) = &file.path {
                     self.book.learn_path(path.as_str());
                 }
-                let bytes = blobs
-                    .get(file.content)
+                let facts = blobs
+                    .facts(file.content)
                     .ok_or(LoadError::Store(file.content))?;
                 // The archive gives one chunk per path of a WAD: a second one was skipped and
                 // reported where it was read (`archive.chunk-duplicate`).
@@ -425,9 +426,9 @@ impl<'a> Loader<'a> {
                     wad: id,
                     hash,
                     path: file.path.clone(),
-                    size: bytes.len() as u64,
+                    size: facts.size,
                     content: file.content,
-                    kind: file_kind(&bytes),
+                    kind: kind_of(facts.kind),
                     used: FileUse::Unused,
                     source: FileSource::Archive,
                 });

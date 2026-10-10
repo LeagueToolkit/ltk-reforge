@@ -11,6 +11,7 @@
 //! to the run, which ends the stage with a fault, so no stage goes on to judge or write a file
 //! it could not read. `docs/design/ARCHITECTURE.md`, "The model", says why it unwinds.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::ops::Deref;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
@@ -18,14 +19,38 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use byteview::ByteView;
+use reforge_magic::{HEAD_LEN, HeadKind};
 
 use super::hash::ContentId;
+
+/// The first bytes of a blob, and the size of all of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Head {
+    /// At most the length asked for, from the start.
+    pub bytes: ByteView,
+    /// The whole blob's size in bytes.
+    pub size: u64,
+}
+
+impl Head {
+    /// The first `len` bytes of a whole blob, copied so that the rest is not kept.
+    pub fn of(bytes: &[u8], len: usize) -> Self {
+        Self {
+            bytes: ByteView::from(&bytes[..bytes.len().min(len)]),
+            size: bytes.len() as u64,
+        }
+    }
+}
 
 /// A run's store as the model reads and writes it.
 pub trait BlobAccess: Send + Sync {
     /// The bytes under an id, not checked against it: a run's store holds only what the run
     /// put there or found there whole.
     fn fetch(&self, id: ContentId) -> Option<ByteView>;
+
+    /// The first `len` bytes under an id and the blob's size, read without the rest where
+    /// the store can.
+    fn fetch_head(&self, id: ContentId, len: usize) -> Option<Head>;
 
     /// Whether it holds bytes under an id, which are not read.
     fn holds(&self, id: ContentId) -> bool;
@@ -142,6 +167,17 @@ pub struct Blobs {
     access: Arc<dyn BlobAccess>,
     missing: Arc<Mutex<Option<ContentId>>>,
     tally: Arc<Tally>,
+    known: Arc<Mutex<BTreeMap<ContentId, BlobFacts>>>,
+}
+
+/// What is known of a blob without its bytes: what its first bytes say of its kind, and its
+/// size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlobFacts {
+    /// What its first bytes say, before a name is read.
+    pub kind: HeadKind,
+    /// Its size in bytes.
+    pub size: u64,
 }
 
 impl Blobs {
@@ -151,6 +187,33 @@ impl Blobs {
             access,
             missing: Arc::default(),
             tally: Arc::default(),
+            known: Arc::default(),
+        }
+    }
+
+    /// What is known of the blob under an id, or none for an id the store lacks. Its kind is
+    /// read from its first [`HEAD_LEN`] bytes, never the whole blob, once per run: a second
+    /// ask reads nothing.
+    pub fn facts(&self, id: ContentId) -> Option<BlobFacts> {
+        let known = || self.known.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(&facts) = known().get(&id) {
+            return Some(facts);
+        }
+        let head = self.access.fetch_head(id, HEAD_LEN)?;
+        let facts = BlobFacts {
+            kind: HeadKind::of(&head.bytes),
+            size: head.size,
+        };
+        known().insert(id, facts);
+        Some(facts)
+    }
+
+    /// What is known of the blob under an id. An id the store lacks ends the work under way
+    /// with [`Missing`], as [`Blobs::fetch`] does.
+    pub fn facts_of(&self, id: ContentId) -> BlobFacts {
+        match self.facts(id) {
+            Some(facts) => facts,
+            None => self.lacks(id),
         }
     }
 
@@ -172,9 +235,14 @@ impl Blobs {
     /// The bytes under an id. An id the store lacks ends the work under way with [`Missing`],
     /// and is the one [`Blobs::missing`] names when it is the first.
     pub fn fetch(&self, id: ContentId) -> Fetched {
-        if let Some(bytes) = self.get(id) {
-            return bytes;
+        match self.get(id) {
+            Some(bytes) => bytes,
+            None => self.lacks(id),
         }
+    }
+
+    /// Ends the work under way at a fetch of an id the store lacks.
+    fn lacks(&self, id: ContentId) -> ! {
         self.missing
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -204,6 +272,10 @@ impl Blobs {
 impl BlobAccess for Blobs {
     fn fetch(&self, id: ContentId) -> Option<ByteView> {
         self.get(id).map(Fetched::into_view)
+    }
+
+    fn fetch_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        self.access.fetch_head(id, len)
     }
 
     fn holds(&self, id: ContentId) -> bool {

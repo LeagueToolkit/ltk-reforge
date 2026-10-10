@@ -21,7 +21,10 @@ use serde::{Deserialize, Serialize};
 pub use categories::Categories;
 pub use kind::{Info, Kind};
 
-/// How many leading bytes [`identify`] reads. It is given fewer for a shorter file.
+/// How many leading bytes [`identify`] reads, fewer for a shorter file: the longest prefix any
+/// check reads. A DOS header's `e_lfanew` ends at byte 64, and the text and IFF checks read
+/// the whole head they are given, so a head of this length decides the kind and no check
+/// needs the rest of the file.
 pub const HEAD_LEN: usize = 64;
 
 /// How [`identify`] knew.
@@ -52,41 +55,84 @@ impl Identity {
     }
 }
 
+/// What a file's first bytes say of its kind, before its name is read. [`identify`] is this
+/// and the name: a shape of text, or bytes no magic names, take their kind from the name.
+///
+/// It is a fact of the bytes alone, so it is kept per blob and read back in place of the head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HeadKind {
+    /// No bytes.
+    Empty,
+    /// A magic, fixed or held to a value, or text whose opening says what it is.
+    Magic(Kind),
+    /// Text that opens `{` and is no bin: JSON, or glTF by its name.
+    Object,
+    /// Text whose first line is an INI section: INI, or a particle system by its name.
+    Section,
+    /// Text whose opening names nothing: what its name says, else plain text.
+    Text,
+    /// No magic and no text, judged by its header's plausible values: what its name says
+    /// where it says something, else this kind.
+    Heuristic(Kind),
+    /// Nothing the bytes say: what its name says, else unknown.
+    Unknown,
+}
+
+impl HeadKind {
+    /// What a file's first bytes say, read from at most [`HEAD_LEN`] of them.
+    pub fn of(head: &[u8]) -> HeadKind {
+        let head = &head[..head.len().min(HEAD_LEN)];
+        if head.is_empty() {
+            return HeadKind::Empty;
+        }
+        if let Some(kind) = table::by_magic(head).or_else(|| sniff::structured(head)) {
+            return HeadKind::Magic(kind);
+        }
+        if let Some(text) = sniff::text_of(head) {
+            return sniff::text_head(text);
+        }
+        match sniff::heuristic(head) {
+            Some(kind) => HeadKind::Heuristic(kind),
+            None => HeadKind::Unknown,
+        }
+    }
+
+    /// What the file is, from what its bytes say and its name where it has one.
+    pub fn identify(self, name: Option<&str>) -> Identity {
+        let ext = name
+            .and_then(|n| n.rsplit_once('.'))
+            .map(|(_, e)| e.to_ascii_lowercase())
+            .unwrap_or_default();
+        let is = |kind, confidence| Identity { kind, confidence };
+        if let Some(kind) = name.and_then(sniff::by_name) {
+            return is(kind, Confidence::Name);
+        }
+        match (self, table::by_extension(&ext)) {
+            (HeadKind::Empty, _) => is(Kind::Empty, Confidence::Magic),
+            // An extension naming a format whose magic is a container's (a Max scene is an OLE
+            // file, an OLE file named `thumbs.db` was caught above) refines it.
+            (HeadKind::Magic(Kind::Ole), Some(named)) => is(named, Confidence::Name),
+            (HeadKind::Magic(kind), _) => is(kind, Confidence::Magic),
+            (HeadKind::Object, _) if ext == "gltf" => is(Kind::Gltf, Confidence::Magic),
+            (HeadKind::Object, _) => is(Kind::Json, Confidence::Magic),
+            (HeadKind::Section, _) if ext == "troy" => is(Kind::Troy, Confidence::Magic),
+            (HeadKind::Section, _) => is(Kind::Ini, Confidence::Magic),
+            (HeadKind::Text, _) => {
+                let kind = table::by_text_extension(&ext).unwrap_or(Kind::Text);
+                is(kind, Confidence::Magic)
+            }
+            (HeadKind::Heuristic(_) | HeadKind::Unknown, Some(named)) => {
+                is(named, Confidence::Name)
+            }
+            (HeadKind::Heuristic(kind), None) => is(kind, Confidence::Heuristic),
+            (HeadKind::Unknown, None) => is(Kind::Unknown, Confidence::Magic),
+        }
+    }
+}
+
 /// What a file is, from its first bytes ([`HEAD_LEN`] of them, fewer for a short file) and its
 /// name where it has one. A chunk named by its hash has none.
 pub fn identify(head: &[u8], name: Option<&str>) -> Identity {
-    let ext = name
-        .and_then(|n| n.rsplit_once('.'))
-        .map(|(_, e)| e.to_ascii_lowercase())
-        .unwrap_or_default();
-    let is = |kind, confidence| Identity { kind, confidence };
-    if let Some(kind) = name.and_then(sniff::by_name) {
-        return is(kind, Confidence::Name);
-    }
-    if head.is_empty() {
-        return is(Kind::Empty, Confidence::Magic);
-    }
-    if let Some(kind) = table::by_magic(head) {
-        // An extension naming a format whose magic is a container's (a Max scene is an OLE file,
-        // an OLE file named `thumbs.db` was caught above) refines it.
-        if kind == Kind::Ole
-            && let Some(named) = table::by_extension(&ext)
-        {
-            return is(named, Confidence::Name);
-        }
-        return is(kind, Confidence::Magic);
-    }
-    if let Some(kind) = sniff::structured(head) {
-        return is(kind, Confidence::Magic);
-    }
-    if let Some(text) = sniff::text_of(head) {
-        return is(sniff::text_kind(text, &ext), Confidence::Magic);
-    }
-    if let Some(kind) = table::by_extension(&ext) {
-        return is(kind, Confidence::Name);
-    }
-    match sniff::heuristic(head) {
-        Some(kind) => is(kind, Confidence::Heuristic),
-        None => is(Kind::Unknown, Confidence::Magic),
-    }
+    HeadKind::of(head).identify(name)
 }

@@ -14,7 +14,7 @@ use std::io::{self, Cursor, Read, Seek, Write};
 use std::sync::{Arc, PoisonError, RwLock};
 
 pub use self::ingest::IngestStore;
-use crate::model::{BlobAccess, ByteView, ContentId};
+use crate::model::{BlobAccess, ByteView, ContentId, Head};
 
 /// The bytes of the empty blob, for its id: every store answers it without holding it, so no
 /// store writes or reads a file of no bytes, which `cacache` on Linux reads back as absent.
@@ -31,6 +31,14 @@ pub trait BlobStore: Send + Sync {
     /// check them: a run's reads of what it put or found whole (#ADR-0100).
     fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
         self.get(id)
+    }
+
+    /// The first `len` bytes under an id, fewer for a shorter blob, with the blob's whole
+    /// size, or nothing. Not checked against the id, which a part of the bytes cannot be. A
+    /// store on disk reads the part alone.
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        let bytes = self.get_unchecked(id)?;
+        Some(Head::of(&bytes, len))
     }
 
     /// Whether it holds bytes under an id. A store that can tell without reading them does.
@@ -89,6 +97,10 @@ impl<S: BlobStore + ?Sized> BlobAccess for S {
         self.get_unchecked(id)
     }
 
+    fn fetch_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        self.get_head(id, len)
+    }
+
     fn holds(&self, id: ContentId) -> bool {
         self.contains(id)
     }
@@ -105,6 +117,10 @@ impl<S: BlobStore + ?Sized> BlobStore for &S {
 
     fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
         (**self).get_unchecked(id)
+    }
+
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        (**self).get_head(id, len)
     }
 
     fn contains(&self, id: ContentId) -> bool {
@@ -129,6 +145,10 @@ impl<S: BlobStore + ?Sized> BlobStore for Arc<S> {
         (**self).get_unchecked(id)
     }
 
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        (**self).get_head(id, len)
+    }
+
     fn contains(&self, id: ContentId) -> bool {
         (**self).contains(id)
     }
@@ -149,6 +169,10 @@ impl<S: BlobStore + ?Sized> BlobStore for Box<S> {
 
     fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
         (**self).get_unchecked(id)
+    }
+
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        (**self).get_head(id, len)
     }
 
     fn contains(&self, id: ContentId) -> bool {
@@ -275,6 +299,11 @@ impl<T: BlobStore, U: BlobStore> BlobStore for Layered<T, U> {
     fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
         let top = self.top.get_unchecked(id);
         top.or_else(|| self.under.get_unchecked(id))
+    }
+
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        let top = self.top.get_head(id, len);
+        top.or_else(|| self.under.get_head(id, len))
     }
 
     fn contains(&self, id: ContentId) -> bool {

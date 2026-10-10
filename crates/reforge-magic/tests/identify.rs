@@ -1,7 +1,7 @@
 //! What `identify` makes of first bytes and names, the pitfalls first: the `r3d2` family, magics
 //! at an offset, short magics that text can start with, and the formats with no magic at all.
 
-use reforge_magic::{Confidence, HEAD_LEN, Kind, identify};
+use reforge_magic::{Confidence, HEAD_LEN, HeadKind, Kind, identify};
 
 fn kind(head: &[u8]) -> Kind {
     identify(head, None).kind
@@ -636,6 +636,61 @@ fn nothing_known_is_unknown() {
         how(OPAQUE, Some("a.xyz")),
         (Kind::Unknown, Confidence::Magic)
     );
+}
+
+#[test]
+fn what_the_head_says_keeps_what_the_name_decides_for_later() {
+    let tga = b"\0\0\x02\0\0\0\0\0\0\0\0\0\x00\x01";
+    let cases: [(&[u8], HeadKind); 7] = [
+        (b"", HeadKind::Empty),
+        (b"PROP\x03\0\0\0", HeadKind::Magic(Kind::PropertyBin)),
+        (b"{\"asset\": 1}", HeadKind::Object),
+        (b"[System]\nx=1\n", HeadKind::Section),
+        (b"some words", HeadKind::Text),
+        (tga, HeadKind::Heuristic(Kind::Tga)),
+        (OPAQUE, HeadKind::Unknown),
+    ];
+    let names = [
+        None,
+        Some("a.gltf"),
+        Some("a.troy"),
+        Some("a.md"),
+        Some("a.wem"),
+        Some("a.max"),
+        Some("x/Thumbs.db"),
+    ];
+    for (head, says) in cases {
+        assert_eq!(HeadKind::of(head), says, "{head:?}");
+        for name in names {
+            assert_eq!(
+                says.identify(name),
+                identify(head, name),
+                "{head:?} {name:?}"
+            );
+        }
+        let kept = serde_json::to_string(&says).expect("it writes");
+        assert_eq!(serde_json::from_str::<HeadKind>(&kept).ok(), Some(says));
+    }
+    assert_eq!(HeadKind::Object.identify(Some("a.gltf")).kind, Kind::Gltf);
+    assert_eq!(HeadKind::Section.identify(Some("a.troy")).kind, Kind::Troy);
+    assert_eq!(HeadKind::Text.identify(Some("a.md")).kind, Kind::Markdown);
+    assert_eq!(
+        how(tga, Some("a.wem")),
+        (Kind::Wem, Confidence::Name),
+        "a name before a heuristic"
+    );
+    assert_eq!(
+        HeadKind::Magic(Kind::Ole).identify(Some("a.max")).kind,
+        Kind::Max
+    );
+}
+
+#[test]
+fn the_head_is_read_to_its_length_and_no_further() {
+    let mut text = vec![b'a'; HEAD_LEN];
+    text.extend_from_slice(b"\0\x01\x02 binary after the head");
+    assert_eq!(HeadKind::of(&text), HeadKind::Text);
+    assert_eq!(kind(&text), Kind::Text);
 }
 
 #[test]

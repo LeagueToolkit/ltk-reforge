@@ -1,8 +1,7 @@
 //! The checks that are code: magics held to a value or at an offset, text read for what it says,
 //! names that say what a file is, and the heuristics for formats with no magic.
 
-use crate::Kind;
-use crate::table;
+use crate::{HeadKind, Kind};
 
 fn u16_le(head: &[u8], at: usize) -> Option<u16> {
     head.get(at..at + 2)
@@ -94,23 +93,19 @@ pub(crate) fn text_of(head: &[u8]) -> Option<&str> {
     (printable && !text.trim().is_empty()).then(|| text.trim_start())
 }
 
-/// The kind of a text file: what its opening says, else what its extension says, else plain text.
-pub(crate) fn text_kind(text: &str, ext: &str) -> Kind {
+/// What a text file's opening says: a kind, or a shape whose kind its name decides.
+pub(crate) fn text_head(text: &str) -> HeadKind {
     if text.starts_with("#PROP_text") {
-        return Kind::RitobinText;
+        return HeadKind::Magic(Kind::RitobinText);
     }
     if let Some(rest) = text.strip_prefix('{') {
         let rest = rest.trim_start();
         let bin = rest.starts_with("\"entries\"")
             || (rest.starts_with("\"type\"") && text.contains("PROP"));
         if bin {
-            return Kind::RitobinJson;
+            return HeadKind::Magic(Kind::RitobinJson);
         }
-        return if ext == "gltf" {
-            Kind::Gltf
-        } else {
-            Kind::Json
-        };
+        return HeadKind::Object;
     }
     if let Some(rest) = text.strip_prefix('[') {
         // `[Section]` on its first line is INI; `[` then a value is a JSON array.
@@ -118,32 +113,32 @@ pub(crate) fn text_kind(text: &str, ext: &str) -> Kind {
         let section = line.starts_with(|c: char| c.is_ascii_alphabetic() || c == '.' || c == '_')
             && line.contains(']');
         if !section {
-            return Kind::Json;
+            return HeadKind::Magic(Kind::Json);
         }
         if line.starts_with(".ShellClassInfo") {
-            return Kind::DesktopIni;
+            return HeadKind::Magic(Kind::DesktopIni);
         }
-        return if ext == "troy" { Kind::Troy } else { Kind::Ini };
+        return HeadKind::Section;
     }
     if text.starts_with("<svg") || (text.starts_with("<?xml") && text.contains("<svg")) {
-        return Kind::Svg;
+        return HeadKind::Magic(Kind::Svg);
     }
     if text.starts_with("<?xml") {
-        return Kind::Xml;
+        return HeadKind::Magic(Kind::Xml);
     }
     // `get`, not a slice: the fifth byte of a mod's text may be inside a character.
     if text.get(..5).is_some_and(|open| {
         open.eq_ignore_ascii_case("<!doc") || open.eq_ignore_ascii_case("<html")
     }) {
-        return Kind::Html;
+        return HeadKind::Magic(Kind::Html);
     }
     if text.starts_with("; FBX") {
-        return Kind::FbxAscii;
+        return HeadKind::Magic(Kind::FbxAscii);
     }
     if text.starts_with("#!") {
-        return Kind::Script;
+        return HeadKind::Magic(Kind::Script);
     }
-    table::by_text_extension(ext).unwrap_or(Kind::Text)
+    HeadKind::Text
 }
 
 /// A name that says what the file is whatever it holds: the leftovers of file browsers.

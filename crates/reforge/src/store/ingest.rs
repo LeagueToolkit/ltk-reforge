@@ -12,7 +12,7 @@
 //! process that writes it and a random part. The file is removed when its reader is dropped,
 //! on an error too, and a file whose process is gone is removed when the store is next opened.
 
-use std::io::{self, BufWriter, Seek, SeekFrom, Write};
+use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::time::{Duration, SystemTime};
 
 use cacache::{Algorithm, Integrity};
@@ -21,7 +21,7 @@ use fs_err as fs;
 use tempfile::NamedTempFile;
 
 use super::{BlobStore, ReadSeek, Spool, empty_blob};
-use crate::model::{ByteView, ContentId};
+use crate::model::{ByteView, ContentId, Head};
 
 /// The directory of the spools' scratch files, beside the blobs.
 const SCRATCH: &str = "scratch";
@@ -203,6 +203,20 @@ impl BlobStore for IngestStore {
     fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
         let read = || fs::read(self.blob_file(id)).ok().map(ByteView::from);
         empty_blob(id).or_else(read)
+    }
+
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        if let Some(empty) = empty_blob(id) {
+            return Some(Head::of(&empty, len));
+        }
+        let file = fs::File::open(self.blob_file(id)).ok()?;
+        let size = file.metadata().ok()?.len();
+        let mut bytes = Vec::new();
+        file.take(len as u64).read_to_end(&mut bytes).ok()?;
+        Some(Head {
+            bytes: ByteView::from(bytes),
+            size,
+        })
     }
 
     fn contains(&self, id: ContentId) -> bool {

@@ -2,6 +2,7 @@
 //! id of its bytes, a stage fetches them where it reads them, and a carried file is named by
 //! its id in the package and fetched by the writer. The game is `reforge_testkit::skins`.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -9,7 +10,8 @@ use camino::{Utf8Path, Utf8PathBuf};
 use reforge::diag::{Diag, DiagnosticPolicy, Stage};
 use reforge::env::Env;
 use reforge::history::NoHistory;
-use reforge::model::{ByteView, ContentId};
+use reforge::model::entity::FileKind;
+use reforge::model::{ByteView, ContentId, Head};
 use reforge::package::{Origin, PackageWriter, ProjectDir};
 use reforge::porter::WorkingSetCapped;
 use reforge::snapshot::RawCache;
@@ -219,6 +221,80 @@ fn a_blob_lost_while_a_writer_reads_it_leaves_nothing_written() {
     };
     assert_eq!(stage, Stage::Write);
     assert_eq!(fs_err::read_dir(&out).expect("the output").count(), 0);
+}
+
+/// A store that counts, by id, the reads of a whole blob and the reads of its head.
+#[derive(Default)]
+struct Counted {
+    blobs: MemoryStore,
+    whole: Mutex<BTreeMap<ContentId, usize>>,
+    heads: Mutex<BTreeMap<ContentId, usize>>,
+}
+
+impl BlobStore for Counted {
+    fn get(&self, id: ContentId) -> Option<ByteView> {
+        *self.whole.lock().expect("the lock").entry(id).or_default() += 1;
+        self.blobs.get(id)
+    }
+
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        *self.heads.lock().expect("the lock").entry(id).or_default() += 1;
+        self.blobs.get_head(id, len)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        self.blobs.contains(id)
+    }
+
+    fn put(&self, bytes: ByteView) -> ContentId {
+        self.blobs.put(bytes)
+    }
+}
+
+#[test]
+fn load_reads_a_files_kind_from_its_head_and_the_inventory_reads_nothing_again() {
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let counted = Arc::new(Counted::default());
+    let mut log = reforge::diag::Diagnostics::new();
+    let caps = reforge::archive::Caps::default();
+    let raw = reforge::archive::read(
+        &own_mod(),
+        FILE_NAME,
+        &caps,
+        &*counted,
+        &mut log.at(Stage::Read),
+    );
+    let mut run = porter
+        .resume(raw.expect("it reads"), Arc::clone(&counted))
+        .expect("the run starts");
+    run.load().expect("the store answers");
+    assert!(run.inventory().is_some(), "a port takes the inventory");
+
+    let texture = ContentId::of(&blob(OWN_TEX));
+    let read = |counts: &Mutex<BTreeMap<ContentId, usize>>, id| {
+        counts.lock().expect("the lock").get(&id).copied()
+    };
+    assert_eq!(
+        read(&counted.heads, texture),
+        Some(1),
+        "one head, for its kind"
+    );
+    assert_eq!(read(&counted.whole, texture), None, "no whole read");
+    let m = run.module().expect("the mod");
+    let skin = m.files.values().find(|file| file.kind == FileKind::Bin);
+    let skin = skin.expect("the skin bin").content;
+    assert_eq!(read(&counted.heads, skin), Some(1));
+    assert!(
+        read(&counted.whole, skin).is_some(),
+        "a bin is parsed whole"
+    );
+    let sized = m.files.values().find(|file| file.content == texture);
+    assert_eq!(
+        sized.map(|file| file.size),
+        Some(blob(OWN_TEX).len() as u64),
+        "the size is the whole blob's"
+    );
 }
 
 /// [`over_losing`] for a repair, whose package keeps the mod's files by id.

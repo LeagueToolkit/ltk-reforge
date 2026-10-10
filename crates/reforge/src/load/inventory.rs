@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use reforge_magic::{Categories, Confidence, HEAD_LEN, Kind, identify};
+use reforge_magic::{Categories, Confidence, Kind, identify};
 use serde::{Deserialize, Serialize};
 
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Sink, Subject};
@@ -138,10 +138,6 @@ fn is_meta(name: &str) -> bool {
     lower == "meta/info.json" || lower.starts_with("meta/image.")
 }
 
-fn head(bytes: &[u8]) -> &[u8] {
-    &bytes[..bytes.len().min(HEAD_LEN)]
-}
-
 impl Inventory {
     /// The inventory of a mod. `names` spells the path of a chunk the archive names by its
     /// hash: the only way to know a file with no magic, such as a WAD's `.subchunktoc`.
@@ -154,7 +150,9 @@ impl Inventory {
             }
             let path = file.path.as_ref().map(ToString::to_string);
             let path = path.or_else(|| names.path(file.hash));
-            let identity = identify(head(&m.bytes(id)), path.as_deref());
+            // What the store knows of the file's bytes: `load` read their head once.
+            let facts = m.blobs().facts_of(file.content);
+            let identity = facts.kind.identify(path.as_deref());
             out.by_kind.entry(identity.kind).or_default().add(file.size);
             let named_bin = path
                 .as_deref()
@@ -175,7 +173,7 @@ impl Inventory {
             }
         }
         for extra in m.extras.iter().filter(|x| !is_meta(x.name.raw())) {
-            let identity = identify(head(&extra.head), Some(extra.name.raw()));
+            let identity = identify(&extra.head, Some(extra.name.raw()));
             out.by_kind
                 .entry(identity.kind)
                 .or_default()
