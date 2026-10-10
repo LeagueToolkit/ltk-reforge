@@ -8,7 +8,7 @@
 //!
 //! `docs/design/ARCHITECTURE.md`, "Shape".
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Write as _};
 
 use camino::Utf8Path;
@@ -25,7 +25,7 @@ use crate::game::{GameError, NameBook, Speller};
 use crate::load::{
     Dating, Fault, FileProvenance, Inventory, LoadError, LoadOptions, Loader, ReworkTable, against,
 };
-use crate::model::Mod;
+use crate::model::{ByteView, ContentId, Mod};
 use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
@@ -33,7 +33,7 @@ use crate::package::{
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
 use crate::snapshot::{self, LoadSettings, LoadSnapshot, LoadState, ResumeError, Setting};
-use crate::store::{BlobStore, MemoryStore};
+use crate::store::{BlobStore, Layered, MemoryStore};
 
 /// The name the second run of a repair reads the first run's package under.
 const REPAIRED_NAME: &str = "repaired.fantome";
@@ -498,7 +498,9 @@ pub struct Run<'a> {
     known: Option<Evidence>,
     log: Diagnostics,
     book: NameBook,
-    store: Box<dyn BlobStore>,
+    /// The run's memory layer over the caller's store (#ADR-0093): every byte a stage makes
+    /// goes into the layer, and the caller flushes it.
+    store: Layered<MemoryStore, Box<dyn BlobStore>>,
     /// Where the findings of `read` begin in the log.
     first: usize,
     raw: Option<RawSnapshot>,
@@ -528,7 +530,7 @@ impl<'a> Run<'a> {
             known: None,
             log: Diagnostics::new(),
             book: NameBook::new(),
-            store: Box::new(MemoryStore::new()),
+            store: Layered::new(MemoryStore::new(), Box::new(MemoryStore::new())),
             first: 0,
             raw: None,
             loaded: None,
@@ -564,11 +566,13 @@ impl<'a> Run<'a> {
         self
     }
 
-    /// Reads the archive's bytes into this store, in place of a memory store of the run's own
-    /// (#ADR-0093).
+    /// Reads through to this store under the run's memory layer, in place of an empty one
+    /// (#ADR-0093). Nothing is written into it: the caller flushes the layer
+    /// ([`Run::into_layer`]).
     #[must_use]
     pub fn in_store(mut self, store: impl BlobStore + 'static) -> Self {
-        self.store = Box::new(store);
+        let (layer, _) = self.store.into_parts();
+        self.store = Layered::new(layer, Box::new(store));
         self
     }
 
@@ -587,7 +591,7 @@ impl<'a> Run<'a> {
         self.first = self.log.len();
         let mut sink = self.log.at(Stage::Read);
         let caps = &self.settings.caps;
-        let raw = archive::read(bytes, file_name, caps, &*self.store, &mut sink)?;
+        let raw = archive::read(bytes, file_name, caps, &self.store, &mut sink)?;
         Ok(self.raw.insert(raw))
     }
 
@@ -597,7 +601,7 @@ impl<'a> Run<'a> {
         self.first = self.log.len();
         let mut sink = self.log.at(Stage::Read);
         let caps = &self.settings.caps;
-        let raw = archive::read_file(path, caps, &*self.store, &mut sink)?;
+        let raw = archive::read_file(path, caps, &self.store, &mut sink)?;
         Ok(self.raw.insert(raw))
     }
 
@@ -635,7 +639,7 @@ impl<'a> Run<'a> {
             Start::Load(load) => {
                 let inputs = snapshot::LoadInputs::of(self.env);
                 load.holds(&inputs, &self.load_settings())?;
-                let reopened = load.reopen(&*self.store)?;
+                let reopened = load.reopen(&self.store)?;
                 self.log.restore(load.findings(), &codes)?;
                 self.book = reopened.names;
                 self.dating = Some(reopened.dating);
@@ -679,7 +683,7 @@ impl<'a> Run<'a> {
         let mut loader = Loader::new(env).options(options).book(book);
         let mut sink = self.log.at(Stage::Load);
         let raw = held(self.raw.as_ref(), Stage::Load, Stage::Read)?;
-        let mut module = match loader.open(raw, &*self.store) {
+        let mut module = match loader.open(raw, &self.store) {
             Ok(module) => module,
             Err(error) => {
                 self.book = loader.into_names();
@@ -758,7 +762,7 @@ impl<'a> Run<'a> {
             self.env,
             self.load_settings(),
             findings,
-            &*self.store,
+            &self.store,
         )
     }
 
@@ -1173,9 +1177,16 @@ impl<'a> Run<'a> {
         self.loaded.as_ref()
     }
 
-    /// The store the run's bytes are in.
+    /// The store the run's bytes are in: its memory layer over the caller's store.
     pub fn store(&self) -> &dyn BlobStore {
-        &*self.store
+        &self.store
+    }
+
+    /// The blobs of the run's memory layer, every byte its stages made, for the caller to
+    /// flush into a store of its own (#ADR-0093).
+    pub fn into_layer(self) -> BTreeMap<ContentId, ByteView> {
+        let (layer, _) = self.store.into_parts();
+        layer.into_blobs()
     }
 
     /// The mod as far as the run took it: fixed, else as `load` left it, else as far as a

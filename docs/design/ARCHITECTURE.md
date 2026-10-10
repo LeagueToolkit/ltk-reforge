@@ -72,9 +72,12 @@ let report = run.report();
   what the inputs raised when the environment was built, or one with a listener.
 - **Each method hands its stage the stage's sink and options** and gives the stage's result.
   `run.read` is `archive::read(bytes, file_name, &caps, &store, &mut sink)`: the archive's
-  bytes are borrowed, so the caller holds them once and drops them after the call, and the
-  entries' bytes go into the run's store, a `MemoryStore` unless the caller gave one
-  (`Run::in_store`). `run.read_file` reads an archive file. `load` opens the mod from the
+  bytes are borrowed, so the caller holds them once and drops them after the call. The
+  run's store is a memory layer of its own over the caller's store (`Run::in_store`, an
+  empty `MemoryStore` unless given), and every byte a stage makes, the entries' among them,
+  goes into the layer and none into the store under it (#ADR-0093). `Run::into_layer` gives
+  the layer's blobs, which the caller flushes into a store it keeps; a run dropped leaves
+  nothing. `run.read_file` reads an archive file. `load` opens the mod from the
   raw snapshot and the store, and the run keeps the raw snapshot and, when `load` ends, the
   load snapshot beside it (#ADR-0094).
 - **A run starts from a snapshot in place of `read`** (#ADR-0094). `run.resume(from)`, or

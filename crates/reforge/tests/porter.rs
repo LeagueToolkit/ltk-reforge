@@ -1045,9 +1045,9 @@ fn load_tables(report: &serde_json::Value) -> Vec<serde_json::Value> {
     tables.iter().map(|table| report[table].clone()).collect()
 }
 
-/// #ADR-0094: a run through `write`, and one that read and loaded the archive into a store,
-/// kept its load snapshot as JSON and was dropped, then resumed from the snapshot and from the
-/// raw snapshot, write one report and one package, byte for byte.
+/// #ADR-0094: a run through `write`, and one that read and loaded the archive, kept its load
+/// snapshot as JSON and flushed its layer into a store, then resumed from the snapshot and
+/// from the raw snapshot, write one report and one package, byte for byte.
 fn resumed_runs_write_as_the_straight_run<'p>(
     run: impl Fn() -> Run<'p>,
     resume: impl Fn(Start, Arc<MemoryStore>) -> Result<Run<'p>, ResumeError>,
@@ -1065,7 +1065,7 @@ fn resumed_runs_write_as_the_straight_run<'p>(
     first.load().expect("the mod loads");
     let raw = first.archive().cloned().expect("the raw snapshot");
     let json = first.load_snapshot().expect("the load snapshot").to_json();
-    drop(first);
+    flush(first, &store);
 
     let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
     assert_eq!(
@@ -1162,8 +1162,16 @@ fn legacy_snapshot(porter: &Porter<'_>) -> (String, Arc<MemoryStore>) {
     run.read(&legacy_archive().build(), FILE_NAME)
         .expect("the archive reads");
     run.load().expect("the mod loads");
-    let snapshot = run.load_snapshot().expect("the load snapshot");
-    (snapshot.to_json(), store)
+    let json = run.load_snapshot().expect("the load snapshot").to_json();
+    flush(run, &store);
+    (json, store)
+}
+
+/// Puts a run's memory layer into a store under it, as a caller that keeps the run does.
+fn flush(run: Run<'_>, store: &MemoryStore) {
+    for bytes in run.into_layer().into_values() {
+        store.put(bytes);
+    }
 }
 
 /// The snapshot of `json` with one field set to another value.
@@ -1273,6 +1281,28 @@ fn a_snapshot_written_by_a_build_with_no_commit_is_refused() {
     let other = edited(&json, "program", "commit", serde_json::Value::Null);
     let refused = porter.resume(other, store).map(drop);
     assert!(matches!(refused, Err(ResumeError::Uncommitted)));
+}
+
+#[test]
+fn a_run_writes_every_byte_into_its_layer_and_none_into_the_store_under_it() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let store = Arc::new(MemoryStore::new());
+    let mut run = porter.run().in_store(Arc::clone(&store));
+    run.read(&legacy_archive().build(), FILE_NAME)
+        .expect("the archive reads");
+    run.through(Stage::Check).expect("no fault");
+    assert!(store.is_empty(), "the store under the layer");
+    let files = run
+        .load_snapshot()
+        .expect("the load snapshot")
+        .part()
+        .files
+        .clone();
+    let layer = run.into_layer();
+    let made = files.iter().filter(|f| f.source != FileSource::Archive);
+    assert!(made.count() > 0, "load made a file");
+    assert!(files.iter().all(|f| layer.contains_key(&f.content)));
 }
 
 #[test]
