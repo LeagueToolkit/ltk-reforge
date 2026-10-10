@@ -4,9 +4,13 @@
 
 use std::fmt::Write as _;
 
+use ltk_meta::property::values::Struct;
+use ltk_meta::{BinObject, PropertyValueEnum};
+
 use super::entity::{CharKind, FileKind, FileSource, LinkTo, Mod, WadLayout, WadRole};
 use super::names::Spell;
 use super::text::clean;
+use super::value::kind_name;
 
 /// What a dump is written with.
 pub struct DumpCx<'a> {
@@ -58,6 +62,107 @@ impl Mod {
             Some(path) => path.to_string(),
             None => clean(&names.path_or_hex(node.hash)).into_owned(),
         }
+    }
+}
+
+/// One object of a bin as text: its entry and class, then each field with its kind and its
+/// value, a struct, a list or a map over the lines that follow, indented. Hashes are spelled
+/// where `names` spells them, else hex. Cleaned: a string and a name the run learnt are a mod's.
+pub fn dump_object(object: &BinObject, names: &dyn Spell) -> String {
+    let mut out = String::new();
+    let _ = write!(
+        out,
+        "{} = {} ",
+        names.entry_or_hex(object.path_hash),
+        names.class_or_hex(object.class_hash)
+    );
+    fields(&mut out, object.properties.iter(), names, 0);
+    out.push('\n');
+    clean(&out).into_owned()
+}
+
+/// Fields between braces, one a line, at a depth of indent.
+fn fields<'a>(
+    out: &mut String,
+    fields: impl ExactSizeIterator<Item = (&'a super::BinHash, &'a PropertyValueEnum)>,
+    names: &dyn Spell,
+    depth: usize,
+) {
+    if fields.len() == 0 {
+        out.push_str("{}");
+        return;
+    }
+    out.push_str("{\n");
+    for (field, value) in fields {
+        indent(out, depth + 1);
+        let _ = write!(
+            out,
+            "{}: {} = ",
+            names.field_or_hex(*field),
+            kind_name(value.kind())
+        );
+        value_text(out, value, names, depth + 1);
+        out.push('\n');
+    }
+    indent(out, depth);
+    out.push('}');
+}
+
+fn indent(out: &mut String, depth: usize) {
+    out.extend(std::iter::repeat_n("    ", depth));
+}
+
+/// A struct or an embed: its class and its fields, or `null` for a struct of no class.
+fn struct_text(out: &mut String, value: &Struct, names: &dyn Spell, depth: usize) {
+    if value.class_hash.0 == 0 {
+        out.push_str("null");
+        return;
+    }
+    let _ = write!(out, "{} ", names.class_or_hex(value.class_hash));
+    fields(out, value.properties.iter(), names, depth);
+}
+
+/// Items between braces, one a line, each written by `item`.
+fn items<T>(out: &mut String, items: &[T], depth: usize, mut item: impl FnMut(&mut String, &T)) {
+    if items.is_empty() {
+        out.push_str("{}");
+        return;
+    }
+    out.push_str("{\n");
+    for each in items {
+        indent(out, depth + 1);
+        item(out, each);
+        out.push('\n');
+    }
+    indent(out, depth);
+    out.push('}');
+}
+
+fn value_text(out: &mut String, value: &PropertyValueEnum, names: &dyn Spell, depth: usize) {
+    use PropertyValueEnum as V;
+    match value {
+        V::Struct(s) => struct_text(out, s, names, depth),
+        V::Embedded(e) => struct_text(out, &e.0, names, depth),
+        V::Container(c) => items(out, c.items(), depth, |out, item| {
+            value_text(out, item, names, depth + 1);
+        }),
+        V::UnorderedContainer(c) => items(out, c.0.items(), depth, |out, item| {
+            value_text(out, item, names, depth + 1);
+        }),
+        V::Optional(o) => match o.value() {
+            Some(inner) => value_text(out, inner, names, depth),
+            None => out.push_str("none"),
+        },
+        V::Map(m) => items(out, m.entries(), depth, |out, (key, item)| {
+            value_text(out, key, names, depth + 1);
+            out.push_str(" = ");
+            value_text(out, item, names, depth + 1);
+        }),
+        V::String(s) => {
+            let _ = write!(out, "{:?}", s.value);
+        }
+        V::ObjectLink(l) if l.value.0 == 0 => out.push_str("null"),
+        other => out.push_str(&super::value::brief(other, names)),
     }
 }
 

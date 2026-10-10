@@ -1,9 +1,11 @@
-//! Bins read from bytes: the objects in file order and the two digests of each.
+//! Bins read from bytes: the objects in file order and the two digests of each, and an object
+//! as text.
 
 use ltk_meta::property::values;
-use ltk_meta::{Bin, BinObject};
+use ltk_meta::{Bin, BinObject, PropertyValueEnum};
 use reforge::model::bin::{self, BinError};
-use reforge::model::{ContentId, name_hash};
+use reforge::model::dump::dump_object;
+use reforge::model::{BinHash, ContentId, Spell, WadHash, name_hash};
 
 fn object(entry: &str, skin_name: &str) -> BinObject {
     BinObject::builder(name_hash(entry), name_hash("SkinCharacterDataProperties"))
@@ -141,4 +143,86 @@ fn every_prefix_of_a_bin_reads_or_is_refused_and_never_panics() {
         );
     }
     assert!(bin::parse(&bytes).is_ok());
+}
+
+/// Spells the hashes of these names, every kind alike.
+struct Known(Vec<&'static str>);
+
+impl Known {
+    fn find(&self, hash: BinHash) -> Option<String> {
+        let known = self.0.iter().find(|name| name_hash(name) == hash);
+        known.map(|name| (*name).to_string())
+    }
+}
+
+impl Spell for Known {
+    fn path(&self, _: WadHash) -> Option<String> {
+        None
+    }
+
+    fn entry(&self, hash: BinHash) -> Option<String> {
+        self.find(hash)
+    }
+
+    fn field(&self, hash: BinHash) -> Option<String> {
+        self.find(hash)
+    }
+
+    fn class(&self, hash: BinHash) -> Option<String> {
+        self.find(hash)
+    }
+}
+
+#[test]
+fn an_object_dumps_as_its_fields_with_their_kinds_names_spelled_and_text_cleaned() {
+    let mesh = values::Struct {
+        class_hash: name_hash("SkinMeshDataProperties"),
+        properties: [(
+            name_hash("skeleton"),
+            PropertyValueEnum::String(values::String::from("assets/a.skl")),
+        )]
+        .into_iter()
+        .collect(),
+    };
+    let object = BinObject::builder(
+        name_hash("Characters/Lux/Skins/Skin0"),
+        name_hash("SkinCharacterDataProperties"),
+    )
+    .property(
+        name_hash("championSkinName"),
+        values::String::from("Lux\u{202e}"),
+    )
+    .property(
+        name_hash("skinMeshProperties"),
+        PropertyValueEnum::Embedded(values::Embedded(mesh)),
+    )
+    .property(
+        name_hash("unspelled"),
+        PropertyValueEnum::ObjectLink(values::ObjectLink::new(name_hash("Characters/Lux"))),
+    )
+    .build();
+    let names = Known(vec![
+        "Characters/Lux/Skins/Skin0",
+        "SkinCharacterDataProperties",
+        "championSkinName",
+        "skinMeshProperties",
+        "SkinMeshDataProperties",
+        "skeleton",
+        "Characters/Lux",
+    ]);
+
+    let text = dump_object(&object, &names);
+
+    let unspelled = format!("{:08x}", name_hash("unspelled").0);
+    let expected = format!(
+        "Characters/Lux/Skins/Skin0 = SkinCharacterDataProperties {{
+    championSkinName: String = \"Lux\\u{{202e}}\"
+    skinMeshProperties: Embed = SkinMeshDataProperties {{
+        skeleton: String = \"assets/a.skl\"
+    }}
+    {unspelled}: Link = Characters/Lux
+}}
+"
+    );
+    assert_eq!(text, expected);
 }
