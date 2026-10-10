@@ -1830,3 +1830,26 @@ index's one build, each as its own run recorded it:
 - **The class of each struct** (#MOD-ARTIFACT-0039): `check.class-undeclared` in 231 repairs,
   `check.field-undeclared` gone from 198 and `check.done` counting fewer in 205;
   `check.type-mismatch` in 8 repairs and 5 ports, the gear condition's among them.
+
+## The load snapshot (2026-10-10)
+
+The branch `run-state-store` with the report's new inputs and the load snapshot (#ADR-0094),
+against the 16.19.8207193 copy and the app's index of 758 builds (head `d991890173fb`), at 24
+in parallel with one thread each, over the reduced corpus, compared with `baseline-port-6` and
+`baseline-repair-6`. Every run writes its load snapshot at the end of `load` and resumes from
+none; the resumed run is the test's (`tests/porter.rs`).
+
+| run | command | done | ended by a fatal diagnostic | time | the raw snapshot's run |
+|---|---|---:|---|---|---|
+| `load-snapshot-port` | `port --no-write` | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 35 s | 34 s |
+| `load-snapshot-repair` | `repair --no-write --again` | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 49 s | 45 s |
+
+- **Against the baselines** (`load-snapshot-{port,repair}-vs-baseline-6`, expected:
+  `run schema_build`, `run names`): the 68 mods of each command differ in the report's inputs
+  alone, 136 differences each, all expected. The inputs name the schema's newest build,
+  8248524, and the hash tables' stamp: the five tables of the hash cache at version
+  2026-10-05, each by its manifest's SHA-256, and no text table. Nothing else differs, and
+  the exits are the baselines', mod for mod.
+- **Time.** The times are within a few seconds of the raw snapshot's runs over the same mods;
+  another session worked in the same tree during the runs, so the 4 s of the repair are not
+  read as the snapshot's cost.
