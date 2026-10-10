@@ -23,10 +23,12 @@ The raw snapshot is a cache the corpus scripts may populate once and read in eve
 - The cache is a blob store with a table of archive SHA-256 to raw snapshot. A run that finds
   its archive's snapshot there skips read and the unpacking half of load; one that does not
   reads the archive as today, and writes the snapshot when asked to.
-- A cache entry's key is the archive's SHA-256 and the raw reading's version: one number,
-  raised when the zip or WAD reading, the hashing or the raw snapshot's shape changes, so that
-  a fix to the reader is a miss and not a stale hit. No build, no index, no setting and no
-  program commit is part of the key, because none is part of what the raw snapshot holds.
+- A cache entry's key is the archive's SHA-256, the raw reading's version and the caps the
+  archive was read under. The version is one number, raised when the zip or WAD reading, the
+  hashing or the raw snapshot's shape changes, so that a fix to the reader is a miss and not
+  a stale hit. The caps are in the key because what `read` inflates and refuses is theirs,
+  and the raw snapshot records them. No build, no index, no other setting and no program
+  commit is part of the key, because none is part of what the raw snapshot holds.
 - The cache is invisible in the output. A corpus run with the cache and one without give equal
   reports for every mod. This is checked by comparing the two runs as a change is compared
   with a baseline, and the check is run once when the cache lands and once whenever the raw
