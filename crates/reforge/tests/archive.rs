@@ -709,13 +709,30 @@ fn a_packed_wad_over_a_cap_is_not_read() {
         unreadable.entries[0].why,
         PackedError::TooManyChunks { chunks: 2, cap: 1 }
     );
+}
 
+#[test]
+fn a_packed_wad_with_a_chunk_over_the_cap_for_one_chunk_is_skipped() {
+    // #ADR-0100: the cap on one chunk bounds what a read holds at once.
+    let chunk = vec![3u8; 2000];
+    let wad = packed_wad(&[("data/a.bin", &chunk), ("data/b.bin", b"small")]);
+    let bytes = zip(&[
+        ("WAD/Lux.wad.client", &wad, STORED),
+        ("WAD/Ahri.wad.client/data/x.bin", &chunk, STORED),
+    ]);
     let small_chunks = Caps {
-        entry_bytes: 1000,
+        chunk_bytes: 1000,
         ..Caps::default()
     };
     let (archive, log) = read_with(&bytes, &small_chunks);
-    assert_eq!(archive.unwrap().wads.len(), 1);
+    let archive = archive.unwrap();
+    assert_eq!(archive.wads.len(), 1, "the archive is read on without it");
+    assert_eq!(archive.wads[0].name.as_str(), "Ahri.wad.client");
+    assert_eq!(
+        &*archive.bytes_at(0, "data/x.bin"),
+        &chunk[..],
+        "a loose entry is under the cap for one entry"
+    );
     assert_eq!(
         one::<WadUnreadable>(&log).entries[0].why,
         PackedError::ChunkTooLarge {
@@ -724,6 +741,7 @@ fn a_packed_wad_over_a_cap_is_not_read() {
             cap: 1000
         }
     );
+    assert_eq!(codes(&log), ["archive.wad-unreadable"]);
 }
 
 #[test]

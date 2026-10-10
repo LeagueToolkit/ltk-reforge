@@ -47,7 +47,7 @@ use crate::store::BlobStore;
 
 /// The raw reading's version (#ADR-0095): one number, raised when the zip or WAD reading, the
 /// hashing or the snapshot's shape changes.
-pub const RAW_VERSION: u32 = 3;
+pub const RAW_VERSION: u32 = 4;
 
 /// One file of a WAD, as the reader holds it: its bytes are in the store from the moment they
 /// are inflated, and the reader keeps their id alone (#ADR-0100).

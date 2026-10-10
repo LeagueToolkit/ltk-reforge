@@ -6,8 +6,11 @@ use serde::{Deserialize, Serialize};
 /// Bounds on what one archive may make a run read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Caps {
-    /// Bytes of one entry, and of one chunk of a packed WAD, inflated.
+    /// Bytes of one entry, inflated.
     pub entry_bytes: u64,
+    /// Bytes of one chunk of a packed WAD, decompressed: what a read holds in memory at once
+    /// with a store on disk (#ADR-0100).
+    pub chunk_bytes: u64,
     /// Entries of the archive.
     pub entries: usize,
     /// Bytes of all entries and chunks together, inflated.
@@ -23,10 +26,13 @@ impl Default for Caps {
     // bytes, its one entry a stored packed WAD of 439,570,394; the largest chunk inflates to
     // 304,352,832; one archive inflates to 1,056,182,694 in all; the most entries is 2,033 and
     // the most chunks of a packed WAD 5,261. The game at 16.19: the largest WAD holds 90,012
-    // chunks, and its largest champion WAD inflates to some 760 MB.
+    // chunks, and its largest champion WAD inflates to some 760 MB. The chunk cap (#ADR-0100):
+    // the largest of the 1,491,566 files of `baseline-port-6` (2026-10-10) is that chunk,
+    // 304,352,832 bytes, and none is over 512 MiB.
     fn default() -> Self {
         Self {
             entry_bytes: 1 << 30,
+            chunk_bytes: 1 << 29,
             entries: 1 << 18,
             total_bytes: 4 << 30,
             packed_chunks: 1 << 18,

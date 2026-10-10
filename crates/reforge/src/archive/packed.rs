@@ -239,11 +239,11 @@ impl<R: Read + Seek> Mounted<'_, R> {
     fn chunk(&mut self, entry: &WadChunk, budget: &mut Budget) -> Result<Box<[u8]>, PackedFailure> {
         let chunk = entry.path_hash();
         let bytes = declared_size(entry);
-        if bytes > self.caps.entry_bytes {
+        if bytes > self.caps.chunk_bytes {
             return Err(PackedError::ChunkTooLarge {
                 chunk,
                 bytes,
-                cap: self.caps.entry_bytes,
+                cap: self.caps.chunk_bytes,
             }
             .into());
         }
