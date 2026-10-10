@@ -1,7 +1,7 @@
 //! The app's store (#ADR-0096): the runs it keeps, their snapshots and the bytes they name, in
 //! one folder of the app's data folder.
 //!
-//! - `ingest/`: the ingest tier, the library's raw cache (#ADR-0095), shared with the command.
+//! - `ingest/`: the ingest tier, the library's raw cache (#ADR-0095).
 //! - `run-tier/`: the run tier, what runs make ([`RunTier`]).
 //! - `runs.sqlite3`: the rows, three groups after #ADR-0094's, each naming the one before it
 //!   by key.
@@ -11,14 +11,20 @@
 
 mod tier;
 
+use std::collections::BTreeMap;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use parking_lot::Mutex;
-use reforge::snapshot::RawCache;
-use rusqlite::{Connection, OptionalExtension};
+use reforge::archive::RawSnapshot;
+use reforge::model::{ByteView, ContentId, Spelled};
+use reforge::report::Report;
+use reforge::snapshot::{self, LoadSnapshot, RawCache, Snapshots, StageSnapshot};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 pub use self::tier::{KEYSPACE, RunTier};
 use crate::error::AppError;
+use crate::run::{RunKind, RunSettings};
 
 /// The format of the rows: one number for the shape of the three groups, raised when it
 /// changes (#ADR-0096).
@@ -32,6 +38,9 @@ pub const INGEST_DIR: &str = "ingest";
 
 /// The run tier's folder, in the store's folder.
 pub const RUN_TIER_DIR: &str = "run-tier";
+
+/// The zstd level of the rows' JSON: the library's default, fast to write on every save.
+const ZSTD_LEVEL: i32 = 3;
 
 /// The files SQLite keeps beside a database, which go where it goes.
 const SIDE_FILES: [&str; 3] = ["-journal", "-wal", "-shm"];
@@ -83,8 +92,29 @@ CREATE INDEX run_blob_id ON run_blob(id);
 pub struct AppStore {
     ingest: RawCache,
     tier: RunTier,
-    #[expect(dead_code, reason = "the save and the reads land next")]
     rows: Mutex<Connection>,
+}
+
+/// What a run that wrote its package leaves to keep (#ADR-0096).
+pub struct Saved {
+    /// The raw snapshot the run started from.
+    pub raw: RawSnapshot,
+    /// The path the archive was read from.
+    pub path: Utf8PathBuf,
+    /// The snapshots from `load` on.
+    pub snapshots: Snapshots,
+    /// The run's report.
+    pub report: Report,
+    /// A repair or a port.
+    pub kind: RunKind,
+    /// The settings the request gave.
+    pub settings: RunSettings,
+    /// The schema database's build, as the inputs report it.
+    pub schema_build: Option<String>,
+    /// The `.modpkg` written.
+    pub package: Option<String>,
+    /// The run's memory layer: every byte its stages made, by id.
+    pub layer: BTreeMap<ContentId, ByteView>,
 }
 
 impl AppStore {
@@ -112,6 +142,120 @@ impl AppStore {
     pub fn tier(&self) -> &RunTier {
         &self.tier
     }
+
+    /// Keeps a run that wrote its package, and answers its number. The layer is flushed into
+    /// the run tier first and the rows written after it in one transaction, so a row never
+    /// names a byte the tier lacks: the raw row (its path the last one read), the load row,
+    /// shared by every run of its key, the run row and the ids of its layer.
+    pub fn save(&self, saved: Saved) -> Result<u64, AppError> {
+        let mut rows = self.rows.lock();
+        self.tier.flush(&saved.layer)?;
+        let tx = rows.transaction()?;
+        let id = insert_run(&tx, &saved)?;
+        tx.commit()?;
+        Ok(id)
+    }
+}
+
+/// Writes a saved run's rows, and answers its number.
+fn insert_run(tx: &Transaction<'_>, saved: &Saved) -> Result<u64, AppError> {
+    let (raw, load) = (&saved.raw, &saved.snapshots.load);
+    let meta = &raw.meta;
+    // A mod's own text is kept raw, and cleaned where a view shows it.
+    let text = |spelled: &Option<Spelled>| spelled.as_ref().map(|s| s.raw().to_string());
+    tx.execute(
+        "INSERT INTO raw (sha256, version, caps, path, file_name, name, author, mod_version)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT (sha256) DO UPDATE SET version = excluded.version, caps = excluded.caps,
+           path = excluded.path, file_name = excluded.file_name",
+        params![
+            meta.sha256.0.as_slice(),
+            raw.version,
+            json_of(&raw.caps),
+            saved.path.as_str(),
+            meta.file_name.raw(),
+            text(&meta.name),
+            text(&meta.author),
+            text(&meta.version),
+        ],
+    )?;
+    let key = load_key(raw, load);
+    tx.execute(
+        "INSERT INTO load (key, sha256, json) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO NOTHING",
+        params![key, meta.sha256.0.as_slice(), pack_snapshot(load)?],
+    )?;
+    let load_id: i64 = tx.query_row("SELECT id FROM load WHERE key = ?1", [&key], |row| {
+        row.get(0)
+    })?;
+    let s = &saved.snapshots;
+    let program = load.program();
+    tx.execute(
+        "INSERT INTO run (load_id, kind, settings, schema_build, program_version,
+           program_commit, package, fix, facts, decide, plan, build, \"check\", report)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        params![
+            load_id,
+            kind_text(saved.kind),
+            json_of(&saved.settings),
+            saved.schema_build,
+            program.version,
+            program.commit,
+            saved.package,
+            s.fix.as_ref().map(pack_snapshot).transpose()?,
+            s.facts.as_ref().map(pack_snapshot).transpose()?,
+            s.decide.as_ref().map(pack_snapshot).transpose()?,
+            s.plan.as_ref().map(pack_snapshot).transpose()?,
+            s.build.as_ref().map(pack_snapshot).transpose()?,
+            s.check.as_ref().map(pack_snapshot).transpose()?,
+            pack(&saved.report.to_json())?,
+        ],
+    )?;
+    let run_id = tx.last_insert_rowid();
+    let mut blob = tx.prepare("INSERT INTO run_blob (run_id, id) VALUES (?1, ?2)")?;
+    for id in saved.layer.keys() {
+        blob.execute(params![run_id, id.0.as_slice()])?;
+    }
+    Ok(u64::try_from(run_id).unwrap_or_else(|_| panic!("SQLite numbered a run {run_id}")))
+}
+
+/// The key of a load (#ADR-0096): the hex of the SHA-256 over the JSON of what the snapshot
+/// after `load` was made under. The raw snapshot by its archive, reading and caps; the
+/// program by its version and commit; the inputs by their identity (#ADR-0094); and the
+/// settings `load` declares.
+fn load_key(raw: &RawSnapshot, load: &LoadSnapshot) -> String {
+    let made_under = (
+        load.meta().sha256.hex(),
+        raw.version,
+        &raw.caps,
+        load.program(),
+        load.inputs(),
+        load.settings(),
+    );
+    ContentId::of(json_of(&made_under).as_bytes()).hex()
+}
+
+/// The text a run's kind is kept as.
+fn kind_text(kind: RunKind) -> &'static str {
+    match kind {
+        RunKind::Repair => "repair",
+        RunKind::Port => "port",
+    }
+}
+
+/// A value of the app's or the library's as JSON. None of the values kept fails to write.
+fn json_of<T: serde::Serialize + std::fmt::Debug>(value: &T) -> String {
+    serde_json::to_string(value)
+        .unwrap_or_else(|error| panic!("{value:?} does not write as JSON: {error}"))
+}
+
+/// A snapshot as a column: its JSON, as the library writes it, packed.
+fn pack_snapshot<S: StageSnapshot>(snapshot: &S) -> Result<Vec<u8>, AppError> {
+    pack(&snapshot::to_json(snapshot))
+}
+
+/// JSON as a column: one zstd frame.
+fn pack(json: &str) -> Result<Vec<u8>, AppError> {
+    zstd::encode_all(json.as_bytes(), ZSTD_LEVEL).map_err(failed)
 }
 
 /// The rows' database at `path`: the one there when it is of this format, else a new one.

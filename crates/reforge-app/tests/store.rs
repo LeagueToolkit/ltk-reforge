@@ -1,13 +1,28 @@
-//! The app's store (#ADR-0096): the run tier's blobs by content id, and the rows.
+//! The app's store (#ADR-0096): the run tier's blobs by content id, the rows, and the runs the
+//! app keeps. The game is `reforge_testkit::skins`.
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fjall::{Database, KeyspaceCreateOptions};
 use fs_err as fs;
+use reforge::archive::Caps;
+use reforge::history::NoHistory;
 use reforge::model::{ByteView, ContentId};
 use reforge::store::BlobStore;
+use reforge_app::inputs::Inputs;
+use reforge_app::run::{
+    self, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, Unwatched,
+};
 use reforge_app::store::{AppStore, FORMAT, KEYSPACE, ROWS_FILE, RunTier};
+use reforge_testkit::ModArchive;
+use reforge_testkit::bins::{bin, entry};
+use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
+use reforge_testkit::skins::{self, skin_bin};
 use rusqlite::Connection;
 use tempfile::TempDir;
+
+const SKIN0: &str = "Characters/Test/Skins/Skin0";
+const GRAPH0: &str = "Characters/Test/Animations/Skin0";
+const RESOURCES0: &str = "Characters/Test/Skins/Skin0/Resources";
 
 /// A folder for a store, removed with it.
 struct Folder {
@@ -255,4 +270,149 @@ fn a_rows_file_whose_format_does_not_read_is_moved_aside() {
     let aside = folder.root.join(format!("{ROWS_FILE}.unread"));
     assert_eq!(fs::read_to_string(aside).unwrap(), "no database");
     assert_eq!(format_of(&folder.rows()), FORMAT.to_string());
+}
+
+/// A mod with its own rig at skin0.
+fn own_mod() -> ModArchive {
+    let objects = vec![
+        entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0)),
+        own_graph("a", GRAPH0),
+    ];
+    let mut files = own_files("a");
+    files.push((skin_bin("test", 0), bin(objects)));
+    archive(&files)
+}
+
+/// A store, the inputs over the testkit's game, and a folder for archives and packages.
+struct Bench {
+    folder: Folder,
+    inputs: Inputs,
+    store: AppStore,
+}
+
+impl Bench {
+    fn new() -> Self {
+        let folder = Folder::new();
+        let store = AppStore::open(&folder.root.join("store")).unwrap();
+        Self {
+            folder,
+            inputs: Inputs::of_env(env(skins::game(), NoHistory)),
+            store,
+        }
+    }
+
+    /// A repair of `archive`, written as `name`, through `through`.
+    fn request(&self, archive: &ModArchive, name: &str, through: StageName) -> RunRequest {
+        let path = self.folder.root.join(name);
+        fs::write(&path, archive.build()).unwrap();
+        RunRequest {
+            kind: RunKind::Repair,
+            archive: path.to_string(),
+            through,
+            settings: RunSettings::default(),
+            out: Some(self.folder.root.join("out").to_string()),
+        }
+    }
+
+    fn run(&self, request: &RunRequest) -> RunView {
+        let view = run::run(&self.inputs, request, Some(&self.store), &mut Unwatched).unwrap();
+        assert_eq!(view.fault, None);
+        view
+    }
+
+    fn rows(&self) -> Connection {
+        Connection::open(self.folder.root.join("store").join(ROWS_FILE)).unwrap()
+    }
+
+    fn count(&self, table: &str) -> i64 {
+        let query = format!("SELECT count(*) FROM {table}");
+        self.rows().query_row(&query, [], |row| row.get(0)).unwrap()
+    }
+
+    /// The ids `run_blob` lists, each once, in order.
+    fn named(&self) -> Vec<ContentId> {
+        let rows = self.rows();
+        let mut statement = rows
+            .prepare("SELECT DISTINCT id FROM run_blob ORDER BY id")
+            .unwrap();
+        let ids = statement
+            .query_map([], |row| row.get::<_, Vec<u8>>(0))
+            .unwrap();
+        ids.map(|id| ContentId(id.unwrap().try_into().unwrap()))
+            .collect()
+    }
+}
+
+#[test]
+fn a_port_through_write_keeps_a_row_of_each_kind_and_its_layer_in_the_run_tier() {
+    let bench = Bench::new();
+    // A port writes the bins it renames: bytes the run makes.
+    let mut request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+    request.kind = RunKind::Port;
+
+    let view = bench.run(&request);
+
+    assert!(view.written.is_some());
+    assert_eq!(view.saved, Some(1));
+    for table in ["raw", "load", "run"] {
+        assert_eq!(bench.count(table), 1, "{table}");
+    }
+    let named = bench.named();
+    assert!(!named.is_empty(), "the run made no bytes");
+    assert_eq!(bench.store.tier().ids().unwrap(), named);
+    for id in named {
+        assert!(bench.store.tier().get(id).is_some(), "{id:?}");
+    }
+}
+
+#[test]
+fn a_second_run_of_the_same_archive_shares_its_raw_and_load_rows() {
+    let bench = Bench::new();
+    let request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+
+    let first = bench.run(&request);
+    let second = bench.run(&request);
+
+    assert_eq!((first.saved, second.saved), (Some(1), Some(2)));
+    assert_eq!(bench.count("raw"), 1);
+    assert_eq!(bench.count("load"), 1);
+    assert_eq!(bench.count("run"), 2);
+}
+
+#[test]
+fn a_run_through_check_keeps_nothing() {
+    let bench = Bench::new();
+
+    let view = bench.run(&bench.request(&own_mod(), "mod.fantome", StageName::Check));
+
+    assert_eq!(view.saved, None);
+    for table in ["raw", "load", "run", "run_blob"] {
+        assert_eq!(bench.count(table), 0, "{table}");
+    }
+    assert_eq!(bench.store.tier().ids().unwrap(), []);
+}
+
+#[test]
+fn the_second_run_of_an_archive_starts_from_the_ingest_tiers_raw_snapshot() {
+    let bench = Bench::new();
+    let request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+    let sha256 = ContentId::of(&fs::read(&request.archive).unwrap());
+
+    bench.run(&request);
+    let raw = bench.store.ingest().get(sha256, &Caps::default());
+    assert!(raw.is_some(), "the first run left no raw snapshot");
+    let second = bench.run(&request);
+
+    let read = second.stages.iter().find(|s| s.stage == StageName::Read);
+    assert_eq!(read.map(|stage| stage.state), Some(StageState::Ran));
+    assert!(second.stages.iter().all(|s| s.state == StageState::Ran));
+    let rows = bench.rows();
+    let reports: Vec<Vec<u8>> = rows
+        .prepare("SELECT report FROM run ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(reports[0], reports[1], "the reports of a read and a resume");
 }

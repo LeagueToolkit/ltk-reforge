@@ -3,9 +3,12 @@
 //! `fjall`'s separation threshold go to its value log, whose space comes back by its garbage
 //! collection after a sweep (#ADR-0096).
 
+use std::collections::BTreeMap;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use fjall::{
-    CompressionType, Database, Keyspace, KeyspaceCreateOptions, KvSeparationOptions, Slice,
+    CompressionType, Database, Keyspace, KeyspaceCreateOptions, KvSeparationOptions, PersistMode,
+    Slice,
 };
 use reforge::model::{ByteView, ContentId};
 use reforge::store::BlobStore;
@@ -28,8 +31,7 @@ fn empty_blob(id: ContentId) -> Option<ByteView> {
 #[derive(Clone)]
 pub struct RunTier {
     dir: Utf8PathBuf,
-    // The last handle on the database to drop persists its journal.
-    _db: Database,
+    db: Database,
     blobs: Keyspace,
 }
 
@@ -44,16 +46,22 @@ impl RunTier {
         let separation = KvSeparationOptions::default().compression(CompressionType::None);
         let options = || KeyspaceCreateOptions::default().with_kv_separation(Some(separation));
         let blobs = db.keyspace(KEYSPACE, options)?;
-        Ok(Self {
-            dir,
-            _db: db,
-            blobs,
-        })
+        Ok(Self { dir, db, blobs })
     }
 
     /// The folder it keeps its database in.
     pub fn dir(&self) -> &Utf8Path {
         &self.dir
+    }
+
+    /// Keeps a run's memory layer, each blob under the id the layer holds it by, and syncs
+    /// the database to the disk: a row written after it names no byte a crash loses
+    /// (#ADR-0096).
+    pub fn flush(&self, layer: &BTreeMap<ContentId, ByteView>) -> fjall::Result<()> {
+        for (id, bytes) in layer.iter().filter(|(_, bytes)| !bytes.is_empty()) {
+            self.blobs.insert(id.0, Slice::from(bytes.clone()))?;
+        }
+        self.db.persist(PersistMode::SyncAll)
     }
 
     /// Every id it holds, in order: the keyspace's keys sort by their bytes, as ids do.

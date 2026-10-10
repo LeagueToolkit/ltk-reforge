@@ -25,6 +25,7 @@ function ended(over: Partial<RunView>): RunView {
     targets: null,
     package: null,
     written: null,
+    saved: null,
     refused: false,
     fault: null,
     millis: 0,

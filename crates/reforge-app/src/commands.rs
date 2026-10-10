@@ -144,7 +144,7 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
         }
         let ran = open
             .get(&choice)
-            .and_then(|inputs| run::run(&inputs, &request, &mut Window(app)));
+            .and_then(|inputs| run::run(&inputs, &request, None, &mut Window(app)));
         if let Ok(view) = &ran {
             job.set_written(view.written.as_deref().map(Utf8PathBuf::from));
         }

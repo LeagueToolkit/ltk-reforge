@@ -808,6 +808,8 @@ export type RunView = {
 	package: PackageView | null,
 	/**  The `.modpkg` written. */
 	written: string | null,
+	/**  The run's number in the app's store, once a write kept it there (#ADR-0096). */
+	saved: number | null,
 	/**  Whether a finding the settings block refused the write. */
 	refused: boolean,
 	/**  An input that did not answer, which ended the run. */

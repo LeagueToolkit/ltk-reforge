@@ -79,7 +79,7 @@ impl Bench {
     }
 
     fn try_run(&self, request: &RunRequest) -> Result<RunView, AppError> {
-        run::run(&self.inputs, request, &mut Unwatched)
+        run::run(&self.inputs, request, None, &mut Unwatched)
     }
 
     fn run(&self, request: &RunRequest) -> RunView {
@@ -266,7 +266,7 @@ fn each_stage_that_gives_a_part_sends_it_as_it_ends_and_the_view_holds_the_same(
     request.kind = RunKind::Port;
     let mut heard = Heard::default();
 
-    let view = run::run(&bench.inputs, &request, &mut heard).unwrap();
+    let view = run::run(&bench.inputs, &request, None, &mut heard).unwrap();
 
     let [
         PartView::Names { names },
@@ -448,6 +448,7 @@ fn a_watch_hears_each_stage_start_and_end_in_order_and_each_finding() {
     let view = run::run(
         &bench.inputs,
         &bench.request(&own_mod(), StageName::Fix),
+        None,
         &mut heard,
     )
     .unwrap();

@@ -1,6 +1,7 @@
 //! A run of a mod, as both views drive it (#ADR-0050): a repair or a port, the archive, the
 //! last stage to run, the settings the library has, and where the package is written. Each
-//! request is a new `Run` from the archive, and no stage's result is kept between requests.
+//! request is a new `Run`, from the raw snapshot the app's store holds of the archive or else
+//! from the archive, and a run is kept in the store when it writes its package (#ADR-0096).
 //!
 //! The stages are run one at a time, as `Run::through` runs them, so a [`Watch`] hears each
 //! one start and end, each finding as it is raised, and what each stage gave as it ends.
@@ -11,12 +12,15 @@ mod views;
 
 use std::time::Instant;
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
+use fs_err as fs;
+use reforge::archive::{Caps, RawSnapshot, file_name_of};
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
+use reforge::model::{ContentId, Spelled};
 use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy};
-use reforge::{Porter, Repairer, Run, RunError};
+use reforge::{Porter, Repairer, Run, RunError, Settings};
 use serde::{Deserialize, Serialize};
 
 use self::drawn::Drawn;
@@ -25,6 +29,7 @@ pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
 use crate::selection::FixupChoice;
+use crate::store::{AppStore, Saved};
 use crate::view::Finding;
 
 /// A stage of a run, in the order they run.
@@ -231,10 +236,59 @@ fn millis_since(at: Instant) -> u64 {
     u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
-/// Runs a request against the inputs, telling `watch` how it goes.
+/// The porter or the repairer a request's run is made with.
+enum Maker<'a> {
+    Repair(Repairer<'a>),
+    Port(Porter<'a>),
+}
+
+impl Maker<'_> {
+    fn settings(&self) -> &Settings {
+        match self {
+            Maker::Repair(repairer) => repairer.settings(),
+            Maker::Port(porter) => porter.settings(),
+        }
+    }
+
+    /// A new run, its log the inputs' with `watch` listening, reading through the store's
+    /// tiers when there is one (#ADR-0093).
+    fn start(&self, inputs: &Inputs, store: Option<&AppStore>, watch: &mut dyn Watch) -> Run<'_> {
+        let mut log = inputs.log();
+        if let Some(mut listener) = watch.findings() {
+            log.listen(move |diagnostic| listener(Finding::of(diagnostic, &Render::plain())));
+        }
+        let run = match self {
+            Maker::Repair(repairer) => repairer.run(),
+            Maker::Port(porter) => porter.run(),
+        }
+        .log_from(log);
+        match store {
+            None => run,
+            Some(store) => run
+                .in_store(store.tier().clone())
+                .in_cache(store.ingest().clone()),
+        }
+    }
+}
+
+/// The raw snapshot the store's ingest tier holds of the archive at `path`, read under `caps`
+/// (#ADR-0095), under the name a read of the path gives it. None when the file does not read:
+/// `read` then says why.
+fn ingested(store: &AppStore, path: &Utf8Path, caps: &Caps) -> Option<RawSnapshot> {
+    let file = fs::File::open(path).ok()?;
+    let sha256 = ContentId::of_reader(file).ok()?;
+    let mut raw = store.ingest().get(sha256, caps)?;
+    raw.meta.file_name = Spelled::new(file_name_of(path));
+    Some(raw)
+}
+
+/// Runs a request against the inputs, telling `watch` how it goes. With a store, the run
+/// reads through its tiers and starts from the raw snapshot it holds of the archive, and a
+/// run that wrote its package is kept in it (#ADR-0096).
 pub fn run(
     inputs: &Inputs,
     request: &RunRequest,
+    store: Option<&AppStore>,
     watch: &mut dyn Watch,
 ) -> Result<RunView, AppError> {
     let settings = &request.settings;
@@ -248,36 +302,36 @@ pub fn run(
         _ => None,
     };
 
-    let mut log = inputs.log();
-    if let Some(mut listener) = watch.findings() {
-        log.listen(move |diagnostic| listener(Finding::of(diagnostic, &Render::plain())));
-    }
-
     let started = Instant::now();
     let env = inputs.env();
-    let (repairer, porter);
-    let mut run = match request.kind {
-        RunKind::Repair => {
-            repairer = Repairer::new(env)
+    let maker = match request.kind {
+        RunKind::Repair => Maker::Repair(
+            Repairer::new(env)
                 .fixups(fixups)
                 .checks(checks)
                 .keep_stale(settings.keep_stale)
-                .keep_dds(settings.keep_dds);
-            repairer.run()
-        }
-        RunKind::Port => {
-            porter = Porter::new(env)
+                .keep_dds(settings.keep_dds),
+        ),
+        RunKind::Port => Maker::Port(
+            Porter::new(env)
                 .policy(policy)
                 .compare(policy.other_levels())
                 .fixups(fixups)
                 .checks(checks)
                 .keep_stale(settings.keep_stale)
                 .game_events_only(settings.game_events_only)
-                .keep_dds(settings.keep_dds);
-            porter.run()
-        }
+                .keep_dds(settings.keep_dds),
+        ),
+    };
+    let archive = Utf8PathBuf::from(&request.archive);
+    let mut run = maker.start(inputs, store, watch);
+    let caps = maker.settings().caps();
+    if let Some(raw) = store.and_then(|store| ingested(store, &archive, caps)) {
+        run = run.resume(raw).unwrap_or_else(|error| {
+            tracing::warn!(%error, "a run does not start from the ingest tier's raw snapshot");
+            maker.start(inputs, store, watch)
+        });
     }
-    .log_from(log);
 
     let mut timed = Vec::new();
     let mut fault = None;
@@ -285,7 +339,7 @@ pub fn run(
     for stage in stages.filter(|&stage| stage <= request.through.min(StageName::Check)) {
         watch.stage(stage, StageEvent::Started);
         let at = Instant::now();
-        let ran = run_stage(&mut run, stage, &request.archive);
+        let ran = run_stage(&mut run, stage, &archive);
         let millis = millis_since(at);
         watch.stage(stage, StageEvent::Ended { millis });
         timed.push((stage, millis));
@@ -330,8 +384,14 @@ pub fn run(
     let millis = millis_since(started);
 
     let drawn = Drawn::of(&run);
+    let stages = stage_views(&run, &timed);
+    let saved = match (store, &written) {
+        (Some(store), Some(package)) => save(store, run, request, inputs, package),
+        _ => None,
+    };
     Ok(RunView {
-        stages: stage_views(&run, &timed),
+        stages,
+        saved,
         meta: drawn.meta,
         halted: drawn.halted,
         findings: drawn.findings,
@@ -347,12 +407,43 @@ pub fn run(
     })
 }
 
-/// Runs one stage. `read` reads the archive from its path.
-fn run_stage(run: &mut Run<'_>, stage: StageName, archive: &str) -> Result<(), RunError> {
+/// Keeps a run that wrote its package in the store, and answers its number. A run with no
+/// snapshots, one judged with an earlier run's evidence, is not kept. A store that does not
+/// write leaves the run as it ran, unkept, and says so in the log.
+fn save(
+    store: &AppStore,
+    run: Run<'_>,
+    request: &RunRequest,
+    inputs: &Inputs,
+    package: &str,
+) -> Option<u64> {
+    let snapshots = run.snapshots()?;
+    let raw = run.archive()?.clone();
+    let saved = Saved {
+        raw,
+        path: Utf8PathBuf::from(&request.archive),
+        snapshots,
+        report: run.report(),
+        kind: request.kind,
+        settings: request.settings.clone(),
+        schema_build: inputs
+            .env()
+            .schema()
+            .map(|schema| schema.latest().to_string()),
+        package: Some(package.to_string()),
+        layer: run.into_layer(),
+    };
+    let kept = store.save(saved);
+    kept.inspect_err(|error| tracing::warn!(%error, "a run that wrote its package is not kept"))
+        .ok()
+}
+
+/// Runs one stage. `read` reads the archive from its path, unless the run started from its
+/// raw snapshot.
+fn run_stage(run: &mut Run<'_>, stage: StageName, archive: &Utf8Path) -> Result<(), RunError> {
     match stage {
-        StageName::Read => run
-            .read_file(Utf8PathBuf::from(archive).as_path())
-            .map(drop),
+        StageName::Read if run.ran(Stage::Read) => Ok(()),
+        StageName::Read => run.read_file(archive).map(drop),
         StageName::Load => run.load().map(drop),
         StageName::Fix => run.fix().map(drop),
         StageName::Facts => run.gather().map(drop),
