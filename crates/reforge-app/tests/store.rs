@@ -1,11 +1,12 @@
-//! The app's store (#ADR-0096): the run tier's blobs by content id.
+//! The app's store (#ADR-0096): the run tier's blobs by content id, and the rows.
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fjall::{Database, KeyspaceCreateOptions};
 use fs_err as fs;
 use reforge::model::{ByteView, ContentId};
 use reforge::store::BlobStore;
-use reforge_app::store::{KEYSPACE, RunTier};
+use reforge_app::store::{AppStore, FORMAT, KEYSPACE, ROWS_FILE, RunTier};
+use rusqlite::Connection;
 use tempfile::TempDir;
 
 /// A folder for a store, removed with it.
@@ -28,6 +29,28 @@ impl Folder {
     fn tier(&self) -> RunTier {
         RunTier::open(self.tier_dir()).unwrap()
     }
+
+    fn store(&self) -> AppStore {
+        AppStore::open(&self.root).unwrap()
+    }
+
+    fn rows(&self) -> Connection {
+        Connection::open(self.root.join(ROWS_FILE)).unwrap()
+    }
+}
+
+/// The format the rows file says it is of.
+fn format_of(rows: &Connection) -> String {
+    let query = "SELECT value FROM meta WHERE key = 'format'";
+    rows.query_row(query, [], |row| row.get(0)).unwrap()
+}
+
+/// The tables a rows file holds, by name.
+fn tables_of(rows: &Connection) -> Vec<String> {
+    let query = "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name";
+    let mut statement = rows.prepare(query).unwrap();
+    let names = statement.query_map([], |row| row.get(0)).unwrap();
+    names.map(Result::unwrap).collect()
 }
 
 fn bytes(text: &str) -> ByteView {
@@ -172,4 +195,64 @@ fn collecting_after_every_blob_is_removed_empties_the_value_log() {
 
     assert_eq!(log_bytes(&folder.tier_dir()), 0);
     assert_eq!(tier.ids().unwrap(), []);
+}
+
+#[test]
+fn a_store_opened_twice_keeps_its_rows_file() {
+    let folder = Folder::new();
+    drop(folder.store());
+    folder
+        .rows()
+        .execute("INSERT INTO meta (key, value) VALUES ('mark', 'kept')", [])
+        .unwrap();
+
+    drop(folder.store());
+
+    let rows = folder.rows();
+    assert_eq!(format_of(&rows), FORMAT.to_string());
+    let mark: String = rows
+        .query_row("SELECT value FROM meta WHERE key = 'mark'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(mark, "kept");
+    assert_eq!(
+        tables_of(&rows),
+        ["load", "meta", "raw", "run", "run_blob", "sqlite_sequence"]
+    );
+    assert!(!folder.root.join(format!("{ROWS_FILE}.unread")).exists());
+}
+
+#[test]
+fn a_rows_file_of_another_format_is_moved_aside_and_a_new_one_made() {
+    let folder = Folder::new();
+    let path = folder.root.join(ROWS_FILE);
+    {
+        let old = Connection::open(&path).unwrap();
+        let made = "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO meta (key, value) VALUES ('format', '2');
+            CREATE TABLE run (id INTEGER PRIMARY KEY);";
+        old.execute_batch(made).unwrap();
+    }
+
+    drop(folder.store());
+
+    let aside = Connection::open(folder.root.join(format!("{ROWS_FILE}.format-2"))).unwrap();
+    assert_eq!(format_of(&aside), "2");
+    assert_eq!(tables_of(&aside), ["meta", "run"]);
+    let rows = folder.rows();
+    assert_eq!(format_of(&rows), FORMAT.to_string());
+    assert!(tables_of(&rows).contains(&"run_blob".to_string()));
+}
+
+#[test]
+fn a_rows_file_whose_format_does_not_read_is_moved_aside() {
+    let folder = Folder::new();
+    fs::write(folder.root.join(ROWS_FILE), "no database").unwrap();
+
+    drop(folder.store());
+
+    let aside = folder.root.join(format!("{ROWS_FILE}.unread"));
+    assert_eq!(fs::read_to_string(aside).unwrap(), "no database");
+    assert_eq!(format_of(&folder.rows()), FORMAT.to_string());
 }

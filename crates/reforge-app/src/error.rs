@@ -116,6 +116,9 @@ pub enum AppError {
     /// A run of a mod is under way already.
     #[error("a run is under way already")]
     RunBusy,
+    /// The app's store of runs did not open, read or write.
+    #[error("the store of runs failed: {detail}")]
+    StoreFailed { detail: String },
     /// A folder of the app's did not go when the user asked for it removed.
     #[error("{path} could not be removed: {detail}")]
     NotRemoved { path: String, detail: String },

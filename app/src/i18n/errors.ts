@@ -131,6 +131,10 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.RUN_BUSY.title"](),
       description: m["error.RUN_BUSY.description"](),
     }))
+    .with({ code: "STORE_FAILED" }, ({ detail }) => ({
+      title: m["error.STORE_FAILED.title"](),
+      detail,
+    }))
     .with({ code: "NOT_REMOVED" }, ({ path, detail }) => ({
       title: m["error.NOT_REMOVED.title"]({ path }),
       description: m["error.NOT_REMOVED.description"](),

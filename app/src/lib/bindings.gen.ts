@@ -212,6 +212,8 @@ export type AppError =
 { code: "SCHEMA_BUSY" } | 
 /**  A run of a mod is under way already. */
 { code: "RUN_BUSY" } | 
+/**  The app's store of runs did not open, read or write. */
+{ code: "STORE_FAILED"; detail: string } | 
 /**  A folder of the app's did not go when the user asked for it removed. */
 { code: "NOT_REMOVED"; path: string; detail: string } | 
 /**  A folder did not open in the system's file manager. */
