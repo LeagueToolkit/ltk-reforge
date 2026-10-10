@@ -60,16 +60,25 @@ run's, never a location in a store or on disk.
 - The rule in `AGENTS.md` is restated: no archive is extracted to disk under its own names;
   bytes are written only into the blob store, under their content id.
 
-The disk store is `fjall` (the user's call, 2026-10-10): an LSM store with its large values
-kept apart in a value log, which is the shape of this workload: values written once, read by
-key, and space given back by the log's garbage collection after a sweep. SQLite keeps blobs
-inside B-tree pages, which it documents as faster than files only below about 100 KB, and
-gives space back only by rewriting the file. The runs, their snapshots and what a person sees
-of a mod are small rows, and those are SQLite's (#ADR-0096).
+The disk store is `cacache` (the user's call, 2026-10-10): a content-addressed store of one
+file per blob under a fanout, written by a rename and verified by its hash on read. Used by
+its hash alone, with SHA-256 as its algorithm so that its address is the content id, it is the
+plain-files store with the atomic writes and the verification done. It evicts nothing and
+collects nothing: content stays until the sweep removes it (#ADR-0096), and the space comes
+back at once. SQLite keeps blobs inside B-tree pages, which it documents as faster than files
+only below about 100 KB, and gives space back only by rewriting the file; an LSM store with a
+value log would fit the writes but opens for one process. The runs, their snapshots and what a
+person sees of a mod are small rows, and those are SQLite's (#ADR-0096).
 
-- A blob's put is a plain insert, not a transaction: the id is the content, so two threads
-  writing one id write one value and nothing conflicts. The store opens for one process at a
-  time, and every reader and writer of it is a thread of that process.
+- The store is lockless across processes: a blob written by a rename is whole or absent, so
+  any number of processes read and write one store at once, and the corpus runner stays one
+  command per mod (#ADR-0095).
+- Its index, a caller's key to a hash, is not used: the id is the key. The sync API with the
+  default features off, so no async runtime comes in, and its memory-mapped reads.
+- One file per blob is its cost: the datasets' 417,503 distinct contents are that many files,
+  and on Windows each new file is an NTFS entry and a scan by the system's antivirus. The
+  cost is measured when the store lands and recorded in `docs/design/RUNS.md`; a value log
+  is the fallback if it is too high.
 - A run's memory layer is where every byte a stage makes or rewrites goes, and the layer is
   flushed into the store under it once, when the run is saved. The stages read the store
   under it only, so a run's threads share one open store for reading and serialise on
@@ -79,8 +88,9 @@ of a mod are small rows, and those are SQLite's (#ADR-0096).
 
 - The bytes of a stage's output are written to the store once per distinct content. A fixup
   that rewrites a bin adds one blob; the files it does not touch add none.
-- `fjall` lands in `[workspace.dependencies]` from crates.io, pinned, and is used by the app
-  crate alone: the library ships the trait, the memory store and the layered store.
+- `cacache` lands in `[workspace.dependencies]` from crates.io, pinned. The library ships the
+  trait, the memory store, the layered store and the disk store, since the command opens one
+  for the corpus cache (#ADR-0095) and the app opens one for its runs (#ADR-0096).
 - A big mod becomes a disk cost, not a memory one. The caps on what is inflated (#ADR-0051)
   stay, since they bound what one run allocates.
 - A mod's text still reaches a person through `clean` only. A store holds bytes, and no viewer
