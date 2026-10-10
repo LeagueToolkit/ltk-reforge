@@ -31,7 +31,8 @@ A run writes a snapshot at the end of each stage, and a run can start from a sna
 user's call, 2026-10-10).
 
 - A snapshot is a value: for each WAD, the map of path to content id; the extras of the
-  archive by name and content id; the stage's part of the report (the tables and the findings
+  archive by name, size and the id of their first bytes, since an extra is no game file and is
+  read no further than its kind takes; the stage's part of the report (the tables and the findings
   as they stood); the inputs the stage was judged under: the install's build, the history
   index's head and the schema's build; the settings the run had; and the program that wrote
   it: the workspace version and the commit. It is immutable, and its size is the number of
