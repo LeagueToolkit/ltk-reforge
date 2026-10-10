@@ -285,7 +285,7 @@ The modules of `reforge`, each using only the ones above it:
 |---|---|
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod` and `Blobs`, the run's store its files' bytes are fetched from, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); a stage's steps: the run's `Cancel`, which the log carries to the stages, and the `Progress` it tells a listener |
-| `store` | `BlobStore`: bytes by content id (#ADR-0093), read checked or unchecked, the first bytes alone with the size (`get_head`), and a spool for bytes too large to hold, read in part (#ADR-0100); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share. Every store answers the empty blob, `ContentId::EMPTY`, without holding it, so no file of no bytes is written |
+| `store` | `BlobStore`: bytes by content id (#ADR-0093), read checked or unchecked, the first bytes alone with the size (`get_head`), and a spool for bytes too large to hold, read in part (#ADR-0100); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share. Every store answers the empty blob, `ContentId::EMPTY`, without holding it, so no file of no bytes is written. `FactTable` and `MemoryFacts`: rows of facts per blob by id, whose kind is text the table reads nothing into |
 | `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store, and what the read raised |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
@@ -338,7 +338,16 @@ tables (`history`) and the bin value helpers (`model`).
   its first `HEAD_LEN` bytes say (`HeadKind`), read alone (`BlobStore::get_head`), and no
   kind needs more of the file, since every check of `reforge-magic` reads within the head.
   What a run learns of a blob it keeps, so the inventory reads each file's kind with its name
-  and no bytes. A bin is read whole where it is parsed, which is no part of its kind. A fetch the store does not answer gives no bytes: it unwinds with `Missing`, which no
+  and no bytes. A bin is read whole where it is parsed, which is no part of its kind. Beside
+  the store is a table of facts per blob (`FactAccess`, #ADR-0100): a row by id holds the
+  size and the kind as text, stamped with the matcher's generation
+  (`reforge_magic::GENERATION`). A row of this generation is read in place of the head; a
+  missing row, or one of another generation or a kind that does not read, means the head is
+  read and the row written again. The rows a run learnt are written together at the end of
+  `load`, whatever ended it (`Blobs::keep_facts`). A run in a cache reads and writes the
+  cache's table (`FactTable`, one SQLite file in the ingest directory, WAL mode, a write
+  tried again while another process holds the lock), and any other run a table in memory
+  (`MemoryFacts`), so a stage does not know which. A blob many mods share is read once. A fetch the store does not answer gives no bytes: it unwinds with `Missing`, which no
   panic hook sees, and the run takes it back where it ends the stage with a fault
   (`Missing::catch`). The unwind is the way out because a fetch sits deep in every stage's
   readers, under signatures that have no store fault to give. The id is remembered too
@@ -1005,7 +1014,8 @@ object takes a name of its own, which every link to it follows.
   archive's, removed once its chunks are read and on an error too. When the store is next
   opened, a scratch file whose process is gone is removed, and one older than a day by its
   own modified time whatever its process; a running process's file stays. The raw cache's entry beside the blobs is named by the archive's SHA-256, the reading
-  and the caps, and holds the raw snapshot's JSON, the mod's names in it as JSON strings.
+  and the caps, and holds the raw snapshot's JSON, the mod's names in it as JSON strings. The
+  table of facts per blob beside them holds ids, sizes and kinds, and no name.
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
   error on any input (banks, file kinds). A reader from another crate runs where its panic is
   caught (bins, packed WADs, meshes, skeletons, clips, the mod's image).

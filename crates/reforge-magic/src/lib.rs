@@ -27,6 +27,11 @@ pub use kind::{Info, Kind};
 /// needs the rest of the file.
 pub const HEAD_LEN: usize = 64;
 
+/// The matcher's generation: raised when a change of the checks changes what [`HeadKind::of`]
+/// gives for any head, or how a [`HeadKind`] is written. A kind kept under another generation
+/// is read again from the head, never trusted.
+pub const GENERATION: u32 = 1;
+
 /// How [`identify`] knew.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

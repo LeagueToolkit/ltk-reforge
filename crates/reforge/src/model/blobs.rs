@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use byteview::ByteView;
-use reforge_magic::{HEAD_LEN, HeadKind};
+use reforge_magic::{GENERATION, HEAD_LEN, HeadKind};
 
 use super::hash::ContentId;
 
@@ -57,6 +57,28 @@ pub trait BlobAccess: Send + Sync {
 
     /// Keeps the bytes a stage made, under the id it gives.
     fn keep(&self, bytes: ByteView) -> ContentId;
+}
+
+/// A blob's facts as a table keeps them (#ADR-0100): its size, and its kind as text, stamped
+/// with the generation of the matcher that read it. A table reads nothing into the kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FactRow {
+    /// The blob's size in bytes, which no generation changes.
+    pub size: u64,
+    /// The kind, as its reader wrote it.
+    pub kind: String,
+    /// The generation of the reader that wrote the kind.
+    pub generation: u32,
+}
+
+/// The table of facts per blob a run reads and adds to, beside its store (#ADR-0100).
+pub trait FactAccess: Send + Sync {
+    /// The row kept for an id, or none.
+    fn row(&self, id: ContentId) -> Option<FactRow>;
+
+    /// Keeps rows together, each in place of any row of its id. A table that cannot keep
+    /// them says so in the log and loses nothing but the rows: they are read again.
+    fn keep_rows(&self, rows: &[(ContentId, FactRow)]);
 }
 
 /// The bytes fetched and held, and the most held at once since the run last asked.
@@ -168,6 +190,8 @@ pub struct Blobs {
     missing: Arc<Mutex<Option<ContentId>>>,
     tally: Arc<Tally>,
     known: Arc<Mutex<BTreeMap<ContentId, BlobFacts>>>,
+    table: Option<Arc<dyn FactAccess>>,
+    learnt: Arc<Mutex<Vec<(ContentId, FactRow)>>>,
 }
 
 /// What is known of a blob without its bytes: what its first bytes say of its kind, and its
@@ -188,24 +212,68 @@ impl Blobs {
             missing: Arc::default(),
             tally: Arc::default(),
             known: Arc::default(),
+            table: None,
+            learnt: Arc::default(),
         }
     }
 
-    /// What is known of the blob under an id, or none for an id the store lacks. Its kind is
-    /// read from its first [`HEAD_LEN`] bytes, never the whole blob, once per run: a second
-    /// ask reads nothing.
+    /// Reads and adds to this table of facts per blob (#ADR-0100).
+    #[must_use]
+    pub fn with_facts(mut self, table: Arc<dyn FactAccess>) -> Self {
+        self.table = Some(table);
+        self
+    }
+
+    /// What is known of the blob under an id, or none for an id the store lacks: the table's
+    /// row where its kind is of this matcher's generation ([`GENERATION`]), else read from the
+    /// blob's first [`HEAD_LEN`] bytes, never the whole blob, and kept for the table
+    /// ([`Blobs::keep_facts`]). A second ask in a run reads nothing.
     pub fn facts(&self, id: ContentId) -> Option<BlobFacts> {
         let known = || self.known.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(&facts) = known().get(&id) {
             return Some(facts);
         }
-        let head = self.access.fetch_head(id, HEAD_LEN)?;
-        let facts = BlobFacts {
-            kind: HeadKind::of(&head.bytes),
-            size: head.size,
+        let facts = match self.kept(id) {
+            Some(facts) => facts,
+            None => {
+                let head = self.access.fetch_head(id, HEAD_LEN)?;
+                let facts = BlobFacts {
+                    kind: HeadKind::of(&head.bytes),
+                    size: head.size,
+                };
+                let row = FactRow {
+                    size: facts.size,
+                    kind: serde_json::to_string(&facts.kind)
+                        .unwrap_or_else(|error| panic!("{:?} does not write: {error}", facts.kind)),
+                    generation: GENERATION,
+                };
+                let mut learnt = self.learnt.lock().unwrap_or_else(PoisonError::into_inner);
+                learnt.push((id, row));
+                facts
+            }
         };
         known().insert(id, facts);
         Some(facts)
+    }
+
+    /// The table's facts of a blob, where its kind is of this matcher's generation and reads.
+    fn kept(&self, id: ContentId) -> Option<BlobFacts> {
+        let row = self.table.as_ref()?.row(id)?;
+        let kind = serde_json::from_str(&row.kind).ok();
+        let kind = kind.filter(|_| row.generation == GENERATION)?;
+        Some(BlobFacts {
+            kind,
+            size: row.size,
+        })
+    }
+
+    /// Writes the facts the run read from blobs since the last call into its table, together.
+    pub fn keep_facts(&self) {
+        let learnt =
+            std::mem::take(&mut *self.learnt.lock().unwrap_or_else(PoisonError::into_inner));
+        if let (Some(table), false) = (&self.table, learnt.is_empty()) {
+            table.keep_rows(&learnt);
+        }
     }
 
     /// What is known of the blob under an id. An id the store lacks ends the work under way

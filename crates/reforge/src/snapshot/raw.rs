@@ -3,7 +3,8 @@
 //! snapshot there takes it in place of `read`, and one that does not reads the archive into
 //! the ingest store and leaves its snapshot there.
 //!
-//! The cache is a directory: the ingest store's blobs, and beside them one entry per archive,
+//! The cache is a directory: the ingest store's blobs, its table of facts per blob, and one
+//! entry per archive,
 //! a file named by the archive's SHA-256, the reading version and the caps, which holds the raw
 //! snapshot's JSON. An entry is written to a temporary file and renamed, so it is whole or
 //! absent, and any number of processes read and write the cache at once. An entry that does
@@ -13,13 +14,15 @@
 //! cache is a store, no setting, and the settings are what a snapshot names (#ADR-0094). Which
 //! cache a run reads changes nothing in its report.
 
+use std::sync::Arc;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 
 use super::{from_json, to_json};
 use crate::archive::{Caps, RAW_VERSION, RawSnapshot};
 use crate::model::ContentId;
-use crate::store::IngestStore;
+use crate::store::{FactTable, IngestStore};
 
 /// The directory of the entries, beside the ingest store's own.
 const ENTRIES: &str = "raw";
@@ -33,6 +36,7 @@ const TEMPORARY: &str = "tmp";
 pub struct RawCache {
     dir: Utf8PathBuf,
     store: IngestStore,
+    facts: Arc<FactTable>,
 }
 
 impl RawCache {
@@ -40,7 +44,13 @@ impl RawCache {
     pub fn new(dir: impl Into<Utf8PathBuf>) -> Self {
         let dir = dir.into();
         let store = IngestStore::new(dir.clone());
-        Self { dir, store }
+        let facts = Arc::new(FactTable::in_dir(&dir));
+        Self { dir, store, facts }
+    }
+
+    /// The table of facts per blob of the ingest store, in the same directory (#ADR-0100).
+    pub fn facts(&self) -> Arc<FactTable> {
+        Arc::clone(&self.facts)
     }
 
     /// The directory it keeps its entries and blobs in.

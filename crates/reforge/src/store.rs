@@ -5,14 +5,18 @@
 //! The bytes a store hands out are a [`ByteView`]: a get is a clone of a view, and a slice of
 //! one is a view of the same blob. The library ships the trait, the memory store, the layered
 //! store and the ingest store, the tier on disk that holds what `read` makes of an archive;
-//! the store of what runs make is the app's.
+//! the store of what runs make is the app's. Beside a store is a table of facts per blob
+//! (`FactTable` on disk, `MemoryFacts`): rows by id, which a run reads in place of a blob's
+//! head (#ADR-0100).
 
+mod facts;
 mod ingest;
 
 use std::collections::BTreeMap;
 use std::io::{self, Cursor, Read, Seek, Write};
 use std::sync::{Arc, PoisonError, RwLock};
 
+pub use self::facts::{FACTS_FILE, FactTable, MemoryFacts};
 pub use self::ingest::IngestStore;
 use crate::model::{BlobAccess, ByteView, ContentId, Head};
 

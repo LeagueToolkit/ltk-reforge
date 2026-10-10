@@ -27,7 +27,7 @@ pub mod view;
 pub mod walk;
 
 pub use bank::{BankClip, BankRole, EventsBank, INIT_BANK, game_bank_path};
-pub use blobs::{BlobAccess, BlobFacts, Blobs, Fetched, Head, Missing};
+pub use blobs::{BlobAccess, BlobFacts, Blobs, FactAccess, FactRow, Fetched, Head, Missing};
 pub use byteview::ByteView;
 pub use dump::{Dump, DumpCx};
 pub use entity::Mod;

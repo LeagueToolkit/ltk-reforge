@@ -33,7 +33,7 @@ use crate::load::{
     Dating, Fault, FileProvenance, Inventory, KeptFile, LOAD_PARTS, LoadError, LoadOptions, Loader,
     ReworkTable, against,
 };
-use crate::model::{Blobs, ByteView, ContentId, Missing, Mod, Spelled};
+use crate::model::{Blobs, ByteView, ContentId, FactAccess, Missing, Mod, Spelled};
 use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
@@ -46,7 +46,7 @@ use crate::snapshot::{
     LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, RawCache, ResumeError, Setting, Snapshots,
     StageSettings,
 };
-use crate::store::{BlobStore, Layered, MemoryStore};
+use crate::store::{BlobStore, Layered, MemoryFacts, MemoryStore};
 
 /// The name the second run of a repair reads the first run's package under.
 const REPAIRED_NAME: &str = "repaired.fantome";
@@ -785,6 +785,9 @@ pub struct Run<'a> {
     store: Arc<Layered<MemoryStore, Under>>,
     /// The run's store as the mod and its package read it (#ADR-0100).
     blobs: Blobs,
+    /// The facts per blob the run reads in place of a blob's head, and adds what it learnt to
+    /// at the end of `load` (#ADR-0100): the cache's table, else one in memory.
+    blob_facts: Arc<dyn FactAccess>,
     /// The raw snapshots `read` takes in place of reading an archive, and leaves (#ADR-0095).
     cache: Option<RawCache>,
     /// Where the findings of `read` begin in the log.
@@ -816,6 +819,7 @@ impl<'a> Run<'a> {
             log.cancel_on(cancel.clone());
         }
         let store = Arc::new(empty_store());
+        let blob_facts: Arc<dyn FactAccess> = Arc::new(MemoryFacts::new());
         Self {
             env,
             settings,
@@ -823,7 +827,8 @@ impl<'a> Run<'a> {
             known: None,
             log,
             book: NameBook::new(),
-            blobs: Blobs::new(store.clone()),
+            blobs: Blobs::new(store.clone()).with_facts(Arc::clone(&blob_facts)),
+            blob_facts,
             store,
             cache: None,
             first: 0,
@@ -891,10 +896,12 @@ impl<'a> Run<'a> {
     /// Reads archives through this cache (#ADR-0095): `read` takes the raw snapshot it holds of
     /// an archive in place of reading it, and puts what it reads of another into the cache's
     /// ingest store with the snapshot beside it. The run reads through to the ingest store
-    /// under the caller's store, and writes nothing else into it.
+    /// under the caller's store, and writes nothing else into it but the facts of the blobs
+    /// it read, in the cache's table.
     #[must_use]
-    pub fn in_cache(self, cache: RawCache) -> Self {
+    pub fn in_cache(mut self, cache: RawCache) -> Self {
         let ingest: Box<dyn BlobStore> = Box::new(cache.store().clone());
+        self.blob_facts = cache.facts();
         let mut run = self.restored(|run| {
             let (layer, under) = run.into_parts();
             let (store, _) = under.into_parts();
@@ -914,7 +921,7 @@ impl<'a> Run<'a> {
         let store = Arc::into_inner(store)
             .unwrap_or_else(|| panic!("a run's store is changed after a stage holds it"));
         self.store = Arc::new(change(store));
-        self.blobs = Blobs::new(self.store.clone());
+        self.blobs = Blobs::new(self.store.clone()).with_facts(Arc::clone(&self.blob_facts));
         self
     }
 
@@ -1158,7 +1165,10 @@ impl<'a> Run<'a> {
     pub fn load(&mut self) -> Result<&Mod, RunError> {
         self.going()?;
         if matches!(self.module, Reached::Nothing) && self.raw.is_some() {
-            guarded(Stage::Load, || self.load_raw())?;
+            let loaded = guarded(Stage::Load, || self.load_raw());
+            // What `load` learnt of blobs holds whatever ended it, written in one go.
+            self.blobs.keep_facts();
+            loaded?;
         }
         match &self.module {
             Reached::Loaded(module) => Ok(module),
