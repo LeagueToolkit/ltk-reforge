@@ -46,6 +46,20 @@ impl Program {
             commit: option_env!("REFORGE_COMMIT").map(str::to_string),
         }
     }
+
+    /// Refuses a snapshot this program did not write. A program with no commit is no one
+    /// program: two builds outside a checkout share a version and differ in their code.
+    fn resumes(&self) -> Result<(), ResumeError> {
+        if self.commit.is_none() {
+            Err(ResumeError::Uncommitted)
+        } else if *self != Self::this() {
+            Err(ResumeError::Program {
+                wrote: self.clone(),
+            })
+        } else {
+            Ok(())
+        }
+    }
 }
 
 /// The inputs `load` reads, each by what identifies it (#ADR-0094).
@@ -174,6 +188,9 @@ pub enum ResumeError {
         /// The program that wrote it.
         wrote: Program,
     },
+    /// A program built outside a git checkout wrote the snapshot: no commit says which.
+    #[error("the snapshot was written by a build with no commit")]
+    Uncommitted,
     /// An input the environment has open is not the one the snapshot was judged under.
     #[error("the run's {0:?} is not the snapshot's")]
     Input(Input),
@@ -415,11 +432,7 @@ impl LoadSnapshot {
         if self.format != SNAPSHOT_FORMAT {
             return Err(ResumeError::Format { found: self.format });
         }
-        if self.program != Program::this() {
-            return Err(ResumeError::Program {
-                wrote: self.program.clone(),
-            });
-        }
+        self.program.resumes()?;
         if let Some(input) = self.inputs.differs(inputs) {
             return Err(ResumeError::Input(input));
         }

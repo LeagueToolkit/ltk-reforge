@@ -1266,6 +1266,16 @@ fn a_load_snapshot_is_refused_when_another_program_wrote_it_or_its_format_is_ano
 }
 
 #[test]
+fn a_snapshot_written_by_a_build_with_no_commit_is_refused() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let (json, store) = legacy_snapshot(&porter);
+    let other = edited(&json, "program", "commit", serde_json::Value::Null);
+    let refused = porter.resume(other, store).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Uncommitted)));
+}
+
+#[test]
 fn a_snapshot_is_refused_when_the_store_lacks_its_bytes_or_its_reading_is_another() {
     let env = legacy_env();
     let porter = Porter::new(&env);

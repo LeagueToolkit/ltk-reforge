@@ -87,8 +87,9 @@ let report = run.report();
   whose inputs (`LoadInputs`: the install's build, the history, the hash tables' stamp)
   are not the environment's, or whose settings (`LoadSettings`: the mode, the file fixups,
   the stale keep, the reworks) are not the run's. The caller then starts from an earlier
-  snapshot. The commit is the one the build script reads from git, and a build outside a
-  checkout has none.
+  snapshot. The commit is the one the build script reads from git. A build outside a
+  checkout has none, and a snapshot it wrote is refused (`Uncommitted`): its version alone
+  does not say which code wrote it.
 - **A stage runs once.** Its method asked again gives the result the run holds. The stage
   types keep the order in their signatures. The run holds the results, so a method called
   before the result it reads is held answers `RunError::NotReached` with both stages.
