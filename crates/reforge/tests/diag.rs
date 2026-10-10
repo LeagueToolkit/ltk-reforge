@@ -4,9 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use reforge::diag::{
     Action, Channel, Code, Diag, DiagnosticPolicy, Diagnostics, Filter, FilterError, Halted, Input,
-    Message, Record, Render, Severity, Stage, Subject,
+    Logged, Message, Record, Render, Severity, Stage, Subject, UnknownCode,
 };
-use reforge::model::{Spelled, WadHash};
+use reforge::model::{BinHash, Spell, Spelled, WadHash};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -174,6 +174,73 @@ fn a_diagnostic_serialises_with_its_subject_its_source_and_its_data() {
     let stale = log.iter().next().unwrap().to_json(&Render::plain());
     assert!(stale.get("by").is_none() && stale.get("record").is_none());
     assert_eq!(stale["subject"]["id"], "history");
+}
+
+#[test]
+fn a_logged_diagnostic_raised_again_writes_as_the_one_it_was_logged_from() {
+    let log = sample();
+    let logged = log.logged_from(0);
+    let json = serde_json::to_string(&logged).unwrap();
+    let read: Vec<Logged> = serde_json::from_str(&json).unwrap();
+    assert_eq!(read, logged);
+    let codes = [IndexStale::CODE, EntryCorrupt::CODE, Changed::CODE];
+    let mut again = Diagnostics::new();
+    again.restore(&read, &codes).unwrap();
+    let names = |hash: WadHash| (hash.0 == 1).then(|| "data/one.bin".to_string());
+    let spelled = BookOf(names);
+    let cx = Render {
+        names: &spelled,
+        module: None,
+    };
+    let written = |log: &Diagnostics| -> Vec<serde_json::Value> {
+        log.iter().map(|d| d.to_json(&cx)).collect()
+    };
+    assert_eq!(written(&again), written(&log));
+    assert!(
+        written(&again)[2]["message"]
+            .as_str()
+            .unwrap()
+            .contains("data/one.bin")
+    );
+    assert_eq!(again.worst(), log.worst());
+    assert_eq!(
+        again.of::<Changed>().count(),
+        0,
+        "a logged finding is no finding type"
+    );
+}
+
+#[test]
+fn a_logged_diagnostic_of_a_code_not_declared_raises_nothing() {
+    let logged = sample().logged_from(0);
+    let mut again = Diagnostics::new();
+    let refused = again.restore(&logged, &[IndexStale::CODE, Changed::CODE]);
+    assert_eq!(
+        refused,
+        Err(UnknownCode("archive.entry-corrupt".to_string()))
+    );
+    assert!(again.is_empty());
+}
+
+/// Names that spell a chunk hash by a function and nothing else.
+struct BookOf<F>(F);
+
+impl<F: Fn(WadHash) -> Option<String>> Spell for BookOf<F> {
+    fn path(&self, hash: WadHash) -> Option<String> {
+        (self.0)(hash)
+    }
+
+    fn entry(&self, _: BinHash) -> Option<String> {
+        None
+    }
+
+    fn field(&self, _: BinHash) -> Option<String> {
+        None
+    }
+
+    fn class(&self, _: BinHash) -> Option<String> {
+        None
+    }
 }
 
 #[test]

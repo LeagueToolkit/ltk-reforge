@@ -36,14 +36,14 @@ pub use self::findings::{
 pub use self::kind::file_kind;
 pub use self::packed::PackedError;
 use self::reader::{Parts, Reader};
-use crate::diag::{Halted, Sink};
+use crate::diag::{Halted, Logged, Sink};
 use crate::model::entity::{Extra, ModImage, ModMeta, WadLayout};
 use crate::model::{ByteView, ChunkPath, ContentId, Spelled, WadHash, WadName};
 use crate::store::BlobStore;
 
 /// The raw reading's version (#ADR-0095): one number, raised when the zip or WAD reading, the
 /// hashing or the snapshot's shape changes.
-pub const RAW_VERSION: u32 = 1;
+pub const RAW_VERSION: u32 = 2;
 
 /// One file of a WAD, as the reader holds it before its bytes go into the store.
 #[derive(Debug, Clone)]
@@ -152,6 +152,8 @@ pub struct RawSnapshot {
     pub extras: Vec<RawExtra>,
     /// Its `META/image.png`, when it has one. The entry is among the extras too.
     pub image: Option<RawImage>,
+    /// What the read raised, in order.
+    pub findings: Vec<Logged>,
 }
 
 impl RawSnapshot {
@@ -211,6 +213,7 @@ impl RawSnapshot {
             wads,
             extras,
             image,
+            findings: Vec::new(),
         }
     }
 }
@@ -229,6 +232,7 @@ pub fn read(
 ) -> Result<RawSnapshot, Halted> {
     let file_name = Spelled::new(file_name);
     let _span = tracing::info_span!("read", archive = %file_name).entered();
+    let mark = sink.mark();
     let mut reader = match Reader::open(bytes, &file_name, caps) {
         Ok(reader) => reader,
         Err(fatal) => return Err(fatal.halt(sink)),
@@ -252,7 +256,9 @@ pub fn read(
         version: info.version,
         description: info.description,
     };
-    Ok(RawSnapshot::of(meta, parts, store))
+    let mut raw = RawSnapshot::of(meta, parts, store);
+    raw.findings = sink.logged_since(mark);
+    Ok(raw)
 }
 
 /// Reads an archive file into the store. A file over the cap for the archive file is not read.

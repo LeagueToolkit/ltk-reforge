@@ -83,6 +83,23 @@ impl<T: Sigil> serde::Serialize for Id<T> {
     }
 }
 
+impl<'de, T: Sigil> serde::Deserialize<'de> for Id<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(d)?;
+        let number = text
+            .strip_prefix('%')
+            .and_then(|t| t.strip_prefix(T::SIGIL));
+        let raw = number.and_then(|n| n.parse::<u32>().ok());
+        let raw = raw.ok_or_else(|| {
+            serde::de::Error::custom(format_args!("{text:?} is no id of %{}", T::SIGIL))
+        })?;
+        Ok(Self {
+            raw,
+            _t: PhantomData,
+        })
+    }
+}
+
 /// A growable vector that hands out typed ids.
 pub struct Arena<T> {
     items: Vec<T>,

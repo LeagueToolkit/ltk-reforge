@@ -416,6 +416,40 @@ fn info_is_read_past_a_byte_order_mark_and_in_any_case_of_its_keys() {
 }
 
 #[test]
+fn the_raw_snapshot_keeps_what_the_read_raised_and_nothing_raised_before_it() {
+    let bytes = zip(&[
+        ("META/info.json", b"{not json", STORED),
+        ("WAD/Lux.wad.client/data/x.bin", b"x", STORED),
+    ]);
+    let mut log = Diagnostics::new();
+    log.at(Stage::Read).raise(InfoUnreadable {
+        entry: Spelled::new("raised before the read"),
+        reason: String::new(),
+    });
+    let store = MemoryStore::new();
+    let raw = archive::read(
+        &bytes,
+        "mod.fantome",
+        &Caps::default(),
+        &store,
+        &mut log.at(Stage::Read),
+    );
+    let raw = raw.expect("the archive reads");
+    assert_eq!(log.len(), 2);
+    assert_eq!(raw.findings, log.logged_from(1));
+    let finding = &raw.findings[0];
+    assert_eq!(finding.code, InfoUnreadable::CODE.name);
+    assert_eq!(
+        finding.subject,
+        Subject::Entry(Spelled::new("META/info.json"))
+    );
+    assert_eq!(
+        finding.data,
+        log.get(reforge::diag::DiagId(1)).expect("raised").data()
+    );
+}
+
+#[test]
 fn info_that_does_not_parse_is_noted_and_the_archive_is_read() {
     let bytes = zip(&[
         ("META/info.json", b"{not json", STORED),

@@ -147,6 +147,12 @@ fixup that moves 400 fields in a unit raises one `fixup.changed` whose `data` li
 - **Nothing raises into a sink that is thrown away.** The decision's diagnostics are made from
   the chosen decisions. The policies compared against make none.
 - **A listener hears each one as it is raised**, so a GUI shows a run as it goes.
+- **A snapshot keeps diagnostics as data** (#ADR-0094). `Logged` is a diagnostic's code by
+  name, its stage, subject, source and record, its data, and its message as parts.
+  `Diagnostics::restore` raises logged diagnostics again with the codes of `reforge::codes()`,
+  and refuses all of them when one names a code the program does not declare. A message is
+  spelled when it is written, so a report from a restored log writes as one from the log it
+  came from. A restored finding is no finding type: `of::<T>()` does not find it.
 
 ## Filters and levels
 

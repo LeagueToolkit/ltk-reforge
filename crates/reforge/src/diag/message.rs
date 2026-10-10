@@ -3,8 +3,11 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use super::Subject;
 use crate::model::entity::{CharId, FileId, Mod, ObjectId, UnitId, WadId};
+use crate::model::hash::{bin_hex, wad_hex};
 use crate::model::names::{NoNames, Spell};
 use crate::model::{BinHash, WadHash, clean};
 
@@ -59,18 +62,19 @@ impl Render<'_> {
 }
 
 /// One piece of a message: text, or an id or a hash spelled when the message is written.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "part", content = "of", rename_all = "lowercase")]
 pub enum Part {
     /// Text, cleaned where the mod spells it.
     Text(String),
     /// A chunk path, by its hash.
-    Path(WadHash),
+    Path(#[serde(with = "wad_hex")] WadHash),
     /// An entry name, by its hash.
-    Entry(BinHash),
+    Entry(#[serde(with = "bin_hex")] BinHash),
     /// A field name, by its hash.
-    Field(BinHash),
+    Field(#[serde(with = "bin_hex")] BinHash),
     /// A class name, by its hash.
-    Class(BinHash),
+    Class(#[serde(with = "bin_hex")] BinHash),
     /// A WAD of the mod, by its name.
     Wad(WadId),
     /// A character, by its name.
@@ -127,6 +131,12 @@ impl Message {
 
     fn part(&mut self, part: Part) -> &mut Self {
         self.parts.push(part);
+        self
+    }
+
+    /// Parts written before, as they were.
+    pub(super) fn parts(&mut self, parts: &[Part]) -> &mut Self {
+        self.parts.extend_from_slice(parts);
         self
     }
 

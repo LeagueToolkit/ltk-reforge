@@ -7,7 +7,9 @@ pub use ltk_hash::{BinHash, WadHash};
 use sha2::{Digest, Sha256};
 
 /// A skin number: `skin<N>.bin`, `Skins/Skin<N>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct Slot(pub u16);
 
 impl Slot {
@@ -54,6 +56,74 @@ impl fmt::Debug for ContentId {
 impl serde::Serialize for ContentId {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.hex())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ContentId {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(d)?;
+        let digest = hex_digits(&text, 64).map(|digits| {
+            let mut digest = [0u8; 32];
+            for (byte, pair) in digest.iter_mut().zip(digits.chunks(2)) {
+                *byte = pair.iter().fold(0, |byte, &digit| byte << 4 | digit);
+            }
+            digest
+        });
+        digest
+            .map(Self)
+            .ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no SHA-256")))
+    }
+}
+
+/// The values of `len` hex digits, in either case. None when the text is of another length or
+/// holds anything else.
+fn hex_digits(text: &str, len: usize) -> Option<Vec<u8>> {
+    let digits = text
+        .chars()
+        .map(|c| c.to_digit(16).and_then(|d| u8::try_from(d).ok()));
+    let digits: Vec<u8> = digits.collect::<Option<_>>()?;
+    (digits.len() == len).then_some(digits)
+}
+
+/// The number `len` hex digits spell.
+fn hex_number(text: &str, len: usize) -> Option<u64> {
+    let digits = hex_digits(text, len)?;
+    Some(digits.iter().fold(0u64, |n, &d| n << 4 | u64::from(d)))
+}
+
+/// A chunk hash as a report writes it: sixteen hex digits. For `#[serde(with)]`.
+pub mod wad_hex {
+    use super::{WadHash, hex_number};
+
+    /// Writes the hash.
+    pub fn serialize<S: serde::Serializer>(hash: &WadHash, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(&format_args!("{:016x}", hash.0))
+    }
+
+    /// Reads the hash.
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<WadHash, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(d)?;
+        hex_number(&text, 16)
+            .map(WadHash)
+            .ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no chunk hash")))
+    }
+}
+
+/// A bin hash as a report writes it: eight hex digits. For `#[serde(with)]`.
+pub mod bin_hex {
+    use super::{BinHash, hex_number};
+
+    /// Writes the hash.
+    pub fn serialize<S: serde::Serializer>(hash: &BinHash, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(&format_args!("{:08x}", hash.0))
+    }
+
+    /// Reads the hash.
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BinHash, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(d)?;
+        let hash = hex_number(&text, 8).and_then(|n| u32::try_from(n).ok());
+        hash.map(BinHash)
+            .ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no bin hash")))
     }
 }
 
@@ -176,6 +246,25 @@ pub mod skin_paths {
 mod tests {
     use super::skin_paths::*;
     use super::*;
+
+    #[test]
+    fn hex_reads_back_what_it_wrote_and_nothing_else() {
+        let id = ContentId::of(b"bytes");
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(serde_json::from_str::<ContentId>(&json).unwrap(), id);
+        assert_eq!(hex_number("00000000000000ff", 16), Some(255));
+        assert_eq!(hex_number("000000FF", 8), Some(255));
+        for wrong in [
+            "+00000000000000f",
+            "00000000000000f",
+            "00000000000000fg",
+            "ffffffffffffffé",
+        ] {
+            assert_eq!(hex_number(wrong, 16), None, "{wrong}");
+        }
+        let short = serde_json::to_string(&id.hex()[1..]).unwrap();
+        assert!(serde_json::from_str::<ContentId>(&short).is_err());
+    }
 
     #[test]
     fn skin_bin_paths_round_trip() {

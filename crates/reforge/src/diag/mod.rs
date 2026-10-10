@@ -12,8 +12,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub use self::filter::{Action, DiagnosticPolicy, Filter, FilterError, PolicyRule};
-pub use self::log::{DiagId, Diagnostic, Diagnostics, Halted, Sink};
-pub use self::message::{Message, Render};
+pub use self::log::{DiagId, Diagnostic, Diagnostics, Halted, Logged, Sink, UnknownCode};
+pub use self::message::{Message, Part, Render};
 use crate::model::entity::{BinId, CharId, FileId, ObjectId, UnitId, WadId};
 pub use crate::model::record::{Record, Series};
 use crate::model::{ChunkPath, Spelled};
@@ -182,7 +182,8 @@ pub enum Input {
 }
 
 /// What a diagnostic is about. A reference, not a string: a report joins it with its tables.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "id", rename_all = "lowercase")]
 pub enum Subject {
     /// The run as a whole, or the whole mod.
     Run,

@@ -96,6 +96,12 @@ impl serde::Serialize for Spelled {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for Spelled {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        <String as serde::Deserialize>::deserialize(d).map(Spelled::new)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

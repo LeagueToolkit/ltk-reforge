@@ -144,6 +144,13 @@ impl serde::Serialize for ChunkPath {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for ChunkPath {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(d)?;
+        ChunkPath::parse(&text).map_err(serde::de::Error::custom)
+    }
+}
+
 /// The name of a WAD: one file name, such as `Lux.wad.client` or `Lux.en_US.wad.client`.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WadName {
@@ -233,6 +240,13 @@ impl fmt::Debug for WadName {
 impl serde::Serialize for WadName {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.spelled)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for WadName {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(d)?;
+        WadName::parse(&text).map_err(serde::de::Error::custom)
     }
 }
 

@@ -4,7 +4,9 @@ use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
-use super::message::{Message, Render};
+use serde::{Deserialize, Serialize};
+
+use super::message::{Message, Part, Render};
 use super::{Channel, Code, Diag, Filter, Record, Severity, Stage, Subject};
 
 /// A diagnostic's place in the run's log, from 0. A result that a diagnostic explains holds
@@ -46,6 +48,52 @@ impl<T: Diag> Finding for T {
         self
     }
 }
+
+/// A finding read back from a snapshot: its message as parts and its fields as data. It is no
+/// finding type, so [`Diagnostic::downcast_ref`] finds nothing in it.
+struct Recorded {
+    message: Vec<Part>,
+    data: serde_json::Value,
+}
+
+impl Finding for Recorded {
+    fn message(&self, f: &mut Message) {
+        f.parts(&self.message);
+    }
+
+    fn data(&self) -> serde_json::Value {
+        self.data.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+/// A diagnostic as a snapshot keeps it (#ADR-0094): its code by name, its finding as the
+/// report's data, and its message as parts, spelled when it is written.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Logged {
+    /// Its code's name, `area.finding`.
+    pub code: String,
+    /// The stage that raised it.
+    pub stage: Stage,
+    /// What it is about.
+    pub subject: Subject,
+    /// The fixup or check that raised it, when one did.
+    pub by: Option<String>,
+    /// The record it rests on, when it has one.
+    pub record: Option<Record>,
+    /// Its one line for a person, as parts.
+    pub message: Vec<Part>,
+    /// The finding's fields.
+    pub data: serde_json::Value,
+}
+
+/// A logged diagnostic whose code the program does not declare.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("no code {0} is declared")]
+pub struct UnknownCode(pub String);
 
 /// One diagnostic of a run.
 pub struct Diagnostic {
@@ -90,6 +138,21 @@ impl Diagnostic {
         let mut f = Message::new();
         self.finding.message(&mut f);
         Message::write(&f.into_parts(), cx)
+    }
+
+    /// The diagnostic as a snapshot keeps it.
+    pub fn logged(&self) -> Logged {
+        let mut f = Message::new();
+        self.finding.message(&mut f);
+        Logged {
+            code: self.code.name.to_string(),
+            stage: self.stage,
+            subject: self.subject.clone(),
+            by: self.by.as_deref().map(str::to_string),
+            record: self.record,
+            message: f.into_parts(),
+            data: self.data(),
+        }
     }
 
     /// The diagnostic as a report holds it, and as a listener's stream writes it, one per line.
@@ -199,6 +262,37 @@ impl Diagnostics {
         self.items.iter().map(Diagnostic::severity).max()
     }
 
+    /// The diagnostics from the one at `from` on, as a snapshot keeps them.
+    pub fn logged_from(&self, from: usize) -> Vec<Logged> {
+        let items = self.items.get(from..).unwrap_or_default();
+        items.iter().map(Diagnostic::logged).collect()
+    }
+
+    /// Raises logged diagnostics again, in their order, each with the code of that name in
+    /// `codes`. Nothing is raised when one names a code `codes` lacks.
+    pub fn restore(&mut self, logged: &[Logged], codes: &[Code]) -> Result<(), UnknownCode> {
+        let code = |name: &str| codes.iter().find(|code| code.name == name).copied();
+        let found: Vec<Code> = logged
+            .iter()
+            .map(|item| code(&item.code).ok_or_else(|| UnknownCode(item.code.clone())))
+            .collect::<Result<_, _>>()?;
+        for (item, code) in logged.iter().zip(found) {
+            let finding = Recorded {
+                message: item.message.clone(),
+                data: item.data.clone(),
+            };
+            self.push(
+                item.stage,
+                item.by.as_deref().map(Arc::from),
+                item.record,
+                code,
+                item.subject.clone(),
+                Box::new(finding),
+            );
+        }
+        Ok(())
+    }
+
     /// The first diagnostic that left the run with nothing to write.
     pub fn halted(&self) -> Option<Halted> {
         self.items
@@ -262,6 +356,16 @@ impl Sink<'_> {
     /// The stage this sink raises for.
     pub fn stage(&self) -> Stage {
         self.stage
+    }
+
+    /// How many diagnostics the log holds: the place of the next one raised.
+    pub fn mark(&self) -> usize {
+        self.log.len()
+    }
+
+    /// The diagnostics raised since `mark`, as a snapshot keeps them.
+    pub fn logged_since(&self, mark: usize) -> Vec<Logged> {
+        self.log.logged_from(mark)
     }
 
     /// Raises a finding and returns its place in the log.
