@@ -895,10 +895,13 @@ object takes a name of its own, which every link to it follows.
   learnt, and the findings of `read` and `load` as `Logged` ([DIAGNOSTICS.md](DIAGNOSTICS.md),
   "Through the run"). `wads()` gives each WAD's files by path hash with the id of their
   bytes. Its format is `SNAPSHOT_FORMAT`, 1, the format of every snapshot.
-- Every snapshot from `load` on is JSON. `snapshot::to_json` writes one, cleaned as the
-  report is, and `snapshot::from_json` reads one back as the stage asked for: they are the one
-  place a snapshot meets its format. A snapshot type (`StageSnapshot`) holds its fields and
-  names its stage, and knows nothing of the format.
+- Every snapshot is JSON, the raw snapshot among them. `snapshot::to_json` writes one,
+  cleaned as the report is, and `snapshot::from_json` reads one back as the stage asked for:
+  they are the one place a snapshot meets its format. A snapshot type (`StageSnapshot`) holds
+  its fields and names its stage, and knows nothing of the format. The raw snapshot carries
+  no `SNAPSHOT_FORMAT`: its reading version, `RAW_VERSION`, is raised when its shape
+  changes, and with its caps it is refused as the snapshot `read` gave is (#ADR-0095). A
+  WAD's files are a list in hash order, each hash in sixteen hex digits.
 - The fix snapshot holds each WAD's files by path hash as `fix` left them, a bin a fixup
   changed under the id of the bytes `FixedMod::rewrite` wrote, which a repair's package
   ships; what each fixup changed, a field path with the class of each struct on it, which

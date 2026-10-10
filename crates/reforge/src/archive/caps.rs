@@ -1,8 +1,10 @@
 //! The bounds on what one archive may make a run read, and the count of inflated bytes held
 //! against them.
 
+use serde::{Deserialize, Serialize};
+
 /// Bounds on what one archive may make a run read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Caps {
     /// Bytes of one entry, and of one chunk of a packed WAD, inflated.
     pub entry_bytes: u64,

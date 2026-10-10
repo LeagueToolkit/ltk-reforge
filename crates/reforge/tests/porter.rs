@@ -9,7 +9,7 @@ use std::sync::Arc;
 use camino::{Utf8Path, Utf8PathBuf};
 use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
 use ltk_meta::BinObject;
-use reforge::archive::{Caps, RAW_VERSION};
+use reforge::archive::{Caps, RAW_VERSION, RawSnapshot};
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Input, Stage};
 use reforge::env::Env;
 use reforge::facts::FactsError;
@@ -1940,6 +1940,50 @@ fn a_raw_snapshot_read_under_other_caps_is_refused() {
     let refused = capped.resume(raw.clone(), Arc::clone(&store)).map(drop);
     assert!(matches!(refused, Err(ResumeError::Setting(Setting::Caps))));
     assert!(porter.resume(raw, store).is_ok());
+}
+
+/// #ADR-0095: the raw snapshot written as JSON and read back is the snapshot `read` gave, and
+/// a run resumed from it is refused, or runs, as one resumed from that snapshot.
+#[test]
+fn a_raw_snapshot_reads_back_from_its_json_and_resumes_as_the_snapshot_read_gave() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let archive = legacy_archive()
+        .file(WAD, "assets/mod/a/twice.tex", blob("first"))
+        .file(WAD, "ASSETS/mod/a/twice.tex", blob("second"))
+        .extra("README.txt", b"read me".to_vec());
+    let mut straight = porter.run();
+    let raw = straight
+        .read(&archive.build(), FILE_NAME)
+        .expect("the archive reads")
+        .clone();
+    assert!(!raw.findings.is_empty(), "the read raised a finding");
+    assert!(!raw.extras.is_empty(), "the archive has an extra");
+    straight.through(Stage::Check).expect("no fault");
+    let report = straight.report().to_json();
+    let store = Arc::new(MemoryStore::new());
+    flush(straight, &store);
+
+    let json = to_json(&raw);
+    let back = from_json::<RawSnapshot>(&json).expect("the raw snapshot reads");
+    assert_eq!(back, raw);
+    assert_eq!(to_json(&back), json, "it reads back as it was written");
+
+    let caps = Caps {
+        entries: 1 << 10,
+        ..Caps::default()
+    };
+    let capped = Porter::new(&env).caps(caps);
+    let refused = capped.resume(back.clone(), Arc::clone(&store)).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Setting(Setting::Caps))));
+    let mut other = back.clone();
+    other.version = RAW_VERSION + 1;
+    let refused = porter.resume(other, Arc::clone(&store)).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Reading { .. })));
+
+    let mut resumed = porter.resume(back, store).expect("the run resumes");
+    resumed.through(Stage::Check).expect("no fault");
+    assert_eq!(resumed.report().to_json(), report);
 }
 
 #[test]

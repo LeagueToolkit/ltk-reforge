@@ -46,7 +46,7 @@ impl Sigil for SkinUnit {
 }
 
 /// What the archive says of itself, and what identifies it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModMeta {
     /// The archive's file name, for display and as the fallback mod name.
     pub file_name: Spelled,

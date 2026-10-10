@@ -80,7 +80,7 @@ struct ArchiveWad {
 }
 
 /// One file of a WAD of the raw snapshot.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawFile {
     /// Its path, when the archive spells one. A chunk named by its hash and a chunk of a packed
     /// WAD have none, unless another entry of the WAD spells the same path.
@@ -90,7 +90,7 @@ pub struct RawFile {
 }
 
 /// A WAD of the raw snapshot: its loose chunks and the chunks of its packed form, as one.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawWad {
     /// The name as the archive first spells it.
     pub name: WadName,
@@ -98,7 +98,50 @@ pub struct RawWad {
     pub layout: WadLayout,
     /// Its files, by the hash the client finds each by. The first chunk the archive lists at a
     /// path is the file.
+    #[serde(with = "files_by_hash")]
     pub files: BTreeMap<WadHash, RawFile>,
+}
+
+/// A WAD's files as JSON: a list in hash order, each hash written as the report writes a chunk
+/// hash, since a JSON map's keys are strings. A hash listed twice does not read.
+mod files_by_hash {
+    use std::collections::BTreeMap;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::RawFile;
+    use crate::model::WadHash;
+    use crate::model::hash::wad_hex;
+
+    #[derive(Serialize, Deserialize)]
+    struct Row {
+        #[serde(with = "wad_hex")]
+        hash: WadHash,
+        #[serde(flatten)]
+        file: RawFile,
+    }
+
+    pub(super) fn serialize<S: Serializer>(
+        files: &BTreeMap<WadHash, RawFile>,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
+        s.collect_seq(files.iter().map(|(&hash, file)| Row {
+            hash,
+            file: file.clone(),
+        }))
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        d: D,
+    ) -> Result<BTreeMap<WadHash, RawFile>, D::Error> {
+        let rows = Vec::<Row>::deserialize(d)?;
+        let listed = rows.len();
+        let files: BTreeMap<_, _> = rows.into_iter().map(|row| (row.hash, row.file)).collect();
+        if files.len() != listed {
+            return Err(serde::de::Error::custom("a chunk hash is listed twice"));
+        }
+        Ok(files)
+    }
 }
 
 /// An entry of the archive outside `META/info.json` and the WADs. Its first bytes are in the
@@ -140,7 +183,10 @@ impl RawImage {
 
 /// The raw snapshot (#ADR-0094): what the archive alone determines, with every byte of it in
 /// the store and named here by content id. The stage `read` returns it.
-#[derive(Debug, Clone)]
+///
+/// Its JSON is written and read where the other snapshots' are (`snapshot::to_json`). A
+/// change of its shape raises [`RAW_VERSION`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawSnapshot {
     /// The raw reading's version, [`RAW_VERSION`] when this program wrote it.
     pub version: u32,

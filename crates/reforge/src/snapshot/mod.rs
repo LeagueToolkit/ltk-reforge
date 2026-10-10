@@ -10,6 +10,10 @@
 //! resumes from it with the load snapshot and the run group's snapshots before it
 //! ([`Snapshots`]).
 //!
+//! The raw snapshot is `archive`'s, and becomes JSON at the same edge as these: its reading
+//! version and its caps are in it, and a resume from one read back refuses them as it refuses
+//! the snapshot `read` gave.
+//!
 //! `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump".
 
 mod build;
@@ -30,7 +34,7 @@ pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
 pub use self::plan::{PlanSettings, PlanSnapshot};
-use crate::archive::{Caps, RawExtra, RawImage};
+use crate::archive::{Caps, RawExtra, RawImage, RawSnapshot};
 use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
 use crate::facts::FactsError;
@@ -54,6 +58,10 @@ pub const SNAPSHOT_FORMAT: u32 = 1;
 pub trait StageSnapshot: Serialize + DeserializeOwned {
     /// The stage it is kept after.
     const STAGE: Stage;
+}
+
+impl StageSnapshot for RawSnapshot {
+    const STAGE: Stage = Stage::Read;
 }
 
 /// A snapshot as JSON, every character a terminal acts on written as a JSON escape, as the
