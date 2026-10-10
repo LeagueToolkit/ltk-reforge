@@ -1976,3 +1976,49 @@ a file: the reports hold neither when none is given.
 - **Against the cancel runs** (`answers-{port,repair}-vs-cancel`, with `cancel-port` and
   `cancel-repair`): the reports are equal in all 68 mods of each command.
 - **Time.** 35 s a port and 52 s a repair, within 2 s of the cancel runs' 33 s and 50 s.
+
+## The raw snapshot as a cache (2026-10-10)
+
+The branch `run-state-store` at `de0142b`: the ingest store (`cacache` 13.0.0, one file per
+blob under its SHA-256), the raw snapshot as JSON, and a run that reads its archive through a
+cache of raw snapshots (#ADR-0093, #ADR-0095), taken by the command as `--store`. The same
+inputs as "The load snapshot", over the reduced corpus. Each command ran three ways: into a
+fresh store under `data/corpus/` (the populating run), again with that store (the hitting
+run), and with none; then the hitting run and the run with none once more, alternated. Each
+command had a store of its own, so that each has a populating run.
+
+| run | command | store | done | ended by a fatal diagnostic | time | sum of the mods' times |
+|---|---|---|---:|---|---|---|
+| `raw-cache-port-fill` | `port --no-write` | fresh | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 45 s | 607.8 s |
+| `raw-cache-port-hit`, `-hit-2` | the same | populated | 63 | the same | 31 s, 31 s | 314.9 s, 313.2 s |
+| `raw-cache-port`, `-2` | the same | none | 63 | the same | 31 s, 31 s | 313.4 s, 316.6 s |
+| `raw-cache-repair-fill` | `repair --no-write --again` | fresh | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 61 s | 570.2 s |
+| `raw-cache-repair-hit`, `-hit-2` | the same | populated | 65 | the same | 51 s, 48 s | 366.2 s, 304.6 s |
+| `raw-cache-repair`, `-2` | the same | none | 65 | the same | 47 s, 47 s | 304.8 s, 304.9 s |
+
+- **Against the baselines** (`raw-cache-{port,repair}{-fill,-hit,}-vs-baseline-6`, expected as
+  "The load snapshot"): the 68 mods of each run differ in the report's two inputs alone, 136
+  differences each, all expected. The exits are the baselines', mod for mod.
+- **With each other** (`raw-cache-{port,repair}-{fill,hit}-vs-memory`,
+  `raw-cache-{port,repair}-hit-vs-fill`): equal in all 68 mods of each command, and the
+  report files of the populating and the hitting run are the run's with no store byte for
+  byte. The cache is invisible in the output, as #ADR-0095 requires. That a hitting run reads
+  the entries was checked on one archive: a mod name written into its entry by hand is the
+  name the next run's report holds.
+- **The store after a populating run**, the same for either command: 19,433 files of
+  5,136,424,701 bytes (5,073,340 KiB allocated, as `du` counts it), in 16,957 directories.
+  19,365 are blobs, 5,133,110,290 bytes: 19,346 distinct contents of the WADs' files, 12 of
+  the extras' first bytes and 7 images. 68 are entries, one per archive, 3,314,411 bytes, the
+  largest 411,345. The two-level fanout of `cacache` makes nearly a directory per blob at
+  this count.
+- **Time.** Populating costs 14 s of wall time over a port and over a repair, and nearly
+  doubles the mods' summed time: the cost of one file per blob on Windows that #ADR-0093
+  names, a create, a write and a rename per blob. A hitting run takes the time of a run with
+  no store: summed, 313 to 317 s a port and 305 s a repair. The first repair after its store
+  was populated took 61 s more summed, and the second the time of a run with none.
+  `reforge load` over the corpus (`raw-cache-load{,-hit}{,-2}`) takes 15 s and 206 to 209 s
+  summed with the store and without. On the largest archive of the corpus (328 MB), one
+  process, `reforge load` takes 4.2 s with no store, 17.3 s populating and 3.9 to 4.1 s
+  hitting. Reading a mod's blobs back, each checked against its hash, costs nearly what
+  inflating and unpacking the archive does, and both are small beside opening the inputs and
+  the stages after `read`.
