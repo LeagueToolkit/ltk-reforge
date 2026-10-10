@@ -67,9 +67,9 @@ inside B-tree pages, which it documents as faster than files only below about 10
 gives space back only by rewriting the file. The runs, their snapshots and what a person sees
 of a mod are small rows, and those are SQLite's (#ADR-0096).
 
-- The trait admits a store of plain files, one per blob under a two-level fanout of the id's
-  hex as git keeps loose objects, written by a rename. It is the store for a test and for a
-  reader that many processes share (#ADR-0095), and needs no engine.
+- A blob's put is a plain insert, not a transaction: the id is the content, so two threads
+  writing one id write one value and nothing conflicts. The store opens for one process at a
+  time, and every reader and writer of it is a thread of that process.
 - A run's memory layer is where every byte a stage makes or rewrites goes, and the layer is
   flushed into the store under it once, when the run is saved. The stages read the store
   under it only, so a run's threads share one open store for reading and serialise on
@@ -80,8 +80,7 @@ of a mod are small rows, and those are SQLite's (#ADR-0096).
 - The bytes of a stage's output are written to the store once per distinct content. A fixup
   that rewrites a bin adds one blob; the files it does not touch add none.
 - `fjall` lands in `[workspace.dependencies]` from crates.io, pinned, and is used by the app
-  crate alone: the library ships the trait, the memory store, the layered store and the
-  plain-files store.
+  crate alone: the library ships the trait, the memory store and the layered store.
 - A big mod becomes a disk cost, not a memory one. The caps on what is inflated (#ADR-0051)
   stay, since they bound what one run allocates.
 - A mod's text still reaches a person through `clean` only. A store holds bytes, and no viewer

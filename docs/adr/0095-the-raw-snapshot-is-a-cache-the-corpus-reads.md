@@ -31,16 +31,19 @@ The raw snapshot is a cache the corpus scripts may populate once and read in eve
   reports for every mod. This is checked by comparing the two runs as a change is compared
   with a baseline, and the check is run once when the cache lands and once whenever the raw
   snapshot's shape changes.
-- The cache is the plain-files store of #ADR-0093, since the runner is 24 processes and
-  `fjall` opens for one process at a time. A blob written by a rename is whole or absent, so
-  the processes populate and read it at once with no lock. The table of archive SHA-256 to
-  raw snapshot is a file per archive beside the blobs, written the same way.
+- The cache is a `fjall` store (#ADR-0093), which opens for one process. The corpus is run
+  by the batch command of #ADR-0091, one process with a thread per mod, which populates the
+  cache on the first run and reads it after; the runner script calls it in place of one
+  command per mod. Batch therefore comes before the cache, and cancel and progress
+  (#ADR-0097) before batch.
 
 ## Consequences
 
 - A corpus run starts at the dating and naming half of load, and the time to read and unpack
   comes off every run. The saving is measured when the cache lands and recorded in
   `docs/design/RUNS.md`.
+- A crash in one mod ends the batch where one command per mod lost one mod. A panic is caught
+  per mod; an aborted allocation is not, and the runner resumes from the reports it kept.
 - Two archives with one raw snapshot are one mod repacked, and the corpus scripts can list them
   before a run.
 - The cache is gitignored under `data/corpus/` as the baselines are. A raised reading version
