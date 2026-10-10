@@ -2022,3 +2022,53 @@ command had a store of its own, so that each has a populating run.
   hitting. Reading a mod's blobs back, each checked against its hash, costs nearly what
   inflating and unpacking the archive does, and both are small beside opening the inputs and
   the stages after `read`.
+
+## A read streamed into the store (2026-10-10)
+
+The branch `run-state-store` at `db3091e`: an archive file read entry by entry, a packed WAD
+stored as it is mounted over its part of the file, a deflated one inflated once into the
+store's spool, each chunk put into the store as it is read, and a cap on one chunk of a packed
+WAD (#ADR-0100). The base is master's head `e61b209`, built in a worktree of its own. The same
+inputs as "The load snapshot". Peak memory is the process's peak working set, read from its
+handle after it exits.
+
+- **The chunk cap.** Over the 1,491,566 file rows of `baseline-port-6`, the largest file is
+  304,352,832 bytes, ten rows are over 256 MiB and none is over 512 MiB. The cap is 512 MiB,
+  that size rounded up to a power of two.
+- **One mod of 256 MB with three packed WADs, one a map's**, all three stored as they are
+  (121.9 MB, 125.1 MB and 8.5 MB), whose 1,748 chunks are 88,224,835 bytes at the largest.
+  Each run twice, one process at a time; the two runs agree within 2 MiB. `read` alone is a
+  program of the library's API, not kept, that calls `archive::read_file` into the store.
+
+  | what | store | base: peak | base: time | branch: peak | branch: time |
+  |---|---|---:|---:|---:|---:|
+  | `port --no-write` | none | 921 MiB | 3.7 to 3.9 s | 923 MiB | 3.7 to 4.0 s |
+  | `port --no-write` | fresh | 979 MiB | 8.2 to 8.8 s | 979 MiB | 8.0 to 8.4 s |
+  | `port --no-write` | populated | 979 MiB | 3.7 to 3.9 s | 979 MiB | 3.9 to 4.3 s |
+  | `read` alone | none | 862 MiB | 0.7 s | 430 MiB | 0.7 s |
+  | `read` alone | fresh | 862 MiB | 2.0 s | 174 MiB | 2.0 s |
+
+  `read` alone holds the archive and the WAD it inflates at the base; on the branch it holds
+  the files' bytes in a store in memory, and with a store on disk two copies of the largest
+  chunk, the buffer `ltk_wad` decompresses it into and the view the store is given. A port's
+  peak is `load`'s and the stages' after it, which hold every file's bytes until `write`, so
+  it does not move until a file node holds an id (#ADR-0100). The reports of the eight port
+  runs are equal byte for byte.
+- **The reduced corpus**, each command without a store and with a fresh one:
+
+  | run | command | store | done | ended by a fatal diagnostic | time |
+  |---|---|---|---:|---|---|
+  | `stream-port`, `-2` | `port --no-write` | none | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 33 s, 32 s |
+  | `stream-port-store` | the same | fresh | 63 | the same | 47 s |
+  | `stream-repair`, `-2` | `repair --no-write --again` | none | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 55 s, 49 s |
+  | `stream-repair-store` | the same | fresh | 65 | the same | 69 s |
+
+  Against the baselines (`stream-{port,repair}{,-store}-vs-baseline-6`, expected as "The load
+  snapshot"), the 68 mods of each run differ in the report's two inputs alone, 136
+  differences each, all expected, and the exits are the baselines', mod for mod. With each
+  other (`stream-{port,repair}-store-vs-memory`) and with the cache's runs at `de0142b`
+  (`stream-{port,repair}-vs-cache`), equal in all 68 mods; the report files with a store and
+  without are equal byte for byte. The store after a populating run holds 19,365 blobs of
+  5,133,110,290 bytes, as the cache's did, and no scratch file. The times are those of the
+  cache's runs, 31 s and 45 s a port and 47 s and 61 s a repair, within the spread of two
+  runs.
