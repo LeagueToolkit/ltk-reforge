@@ -32,10 +32,12 @@ mod's bytes from the store when a stage asks for them, and `read` streams them i
 
 - **Read streams from the file.** The archive is read from its file, entry by entry, never
   as one slice. A stored entry is a window of the file, and a packed WAD in one is mounted
-  over the window. A deflated entry that holds a WAD is inflated once onto disk, into the
-  store's directory as a file hashed as it is written and renamed to its content id, and
-  mounted from there. Each chunk is unpacked into the store and dropped. The peak of `read`
-  is one chunk and the reader's window.
+  over the window. A deflated entry that holds a WAD is inflated once onto a scratch file in
+  the store's directory, under a name of the store's, mounted from there, and the file is
+  removed once its chunks are in the store: its bytes are its chunks, which the store holds
+  one by one, so it is never a blob. A scratch file a dead process left is removed when the
+  store is next opened. Each chunk is unpacked into the store and dropped. The peak of
+  `read` is one chunk and the reader's window.
 - **A file node holds an id, not bytes.** Its bytes come from the store the first time a
   stage asks, unchecked inside the run's own layer, and the node does not keep them past the
   stage unless the stage does. A carried file is never read.
