@@ -648,22 +648,28 @@ pub async fn remove_downloads(app: AppHandle) -> IpcResult<()> {
 }
 
 /// Shows a place in the system's file manager: a folder of the inputs, or the package the
-/// last run wrote, selected in its folder.
+/// last run or a kept run wrote, selected in its folder.
 #[tauri::command]
 #[specta::specta]
 pub async fn reveal_place(app: AppHandle, place: Place) -> IpcResult<()> {
     let settings = app.state::<SettingsStore>().get();
     let job = Arc::clone(&app.state::<Arc<IndexJob>>());
     let runs = Arc::clone(&app.state::<Arc<RunJob>>());
+    let store = app.state::<RunStore>().get();
     off_thread(move || {
         let chosen = Choice::from(&settings);
+        let none_written = || AppError::NotShown {
+            path: String::new(),
+            detail: "no package was written".to_string(),
+        };
         let dir = match place {
             Place::Written => {
-                let file = runs.written().ok_or_else(|| AppError::NotShown {
-                    path: String::new(),
-                    detail: "no package was written".to_string(),
-                })?;
+                let file = runs.written().ok_or_else(none_written)?;
                 return reveal::reveal_file(&file);
+            }
+            Place::Run { id } => {
+                let file = store?.package_of(id)?.ok_or_else(none_written)?;
+                return reveal::reveal_file(Utf8Path::new(&file));
             }
             Place::Game => chosen.game,
             Place::Hashes => Some(hashes_dir(&settings)?),

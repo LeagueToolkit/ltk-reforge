@@ -533,6 +533,16 @@ fn a_kept_runs_view_reads_back_as_the_run_drew_it_with_its_number() {
 }
 
 #[test]
+fn a_kept_run_names_the_package_it_wrote() {
+    let bench = Bench::new();
+    let view = bench.port(&own_mod(), "mod.fantome");
+    let id = view.saved.unwrap();
+
+    assert_eq!(bench.store.package_of(id).unwrap(), view.written);
+    assert_eq!(bench.store.package_of(id + 1).unwrap(), None);
+}
+
+#[test]
 fn removing_the_only_run_empties_the_run_tier_and_the_rows() {
     let bench = Bench::new();
     let id = bench.port(&own_mod(), "mod.fantome").saved.unwrap();

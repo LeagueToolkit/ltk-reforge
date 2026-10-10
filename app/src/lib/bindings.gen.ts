@@ -104,7 +104,7 @@ export const commands = {
 	removeDownloads: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_downloads"),
 	/**
 	 *  Shows a place in the system's file manager: a folder of the inputs, or the package the
-	 *  last run wrote, selected in its folder.
+	 *  last run or a kept run wrote, selected in its folder.
 	 */
 	revealPlace: (place: Place) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("reveal_place", { place }),
 	/**  What an update of the hash tables the settings choose would download. */
@@ -753,6 +753,11 @@ package: PackageView };
 export type Place = 
 /**  The package the last run wrote, selected in its folder. */
 "written" | 
+/**  The package a kept run wrote, selected in its folder. */
+{ run: {
+	/**  The run's number in the store. */
+	id: number,
+} } | 
 /**  The game install. */
 "game" | 
 /**  The hash cache. */

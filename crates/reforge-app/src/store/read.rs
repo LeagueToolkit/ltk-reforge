@@ -103,6 +103,17 @@ impl AppStore {
         Ok(Some(view))
     }
 
+    /// The `.modpkg` a kept run wrote. None for a number no run has, or a run that wrote none.
+    pub fn package_of(&self, id: u64) -> Result<Option<String>, AppError> {
+        let Ok(id) = i64::try_from(id) else {
+            return Ok(None);
+        };
+        let rows = self.rows.lock();
+        let query = "SELECT package FROM run WHERE id = ?1";
+        let package = rows.query_row(query, [id], |row| row.get(0)).optional()?;
+        Ok(package.flatten())
+    }
+
     /// A packed column of a kept run's row, as JSON. None for a number no run has.
     pub(super) fn packed_column(&self, id: u64, column: &str) -> Result<Option<String>, AppError> {
         let Ok(id) = i64::try_from(id) else {

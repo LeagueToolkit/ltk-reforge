@@ -1,6 +1,6 @@
-//! A folder of the inputs, or the package written, shown in the system's file manager. The
+//! A folder of the inputs, or a package written, shown in the system's file manager. The
 //! window names which place, never a path: the path comes from the settings, the app's own
-//! folders and the last run.
+//! folders, the last run and the store's rows.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -16,6 +16,11 @@ use crate::error::AppError;
 pub enum Place {
     /// The package the last run wrote, selected in its folder.
     Written,
+    /// The package a kept run wrote, selected in its folder.
+    Run {
+        /// The run's number in the store.
+        id: u64,
+    },
     /// The game install.
     Game,
     /// The hash cache.
