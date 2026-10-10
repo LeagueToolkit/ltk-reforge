@@ -20,9 +20,10 @@ covers the area you change before changing it, and update it in the same change.
 - **Lints.** Suppress one with `#[expect(lint, reason = "...")]`, never a bare `#[allow]`. A
   panic states what failed and with what value.
 - **Mods are untrusted input.** Names, descriptions and entry names reach a terminal only through
-  `clean` (`reforge::model`). No archive is extracted to disk, by reforge or by a script, not to
-  a scratch folder either: entries are read in memory and only derived facts (counts, names,
-  hashes) are written.
+  `clean` (`reforge::model`). No archive is extracted to disk under its own names, by reforge
+  or by a script, not to a scratch folder either. A mod's bytes are written only into a blob
+  store, under their content id (#ADR-0093); a script writes derived facts (counts, names,
+  hashes) alone.
 - **Schema questions.** A field's type at a build comes from `rito-meta`
   ([skills/meta-cli](skills/meta-cli/SKILL.md)) from 13.15 on, and from the census history
   before. A conversion is read off Riot's own across the build that changed it, never guessed,

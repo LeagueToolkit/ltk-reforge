@@ -1757,3 +1757,20 @@ The fixup `shader-variant` (#ADR-0092), on the working tree at `31a289a`, agains
 - Against `shader-variant-full-{port,repair}-after` the five differ in every section after the
   fixups: the earlier reports are those of a run the check ended.
 - The reduced corpus holds no mod the check stops, so a run over it shows nothing of the fixup.
+
+## What a blob store holds (2026-10-10)
+
+The file rows of the 4,909 reports of `baseline-port-5`, read for #ADR-0093: each file's
+size and SHA-256, the archive's bytes from the datasets on disk. No run was made.
+
+| | datasets, 4,909 mods | reduced corpus, 68 mods |
+|---|---:|---:|
+| archive bytes | 69.7 GB, median 8.7 MB, largest 440 MB | 1.65 GB, median 11.0 MB, largest 328 MB |
+| raw bytes, inflated and unpacked | 235.1 GB, median 28.0 MB, largest 948 MB | 5.73 GB, median 42.7 MB, largest 780 MB |
+| files | 1,491,566, median 178, largest mod 6,550 | 34,774, median 252, largest mod 6,276 |
+| distinct contents within each mod | 206.0 GB | 5.15 GB |
+| distinct contents across the set | 130.4 GB in 417,503 ids | 5.03 GB in 19,317 ids |
+| mods with another's content set | 246 in 119 groups | none |
+
+The reduced corpus is chosen to cover cases, so the sharing between mods shows only over the
+datasets: 45 % of the raw bytes.

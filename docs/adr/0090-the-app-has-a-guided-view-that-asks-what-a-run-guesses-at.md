@@ -1,6 +1,7 @@
 # ADR-0090: The app has a guided view that asks what a run guesses at
 
-- **Status:** Accepted (2026-10-09)
+- **Status:** Accepted (2026-10-09); each run from an answer a new run from the archive
+  superseded by #ADR-0094
 - **Related:** #ADR-0003, #ADR-0023, #ADR-0050, #ADR-0052, #ADR-0076, #ADR-0082, #ADR-0084,
   #ADR-0085, #ADR-0086; `docs/design/ROADMAP-UX.md`, "The second version"
 
