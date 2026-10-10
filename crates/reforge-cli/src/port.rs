@@ -93,7 +93,8 @@ impl PortCommand {
             .keep_stale(self.keep_stale)
             .game_events_only(self.game_events_only)
             .keep_dds(self.keep_dds)
-            .keep_other_slots(self.keep_other_slots);
+            .keep_other_slots(self.keep_other_slots)
+            .cancel(run::interrupt()?);
         let mut run = porter.run().log_from(log);
         run::through(&mut run, &self.archive, Stage::Check)?;
 

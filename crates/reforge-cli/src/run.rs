@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Args;
 use fs_err as fs;
-use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Sink, Stage};
+use reforge::diag::{Action, Cancel, DiagnosticPolicy, Filter, Render, Sink, Stage};
 use reforge::env::Env;
 use reforge::game::{Game, Install, MimirAbsent, Names, Schema, mimir_cache_dir};
 use reforge::history;
@@ -20,6 +20,25 @@ pub const HALTED: u8 = 2;
 
 /// The exit code of a run whose write the caller's policy refused.
 pub const BLOCKED: u8 = 3;
+
+/// The exit code of a run the terminal's interrupt cancelled (#ADR-0097).
+pub const CANCELLED: u8 = 4;
+
+/// A cancel the terminal's interrupt sets. The first interrupt lets the stage under way end
+/// its step, and the run ends there with its report; a second ends the process at once.
+pub fn interrupt() -> Result<Cancel> {
+    let cancel = Cancel::new();
+    let set = cancel.clone();
+    ctrlc::set_handler(move || {
+        if set.is_set() {
+            std::process::exit(i32::from(CANCELLED));
+        }
+        errln!("interrupted: the run ends after the step under way");
+        set.cancel();
+    })
+    .context("setting the handler of the terminal's interrupt")?;
+    Ok(cancel)
+}
 
 /// The inputs a run is judged against, as a command line names them.
 #[derive(Args)]
@@ -157,6 +176,10 @@ pub fn write(
     modpkg: bool,
     policy: &DiagnosticPolicy,
 ) -> Result<bool> {
+    // A cancelled run writes nothing, and its report says where it ended.
+    if run.cancelled_at().is_some() {
+        return Ok(false);
+    }
     let project = ProjectDir::new(out);
     let packed = Modpkg::new(out);
     let mut writers: Vec<&dyn PackageWriter> = vec![&project];
@@ -175,12 +198,20 @@ pub fn save_report(run: &Run<'_>, path: &Utf8Path) -> Result<()> {
     Ok(fs::write(path, run.report().to_json() + "\n")?)
 }
 
-/// The exit code of a run: halted, refused its write, or done.
+/// The exit code of a run: halted, cancelled, refused its write, or done.
 pub fn exit(run: &Run<'_>, refused: bool) -> ExitCode {
-    match (run.halted(), refused) {
-        (Some(_), _) => ExitCode::from(HALTED),
-        (None, true) => ExitCode::from(BLOCKED),
-        (None, false) => ExitCode::SUCCESS,
+    let halted = run.halted().is_some();
+    ExitCode::from(code(halted, run.cancelled_at().is_some(), refused))
+}
+
+/// The exit code of a run that ended as these say. A fatal diagnostic leaves no stage for a
+/// cancel to end, and a cancelled run writes nothing for a policy to refuse.
+fn code(halted: bool, cancelled: bool, refused: bool) -> u8 {
+    match (halted, cancelled, refused) {
+        (true, _, _) => HALTED,
+        (false, true, _) => CANCELLED,
+        (false, false, true) => BLOCKED,
+        (false, false, false) => 0,
     }
 }
 
@@ -203,5 +234,26 @@ pub fn print(run: &Run<'_>, policy: &DiagnosticPolicy) {
             cx.subject_name(&diagnostic.subject),
             diagnostic.message(cx)
         );
+    }
+    if let Some(stage) = run.cancelled_at() {
+        errln!("cancelled in {stage}: no package is written");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+
+    #[test]
+    fn a_cancelled_run_exits_with_its_own_code_beside_the_halted_one() {
+        assert_eq!(code(false, false, false), 0);
+        assert_eq!(code(true, false, false), HALTED);
+        assert_eq!(code(false, true, false), CANCELLED);
+        assert_eq!(code(false, false, true), BLOCKED);
+        let codes = [HALTED, BLOCKED, CANCELLED];
+        assert!(codes.iter().all(|&code| code > 1), "1 is a fault's");
+        assert_eq!(codes.iter().collect::<BTreeSet<_>>().len(), codes.len());
     }
 }

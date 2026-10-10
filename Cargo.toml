@@ -52,6 +52,8 @@ xxhash-rust = { version = "0.8", features = ["xxh64"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 gix = { version = "0.88", default-features = false, features = ["max-performance-safe", "sha1"] }
 clap = { version = "4", features = ["derive", "env"] }
+# The command's interrupt, which cancels a run between two steps (#ADR-0097).
+ctrlc = "3.5.2"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 anyhow = "1"

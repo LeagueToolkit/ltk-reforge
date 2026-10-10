@@ -49,9 +49,19 @@ enum Command {
     /// Port one mod archive: each unit the author made, over the game's own skin at its
     /// target, as a patch of the game's bin with the mod's own objects and files under a
     /// namespace. Written as a mod project and, with `--modpkg`, packed.
+    ///
+    /// An interrupt (Ctrl-C) ends the run after the step under way: no package is written,
+    /// and the report holds the run as far as it went. A second interrupt ends it at once.
+    /// Exits with 0 when done, 1 on a fault, 2 when a fatal diagnostic ended the run, 3 when
+    /// `--block` refused the write, 4 when an interrupt cancelled the run.
     Port(Box<port::PortCommand>),
     /// Repair one mod archive: the mod as it is, at its own slots and paths, with its bins
     /// fixed for the install's build, written as a mod project and, with `--modpkg`, packed.
+    ///
+    /// An interrupt (Ctrl-C) ends the run after the step under way: no package is written,
+    /// and the report holds the run as far as it went. A second interrupt ends it at once.
+    /// Exits with 0 when done, 1 on a fault, 2 when a fatal diagnostic ended the run, 3 when
+    /// `--block` refused the write, 4 when an interrupt cancelled the run.
     Repair(Box<repair::Repair>),
 }
 

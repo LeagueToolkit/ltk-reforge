@@ -166,6 +166,9 @@ against an input it could not read does not answer as if the input held nothing.
   The log holds the stage a cancel ended (`Run::cancelled_at`), and the report names it
   (`cancelled`), beside `halted`. A cancelled run writes nothing and is not repaired again;
   the snapshots of the stages that ended are whole, and a new run resumes from the last.
+  `reforge port` and `repair` set the cancel on the terminal's interrupt, write the report
+  of a cancelled run as a halted run's, and exit with 4 (2 is a halted run's); a second
+  interrupt ends the process at once.
 - **A stage reports its progress in its steps.** A stage counts its steps before the first
   (`Steps`, or `Parts` for a stage of named parts) and begins each through its sink, which
   reads the cancel and tells the log's progress listener (`Diagnostics::listen_progress`) a

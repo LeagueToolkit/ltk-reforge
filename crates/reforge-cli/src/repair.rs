@@ -75,11 +75,12 @@ impl Repair {
             .fixups(set)
             .checks(checks)
             .keep_stale(self.keep_stale)
-            .keep_dds(self.keep_dds);
+            .keep_dds(self.keep_dds)
+            .cancel(run::interrupt()?);
         let mut run = repairer.run().log_from(log);
         run::through(&mut run, &self.archive, Stage::Check)?;
         // Before the write: the report beside the package holds the second run.
-        if self.again && run.package().is_some() {
+        if self.again && run.package().is_some() && run.cancelled_at().is_none() {
             run.again()?;
         }
 

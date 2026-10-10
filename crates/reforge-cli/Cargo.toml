@@ -19,6 +19,7 @@ reforge.workspace = true
 reforge-census.workspace = true
 reforge-wwise.workspace = true
 clap.workspace = true
+ctrlc.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 camino.workspace = true
