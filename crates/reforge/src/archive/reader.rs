@@ -20,7 +20,7 @@ use super::source::{Input, Source, Window};
 use super::{ArchiveWad, Chunk};
 use crate::diag::{Sink, Step, Steps};
 use crate::model::entity::{Extra, MAX_IMAGE_BYTES, ModImage, WadLayout};
-use crate::model::{ByteView, ChunkPath, Spelled, WadHash, WadName};
+use crate::model::{ByteView, ChunkPath, ContentId, Spelled, WadHash, WadName};
 use crate::store::{BlobStore, ReadSeek, Spool};
 
 /// The two codecs a run reads. Fewer decoders are fewer for an untrusted archive to reach.
@@ -174,16 +174,6 @@ fn read_capped(
         len += read as u64;
     }
     Ok((len <= cap).then_some(len))
-}
-
-/// Mounts a packed WAD over a reader of its bytes and reads its chunks.
-fn mount(
-    bytes: impl Read + Seek,
-    len: u64,
-    caps: &Caps,
-    budget: &mut Budget,
-) -> Result<Vec<Chunk>, PackedFailure> {
-    PackedWad::new(bytes, len, caps).chunks(budget)
 }
 
 /// A WAD as its entries come in.
@@ -412,10 +402,36 @@ impl<'a> Reader<'a> {
         let Some(bytes) = self.inflate(index, name, &subject)? else {
             return Ok(());
         };
+        let content = self.store.put(ByteView::from(bytes));
         let wad = self.wad(key);
         wad.layout.get_or_insert(WadLayout::Loose);
-        wad.chunks.insert(hash, Chunk::new(hash, path, &bytes));
+        wad.chunks.insert(
+            hash,
+            Chunk {
+                hash,
+                path,
+                content,
+            },
+        );
         Ok(())
+    }
+
+    /// Mounts a packed WAD over a reader of its bytes, and puts each chunk into the store as it
+    /// is read and before the next is (#ADR-0100): the chunk's id, or none for a chunk at a
+    /// path the WAD holds already, which is not put.
+    fn mount(
+        &mut self,
+        bytes: impl Read + Seek,
+        len: u64,
+        key: &str,
+    ) -> Result<Vec<(WadHash, Option<ContentId>)>, PackedFailure> {
+        let held: BTreeSet<WadHash> = self.wad(key).chunks.keys().copied().collect();
+        let mut seen = BTreeSet::new();
+        let store = self.store;
+        PackedWad::new(bytes, len, self.caps).chunks(&mut self.budget, |hash, data| {
+            let first = !held.contains(&hash) && seen.insert(hash);
+            (hash, first.then(|| store.put(ByteView::from(data))))
+        })
     }
 
     /// A whole WAD as one entry. Its chunks join the WAD's loose ones.
@@ -434,12 +450,12 @@ impl<'a> Reader<'a> {
                 return Ok(());
             };
             let len = window.len();
-            mount(window, len, self.caps, &mut self.budget)
+            self.mount(window, len, key)
         } else {
             let Some(spooled) = self.spooled(index, name, subject)? else {
                 return Ok(());
             };
-            mount(spooled.out, spooled.len, self.caps, &mut self.budget)
+            self.mount(spooled.out, spooled.len, key)
         };
         let chunks = match read {
             Ok(chunks) => chunks,
@@ -452,12 +468,16 @@ impl<'a> Reader<'a> {
         let mut duplicates = Vec::new();
         let wad = self.wad(key);
         wad.layout = Some(WadLayout::Packed);
-        for chunk in chunks {
-            match wad.chunks.entry(chunk.hash) {
-                Entry::Vacant(place) => {
-                    place.insert(chunk);
+        for (hash, content) in chunks {
+            match (wad.chunks.entry(hash), content) {
+                (Entry::Vacant(place), Some(content)) => {
+                    place.insert(Chunk {
+                        hash,
+                        path: None,
+                        content,
+                    });
                 }
-                Entry::Occupied(_) => duplicates.push(chunk.hash),
+                _ => duplicates.push(hash),
             }
         }
         for hash in duplicates {

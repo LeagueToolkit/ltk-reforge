@@ -615,9 +615,9 @@ fn the_inflate_budget_ends_the_read_and_what_was_found_before_is_kept() {
 }
 
 #[test]
-fn a_read_that_ends_early_puts_nothing_in_the_store() {
-    // #ADR-0093: the bytes go into the store when the read is whole, so a halted read
-    // leaves nothing behind.
+fn a_chunk_is_in_the_store_from_the_moment_it_is_read() {
+    // #ADR-0100: each chunk goes into the store as it is read and is not held, so a read that
+    // ends early leaves the chunks before the end in the store, named by no snapshot.
     let chunk = vec![1u8; 600];
     let bytes = zip(&[
         ("WAD/Lux.wad.client/a.bin", &chunk, STORED),
@@ -637,7 +637,24 @@ fn a_read_that_ends_early_puts_nothing_in_the_store() {
         &mut log.at(Stage::Read),
     );
     assert!(result.is_err());
-    assert!(store.is_empty());
+    assert_eq!(store.ids(), [ContentId::of(&chunk)]);
+}
+
+#[test]
+fn a_chunk_at_a_path_the_wad_holds_is_not_put_in_the_store() {
+    // #MOD-ARTIFACT-0009: the loose chunk comes first, and the packed one at its path is read,
+    // charged and dropped.
+    let wad = packed_wad(&[("data/a.bin", b"packed a"), ("data/b.bin", b"packed b")]);
+    let bytes = zip(&[
+        ("WAD/Lux.wad.client/data/a.bin", b"loose a", STORED),
+        ("WAD/Lux.wad.client", &wad, STORED),
+    ]);
+    let (archive, log) = read(&bytes);
+    assert_eq!(&*archive.bytes_at(0, "data/a.bin"), b"loose a");
+    let mut ids = vec![ContentId::of(b"loose a"), ContentId::of(b"packed b")];
+    ids.sort();
+    assert_eq!(archive.store.ids(), ids);
+    assert_eq!(codes(&log), ["archive.chunk-duplicate"]);
 }
 
 #[test]

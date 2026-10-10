@@ -9,7 +9,6 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use ltk_wad::{Wad, WadChunk, WadChunkCompression};
 use serde::Serialize;
 
-use super::Chunk;
 use super::caps::{Budget, Caps, OverBudget};
 use super::findings::hash_hex;
 use crate::model::{WadHash, panic_text};
@@ -133,11 +132,16 @@ impl<'a, R: Read + Seek> PackedWad<'a, R> {
         Self { bytes, len, caps }
     }
 
-    /// The WAD's chunks, decompressed, in path-hash order as `ltk_wad` gives them. Each is
-    /// charged to the budget before it is decompressed.
-    pub(super) fn chunks(mut self, budget: &mut Budget) -> Result<Vec<Chunk>, PackedFailure> {
+    /// Reads the WAD's chunks in path-hash order as `ltk_wad` gives them, each charged to the
+    /// budget before it is decompressed and handed to `take` before the next is read, so that
+    /// one chunk is held at a time (#ADR-0100). Gives what `take` made of each.
+    pub(super) fn chunks<T>(
+        mut self,
+        budget: &mut Budget,
+        take: impl FnMut(WadHash, &[u8]) -> T,
+    ) -> Result<Vec<T>, PackedFailure> {
         self.check_header()?;
-        guarded(|| self.read(budget))
+        guarded(|| self.read(budget, take))
     }
 
     /// Refuses a header that declares more chunks than the WAD's bytes can list, or more than
@@ -195,7 +199,11 @@ impl<'a, R: Read + Seek> PackedWad<'a, R> {
         Ok(head)
     }
 
-    fn read(self, budget: &mut Budget) -> Result<Vec<Chunk>, PackedFailure> {
+    fn read<T>(
+        self,
+        budget: &mut Budget,
+        mut take: impl FnMut(WadHash, &[u8]) -> T,
+    ) -> Result<Vec<T>, PackedFailure> {
         let (len, caps) = (self.len, self.caps);
         let wad = Wad::mount(self.bytes).map_err(|e| PackedError::Mount {
             reason: e.to_string(),
@@ -211,7 +219,10 @@ impl<'a, R: Read + Seek> PackedWad<'a, R> {
         let mut mounted = Mounted { wad, len, caps };
         entries
             .iter()
-            .map(|entry| mounted.chunk(entry, budget))
+            .map(|entry| {
+                let data = mounted.chunk(entry, budget)?;
+                Ok(take(entry.path_hash(), &data))
+            })
             .collect()
     }
 }
@@ -224,7 +235,8 @@ struct Mounted<'a, R: Read + Seek> {
 }
 
 impl<R: Read + Seek> Mounted<'_, R> {
-    fn chunk(&mut self, entry: &WadChunk, budget: &mut Budget) -> Result<Chunk, PackedFailure> {
+    /// A chunk's bytes, decompressed.
+    fn chunk(&mut self, entry: &WadChunk, budget: &mut Budget) -> Result<Box<[u8]>, PackedFailure> {
         let chunk = entry.path_hash();
         let bytes = declared_size(entry);
         if bytes > self.caps.entry_bytes {
@@ -250,7 +262,7 @@ impl<R: Read + Seek> Mounted<'_, R> {
                 })?;
         // The declared size is charged above. What the reader gives beyond it is charged too.
         budget.charge((data.len() as u64).saturating_sub(bytes))?;
-        Ok(Chunk::new(chunk, None, &data))
+        Ok(data)
     }
 }
 

@@ -91,7 +91,10 @@ let report = run.report();
   A deflated packed WAD is inflated once into the store's spool (`BlobStore::spool`) and
   mounted from there: the ingest store writes it to a scratch file under a temporary name in
   its directory, and a store in memory holds it in memory. Its chunks are the blobs; the spool
-  is removed once they are read, and kept by neither store.
+  is removed once they are read, and kept by neither store. Each chunk, loose or packed, goes
+  into the store as it is read and is dropped, the reader keeping its id alone, so a read
+  that a fatal diagnostic ends leaves the chunks read before it in the store, named by no
+  snapshot.
 - **A run reads archives through a cache when given one** (`Run::in_cache`, a
   `snapshot::RawCache`; #ADR-0095). `read` looks the archive up by its SHA-256 before it
   inflates anything: on a hit the raw snapshot is the result, its findings raised again and

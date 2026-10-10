@@ -49,7 +49,8 @@ use crate::store::BlobStore;
 /// hashing or the snapshot's shape changes.
 pub const RAW_VERSION: u32 = 3;
 
-/// One file of a WAD, as the reader holds it before its bytes go into the store.
+/// One file of a WAD, as the reader holds it: its bytes are in the store from the moment they
+/// are inflated, and the reader keeps their id alone (#ADR-0100).
 #[derive(Debug, Clone)]
 struct Chunk {
     /// The hash the client finds it by.
@@ -57,18 +58,8 @@ struct Chunk {
     /// Its path, when the archive spells one. A chunk named by its hash and a chunk of a packed
     /// WAD have none, unless another entry of the WAD spells the same path.
     path: Option<ChunkPath>,
-    /// Its bytes, inflated.
-    bytes: ByteView,
-}
-
-impl Chunk {
-    fn new(hash: WadHash, path: Option<ChunkPath>, bytes: &[u8]) -> Self {
-        Self {
-            hash,
-            path,
-            bytes: ByteView::from(bytes),
-        }
-    }
+    /// The id its bytes are in the store under.
+    content: ContentId,
 }
 
 /// A WAD as the reader holds it: its loose chunks and the chunks of its packed form, as one.
@@ -240,7 +231,8 @@ impl RawSnapshot {
         files.chain(heads).chain(image)
     }
 
-    /// What the reader found, its bytes put into the store.
+    /// What the reader found, the extras' first bytes and the image put into the store beside
+    /// the chunks it put there as it read them.
     fn of(meta: ModMeta, caps: Caps, parts: Parts, store: &dyn BlobStore) -> Self {
         let wads = parts
             .wads
@@ -254,7 +246,7 @@ impl RawSnapshot {
                     .map(|chunk| {
                         let file = RawFile {
                             path: chunk.path,
-                            content: store.put(chunk.bytes),
+                            content: chunk.content,
                         };
                         (chunk.hash, file)
                     })
