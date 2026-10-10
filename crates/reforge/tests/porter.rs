@@ -7,7 +7,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use reforge::archive::RAW_VERSION;
+use reforge::archive::{Caps, RAW_VERSION};
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Input, Stage};
 use reforge::env::Env;
 use reforge::facts::FactsError;
@@ -23,7 +23,7 @@ use reforge::package::{
     ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
-use reforge::snapshot::{LoadSetting, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT};
+use reforge::snapshot::{LoadSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting};
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
 use reforge_testkit::bins::{bin, blob, entry, linked_bin, particle, resolver_with};
@@ -1222,23 +1222,23 @@ fn a_load_snapshot_is_refused_when_a_setting_load_reads_is_not_the_runs() {
     let stale = Porter::new(&env).keep_stale(true);
     assert_eq!(
         setting(stale.resume(snapshot(), store())),
-        Some(LoadSetting::KeepStale)
+        Some(Setting::KeepStale)
     );
     let selection = FixupSelection::standard().without("legacy-formats");
     let fixups = Porter::new(&env).fixups(FixupSet::from(&selection));
     assert_eq!(
         setting(fixups.resume(snapshot(), store())),
-        Some(LoadSetting::FileFixups)
+        Some(Setting::FileFixups)
     );
     let reworks = Porter::new(&env).reworks(ReworkTable::new([("test", "16.19")]));
     assert_eq!(
         setting(reworks.resume(snapshot(), store())),
-        Some(LoadSetting::Reworks)
+        Some(Setting::Reworks)
     );
     let repairer = Repairer::new(&env);
     assert_eq!(
         setting(repairer.resume(snapshot(), store())),
-        Some(LoadSetting::Mode)
+        Some(Setting::Mode)
     );
     // What only the stages after `load` read is no setting of the snapshot's.
     let policy = Porter::new(&env).policy(Policy {
@@ -1273,6 +1273,25 @@ fn a_snapshot_written_by_a_build_with_no_commit_is_refused() {
     let other = edited(&json, "program", "commit", serde_json::Value::Null);
     let refused = porter.resume(other, store).map(drop);
     assert!(matches!(refused, Err(ResumeError::Uncommitted)));
+}
+
+#[test]
+fn a_raw_snapshot_read_under_other_caps_is_refused() {
+    let env = game_env();
+    let store = Arc::new(MemoryStore::new());
+    let porter = Porter::new(&env);
+    let mut run = porter.run().in_store(Arc::clone(&store));
+    let raw = run.read(&own_mod(), FILE_NAME).expect("the archive reads");
+    assert_eq!(raw.caps, Caps::default(), "the caps it was read under");
+    let raw = raw.clone();
+    let caps = Caps {
+        entries: 1 << 10,
+        ..Caps::default()
+    };
+    let capped = Porter::new(&env).caps(caps);
+    let refused = capped.resume(raw.clone(), Arc::clone(&store)).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Setting(Setting::Caps))));
+    assert!(porter.resume(raw, store).is_ok());
 }
 
 #[test]

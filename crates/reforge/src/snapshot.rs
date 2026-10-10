@@ -111,9 +111,11 @@ pub enum Mode {
     Repair,
 }
 
-/// A setting `load` reads.
+/// A setting a stage reads, which a snapshot after it was made under.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoadSetting {
+pub enum Setting {
+    /// The caps an archive is read under (#ADR-0095).
+    Caps,
     /// A port or a repair.
     Mode,
     /// The file fixups and their order.
@@ -149,15 +151,15 @@ impl LoadSettings {
     }
 
     /// The first setting that differs from another's.
-    fn differs(&self, other: &Self) -> Option<LoadSetting> {
+    fn differs(&self, other: &Self) -> Option<Setting> {
         if self.mode != other.mode {
-            Some(LoadSetting::Mode)
+            Some(Setting::Mode)
         } else if self.file_fixups != other.file_fixups {
-            Some(LoadSetting::FileFixups)
+            Some(Setting::FileFixups)
         } else if self.keep_stale != other.keep_stale {
-            Some(LoadSetting::KeepStale)
+            Some(Setting::KeepStale)
         } else if self.reworks != other.reworks {
-            Some(LoadSetting::Reworks)
+            Some(Setting::Reworks)
         } else {
             None
         }
@@ -194,9 +196,9 @@ pub enum ResumeError {
     /// An input the environment has open is not the one the snapshot was judged under.
     #[error("the run's {0:?} is not the snapshot's")]
     Input(Input),
-    /// A setting `load` reads is not the snapshot's.
+    /// A setting a stage up to the snapshot reads is not the snapshot's.
     #[error("the run's {0:?} is not the snapshot's")]
-    Setting(LoadSetting),
+    Setting(Setting),
     /// The run has read an archive already.
     #[error("the run has read an archive already")]
     Started,

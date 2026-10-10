@@ -83,7 +83,7 @@ let report = run.report();
   store's bytes and parses its bins again; the parsed objects are a cache of the snapshot.
   A run resumed from either writes the report and the package of the run that wrote the
   snapshot. A snapshot is refused with a `ResumeError` that says why: a raw snapshot of
-  another reading; a load snapshot of another format or program (version and commit), one
+  another reading, or read under other caps, which it records (#ADR-0095); a load snapshot of another format or program (version and commit), one
   whose inputs (`LoadInputs`: the install's build, the history, the hash tables' stamp)
   are not the environment's, or whose settings (`LoadSettings`: the mode, the file fixups,
   the stale keep, the reworks) are not the run's. The caller then starts from an earlier

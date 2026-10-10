@@ -44,7 +44,7 @@ use crate::store::BlobStore;
 
 /// The raw reading's version (#ADR-0095): one number, raised when the zip or WAD reading, the
 /// hashing or the snapshot's shape changes.
-pub const RAW_VERSION: u32 = 2;
+pub const RAW_VERSION: u32 = 3;
 
 /// One file of a WAD, as the reader holds it before its bytes go into the store.
 #[derive(Debug, Clone)]
@@ -144,6 +144,8 @@ impl RawImage {
 pub struct RawSnapshot {
     /// The raw reading's version, [`RAW_VERSION`] when this program wrote it.
     pub version: u32,
+    /// The caps it was read under: what was inflated and what refused is theirs (#ADR-0095).
+    pub caps: Caps,
     /// What the archive says of itself, and what identifies it: its SHA-256 among the rest.
     /// The file name is the caller's word for display, not the archive's.
     pub meta: ModMeta,
@@ -178,7 +180,7 @@ impl RawSnapshot {
     }
 
     /// What the reader found, its bytes put into the store.
-    fn of(meta: ModMeta, parts: Parts, store: &dyn BlobStore) -> Self {
+    fn of(meta: ModMeta, caps: Caps, parts: Parts, store: &dyn BlobStore) -> Self {
         let wads = parts
             .wads
             .into_iter()
@@ -214,6 +216,7 @@ impl RawSnapshot {
         });
         Self {
             version: RAW_VERSION,
+            caps,
             meta,
             wads,
             extras,
@@ -261,7 +264,7 @@ pub fn read(
         version: info.version,
         description: info.description,
     };
-    let mut raw = RawSnapshot::of(meta, parts, store);
+    let mut raw = RawSnapshot::of(meta, *caps, parts, store);
     raw.findings = sink.logged_since(mark);
     Ok(raw)
 }

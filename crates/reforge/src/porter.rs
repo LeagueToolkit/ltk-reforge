@@ -32,7 +32,7 @@ use crate::package::{
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
-use crate::snapshot::{self, LoadSettings, LoadSnapshot, LoadState, ResumeError};
+use crate::snapshot::{self, LoadSettings, LoadSnapshot, LoadState, ResumeError, Setting};
 use crate::store::{BlobStore, MemoryStore};
 
 /// The name the second run of a repair reads the first run's package under.
@@ -606,7 +606,8 @@ impl<'a> Run<'a> {
     /// `load` runs next. From the load snapshot the run holds the mod as `load` left it, its
     /// bins parsed again from the store, and `fix` runs next.
     ///
-    /// The raw snapshot is refused when its reading is not this program's; the load snapshot
+    /// The raw snapshot is refused when its reading is not this program's or its caps are not
+    /// the run's; the load snapshot
     /// when its format, its program, an input the environment has open or a setting `load`
     /// reads is not this run's. A refused run is dropped, and the caller starts again from an
     /// earlier snapshot.
@@ -624,6 +625,9 @@ impl<'a> Run<'a> {
                         found: raw.version,
                         reads: archive::RAW_VERSION,
                     });
+                }
+                if raw.caps != self.settings.caps {
+                    return Err(ResumeError::Setting(Setting::Caps));
                 }
                 self.log.restore(&raw.findings, &codes)?;
                 self.raw = Some(*raw);
