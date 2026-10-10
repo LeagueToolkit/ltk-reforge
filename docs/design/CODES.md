@@ -32,6 +32,14 @@ The zip and its entries. Channel `input`.
 | `archive.chunk-duplicate` | note | a second chunk at one path, skipped | `archive.duplicate-chunk` |
 | `archive.info-unreadable` | note | `META/info.json` does not parse | `archive.info-unreadable` |
 
+## store
+
+The mod's bytes in the run's store, as the stages read them (#ADR-0100). Channel `input`.
+
+| code | severity | means | ltk-forge |
+|---|---|---|---|
+| `store.working-set-capped` | note | a stage held more of the mod's bytes at once than the cap on the working set; it ran to its end | none |
+
 ## inventory
 
 What the archive carries besides game files. Channel `input`.

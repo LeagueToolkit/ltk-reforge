@@ -64,7 +64,7 @@ pub use crate::fixups::BinWrite;
 pub use crate::model::Layer;
 use crate::model::entity::{CharId, FileId, FileNode, UnitId};
 use crate::model::{
-    BinHash, Blobs, ByteView, ChunkPath, ContentId, Dump, DumpCx, WadHash, WadName,
+    BinHash, Blobs, ByteView, ChunkPath, ContentId, Dump, DumpCx, Fetched, WadHash, WadName,
 };
 
 /// Every diagnostic code this module raises.
@@ -387,9 +387,9 @@ impl Package {
     /// # Panics
     ///
     /// For a chunk that holds no bytes, of a package that reads no store: no run built it.
-    pub fn bytes(&self, chunk: &Chunk) -> ByteView {
+    pub fn bytes(&self, chunk: &Chunk) -> Fetched {
         if let Some(bytes) = &chunk.held {
-            return bytes.clone();
+            return Fetched::held(bytes.clone());
         }
         match &self.blobs {
             Some(blobs) => blobs.fetch(chunk.content),

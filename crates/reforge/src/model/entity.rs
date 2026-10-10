@@ -8,7 +8,7 @@ use ltk_meta::BinObject;
 use serde::{Deserialize, Serialize};
 
 use super::bin::ParsedObject;
-use super::blobs::Blobs;
+use super::blobs::{Blobs, Fetched};
 use super::hash::{BinHash, ContentId, MAX_SLOT, Slot, WadHash, path_hash, skin_paths};
 use super::id::{Arena, Id, Sigil};
 use super::path::{ChunkPath, WadName};
@@ -301,7 +301,7 @@ pub struct FileNode {
 
 impl FileNode {
     /// Its bytes, fetched from the run's store. Nothing keeps them but the caller.
-    pub fn bytes(&self, blobs: &Blobs) -> ByteView {
+    pub fn bytes(&self, blobs: &Blobs) -> Fetched {
         blobs.fetch(self.content)
     }
 }
@@ -492,7 +492,7 @@ impl Mod {
     }
 
     /// A file's bytes, fetched from the run's store. Nothing keeps them but the caller.
-    pub fn bytes(&self, file: FileId) -> ByteView {
+    pub fn bytes(&self, file: FileId) -> Fetched {
         self.files[file].bytes(&self.blobs)
     }
 

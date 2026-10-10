@@ -429,7 +429,7 @@ impl FileFixup for LegacyFormats {
             };
             let file = &cx.module.files[from];
             let wad = file.wad;
-            match make(&cx.module.bytes(from), file.kind, format.kind) {
+            match make(cx.module.bytes(from).view(), file.kind, format.kind) {
                 Ok(None) => {}
                 Ok(Some(made)) => {
                     let how = made.how;

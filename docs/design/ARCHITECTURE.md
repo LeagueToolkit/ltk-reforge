@@ -119,7 +119,10 @@ let report = run.report();
   run is not checked against the id (`BlobStore::get_unchecked`): the store holds only what
   a run put there or `read` found whole. A file the run makes, a file fixup's or a game bin
   taken as the mod's, goes into the run's layer when it is made. An id the store does not
-  answer ends the stage with `RunError::Store`, and the stage keeps no snapshot. The run keeps the raw snapshot, and each stage from `load` on
+  answer ends the stage with `RunError::Store`, and the stage keeps no snapshot. What a stage
+  holds of its fetches is counted while it holds them (`Fetched`), and a stage that held more
+  at once than the caps' working set (`Caps::working_bytes`) raises
+  `store.working-set-capped` at its last step and runs on. The run keeps the raw snapshot, and each stage from `load` on
   ends by writing its snapshot (#ADR-0094): `load_snapshot`, `fix_snapshot`,
   `facts_snapshot`, `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.
   The snapshots are what the run holds of its stages, and the parsed objects beside them a
@@ -996,7 +999,9 @@ object takes a name of its own, which every link to it follows.
   aborts the process and no panic guard catches it, so a size a reader from another crate
   reserves before it reads is checked first: a packed WAD whose header declares more chunks
   than its bytes can list is refused before `ltk_wad` mounts it, and one over the cap after
-  that. The cap, 262,144, is well above the 90,012 chunks of the game's largest WAD. The
+  that. The cap, 262,144, is well above the 90,012 chunks of the game's largest WAD. A
+  stage's working set, the bytes of the mod it holds at once from the store, has a cap of its
+  own, which a stage passes with a note and no refusal (#ADR-0100). The
   mod's image is decoded under limits on its width, its height and the memory the decoder
   asks for (#ADR-0051).
 - A mod's text reaches a terminal only through the `Speller` and `clean`.

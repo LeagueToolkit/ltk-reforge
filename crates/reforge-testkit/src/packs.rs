@@ -5,7 +5,7 @@ use reforge::diag::{Diag, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, ObjectSet, TargetTypes};
 use reforge::load::LoadOptions;
-use reforge::model::{ByteView, path_hash};
+use reforge::model::{Fetched, path_hash};
 use reforge::package::{BuildError, CheckCx, CheckSet, Chunk, InPlaceBuilder, Package};
 
 use crate::fixes::FixRun;
@@ -91,7 +91,7 @@ impl<'a> PackRun<'a> {
     /// # Panics
     ///
     /// When the package holds none there.
-    pub fn chunk_bytes(&self, path: &str) -> ByteView {
+    pub fn chunk_bytes(&self, path: &str) -> Fetched {
         self.package().bytes(self.chunk(path))
     }
 

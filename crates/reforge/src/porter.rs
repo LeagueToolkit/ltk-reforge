@@ -15,14 +15,15 @@ use std::io::{Cursor, Write as _};
 use std::sync::Arc;
 
 use camino::Utf8Path;
+use serde::Serialize;
 use zip::CompressionMethod;
 use zip::result::ZipError;
 use zip::write::SimpleFileOptions;
 
 use crate::archive::{self, Archive, Caps, RawSnapshot};
 use crate::diag::{
-    Cancel, Cancelled, Code, DiagnosticPolicy, Diagnostics, Halted, Parts, Render, Stage, Step,
-    Steps,
+    Cancel, Cancelled, Channel, Code, Diag, DiagnosticPolicy, Diagnostics, Halted, Message, Parts,
+    Render, Severity, Stage, Step, Steps, Subject,
 };
 use crate::env::Env;
 use crate::facts::{FactInputs, Facts, FactsError};
@@ -68,6 +69,7 @@ pub fn codes() -> impl Iterator<Item = Code> {
         crate::facts::CODES,
         crate::port::CODES,
         crate::package::CODES,
+        CODES,
     ]
     .into_iter()
     .flatten()
@@ -690,6 +692,56 @@ fn held<T>(result: Option<&T>, stage: Stage, needs: Stage) -> Result<&T, RunErro
     result.ok_or(RunError::NotReached { stage, needs })
 }
 
+/// Ends a stage at its last step (#ADR-0100): the note of a stage that held more of the
+/// mod's bytes at once than the caps allow, and the fault of one whose fetch the run's store
+/// did not answer. The count of what is held starts again for the next stage.
+fn fetched(
+    blobs: &Blobs,
+    log: &mut Diagnostics,
+    caps: &Caps,
+    stage: Stage,
+) -> Result<(), RunError> {
+    let held = blobs.take_peak();
+    if held > caps.working_bytes {
+        let cap = caps.working_bytes;
+        log.at(stage).raise(WorkingSetCapped { held, cap });
+    }
+    match blobs.missing() {
+        Some(id) => Err(RunError::Store { stage, id }),
+        None => Ok(()),
+    }
+}
+
+/// A stage that held more of the mod's bytes at once, fetched from the run's store, than the
+/// cap on the working set (#ADR-0100). It ran to its end.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct WorkingSetCapped {
+    /// The most bytes it held at once.
+    pub held: u64,
+    /// The cap.
+    pub cap: u64,
+}
+
+impl Diag for WorkingSetCapped {
+    const CODE: Code = Code::new("store.working-set-capped", Channel::Input, Severity::Note);
+
+    fn subject(&self) -> Subject {
+        Subject::Run
+    }
+
+    fn message(&self, f: &mut Message) {
+        let mib = |bytes: u64| bytes as f64 / f64::from(1u32 << 20);
+        f.text(&format!(
+            "the stage held {:.1} MiB of the mod's bytes at once, over the cap of {:.1} MiB",
+            mib(self.held),
+            mib(self.cap)
+        ));
+    }
+}
+
+/// Every diagnostic code a run raises of its own.
+pub const CODES: &[Code] = &[WorkingSetCapped::CODE];
+
 /// What a run's memory layer reads through to: the caller's store over the cache's ingest
 /// store, each an empty memory store unless given.
 type Under = Layered<Box<dyn BlobStore>, Box<dyn BlobStore>>;
@@ -848,14 +900,6 @@ impl<'a> Run<'a> {
         self.store = Arc::new(change(store));
         self.blobs = Blobs::new(self.store.clone());
         self
-    }
-
-    /// Ends a stage whose fetch the run's store did not answer (#ADR-0100).
-    fn fetched(&self, stage: Stage) -> Result<(), RunError> {
-        match self.blobs.missing() {
-            Some(id) => Err(RunError::Store { stage, id }),
-            None => Ok(()),
-        }
     }
 
     /// Ends a stage's method where a fatal diagnostic or a cancel ended the run.
@@ -1162,7 +1206,7 @@ impl<'a> Run<'a> {
                 return Err(error);
             }
         };
-        self.fetched(Stage::Load)?;
+        fetched(&self.blobs, &mut self.log, &self.settings.caps, Stage::Load)?;
         self.loaded = Some(self.snapshot_of(&module, &found, taken.as_ref()));
         match &self.known {
             Some(known) => {
@@ -1243,7 +1287,6 @@ impl<'a> Run<'a> {
                         let snapshot = self.fix_snapshot_of(&fixed, &changes);
                         self.module = Reached::Fixed(fixed);
                         self.changes = Some(changes);
-                        self.fetched(Stage::Fix)?;
                         self.fix_snapshot = Some(snapshot?);
                     }
                     // The report of a run ended here still holds what `load` gave.
@@ -1266,25 +1309,23 @@ impl<'a> Run<'a> {
     /// The fix snapshot of the mod `fix` left, the bins it wrote again put into the run's
     /// store.
     fn fix_snapshot_of(
-        &self,
+        &mut self,
         fixed: &FixedMod,
         changes: &Changes,
     ) -> Result<FixSnapshot, RunError> {
-        let load = held(self.loaded.as_ref(), Stage::Fix, Stage::Load)?;
         let rewritten = fixed.rewritten(changes).into_iter();
-        let rewritten = rewritten.map(|(file, bin)| (file, self.store.put(bin.bytes.into())));
+        let rewritten: BTreeMap<_, _> = rewritten
+            .map(|(file, bin)| (file, self.store.put(bin.bytes.into())))
+            .collect();
+        fetched(&self.blobs, &mut self.log, &self.settings.caps, Stage::Fix)?;
+        let load = held(self.loaded.as_ref(), Stage::Fix, Stage::Load)?;
         let declared = (
             snapshot::FixInputs::of(self.env),
             self.settings.fix_settings(),
         );
         let findings = self.log.logged_from(self.first);
         Ok(FixSnapshot::of(
-            load,
-            &rewritten.collect(),
-            changes,
-            &self.book,
-            declared,
-            findings,
+            load, &rewritten, changes, &self.book, declared, findings,
         ))
     }
 
@@ -1313,9 +1354,14 @@ impl<'a> Run<'a> {
             let mut sink = self.log.at(Stage::Facts);
             let facts = Facts::gather(fixed, &inputs, &mut sink).map_err(RunError::of_facts)?;
             facts.report(&mut sink);
+            fetched(
+                &self.blobs,
+                &mut self.log,
+                &self.settings.caps,
+                Stage::Facts,
+            )?;
             let findings = self.log.logged_from(self.first);
             let snapshot = FactsSnapshot::of(&facts, self.settings.facts_settings(), findings);
-            self.fetched(Stage::Facts)?;
             self.facts_snapshot = Some(snapshot);
             self.facts = Some(facts);
         }
@@ -1380,11 +1426,11 @@ impl<'a> Run<'a> {
             for entry in entries {
                 self.book.learn_entry(entry);
             }
+            fetched(&self.blobs, &mut self.log, &self.settings.caps, Stage::Plan)?;
             let fixed = self.module.fixed(Stage::Plan)?;
             let settings = self.settings.plan_settings();
             let declared = (settings, self.log.logged_from(self.first));
             let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
-            self.fetched(Stage::Plan)?;
             self.plan_snapshot = Some(snapshot);
             self.plan = Some(port);
         }
@@ -1425,12 +1471,17 @@ impl<'a> Run<'a> {
                 package.carry_image(image, &mut self.log.at(Stage::Build));
             }
             let part = PackageRow::of(&package);
+            fetched(
+                &self.blobs,
+                &mut self.log,
+                &self.settings.caps,
+                Stage::Build,
+            )?;
             let declared = (
                 self.settings.build_settings(),
                 self.log.logged_from(self.first),
             );
             let snapshot = BuildSnapshot::of(&package, part, declared, &self.store);
-            self.fetched(Stage::Build)?;
             self.build_snapshot = Some(snapshot);
             self.package = Some(package);
         }
@@ -1495,12 +1546,17 @@ impl<'a> Run<'a> {
             .iter()
             .map(|patched| patched.map(|patched| AppliedRow::of(&patched.outcome)))
             .collect();
+        fetched(
+            &self.blobs,
+            &mut self.log,
+            &self.settings.caps,
+            Stage::Check,
+        )?;
         let declared = (
             self.settings.check_settings(),
             self.log.logged_from(self.first),
         );
         let snapshot = CheckSnapshot::of(applied, &patched, declared, &self.store);
-        self.fetched(Stage::Check)?;
         self.check_snapshot = Some(snapshot);
         Ok(())
     }
@@ -1623,7 +1679,12 @@ impl<'a> Run<'a> {
                 source,
             })?;
         }
-        self.fetched(Stage::Write)?;
+        fetched(
+            &self.blobs,
+            &mut self.log,
+            &self.settings.caps,
+            Stage::Write,
+        )?;
         self.written = true;
         Ok(())
     }

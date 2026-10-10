@@ -5,7 +5,7 @@ use reforge::diag::{Diag, Diagnostics, Render, Stage};
 use reforge::env::Env;
 use reforge::fixups::TargetTypes;
 use reforge::model::entity::{ObjectId, UnitId};
-use reforge::model::{ByteView, Dump, DumpCx, name_hash, path_hash};
+use reforge::model::{Dump, DumpCx, Fetched, name_hash, path_hash};
 use reforge::package::{
     AppliedBin, BuildError, CheckCx, CheckSet, Chunk, Layer, Outcome, Overlay, Package, Patch,
     PortBuilder,
@@ -161,7 +161,7 @@ impl<'a> PortRun<'a> {
     /// # Panics
     ///
     /// When the package holds none there.
-    pub fn chunk_bytes(&self, path: &str) -> ByteView {
+    pub fn chunk_bytes(&self, path: &str) -> Fetched {
         self.package().bytes(self.chunk(path))
     }
 

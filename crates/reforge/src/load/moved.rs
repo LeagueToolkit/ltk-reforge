@@ -437,7 +437,7 @@ impl MovedAssets {
                 if to.extension() == Some("bin") && file.kind != FileKind::Bin {
                     continue;
                 }
-                match make(&cx.module.bytes(want.file), file.kind, kind) {
+                match make(cx.module.bytes(want.file).view(), file.kind, kind) {
                     Ok(None) => {}
                     Ok(Some(made)) => {
                         let how = made.how;

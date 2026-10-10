@@ -18,7 +18,7 @@ use serde::Serialize;
 use super::findings::TextureContained;
 use super::{Chunk, Origin, Package};
 use crate::diag::Sink;
-use crate::model::{ByteView, ChunkPath};
+use crate::model::{ChunkPath, Fetched};
 
 /// Why a DDS does not go into TEX's container as it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -216,7 +216,7 @@ impl TexContainer {
     pub fn contain(
         &mut self,
         path: &ChunkPath,
-        bytes: impl FnOnce() -> ByteView,
+        bytes: impl FnOnce() -> Fetched,
     ) -> Option<Vec<u8>> {
         if path.extension() != Some("tex") {
             return None;

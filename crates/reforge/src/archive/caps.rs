@@ -19,6 +19,10 @@ pub struct Caps {
     pub packed_chunks: usize,
     /// Bytes of the archive file itself.
     pub archive_bytes: u64,
+    /// Bytes of the mod's files a stage holds at once, fetched from the run's store
+    /// (#ADR-0100). A stage that holds more runs to its end and raises
+    /// `store.working-set-capped`.
+    pub working_bytes: u64,
 }
 
 impl Default for Caps {
@@ -28,7 +32,10 @@ impl Default for Caps {
     // the most chunks of a packed WAD 5,261. The game at 16.19: the largest WAD holds 90,012
     // chunks, and its largest champion WAD inflates to some 760 MB. The chunk cap (#ADR-0100):
     // the largest of the 1,491,566 files of `baseline-port-6` (2026-10-10) is that chunk,
-    // 304,352,832 bytes, and none is over 512 MiB.
+    // 304,352,832 bytes, and none is over 512 MiB. The working-set cap: a stage holds the
+    // files it reads one at a time, so the most it held at once over the reduced corpus
+    // (2026-10-10) is its largest file read, 157,525,890 bytes in `load`, 32,786,671 in `facts`
+    // and `plan`, 22,369,776 in `build`; it sits above the chunk cap, so no one file passes it.
     fn default() -> Self {
         Self {
             entry_bytes: 1 << 30,
@@ -37,6 +44,7 @@ impl Default for Caps {
             total_bytes: 4 << 30,
             packed_chunks: 1 << 18,
             archive_bytes: 4 << 30,
+            working_bytes: 1 << 30,
         }
     }
 }

@@ -6,7 +6,7 @@ use reforge::env::Env;
 use reforge::game::{NameBook, Speller};
 use reforge::load::{LoadError, LoadOptions, Loader};
 use reforge::model::entity::{FileId, FileNode, UnitId};
-use reforge::model::{Blobs, ByteView, Dump, DumpCx, Mod, path_hash};
+use reforge::model::{Blobs, Dump, DumpCx, Fetched, Mod, path_hash};
 use reforge::store::MemoryStore;
 
 use crate::archive::{STORED, packed_wad, zip};
@@ -187,7 +187,7 @@ impl<'a> LoadRun<'a> {
     /// # Panics
     ///
     /// When the mod has no file there.
-    pub fn bytes(&self, path: &str) -> ByteView {
+    pub fn bytes(&self, path: &str) -> Fetched {
         self.module().bytes(self.file(path).0)
     }
 

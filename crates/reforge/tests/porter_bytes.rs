@@ -3,10 +3,11 @@
 //! its id in the package and fetched by the writer. The game is `reforge_testkit::skins`.
 
 use camino::{Utf8Path, Utf8PathBuf};
-use reforge::diag::{DiagnosticPolicy, Stage};
+use reforge::diag::{Diag, DiagnosticPolicy, Stage};
 use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::package::{Origin, PackageWriter, ProjectDir};
+use reforge::porter::WorkingSetCapped;
 use reforge::snapshot::RawCache;
 use reforge::{Porter, Repairer, RunError};
 use reforge_testkit::bins::{bin, blob, entry, particle, resolver_with};
@@ -108,4 +109,56 @@ fn a_stage_whose_store_lost_a_files_bytes_ends_with_a_fault_of_the_store() {
         named.map(|file| file.content).any(|content| content == id),
         "{id:?} is a file's"
     );
+}
+
+#[test]
+fn what_a_stage_holds_at_once_is_counted_while_its_fetches_live() {
+    let store = std::sync::Arc::new(reforge::store::MemoryStore::new());
+    let (a, b) = (
+        reforge::store::BlobStore::put(&*store, blob("a").into()),
+        reforge::store::BlobStore::put(&*store, blob("bb").into()),
+    );
+    let blobs = reforge::model::Blobs::new(store);
+    let (size_a, size_b) = (blob("a").len() as u64, blob("bb").len() as u64);
+    let first = blobs.fetch(a);
+    let second = blobs.fetch(b);
+    drop((first, second));
+    let third = blobs.fetch(a);
+    assert_eq!(blobs.take_peak(), size_a + size_b, "the two held together");
+    assert_eq!(
+        blobs.take_peak(),
+        size_a,
+        "the count starts again from what is held"
+    );
+    drop(third);
+    assert_eq!(blobs.take_peak(), size_a);
+    assert_eq!(blobs.take_peak(), 0);
+}
+
+#[test]
+fn a_stage_that_holds_more_than_the_working_set_cap_raises_a_note_and_runs_on() {
+    let env = game_env();
+    let bytes = own_mod();
+    let capped = reforge::archive::Caps {
+        working_bytes: 16,
+        ..reforge::archive::Caps::default()
+    };
+    let porter = Porter::new(&env);
+    let run = porter.port(&bytes, FILE_NAME).expect("the run answers");
+    let notes = |run: &reforge::Run<'_>| -> Vec<Stage> {
+        let raised = run.log().iter();
+        let raised = raised.filter(|diagnostic| diagnostic.code == WorkingSetCapped::CODE);
+        raised.map(|diagnostic| diagnostic.stage).collect()
+    };
+    assert_eq!(notes(&run), [], "the default cap holds every file");
+
+    let porter = Porter::new(&env).caps(capped);
+    let held = porter.port(&bytes, FILE_NAME).expect("the run answers");
+    let stages = notes(&held);
+    assert!(stages.contains(&Stage::Load), "{stages:?}");
+    assert!(stages.contains(&Stage::Facts), "{stages:?}");
+    let note = held.log().of::<WorkingSetCapped>().next().expect("a note");
+    assert_eq!(note.cap, 16);
+    assert!(note.held > 16);
+    assert_eq!(held.package(), run.package(), "the stages run on");
 }
