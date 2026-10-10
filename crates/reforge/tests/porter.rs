@@ -2042,3 +2042,60 @@ fn a_load_snapshot_names_the_bytes_load_made_and_the_findings_of_read_and_load()
     let stages: BTreeSet<Stage> = snapshot.findings().iter().map(|f| f.stage).collect();
     assert!(stages.iter().all(|stage| *stage <= Stage::Load));
 }
+
+#[test]
+fn the_snapshots_after_fix_plan_and_build_list_the_files_each_stage_left() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let run = porter
+        .port(&legacy_archive().build(), FILE_NAME)
+        .expect("no fault");
+    let snapshots = run.snapshots().expect("the snapshots");
+    let fixed = run.fixed().expect("the fixed mod");
+
+    let rewritten = fixed.rewritten(run.changes().expect("the changes"));
+    let rewritten: BTreeMap<_, _> = rewritten
+        .into_iter()
+        .map(|(file, bin)| (file, ContentId::of(&bin.bytes)))
+        .collect();
+    assert!(!rewritten.is_empty(), "a fixup wrote a bin again");
+    let fix = snapshots.fix.as_ref().expect("the fix snapshot");
+    for (id, file) in fixed.files.iter() {
+        let content = rewritten.get(&id).copied().unwrap_or(file.content);
+        let hash = format!("{:016x}", file.hash.0);
+        let listed = fix.wads().get(&file.wad).and_then(|files| files.get(&hash));
+        assert_eq!(listed, Some(&content), "{hash} after fix");
+    }
+    let listed: usize = fix.wads().values().map(BTreeMap::len).sum();
+    assert_eq!(listed, fixed.files.len());
+
+    let port = run.port().expect("the port");
+    assert!(!port.files.is_empty(), "the port ships files");
+    let plan = snapshots.plan.as_ref().expect("the plan snapshot");
+    for (&file, place) in &port.files {
+        let node = &fixed.files[file];
+        let wad = fixed.wads[node.wad].name.to_string();
+        let listed = plan.wads().get(&wad).and_then(|f| f.get(place.as_str()));
+        assert_eq!(listed, Some(&node.content), "{place} after plan");
+    }
+
+    let package = run.package().expect("the package");
+    let built: BTreeSet<_> = package
+        .chunks()
+        .map(|(layer, key, chunk)| {
+            (
+                layer.clone(),
+                key.wad.clone(),
+                key.path.clone(),
+                chunk.content,
+            )
+        })
+        .collect();
+    let build = snapshots.build.as_ref().expect("the build snapshot");
+    let listed: BTreeSet<_> = build
+        .chunks()
+        .map(|(layer, wad, path, content)| (layer.clone(), wad.clone(), path.clone(), content))
+        .collect();
+    assert!(!built.is_empty(), "the package holds chunks");
+    assert_eq!(listed, built);
+}
