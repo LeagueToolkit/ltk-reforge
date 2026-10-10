@@ -1,5 +1,5 @@
-//! What the store's rows show: the runs kept, a run's report, and the store's size for the
-//! settings page. A mod's text is cleaned here, as every view shows it.
+//! What the store's rows show: the runs kept, a run's report and drawn view, and the store's
+//! size for the settings page. A mod's text is cleaned here, as every view shows it.
 
 use reforge::model::clean;
 use rusqlite::{OptionalExtension, Row};
@@ -7,8 +7,9 @@ use serde::Serialize;
 
 use super::{AppStore, ROWS_FILE, failed, number, unpack};
 use crate::error::AppError;
-use crate::run::{RunKind, StageName};
+use crate::run::{RunKind, RunView, StageName};
 use crate::storage::bytes_of;
+use crate::view::clean_strings;
 
 /// The stages after `load` a run row keeps a snapshot of, in stage order, each with its
 /// column.
@@ -84,13 +85,33 @@ impl AppStore {
 
     /// The report of a kept run, as JSON. None for a number no run has.
     pub fn report(&self, id: u64) -> Result<Option<String>, AppError> {
+        self.packed_column(id, "report")
+    }
+
+    /// What the views drew of a kept run as it ended, its number set. None for a number no
+    /// run has.
+    pub fn run_view(&self, id: u64) -> Result<Option<RunView>, AppError> {
+        let Some(json) = self.packed_column(id, "view")? else {
+            return Ok(None);
+        };
+        let mut value: serde_json::Value = serde_json::from_str(&json).map_err(failed)?;
+        // Cleaned when it was drawn; cleaned again on the way out, as every view of a mod's
+        // text is, since cleaning twice changes nothing.
+        clean_strings(&mut value);
+        let mut view: RunView = serde_json::from_value(value).map_err(failed)?;
+        view.saved = Some(id);
+        Ok(Some(view))
+    }
+
+    /// A packed column of a kept run's row, as JSON. None for a number no run has.
+    pub(super) fn packed_column(&self, id: u64, column: &str) -> Result<Option<String>, AppError> {
         let Ok(id) = i64::try_from(id) else {
             return Ok(None);
         };
         let rows = self.rows.lock();
-        let query = "SELECT report FROM run WHERE id = ?1";
-        let column: Option<Vec<u8>> = rows.query_row(query, [id], |row| row.get(0)).optional()?;
-        column.map(|column| unpack(&column)).transpose()
+        let query = format!("SELECT {column} FROM run WHERE id = ?1");
+        let packed: Option<Vec<u8>> = rows.query_row(&query, [id], |row| row.get(0)).optional()?;
+        packed.map(|packed| unpack(&packed)).transpose()
     }
 
     /// What the store holds and its bytes on disk.

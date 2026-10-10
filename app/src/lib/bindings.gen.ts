@@ -34,6 +34,8 @@ export const commands = {
 	listRuns: () => __TAURI_INVOKE<({ ok: true; value: RunRow[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("list_runs"),
 	/**  The report of a kept run, as JSON. None for a number no run has. */
 	runReport: (id: number) => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_report", { id }),
+	/**  What the views drew of a kept run as it ended. None for a number no run has. */
+	runView: (id: number) => __TAURI_INVOKE<({ ok: true; value: RunView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_view", { id }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */
@@ -828,7 +830,7 @@ export type RunStage = {
 	event: StageEvent,
 };
 
-/**  A run as the views show it. */
+/**  A run as the views show it. The store keeps a saved run's, which reads back. */
 export type RunView = {
 	/**  Each stage of the run's kind, in order, and how far it got. */
 	stages: StageView[],

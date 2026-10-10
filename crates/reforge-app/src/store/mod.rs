@@ -29,7 +29,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 pub use self::read::{RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
 use crate::error::AppError;
-use crate::run::{RunKind, RunSettings};
+use crate::run::{RunKind, RunSettings, RunView};
 
 /// The format of the rows: one number for the shape of the three groups, raised when it
 /// changes (#ADR-0096).
@@ -87,7 +87,8 @@ CREATE TABLE run (
   kept INTEGER NOT NULL DEFAULT 0,
   made_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fix BLOB, facts BLOB, decide BLOB, plan BLOB, build BLOB, \"check\" BLOB,
-  report BLOB NOT NULL
+  report BLOB NOT NULL,
+  view BLOB NOT NULL
 );
 CREATE INDEX run_load ON run(load_id);
 CREATE TABLE run_blob (
@@ -117,6 +118,8 @@ pub struct Saved {
     pub snapshots: Snapshots,
     /// The run's report.
     pub report: Report,
+    /// What the views drew of the run as it ended, its number not yet set.
+    pub view: RunView,
     /// A repair or a port.
     pub kind: RunKind,
     /// The settings the request gave.
@@ -214,8 +217,8 @@ fn insert_run(tx: &Transaction<'_>, saved: &Saved) -> Result<u64, AppError> {
     let program = load.program();
     tx.execute(
         "INSERT INTO run (load_id, kind, settings, schema_build, program_version,
-           program_commit, package, fix, facts, decide, plan, build, \"check\", report)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+           program_commit, package, fix, facts, decide, plan, build, \"check\", report, view)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             load_id,
             kind_text(saved.kind),
@@ -231,6 +234,7 @@ fn insert_run(tx: &Transaction<'_>, saved: &Saved) -> Result<u64, AppError> {
             s.build.as_ref().map(pack_snapshot).transpose()?,
             s.check.as_ref().map(pack_snapshot).transpose()?,
             pack(&saved.report.to_json())?,
+            pack(&json_of(&saved.view))?,
         ],
     )?;
     let run_id = tx.last_insert_rowid();

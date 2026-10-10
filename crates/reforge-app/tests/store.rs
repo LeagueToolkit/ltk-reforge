@@ -520,6 +520,19 @@ fn a_kept_runs_report_reads_back_as_the_run_wrote_it() {
 }
 
 #[test]
+fn a_kept_runs_view_reads_back_as_the_run_drew_it_with_its_number() {
+    let bench = Bench::new();
+    let view = bench.port(&own_mod(), "mod.fantome");
+    let id = view.saved.unwrap();
+
+    let kept = bench.store.run_view(id).unwrap().expect("the view");
+
+    assert_eq!(kept, view);
+    assert!(kept.package.is_some() && kept.targets.is_some());
+    assert_eq!(bench.store.run_view(id + 1).unwrap(), None);
+}
+
+#[test]
 fn removing_the_only_run_empties_the_run_tier_and_the_rows() {
     let bench = Bench::new();
     let id = bench.port(&own_mod(), "mod.fantome").saved.unwrap();

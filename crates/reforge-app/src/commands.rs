@@ -174,6 +174,14 @@ pub async fn run_report(app: AppHandle, id: u64) -> IpcResult<Option<String>> {
     off_thread(move || store?.report(id)).await
 }
 
+/// What the views drew of a kept run as it ended. None for a number no run has.
+#[tauri::command]
+#[specta::specta]
+pub async fn run_view(app: AppHandle, id: u64) -> IpcResult<Option<RunView>> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.run_view(id)).await
+}
+
 /// Marks a kept run so that the store's bound does not remove it, or unmarks it.
 #[tauri::command]
 #[specta::specta]

@@ -23,7 +23,7 @@ pub enum StageState {
 }
 
 /// A stage of the run and how far it got.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct StageView {
     /// The stage.
     pub stage: StageName,
@@ -91,7 +91,7 @@ pub enum AfterView {
 }
 
 /// Which `fixup.*` finding a change counts under: its code is `fixup.` and this.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum OutcomeView {
     /// A value converted to the form the target build reads.
@@ -105,7 +105,7 @@ pub enum OutcomeView {
 }
 
 /// What a fixup did at one place.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct ChangeView {
     /// The object the value is in, by its id in the report: `%o14`.
     pub object: String,
@@ -128,7 +128,7 @@ pub struct ChangeView {
 }
 
 /// What one fixup did.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct FixupChanges {
     /// The fixup's id.
     pub fixup: String,
@@ -274,7 +274,7 @@ pub struct TargetsView {
 }
 
 /// The package a run built.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct PackageView {
     /// The project's name.
     pub name: String,
@@ -289,8 +289,8 @@ pub struct PackageView {
     pub thumbnail: Option<String>,
 }
 
-/// A run as the views show it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+/// A run as the views show it. The store keeps a saved run's, which reads back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct RunView {
     /// Each stage of the run's kind, in order, and how far it got.
     pub stages: Vec<StageView>,

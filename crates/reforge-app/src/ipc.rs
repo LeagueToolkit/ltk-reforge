@@ -34,6 +34,7 @@ pub fn builder() -> Builder<Wry> {
             commands::run_stages,
             commands::list_runs,
             commands::run_report,
+            commands::run_view,
             commands::keep_run,
             commands::remove_run,
             commands::remove_mod_runs,

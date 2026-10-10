@@ -167,10 +167,10 @@ The rows are three groups after #ADR-0094's, each naming the one before it by ke
 |---|---|---|
 | `raw` | the archive's SHA-256 | the reading's version and the caps, so the ingest tier's entry is named; the path and file name of the last read; the mod's name, author and version as the archive spells them |
 | `load` | the hex of a SHA-256 over the JSON of the archive's SHA-256, the reading's version, the caps, the program, the load inputs and the load settings, each as the load snapshot holds it | the load snapshot |
-| `run` | a number, in the order written | the load it starts from, the kind, the request's settings, the schema's build, the program, the package written, whether a person marked it kept, the time the store wrote it, the snapshot of each later stage reached and the report |
+| `run` | a number, in the order written | the load it starts from, the kind, the request's settings, the schema's build, the program, the package written, whether a person marked it kept, the time the store wrote it, the snapshot of each later stage reached, the report and the view the run ended with |
 | `run_blob` | a run and a content id | the ids of the run's memory layer |
 
-A snapshot and the report are their JSON in one zstd frame. The raw snapshot is not a row:
+A snapshot, the report and the view are their JSON in one zstd frame. The raw snapshot is not a row:
 it is the ingest tier's entry. A `meta` table holds the rows' format; a file of another
 format, or one whose format does not read, is moved aside under its format's name and a new
 one made, never migrated.
@@ -196,7 +196,7 @@ moved aside or a save a crash ended between its flush and its rows. The rows and
 are behind one lock, so a sweep never runs while a save flushes. The ingest tier is not swept.
 
 The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
-`keep_run`, `remove_run`, `remove_mod_runs`, `remove_all_runs` and `store_view` (each tier's
+`run_view` (the view the run ended with, its number set), `keep_run`, `remove_run`, `remove_mod_runs`, `remove_all_runs` and `store_view` (each tier's
 bytes, for the settings page). A removal while a run is under way is refused. A store that
 does not open at start, such as one another instance of the app holds, leaves the runs
 unkept, and its commands answer why.

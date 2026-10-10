@@ -385,13 +385,9 @@ pub fn run(
 
     let drawn = Drawn::of(&run);
     let stages = stage_views(&run, &timed);
-    let saved = match (store, &written) {
-        (Some(store), Some(package)) => save(store, run, request, inputs, package),
-        _ => None,
-    };
-    Ok(RunView {
+    let mut view = RunView {
         stages,
-        saved,
+        saved: None,
         meta: drawn.meta,
         halted: drawn.halted,
         findings: drawn.findings,
@@ -404,18 +400,23 @@ pub fn run(
         refused,
         fault,
         millis,
-    })
+    };
+    if let (Some(store), Some(package)) = (store, view.written.clone()) {
+        view.saved = save(store, run, request, inputs, &package, &view);
+    }
+    Ok(view)
 }
 
-/// Keeps a run that wrote its package in the store, and answers its number. A run with no
-/// snapshots, one judged with an earlier run's evidence, is not kept. A store that does not
-/// write leaves the run as it ran, unkept, and says so in the log.
+/// Keeps a run that wrote its package in the store with the view it ended with, and answers
+/// its number. A run with no snapshots, one judged with an earlier run's evidence, is not
+/// kept. A store that does not write leaves the run as it ran, unkept, and says so in the log.
 fn save(
     store: &AppStore,
     run: Run<'_>,
     request: &RunRequest,
     inputs: &Inputs,
     package: &str,
+    view: &RunView,
 ) -> Option<u64> {
     let snapshots = run.snapshots()?;
     let raw = run.archive()?.clone();
@@ -424,6 +425,7 @@ fn save(
         path: Utf8PathBuf::from(&request.archive),
         snapshots,
         report: run.report(),
+        view: view.clone(),
         kind: request.kind,
         settings: request.settings.clone(),
         schema_build: inputs
