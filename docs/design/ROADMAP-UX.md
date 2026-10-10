@@ -83,8 +83,9 @@ show it where it shows the fixup.
 
 - **The report's types as TypeScript.** The parts of a `Report` are Rust types with `Serialize`
   only; the app's bindings are generated from its own views of them.
-- **The app's store.** The library writes snapshots and a run's bytes in memory; the SQLite
-  rows, the run tier and the sweep of #ADR-0096 are the app crate's to build.
+- **The app's store, its pages and its project.** The app keeps runs ("The app's store");
+  the Runs page, a run reopened and resumed from its snapshots, the project file of
+  #ADR-0096 and the ingest tier cleared by mod are left.
 - **A summary for a person.** The report is JSON. What a person reads of a run is the app's to
   render.
 - **A run over several mods.** A `Run` takes one archive. The caches of an `Env` grow with
@@ -148,6 +149,57 @@ The index, the clone and the kept downloads each show their bytes on disk and a 
 removes them, asked about first (#ADR-0061, `reforge_app::storage`). The work on the history
 (a download, an update, a bootstrap, a removal) runs one at a time, and the buttons of the
 others are off while one runs. A page left and come back to shows the work still under way.
+
+## The app's store
+
+#ADR-0093, #ADR-0096. The app keeps runs in one folder of its data folder, `store/`
+(`reforge_app::store`):
+
+| path | holds | made by |
+|---|---|---|
+| `ingest/` | the ingest tier: each archive's raw snapshot and the bytes `read` made of it | the library's `RawCache` |
+| `run-tier/` | the run tier: the bytes the runs made, by content id | `RunTier`, a `fjall` keyspace keyed by the id's 32 bytes |
+| `runs.sqlite3` | the rows | `AppStore` |
+
+The rows are three groups after #ADR-0094's, each naming the one before it by key:
+
+| table | key | holds |
+|---|---|---|
+| `raw` | the archive's SHA-256 | the reading's version and the caps, so the ingest tier's entry is named; the path and file name of the last read; the mod's name, author and version as the archive spells them |
+| `load` | the hex of a SHA-256 over the JSON of the archive's SHA-256, the reading's version, the caps, the program, the load inputs and the load settings, each as the load snapshot holds it | the load snapshot |
+| `run` | a number, in the order written | the load it starts from, the kind, the request's settings, the schema's build, the program, the package written, whether a person marked it kept, the time the store wrote it, the snapshot of each later stage reached and the report |
+| `run_blob` | a run and a content id | the ids of the run's memory layer |
+
+A snapshot and the report are their JSON in one zstd frame. The raw snapshot is not a row:
+it is the ingest tier's entry. A `meta` table holds the rows' format; a file of another
+format, or one whose format does not read, is moved aside under its format's name and a new
+one made, never migrated.
+
+**The save.** A run is kept when it writes its package. With the store, a run reads through
+both tiers, and starts from the raw snapshot the ingest tier holds of its archive's SHA-256
+when there is one, `read` then shown as ran. Once the write succeeds, its memory layer is
+flushed into the run tier and synced, then the rows are written in one transaction: the raw
+row, the load row unless one of its key is there, the run row and its `run_blob` rows. A run
+through `check` and no further, a write the settings refuse and a run with no snapshots keep
+nothing. The view of the run names its number (`RunView::saved`). A save that fails leaves
+the run as it ran, unkept, and logs why.
+
+**The bound.** The store keeps 256 runs not marked kept (`RUN_BOUND`); past it, the lowest
+numbers go first. A run marked kept is not counted.
+
+**The sweep.** A save, a removal of a run, of every run of a mod or of every run, and a change
+of a run's mark each cut the bound and delete, in the same transaction, the loads no run
+refers to and the raw rows no load refers to. When a run went, the run tier's blobs no
+`run_blob` row lists are removed after the commit, and the tier compacts its tables, which
+gives back its value log's space. Opening the store sweeps the run tier too, for a rows file
+moved aside or a save a crash ended between its flush and its rows. The rows and the run tier
+are behind one lock, so a sweep never runs while a save flushes. The ingest tier is not swept.
+
+The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
+`keep_run`, `remove_run`, `remove_mod_runs`, `remove_all_runs` and `store_view` (each tier's
+bytes, for the settings page). A removal while a run is under way is refused. A store that
+does not open at start, such as one another instance of the app holds, leaves the runs
+unkept, and its commands answer why.
 
 ## The history index
 
