@@ -1956,3 +1956,23 @@ runs.
   repair. The sums of the mods' own times differ by at most 4.6 s in 323 s, 1.4 %, and the
   base commit's two runs of a port differ from the branch's second by 1 s: the check and the
   progress call do not show above the run-to-run spread.
+
+## A unit's own target and a file kept (2026-10-10)
+
+The branch `run-state-store` at `a294f68`: a target given to one unit, read by `decide`, and a
+stale copy kept by its WAD and path, read by `load`, `plan` and `build` (#ADR-0098), both
+taken by the command. The same inputs as "The load snapshot", over the reduced corpus,
+compared with `baseline-port-6` and `baseline-repair-6`. No run gives a unit a target or keeps
+a file: the reports hold neither when none is given.
+
+| run | command | done | ended by a fatal diagnostic | time |
+|---|---|---:|---|---|
+| `answers-port` | `port --no-write` | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 35 s |
+| `answers-repair` | `repair --no-write --again` | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 52 s |
+
+- **Against the baselines** (`answers-{port,repair}-vs-baseline-6`, expected as "The load
+  snapshot"): the 68 mods of each command differ in the report's two inputs alone, 136
+  differences each, all expected. The exits are the baselines', mod for mod.
+- **Against the cancel runs** (`answers-{port,repair}-vs-cancel`, with `cancel-port` and
+  `cancel-repair`): the reports are equal in all 68 mods of each command.
+- **Time.** 35 s a port and 52 s a repair, within 2 s of the cancel runs' 33 s and 50 s.
