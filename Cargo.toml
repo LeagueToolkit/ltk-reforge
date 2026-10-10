@@ -45,6 +45,8 @@ ltk_mimir_cache = { git = "https://github.com/LeagueToolkit/mimir", rev = "67019
 # Deflate and stored only: fewer decoders for untrusted archives to reach.
 zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
+# The bytes a blob store hands out (#ADR-0093): shared on clone, sliced without a copy.
+byteview = "0.10"
 # A shader variant's key, which keeps the defines' case: ltk_hash's xxh64 lowercases.
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 rusqlite = { version = "0.40", features = ["bundled"] }

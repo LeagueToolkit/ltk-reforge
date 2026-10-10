@@ -388,6 +388,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "byteview"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d74937895e761d5984206f82ca8ff7725d0fd8021921011921894b41ab1b9f7"
+
+[[package]]
 name = "cairo-rs"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4690,6 +4696,7 @@ dependencies = [
 name = "reforge"
 version = "0.1.4"
 dependencies = [
+ "byteview",
  "camino",
  "ddsfile",
  "fs-err",

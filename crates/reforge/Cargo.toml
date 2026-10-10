@@ -31,6 +31,7 @@ ltk_hashdb.workspace = true
 ltk_mimir_cache.workspace = true
 indexmap.workspace = true
 sha2.workspace = true
+byteview.workspace = true
 xxhash-rust.workspace = true
 serde.workspace = true
 serde_json.workspace = true

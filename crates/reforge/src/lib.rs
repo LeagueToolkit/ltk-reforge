@@ -7,6 +7,8 @@ pub mod model;
 
 pub mod diag;
 
+pub mod store;
+
 pub mod archive;
 
 pub mod game;
