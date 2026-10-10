@@ -40,7 +40,14 @@ call, 2026-10-10).
   other way.
 - Sweeping is by reference. The store numbers runs in the order written, and a run is removed
   lowest number first when the store passes its bound; a run a person marked kept is not. The
-  time a run was made is the store's, shown by the app, and never part of a report. A load stays while a run refers to it, a raw
+  time a run was made is the store's, shown by the app, and never part of a report.
+- A person removes a run, every run of a mod, or every run, and unmarks a kept run. A removal
+  drops the run and sweeps what no remaining snapshot names: its load and its raw snapshot
+  when no other run refers to them, and the blobs.
+- The sweep marks every id the remaining snapshots and an open run's name, then deletes what
+  is unmarked, in one transaction. It runs after a removal and after the bound cuts, never
+  while a stage is writing. After a sweep the app compacts the store, so the space comes back,
+  and the settings page shows the store's size. A load stays while a run refers to it, a raw
   snapshot while a load does, and a blob while any snapshot names it.
 - Reopening a run resumes it when its archive is at its path with its SHA-256, the program is
   the one that wrote it and the inputs match (#ADR-0094). Otherwise the run opens read-only
@@ -58,3 +65,5 @@ call, 2026-10-10).
 - A project carries a mod's bytes, so it is handled as the mod is: opened under the caps, its
   names shown through `clean`, never extracted under its names.
 - The command does not keep runs. A command run writes its report and its package as today.
+- The corpus cache (#ADR-0095) is swept the same way by the scripts, the raw reading's version
+  as the mark.
