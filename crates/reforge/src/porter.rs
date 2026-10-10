@@ -33,7 +33,7 @@ use crate::load::{
     Dating, Fault, FileProvenance, Inventory, KeptFile, LOAD_PARTS, LoadError, LoadOptions, Loader,
     ReworkTable, against,
 };
-use crate::model::{Blobs, ByteView, ContentId, Mod, Spelled};
+use crate::model::{Blobs, ByteView, ContentId, Missing, Mod, Spelled};
 use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
@@ -161,6 +161,10 @@ impl RunError {
         match error {
             LoadError::Halted(halted) => RunError::Halted(halted),
             LoadError::Cancelled(cancelled) => RunError::Cancelled(cancelled),
+            LoadError::Store(id) => RunError::Store {
+                stage: Stage::Load,
+                id,
+            },
             fault => RunError::Load(fault),
         }
     }
@@ -697,9 +701,16 @@ fn held<T>(result: Option<&T>, stage: Stage, needs: Stage) -> Result<&T, RunErro
     result.ok_or(RunError::NotReached { stage, needs })
 }
 
+/// Runs a stage's work, which a fetch the run's store does not answer ends at that fetch
+/// with [`RunError::Store`] (#ADR-0100).
+fn guarded<T>(stage: Stage, work: impl FnOnce() -> Result<T, RunError>) -> Result<T, RunError> {
+    Missing::catch(work).unwrap_or_else(|Missing(id)| Err(RunError::Store { stage, id }))
+}
+
 /// Ends a stage at its last step (#ADR-0100): the note of a stage that held more of the
 /// mod's bytes at once than the caps allow, and the fault of one whose fetch the run's store
-/// did not answer. The count of what is held starts again for the next stage.
+/// did not answer where a reader's panic guard took the unwind ([`Missing`]). The count of
+/// what is held starts again for the next stage.
 fn fetched(
     blobs: &Blobs,
     log: &mut Diagnostics,
@@ -990,8 +1001,16 @@ impl<'a> Run<'a> {
             return Err(ResumeError::Started);
         }
         self.first = self.log.len();
+        let from = from.into();
+        let started = Missing::catch(|| self.start_from(from));
+        started.unwrap_or_else(|Missing(id)| Err(ResumeError::Store(id)))?;
+        Ok(self)
+    }
+
+    /// The run as a snapshot left it, for [`Run::resume`].
+    fn start_from(&mut self, from: Start) -> Result<(), ResumeError> {
         let codes: Vec<Code> = codes().collect();
-        match from.into() {
+        match from {
             Start::Raw(raw) => {
                 if raw.version != archive::RAW_VERSION {
                     return Err(ResumeError::Reading {
@@ -1018,7 +1037,7 @@ impl<'a> Run<'a> {
             Start::Build(snapshots) => self.reopen_run(*snapshots, Stage::Build, &codes)?,
             Start::Check(snapshots) => self.reopen_run(*snapshots, Stage::Check, &codes)?,
         }
-        Ok(self)
+        Ok(())
     }
 
     /// The run as the snapshots left it after `last`, a stage of the run group: each stage's
@@ -1139,7 +1158,7 @@ impl<'a> Run<'a> {
     pub fn load(&mut self) -> Result<&Mod, RunError> {
         self.going()?;
         if matches!(self.module, Reached::Nothing) && self.raw.is_some() {
-            self.load_raw()?;
+            guarded(Stage::Load, || self.load_raw())?;
         }
         match &self.module {
             Reached::Loaded(module) => Ok(module),
@@ -1278,29 +1297,7 @@ impl<'a> Run<'a> {
     pub fn fix(&mut self) -> Result<&FixedMod, RunError> {
         self.going()?;
         if matches!(self.module, Reached::Loaded(_)) {
-            let dating = held(self.dating.as_ref(), Stage::Fix, Stage::Load)?;
-            if let Reached::Loaded(module) = std::mem::take(&mut self.module) {
-                let mut inputs = FixInputs {
-                    env: self.env,
-                    dating,
-                    names: &mut self.book,
-                };
-                let mut sink = self.log.at(Stage::Fix);
-                let set = &self.settings.fixups;
-                match set.apply_or_keep(module, &ObjectSet::every(), &mut inputs, &mut sink) {
-                    Ok((fixed, changes)) => {
-                        let snapshot = self.fix_snapshot_of(&fixed, &changes);
-                        self.module = Reached::Fixed(fixed);
-                        self.changes = Some(changes);
-                        self.fix_snapshot = Some(snapshot?);
-                    }
-                    // The report of a run ended here still holds what `load` gave.
-                    Err(unfixed) => {
-                        self.module = Reached::Loaded(unfixed.module);
-                        return Err(RunError::of_fix(unfixed.fault));
-                    }
-                }
-            }
+            guarded(Stage::Fix, || self.fix_module())?;
         }
         match &self.module {
             Reached::Fixed(fixed) => Ok(fixed),
@@ -1308,6 +1305,36 @@ impl<'a> Run<'a> {
                 stage: Stage::Fix,
                 needs: Stage::Load,
             }),
+        }
+    }
+
+    /// The work of `fix`, which the run holds: the mod as the fixups left it.
+    fn fix_module(&mut self) -> Result<(), RunError> {
+        let dating = held(self.dating.as_ref(), Stage::Fix, Stage::Load)?;
+        let Reached::Loaded(module) = std::mem::take(&mut self.module) else {
+            return Ok(());
+        };
+        let mut inputs = FixInputs {
+            env: self.env,
+            dating,
+            names: &mut self.book,
+        };
+        let mut sink = self.log.at(Stage::Fix);
+        let set = &self.settings.fixups;
+        match set.apply_or_keep(module, &ObjectSet::every(), &mut inputs, &mut sink) {
+            Ok((fixed, changes)) => {
+                // The mod stays the run's when a fetch of the bins written again ends the stage.
+                let snapshot = guarded(Stage::Fix, || self.fix_snapshot_of(&fixed, &changes));
+                self.module = Reached::Fixed(fixed);
+                self.changes = Some(changes);
+                self.fix_snapshot = Some(snapshot?);
+                Ok(())
+            }
+            // The report of a run ended here still holds what `load` gave.
+            Err(unfixed) => {
+                self.module = Reached::Loaded(unfixed.module);
+                Err(RunError::of_fix(unfixed.fault))
+            }
         }
     }
 
@@ -1347,30 +1374,36 @@ impl<'a> Run<'a> {
         self.going()?;
         self.of_a_port(Stage::Facts)?;
         if self.facts_snapshot.is_none() {
-            let fixed = self.module.fixed(Stage::Facts)?;
-            let speller = Speller::new(&self.book, self.env.names());
-            let inputs = FactInputs {
-                env: self.env,
-                dating: held(self.dating.as_ref(), Stage::Facts, Stage::Load)?,
-                files: held(self.provenance.as_ref(), Stage::Facts, Stage::Load)?,
-                names: &speller,
-                reworks: &self.settings.reworks,
-            };
-            let mut sink = self.log.at(Stage::Facts);
-            let facts = Facts::gather(fixed, &inputs, &mut sink).map_err(RunError::of_facts)?;
-            facts.report(&mut sink);
-            fetched(
-                &self.blobs,
-                &mut self.log,
-                &self.settings.caps,
-                Stage::Facts,
-            )?;
-            let findings = self.log.logged_from(self.first);
-            let snapshot = FactsSnapshot::of(&facts, self.settings.facts_settings(), findings);
-            self.facts_snapshot = Some(snapshot);
-            self.facts = Some(facts);
+            guarded(Stage::Facts, || self.gather_facts())?;
         }
         held(self.facts.as_ref(), Stage::Facts, Stage::Fix)
+    }
+
+    /// The work of `facts`, which the run holds.
+    fn gather_facts(&mut self) -> Result<(), RunError> {
+        let fixed = self.module.fixed(Stage::Facts)?;
+        let speller = Speller::new(&self.book, self.env.names());
+        let inputs = FactInputs {
+            env: self.env,
+            dating: held(self.dating.as_ref(), Stage::Facts, Stage::Load)?,
+            files: held(self.provenance.as_ref(), Stage::Facts, Stage::Load)?,
+            names: &speller,
+            reworks: &self.settings.reworks,
+        };
+        let mut sink = self.log.at(Stage::Facts);
+        let facts = Facts::gather(fixed, &inputs, &mut sink).map_err(RunError::of_facts)?;
+        facts.report(&mut sink);
+        fetched(
+            &self.blobs,
+            &mut self.log,
+            &self.settings.caps,
+            Stage::Facts,
+        )?;
+        let findings = self.log.logged_from(self.first);
+        let snapshot = FactsSnapshot::of(&facts, self.settings.facts_settings(), findings);
+        self.facts_snapshot = Some(snapshot);
+        self.facts = Some(facts);
+        Ok(())
     }
 
     /// The stage `decide`: the policy's choice of a target for each unit. Only the porter's
@@ -1407,39 +1440,45 @@ impl<'a> Run<'a> {
         self.going()?;
         self.of_a_port(Stage::Plan)?;
         if self.plan_snapshot.is_none() {
-            let options = self.settings.port_options();
-            let speller = Speller::new(&self.book, self.env.names());
-            let inputs = PortInputs {
-                fixed: self.module.fixed(Stage::Plan)?,
-                facts: held(self.facts.as_ref(), Stage::Plan, Stage::Facts)?,
-                targets: held(
-                    self.decide_snapshot.as_ref().map(DecideSnapshot::targets),
-                    Stage::Plan,
-                    Stage::Decide,
-                )?,
-                env: self.env,
-                files: held(self.provenance.as_ref(), Stage::Plan, Stage::Load)?,
-                names: &speller,
-                options: &options,
-            };
-            let port = Port::plan(&inputs, &mut self.log.at(Stage::Plan));
-            let port = port.map_err(RunError::of_plan)?;
-            let (paths, entries) = port.made();
-            for path in paths {
-                self.book.learn_path(path);
-            }
-            for entry in entries {
-                self.book.learn_entry(entry);
-            }
-            fetched(&self.blobs, &mut self.log, &self.settings.caps, Stage::Plan)?;
-            let fixed = self.module.fixed(Stage::Plan)?;
-            let settings = self.settings.plan_settings();
-            let declared = (settings, self.log.logged_from(self.first));
-            let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
-            self.plan_snapshot = Some(snapshot);
-            self.plan = Some(port);
+            guarded(Stage::Plan, || self.plan_port())?;
         }
         held(self.plan.as_ref(), Stage::Plan, Stage::Decide)
+    }
+
+    /// The work of `plan`, which the run holds.
+    fn plan_port(&mut self) -> Result<(), RunError> {
+        let options = self.settings.port_options();
+        let speller = Speller::new(&self.book, self.env.names());
+        let inputs = PortInputs {
+            fixed: self.module.fixed(Stage::Plan)?,
+            facts: held(self.facts.as_ref(), Stage::Plan, Stage::Facts)?,
+            targets: held(
+                self.decide_snapshot.as_ref().map(DecideSnapshot::targets),
+                Stage::Plan,
+                Stage::Decide,
+            )?,
+            env: self.env,
+            files: held(self.provenance.as_ref(), Stage::Plan, Stage::Load)?,
+            names: &speller,
+            options: &options,
+        };
+        let port = Port::plan(&inputs, &mut self.log.at(Stage::Plan));
+        let port = port.map_err(RunError::of_plan)?;
+        let (paths, entries) = port.made();
+        for path in paths {
+            self.book.learn_path(path);
+        }
+        for entry in entries {
+            self.book.learn_entry(entry);
+        }
+        fetched(&self.blobs, &mut self.log, &self.settings.caps, Stage::Plan)?;
+        let fixed = self.module.fixed(Stage::Plan)?;
+        let settings = self.settings.plan_settings();
+        let declared = (settings, self.log.logged_from(self.first));
+        let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
+        self.plan_snapshot = Some(snapshot);
+        self.plan = Some(port);
+        Ok(())
     }
 
     /// The stage `build`: the package, of the plan in a porter's run and of the fixed mod in
@@ -1448,34 +1487,7 @@ impl<'a> Run<'a> {
     pub fn build(&mut self) -> Result<&Package, RunError> {
         self.going()?;
         if self.build_snapshot.is_none() {
-            let built = {
-                let fixed = self.module.fixed(Stage::Build)?;
-                let mut sink = self.log.at(Stage::Build);
-                match self.mode {
-                    Mode::Port => {
-                        let port = held(self.plan.as_ref(), Stage::Build, Stage::Plan)?;
-                        let speller = Speller::new(&self.book, self.env.names());
-                        PortBuilder::new(fixed, port, self.env, &speller)
-                            .keep_dds(self.settings.keep_dds)
-                            .build(&mut sink)
-                    }
-                    Mode::InPlace => {
-                        let changes = held(self.changes.as_ref(), Stage::Build, Stage::Fix)?;
-                        let options = self.settings.load_options();
-                        InPlaceBuilder::new(fixed, changes)
-                            .names(&self.book, self.env.names())
-                            .judged(self.env, &options)
-                            .keep_dds(self.settings.keep_dds)
-                            .build(&mut sink)
-                    }
-                }
-            };
-            let mut package = built.map_err(RunError::of_build)?;
-            package.evidence = self.evidence()?;
-            if let Some(image) = self.module.module().and_then(|m| m.image.as_ref()) {
-                package.carry_image(image, &mut self.log.at(Stage::Build));
-            }
-            let part = PackageRow::of(&package);
+            let (package, part) = guarded(Stage::Build, || self.build_package())?;
             fetched(
                 &self.blobs,
                 &mut self.log,
@@ -1491,6 +1503,39 @@ impl<'a> Run<'a> {
             self.package = Some(package);
         }
         held(self.package.as_ref(), Stage::Build, Stage::Fix)
+    }
+
+    /// The package `build` makes, with the evidence and the image, and its part of the report.
+    fn build_package(&mut self) -> Result<(Package, PackageRow), RunError> {
+        let built = {
+            let fixed = self.module.fixed(Stage::Build)?;
+            let mut sink = self.log.at(Stage::Build);
+            match self.mode {
+                Mode::Port => {
+                    let port = held(self.plan.as_ref(), Stage::Build, Stage::Plan)?;
+                    let speller = Speller::new(&self.book, self.env.names());
+                    PortBuilder::new(fixed, port, self.env, &speller)
+                        .keep_dds(self.settings.keep_dds)
+                        .build(&mut sink)
+                }
+                Mode::InPlace => {
+                    let changes = held(self.changes.as_ref(), Stage::Build, Stage::Fix)?;
+                    let options = self.settings.load_options();
+                    InPlaceBuilder::new(fixed, changes)
+                        .names(&self.book, self.env.names())
+                        .judged(self.env, &options)
+                        .keep_dds(self.settings.keep_dds)
+                        .build(&mut sink)
+                }
+            }
+        };
+        let mut package = built.map_err(RunError::of_build)?;
+        package.evidence = self.evidence()?;
+        if let Some(image) = self.module.module().and_then(|m| m.image.as_ref()) {
+            package.carry_image(image, &mut self.log.at(Stage::Build));
+        }
+        let part = PackageRow::of(&package);
+        Ok((package, part))
     }
 
     /// The evidence the run's package embeds: what the run holds once the mod is fixed and,
@@ -1519,6 +1564,11 @@ impl<'a> Run<'a> {
         if self.check_snapshot.is_some() {
             return Ok(());
         }
+        guarded(Stage::Check, || self.check_package())
+    }
+
+    /// The work of `check`, which the run holds.
+    fn check_package(&mut self) -> Result<(), RunError> {
         let fixed = self.module.fixed(Stage::Check)?;
         let package = held(self.package.as_ref(), Stage::Check, Stage::Build)?;
         let checks = &self.settings.checks;
@@ -1630,7 +1680,7 @@ impl<'a> Run<'a> {
                     .map(|&wad| fixed.wads[wad].name.lower().to_string())
                     .collect(),
             };
-            let bytes = archive_of(first).map_err(RunError::Again)?;
+            let bytes = guarded(Stage::Read, || archive_of(first).map_err(RunError::Again))?;
             let mut second = Run::new(self.env, self.settings, None).known(evidence);
             let loaded = second.read(&bytes, REPAIRED_NAME).map(drop);
             let loaded = loaded.and_then(|()| second.load().map(drop));
@@ -1676,13 +1726,31 @@ impl<'a> Run<'a> {
         permit(policy, &mut self.log)?;
         let report = self.report().to_json() + "\n";
         let package = held(self.package.as_ref(), Stage::Write, Stage::Build)?;
+        // A writer stages its files and renames them into place when whole, so a fetch that
+        // ends it leaves nothing; the store is asked first so that no writer finishes before
+        // another one finds a file missing.
+        let fetched_by_writers = package
+            .chunks()
+            .filter(|(_, _, chunk)| chunk.held().is_none());
+        for (_, _, chunk) in fetched_by_writers {
+            if !self.blobs.holds(chunk.content) {
+                let id = chunk.content;
+                return Err(RunError::Store {
+                    stage: Stage::Write,
+                    id,
+                });
+            }
+        }
         for writer in writers {
             let mut sink = self.log.at(Stage::Write);
-            let written = package.write(*writer, &report, &mut sink);
-            written.map_err(|source| RunError::Write {
-                kind: writer.kind(),
-                source,
-            })?;
+            let written = guarded(Stage::Write, || {
+                let written = package.write(*writer, &report, &mut sink);
+                written.map_err(|source| RunError::Write {
+                    kind: writer.kind(),
+                    source,
+                })
+            });
+            written?;
         }
         fetched(
             &self.blobs,

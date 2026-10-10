@@ -6,9 +6,14 @@
 //! `store` module answers. What a stage holds of the bytes it fetched is counted while it
 //! holds them ([`Fetched`]), and the most it held at once is what the run's working-set cap
 //! bounds.
+//!
+//! A fetch the store does not answer ends the stage at that fetch ([`Missing`]): it unwinds
+//! to the run, which ends the stage with a fault, so no stage goes on to judge or write a file
+//! it could not read. `docs/design/ARCHITECTURE.md`, "The model", says why it unwinds.
 
 use std::fmt;
 use std::ops::Deref;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -103,11 +108,35 @@ impl fmt::Debug for Fetched {
     }
 }
 
+/// A fetch the run's store did not answer, by the id it asked for (#ADR-0100).
+///
+/// [`Blobs::fetch`] unwinds with it, and [`Missing::catch`] takes it back where the run ends
+/// the stage. It is never a panic: no hook sees it and nothing is printed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Missing(pub ContentId);
+
+impl Missing {
+    /// Ends the work under way at this fetch, up to the nearest [`Missing::catch`].
+    fn throw(self) -> ! {
+        resume_unwind(Box::new(self))
+    }
+
+    /// Runs work that fetches from a run's store: what it gives, or the fetch the store did
+    /// not answer, which ended it. Any other unwind goes on as it came.
+    pub fn catch<T>(work: impl FnOnce() -> T) -> Result<T, Missing> {
+        catch_unwind(AssertUnwindSafe(work)).map_err(|payload| match payload.downcast() {
+            Ok(missing) => *missing,
+            Err(other) => resume_unwind(other),
+        })
+    }
+}
+
 /// The run's store, as a mod and its package hold it.
 ///
-/// A fetch of an id the store lacks gives no bytes and is remembered: the run ends the stage
-/// with a fault ([`Blobs::missing`]), so no stage judges a file it could not read. Every fetch
-/// is counted while its bytes are held ([`Blobs::take_peak`]).
+/// A fetch of an id the store lacks ends the work under way with [`Missing`], and the id is
+/// remembered ([`Blobs::missing`]): the run ends the stage with a fault, so no stage judges a
+/// file it could not read. Every fetch is counted while its bytes are held
+/// ([`Blobs::take_peak`]).
 #[derive(Clone)]
 pub struct Blobs {
     access: Arc<dyn BlobAccess>,
@@ -140,15 +169,17 @@ impl Blobs {
         self.access.holds(id)
     }
 
-    /// The bytes under an id. An id the store lacks gives none, and is the one
-    /// [`Blobs::missing`] names when it is the first.
+    /// The bytes under an id. An id the store lacks ends the work under way with [`Missing`],
+    /// and is the one [`Blobs::missing`] names when it is the first.
     pub fn fetch(&self, id: ContentId) -> Fetched {
         if let Some(bytes) = self.get(id) {
             return bytes;
         }
-        let mut missing = self.missing.lock().unwrap_or_else(PoisonError::into_inner);
-        missing.get_or_insert(id);
-        Fetched::held(ByteView::from(&b""[..]))
+        self.missing
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get_or_insert(id);
+        Missing(id).throw()
     }
 
     /// Keeps the bytes a stage made, under the id it gives.

@@ -122,8 +122,11 @@ let report = run.report();
   bins stay on the bin nodes: they are the working set. A read of the ingest store under the
   run is not checked against the id (`BlobStore::get_unchecked`): the store holds only what
   a run put there or `read` found whole. A file the run makes, a file fixup's or a game bin
-  taken as the mod's, goes into the run's layer when it is made. An id the store does not
-  answer ends the stage with `RunError::Store`, and the stage keeps no snapshot. What a stage
+  taken as the mod's, goes into the run's layer when it is made. A fetch the store does not
+  answer ends the stage at that fetch with `RunError::Store`, the stages before it keeping
+  their results, and the stage keeps no snapshot. Before the first writer starts, the store is
+  asked for every chunk the writers fetch; a writer a fetch ends leaves nothing, since it
+  renames its staged files into place only when they are whole. What a stage
   holds of its fetches is counted while it holds them (`Fetched`), and a stage that held more
   at once than the caps' working set (`Caps::working_bytes`) raises
   `store.working-set-capped` at its last step and runs on. The run keeps the raw snapshot, and each stage from `load` on
@@ -330,8 +333,11 @@ tables (`history`) and the bin value helpers (`model`).
   bytes and their size, and gives the bytes from the run's store when a stage asks
   (`FileNode::bytes`, `Mod::bytes`), through `Blobs`, the run's store as the model names it:
   `BlobAccess`, which every store answers, a fetch and a keep by id. Nothing on the node keeps
-  them. A fetch the store does not answer gives no bytes and is remembered (`Blobs::missing`),
-  and the run ends the stage with a fault.
+  them. A fetch the store does not answer gives no bytes: it unwinds with `Missing`, which no
+  panic hook sees, and the run takes it back where it ends the stage with a fault
+  (`Missing::catch`). The unwind is the way out because a fetch sits deep in every stage's
+  readers, under signatures that have no store fault to give. The id is remembered too
+  (`Blobs::missing`), for a fetch inside a reader whose panic guard took the unwind.
 - **Bytes are views.** Fetched bytes, the image's and a chunk's a stage made are a
   `ByteView` (`model::ByteView`): the type the blob store hands out (#ADR-0093), shared on
   clone and sliced without a copy.

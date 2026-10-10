@@ -2,13 +2,18 @@
 //! id of its bytes, a stage fetches them where it reads them, and a carried file is named by
 //! its id in the package and fetched by the writer. The game is `reforge_testkit::skins`.
 
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
 use camino::{Utf8Path, Utf8PathBuf};
 use reforge::diag::{Diag, DiagnosticPolicy, Stage};
 use reforge::env::Env;
 use reforge::history::NoHistory;
+use reforge::model::{ByteView, ContentId};
 use reforge::package::{Origin, PackageWriter, ProjectDir};
 use reforge::porter::WorkingSetCapped;
 use reforge::snapshot::RawCache;
+use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Porter, Repairer, RunError};
 use reforge_testkit::bins::{bin, blob, entry, particle, resolver_with};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -109,6 +114,124 @@ fn a_stage_whose_store_lost_a_files_bytes_ends_with_a_fault_of_the_store() {
         named.map(|file| file.content).any(|content| content == id),
         "{id:?} is a file's"
     );
+}
+
+/// A store that loses the blob of the first read once it is armed, as a store whose blob is
+/// removed under a run would, and counts the reads after it.
+#[derive(Default)]
+struct Losing {
+    blobs: MemoryStore,
+    armed: AtomicBool,
+    lost: Mutex<Option<ContentId>>,
+    reads_after: AtomicUsize,
+}
+
+impl Losing {
+    fn read(&self, id: ContentId) -> Option<ByteView> {
+        let mut lost = self.lost.lock().expect("the lock");
+        if lost.is_some() {
+            self.reads_after.fetch_add(1, Ordering::Relaxed);
+        } else if self.armed.swap(false, Ordering::Relaxed) {
+            *lost = Some(id);
+        }
+        (*lost != Some(id)).then(|| self.blobs.get(id)).flatten()
+    }
+
+    fn lost(&self) -> Option<ContentId> {
+        *self.lost.lock().expect("the lock")
+    }
+}
+
+impl BlobStore for Losing {
+    fn get(&self, id: ContentId) -> Option<ByteView> {
+        self.read(id)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        self.lost() != Some(id) && self.blobs.contains(id)
+    }
+
+    fn put(&self, bytes: ByteView) -> ContentId {
+        self.blobs.put(bytes)
+    }
+}
+
+/// A run of the mod started from its raw snapshot, its bytes in a store that loses one.
+fn over_losing<'a>(porter: &'a Porter<'_>, bytes: &[u8]) -> (reforge::Run<'a>, Arc<Losing>) {
+    let losing = Arc::new(Losing::default());
+    let mut log = reforge::diag::Diagnostics::new();
+    let caps = reforge::archive::Caps::default();
+    let raw = reforge::archive::read(bytes, FILE_NAME, &caps, &*losing, &mut log.at(Stage::Read));
+    let run = porter.resume(raw.expect("it reads"), Arc::clone(&losing));
+    (run.expect("the run starts"), losing)
+}
+
+#[test]
+fn a_blob_lost_mid_stage_ends_the_stage_at_its_fetch() {
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let (mut run, losing) = over_losing(&porter, &own_mod());
+    run.through(Stage::Fix).expect("the store answers");
+    losing.armed.store(true, Ordering::Relaxed);
+
+    let Err(RunError::Store { stage, id }) = run.through(Stage::Check) else {
+        panic!("facts reads a file the store lost");
+    };
+    assert_eq!((stage, Some(id)), (Stage::Facts, losing.lost()));
+    assert_eq!(
+        losing.reads_after.load(Ordering::Relaxed),
+        0,
+        "nothing is read after the fetch the store did not answer"
+    );
+    assert!(!run.ran(Stage::Facts), "facts keeps no snapshot");
+    assert!(run.ran(Stage::Fix), "the stages before it keep theirs");
+    assert!(run.fixed().is_some(), "the mod stays the run's");
+}
+
+#[test]
+fn a_blob_lost_while_a_writer_reads_it_leaves_nothing_written() {
+    let env = game_env();
+    let repairer = Repairer::new(&env);
+    let (mut run, losing) = over_losing_repair(&repairer, &own_mod());
+    run.through(Stage::Check).expect("the store answers");
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let out = Utf8Path::from_path(scratch.path())
+        .expect("UTF-8")
+        .join("out");
+    let writers: [&dyn PackageWriter; 1] = [&ProjectDir::new(&out)];
+    losing.armed.store(true, Ordering::Relaxed);
+
+    let Err(RunError::Store { stage, id }) = run.write(&writers, &DiagnosticPolicy::default())
+    else {
+        panic!("a writer reads a kept file the store lost");
+    };
+    assert_eq!((stage, Some(id)), (Stage::Write, losing.lost()));
+    assert!(!run.ran(Stage::Write));
+    let left: Vec<_> = fs_err::read_dir(&out)
+        .expect("the output directory")
+        .collect();
+    assert!(left.is_empty(), "the staged project is removed: {left:?}");
+
+    // A blob lost before the write is found before any writer starts.
+    let Err(RunError::Store { stage, .. }) = run.write(&writers, &DiagnosticPolicy::default())
+    else {
+        panic!("the store lacks a kept file");
+    };
+    assert_eq!(stage, Stage::Write);
+    assert_eq!(fs_err::read_dir(&out).expect("the output").count(), 0);
+}
+
+/// [`over_losing`] for a repair, whose package keeps the mod's files by id.
+fn over_losing_repair<'a>(
+    repairer: &'a Repairer<'_>,
+    bytes: &[u8],
+) -> (reforge::Run<'a>, Arc<Losing>) {
+    let losing = Arc::new(Losing::default());
+    let mut log = reforge::diag::Diagnostics::new();
+    let caps = reforge::archive::Caps::default();
+    let raw = reforge::archive::read(bytes, FILE_NAME, &caps, &*losing, &mut log.at(Stage::Read));
+    let run = repairer.resume(raw.expect("it reads"), Arc::clone(&losing));
+    (run.expect("the run starts"), losing)
 }
 
 #[test]
