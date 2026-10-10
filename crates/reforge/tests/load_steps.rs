@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use fs_err as fs;
 use reforge::archive::{self, Caps, RawSnapshot};
-use reforge::diag::{Channel, Diagnostics, Record, Render, Stage};
+use reforge::diag::{Cancel, Cancelled, Channel, Diagnostics, Record, Render, Stage};
 use reforge::env::Env;
 use reforge::game::{GameSource, NameBook};
 use reforge::history::HistoryError;
@@ -200,6 +200,30 @@ fn text_a_mod_spells_is_cleaned_in_the_dump() {
     assert!(
         messages.iter().all(|m| !m.contains('\u{1b}')),
         "{messages:?}"
+    );
+}
+
+#[test]
+fn a_cancel_set_before_load_ends_it_before_the_mod_is_opened() {
+    // #ADR-0097: the log carries the cancel, and the stage reads it before each step.
+    let env = env();
+    let mut log = Diagnostics::new();
+    let (raw, store) = read(&small_mod(), &mut log);
+    let cancel = Cancel::new();
+    cancel.cancel();
+    log.cancel_on(cancel);
+    let loaded = Loader::new(&env).load(&raw, &store, &mut log.at(Stage::Load));
+    let Err(error) = loaded else {
+        panic!("a cancelled load gives no mod");
+    };
+    assert!(
+        matches!(error, LoadError::Cancelled(Cancelled(Stage::Load))),
+        "{error:?}"
+    );
+    assert_eq!(log.cancelled(), Some(Cancelled(Stage::Load)));
+    assert!(
+        log.iter().all(|d| d.stage != Stage::Load),
+        "a cancel is no diagnostic"
     );
 }
 

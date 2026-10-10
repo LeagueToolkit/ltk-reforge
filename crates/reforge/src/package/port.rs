@@ -186,7 +186,8 @@ impl<'a> PortBuilder<'a> {
     }
 
     /// The package. A port that would hold nothing, or a material the client crashes on, ends
-    /// the run.
+    /// the run. A step is one unit, one bank, one file or one champion's HUD, and the run's
+    /// cancel ends the stage between two (#ADR-0097).
     pub fn build(self, sink: &mut Sink<'_>) -> Result<Package, BuildError> {
         let m: &Mod = self.fixed;
         let port = self.port;
@@ -211,6 +212,7 @@ impl<'a> PortBuilder<'a> {
         let shipped: BTreeSet<WadHash> = port.files.values().map(ChunkPath::hash).collect();
 
         for unit in &port.units {
+            sink.next_step()?;
             let wad = m.wads[m.characters[unit.character].wad].name.clone();
             let Some(lowered) = self.unit(unit, &shipped, sink)? else {
                 continue;
@@ -234,6 +236,7 @@ impl<'a> PortBuilder<'a> {
         // #ADR-0039: a bank ships with the record that names it.
         let mut recut: BTreeSet<FileId> = BTreeSet::new();
         for bank in &port.audio.banks {
+            sink.next_step()?;
             if !voiced.contains(&(bank.unit, bank.layer.clone())) {
                 continue;
             }
@@ -264,10 +267,12 @@ impl<'a> PortBuilder<'a> {
             package.insert(layer, key, chunk);
         };
         for (&file, place) in &port.files {
+            sink.next_step()?;
             found.files += 1;
             ship(&mut package, Layer::Base, file, place);
         }
         for hud in &port.hud.champions {
+            sink.next_step()?;
             for (file, place) in &hud.files {
                 found.files += 1;
                 ship(&mut package, Layer::Hud, *file, place);

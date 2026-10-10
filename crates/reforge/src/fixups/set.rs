@@ -17,7 +17,7 @@ use super::rule::Rule;
 use super::scope::ObjectSet;
 use super::types::TargetTypes;
 use super::{BinFixup, built_in, findings};
-use crate::diag::Sink;
+use crate::diag::{Cancelled, Sink};
 use crate::env::Env;
 use crate::game::{GameError, MAX_CHAIN, NameBook, NameHashError};
 use crate::history::HistoryError;
@@ -138,6 +138,9 @@ pub enum FixError {
     /// The history's index did not answer.
     #[error("the history did not answer while the mod was fixed")]
     History(#[from] HistoryError),
+    /// The run's cancel ended the stage between two of its steps (#ADR-0097).
+    #[error(transparent)]
+    Cancelled(#[from] Cancelled),
 }
 
 /// A mod the stage `fix` ended on a fault. Its files, characters and units are as `load` left
@@ -294,7 +297,8 @@ impl FixupSet {
     /// the record it implements.
     ///
     /// A fixup whose target shape the build does not have is skipped. A fault a fixup reports
-    /// ends the run: there is no fixed mod then.
+    /// ends the run: there is no fixed mod then. A step is one fixup over the objects of one
+    /// bin, and the run's cancel ends the stage between two steps, as a fault does.
     pub fn apply(
         &self,
         m: Mod,
@@ -338,31 +342,38 @@ impl FixupSet {
             });
         }
         let ids: Vec<ObjectId> = m.objects.ids().filter(|&o| objects.contains(o)).collect();
+        // A bin's objects are read together, so its run of ids is one step.
+        let by_bin: Vec<&[ObjectId]> = ids
+            .chunk_by(|&a, &b| m.objects[a].bin == m.objects[b].bin)
+            .collect();
         let mut changes = Changes::default();
         let mut fault = None;
         for fixup in self.bins.iter().filter(|fixup| fixup.applies(&types)) {
             let classes = fixup.classes();
-            for &object in &ids {
-                let mut cx = FixCx {
-                    types: &types,
-                    game: inputs.env.game(),
-                    source: inputs.dating.build(),
-                    characters: &m.characters,
-                    units: &m.units,
-                    tables: inputs.env.names(),
-                    book: &mut *inputs.names,
-                    fixup: &fixup.info().id,
-                    object,
-                    changes: &mut changes,
-                    fault: &mut fault,
-                };
-                walk::structs_mut(&mut m.objects[object].value, |s| {
-                    if classes.holds(s.class()) && !cx.faulted() {
-                        fixup.fix(&mut cx, s);
+            for &bin in &by_bin {
+                sink.next_step()?;
+                for &object in bin {
+                    let mut cx = FixCx {
+                        types: &types,
+                        game: inputs.env.game(),
+                        source: inputs.dating.build(),
+                        characters: &m.characters,
+                        units: &m.units,
+                        tables: inputs.env.names(),
+                        book: &mut *inputs.names,
+                        fixup: &fixup.info().id,
+                        object,
+                        changes: &mut changes,
+                        fault: &mut fault,
+                    };
+                    walk::structs_mut(&mut m.objects[object].value, |s| {
+                        if classes.holds(s.class()) && !cx.faulted() {
+                            fixup.fix(&mut cx, s);
+                        }
+                    });
+                    if let Some(fault) = fault.take() {
+                        return Err(fault);
                     }
-                });
-                if let Some(fault) = fault.take() {
-                    return Err(fault);
                 }
             }
         }

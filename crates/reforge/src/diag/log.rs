@@ -7,6 +7,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::message::{Message, Part, Render};
+use super::steps::{Cancel, Cancelled};
 use super::{Channel, Code, Diag, Filter, Record, Severity, Stage, Subject};
 
 /// A diagnostic's place in the run's log, from 0. A result that a diagnostic explains holds
@@ -202,10 +203,15 @@ type Listener = Box<dyn FnMut(&Diagnostic) + Send>;
 
 /// The ordered, append-only log of a run. The order is the order raised, which is the same for
 /// the same inputs.
+///
+/// The log carries the run's cancel to the stages, and holds the stage a cancel ended
+/// (#ADR-0097). A cancel is no diagnostic.
 #[derive(Default)]
 pub struct Diagnostics {
     items: Vec<Diagnostic>,
     listener: Option<Listener>,
+    cancel: Option<Cancel>,
+    cancelled: Option<Cancelled>,
 }
 
 impl Diagnostics {
@@ -217,6 +223,21 @@ impl Diagnostics {
     /// Sets what hears each diagnostic as it is raised, so a caller shows a run as it goes.
     pub fn listen(&mut self, listener: impl FnMut(&Diagnostic) + Send + 'static) {
         self.listener = Some(Box::new(listener));
+    }
+
+    /// Sets the cancel the stages read between their steps.
+    pub fn cancel_on(&mut self, cancel: Cancel) {
+        self.cancel = Some(cancel);
+    }
+
+    /// The cancel the stages read, when one is set.
+    pub fn cancel(&self) -> Option<&Cancel> {
+        self.cancel.as_ref()
+    }
+
+    /// The cancel that ended a stage, when one did.
+    pub fn cancelled(&self) -> Option<Cancelled> {
+        self.cancelled
     }
 
     /// The sink of a stage.
@@ -358,6 +379,16 @@ impl Sink<'_> {
     /// The stage this sink raises for.
     pub fn stage(&self) -> Stage {
         self.stage
+    }
+
+    /// Begins a step of the stage, or ends the stage where the run's cancel is set. The log
+    /// then holds the stage it ended (#ADR-0097).
+    pub fn next_step(&mut self) -> Result<(), Cancelled> {
+        if !self.log.cancel.as_ref().is_some_and(Cancel::is_set) {
+            return Ok(());
+        }
+        let cancelled = *self.log.cancelled.get_or_insert(Cancelled(self.stage));
+        Err(cancelled)
     }
 
     /// How many diagnostics the log holds: the place of the next one raised.

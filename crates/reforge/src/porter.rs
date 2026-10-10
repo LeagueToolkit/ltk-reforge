@@ -19,7 +19,7 @@ use zip::result::ZipError;
 use zip::write::SimpleFileOptions;
 
 use crate::archive::{self, Caps, RawSnapshot};
-use crate::diag::{Code, DiagnosticPolicy, Diagnostics, Halted, Render, Stage};
+use crate::diag::{Cancel, Cancelled, Code, DiagnosticPolicy, Diagnostics, Halted, Render, Stage};
 use crate::env::Env;
 use crate::facts::{FactInputs, Facts, FactsError};
 use crate::fixups::{Changes, FixError, FixInputs, FixedMod, FixupSet, ObjectSet, TargetTypes};
@@ -76,6 +76,10 @@ pub enum RunError {
     /// and the report is written all the same.
     #[error(transparent)]
     Halted(#[from] Halted),
+    /// The run's cancel ended a stage between two of its steps, this one or an earlier one
+    /// (#ADR-0097). The report is written all the same.
+    #[error(transparent)]
+    Cancelled(#[from] Cancelled),
     /// The stage reads the result of a stage the run did not reach.
     #[error("{stage} reads what {needs} gives, and the run did not reach {needs}")]
     NotReached {
@@ -126,11 +130,46 @@ pub enum RunError {
 }
 
 impl RunError {
-    /// What the build's own error is to a run: its fatal diagnostic, else the fault.
+    /// What the build's own error is to a run: its fatal diagnostic, its cancel, else the
+    /// fault.
     fn of_build(error: BuildError) -> Self {
         match error {
             BuildError::Halted(halted) => RunError::Halted(halted),
+            BuildError::Cancelled(cancelled) => RunError::Cancelled(cancelled),
             BuildError::Fault(fault) => RunError::Build(fault),
+        }
+    }
+
+    /// What load's own error is to a run: its fatal diagnostic, its cancel, else the fault.
+    fn of_load(error: LoadError) -> Self {
+        match error {
+            LoadError::Halted(halted) => RunError::Halted(halted),
+            LoadError::Cancelled(cancelled) => RunError::Cancelled(cancelled),
+            fault => RunError::Load(fault),
+        }
+    }
+
+    /// What fix's own error is to a run: its cancel, else the fault.
+    fn of_fix(error: FixError) -> Self {
+        match error {
+            FixError::Cancelled(cancelled) => RunError::Cancelled(cancelled),
+            fault => RunError::Fix(fault),
+        }
+    }
+
+    /// What the facts' own error is to a run: its cancel, else the fault.
+    fn of_facts(error: FactsError) -> Self {
+        match error {
+            FactsError::Cancelled(cancelled) => RunError::Cancelled(cancelled),
+            fault => RunError::Facts(fault),
+        }
+    }
+
+    /// What the plan's own error is to a run: its cancel, else the fault.
+    fn of_plan(error: PlanError) -> Self {
+        match error {
+            PlanError::Cancelled(cancelled) => RunError::Cancelled(cancelled),
+            fault => RunError::Plan(fault),
         }
     }
 }
@@ -344,6 +383,7 @@ impl Mode {
 pub struct Porter<'a> {
     env: &'a Env,
     settings: Settings,
+    cancel: Option<Cancel>,
 }
 
 impl<'a> Porter<'a> {
@@ -353,7 +393,16 @@ impl<'a> Porter<'a> {
         Self {
             env,
             settings: Settings::default(),
+            cancel: None,
         }
+    }
+
+    /// Hands this cancel to each of its runs ([`Run::cancel`]). A cancel is no setting: no
+    /// snapshot names it.
+    #[must_use]
+    pub fn cancel(mut self, cancel: Cancel) -> Self {
+        self.cancel = Some(cancel);
+        self
     }
 
     /// Chooses each unit's target under this policy.
@@ -427,9 +476,9 @@ impl<'a> Porter<'a> {
         self
     }
 
-    /// A run of one archive, with nothing read.
+    /// A run of one archive, with nothing read, reading the porter's cancel.
     pub fn run(&self) -> Run<'_> {
-        Run::new(self.env, &self.settings)
+        Run::new(self.env, &self.settings, self.cancel.as_ref())
     }
 
     /// What the porter's runs are run under.
@@ -437,8 +486,8 @@ impl<'a> Porter<'a> {
         &self.settings
     }
 
-    /// Takes an archive's bytes through every stage but `write`. A fatal diagnostic ends the
-    /// run early and is no error: the run comes back as far as it went.
+    /// Takes an archive's bytes through every stage but `write`. A fatal diagnostic or a
+    /// cancel ends the run early and is no error: the run comes back as far as it went.
     pub fn port(&self, bytes: &[u8], file_name: &str) -> Result<Run<'_>, RunError> {
         let mut run = self.run();
         run.all(bytes, file_name)?;
@@ -462,6 +511,7 @@ impl<'a> Porter<'a> {
 pub struct Repairer<'a> {
     env: &'a Env,
     settings: Settings,
+    cancel: Option<Cancel>,
 }
 
 impl<'a> Repairer<'a> {
@@ -474,7 +524,16 @@ impl<'a> Repairer<'a> {
                 mode: Mode::InPlace,
                 ..Settings::default()
             },
+            cancel: None,
         }
+    }
+
+    /// Hands this cancel to each of its runs ([`Run::cancel`]). A cancel is no setting: no
+    /// snapshot names it.
+    #[must_use]
+    pub fn cancel(mut self, cancel: Cancel) -> Self {
+        self.cancel = Some(cancel);
+        self
     }
 
     /// Runs these fixups, on the files in `load` and on the bins in `fix`.
@@ -519,9 +578,9 @@ impl<'a> Repairer<'a> {
         self
     }
 
-    /// A run of one archive, with nothing read.
+    /// A run of one archive, with nothing read, reading the repairer's cancel.
     pub fn run(&self) -> Run<'_> {
-        Run::new(self.env, &self.settings)
+        Run::new(self.env, &self.settings, self.cancel.as_ref())
     }
 
     /// What the repairer's runs are run under.
@@ -529,8 +588,8 @@ impl<'a> Repairer<'a> {
         &self.settings
     }
 
-    /// Takes an archive's bytes through every stage but `write`. A fatal diagnostic ends the
-    /// run early and is no error: the run comes back as far as it went.
+    /// Takes an archive's bytes through every stage but `write`. A fatal diagnostic or a
+    /// cancel ends the run early and is no error: the run comes back as far as it went.
     pub fn repair(&self, bytes: &[u8], file_name: &str) -> Result<Run<'_>, RunError> {
         let mut run = self.run();
         run.all(bytes, file_name)?;
@@ -625,13 +684,17 @@ pub struct Run<'a> {
 }
 
 impl<'a> Run<'a> {
-    fn new(env: &'a Env, settings: &'a Settings) -> Self {
+    fn new(env: &'a Env, settings: &'a Settings, cancel: Option<&Cancel>) -> Self {
+        let mut log = Diagnostics::new();
+        if let Some(cancel) = cancel {
+            log.cancel_on(cancel.clone());
+        }
         Self {
             env,
             settings,
             mode: settings.mode,
             known: None,
-            log: Diagnostics::new(),
+            log,
             book: NameBook::new(),
             store: Layered::new(MemoryStore::new(), Box::new(MemoryStore::new())),
             first: 0,
@@ -657,9 +720,22 @@ impl<'a> Run<'a> {
     }
 
     /// Starts from a log that holds what the inputs raised when the environment was built.
+    /// The run's cancel goes with it to a log that has none.
     #[must_use]
-    pub fn log_from(mut self, log: Diagnostics) -> Self {
+    pub fn log_from(mut self, mut log: Diagnostics) -> Self {
+        if let (None, Some(cancel)) = (log.cancel(), self.log.cancel()) {
+            log.cancel_on(cancel.clone());
+        }
         self.log = log;
+        self
+    }
+
+    /// Reads this cancel between the steps of each stage (#ADR-0097). Set, it ends the stage
+    /// under way after the step it is on: the stage gives no result and writes no snapshot,
+    /// and no stage after it runs.
+    #[must_use]
+    pub fn cancel(mut self, cancel: Cancel) -> Self {
+        self.log.cancel_on(cancel);
         self
     }
 
@@ -681,11 +757,14 @@ impl<'a> Run<'a> {
         self
     }
 
-    /// Ends a stage's method where a fatal diagnostic ended the run.
+    /// Ends a stage's method where a fatal diagnostic or a cancel ended the run.
     fn going(&self) -> Result<(), RunError> {
+        if let Some(halted) = self.log.halted() {
+            return Err(halted.into());
+        }
         self.log
-            .halted()
-            .map_or(Ok(()), |halted| Err(halted.into()))
+            .cancelled()
+            .map_or(Ok(()), |cancelled| Err(cancelled.into()))
     }
 
     /// The stage `read`: the archive from its bytes, which are borrowed for the call, read
@@ -723,7 +802,8 @@ impl<'a> Run<'a> {
     /// own stage declares. A refused run is dropped, and the caller starts again from an
     /// earlier snapshot.
     pub fn resume(mut self, from: impl Into<Start>) -> Result<Self, ResumeError> {
-        let started = self.raw.is_some() || self.loaded.is_some() || self.log.halted().is_some();
+        let ended = self.log.halted().is_some() || self.log.cancelled().is_some();
+        let started = self.raw.is_some() || self.loaded.is_some() || ended;
         if started || !matches!(self.module, Reached::Nothing) {
             return Err(ResumeError::Started);
         }
@@ -896,16 +976,19 @@ impl<'a> Run<'a> {
         let mut loader = Loader::new(env).options(options).book(book);
         let mut sink = self.log.at(Stage::Load);
         let raw = held(self.raw.as_ref(), Stage::Load, Stage::Read)?;
-        let mut module = match loader.open(raw, &self.store) {
+        let opened = sink.next_step().map_err(LoadError::from);
+        let mut module = match opened.and_then(|()| loader.open(raw, &self.store)) {
             Ok(module) => module,
             Err(error) => {
                 self.book = loader.into_names();
-                return Err(RunError::Load(error));
+                return Err(RunError::of_load(error));
             }
         };
         let known = self.known.as_ref();
         let mut steps = || -> Result<(), LoadError> {
+            sink.next_step()?;
             loader.fix_files(&mut module, &mut sink)?;
+            sink.next_step()?;
             loader.take_game_bins(&mut module, &mut sink)?;
             if let Some(known) = known {
                 let wads = module.wads.iter();
@@ -915,7 +998,9 @@ impl<'a> Run<'a> {
                     .collect();
                 module.restorations.extend(restored);
             }
+            sink.next_step()?;
             loader.survey(&mut module, &mut sink)?;
+            sink.next_step()?;
             loader.resolve(&mut module, &mut sink)?;
             Ok(())
         };
@@ -923,26 +1008,22 @@ impl<'a> Run<'a> {
         self.book = loader.into_names();
         match done {
             Ok(()) => {}
-            Err(LoadError::Halted(halted)) => {
+            Err(ended @ (LoadError::Halted(_) | LoadError::Cancelled(_))) => {
                 self.module = Reached::Partial(module);
-                return Err(halted.into());
+                return Err(RunError::of_load(ended));
             }
             Err(fault) => return Err(RunError::Load(fault)),
         }
 
-        let found = Dating::find(&module, env.history());
-        let found = found.map_err(|error| RunError::Load(LoadError::History(error)))?;
-        let mut taken = None;
-        if self.mode == Mode::Port {
-            let speller = Speller::new(&self.book, env.names());
-            let inventory = Inventory::take(&module, &speller);
-            inventory.report(&mut sink);
-            let provenance = FileProvenance::find(&module, &against(env, &speller));
-            let provenance = provenance.map_err(|fault| RunError::Load(fault.into()))?;
-            provenance.report(&mut sink);
-            taken = Some(inventory);
-            self.provenance = Some(provenance);
-        }
+        let (found, taken) = match self.files_known(&module) {
+            Ok(known) => known,
+            Err(error) => {
+                if matches!(error, RunError::Cancelled(_)) {
+                    self.module = Reached::Partial(module);
+                }
+                return Err(error);
+            }
+        };
         self.loaded = Some(self.snapshot_of(&module, &found, taken.as_ref()));
         match &self.known {
             Some(known) => {
@@ -953,6 +1034,29 @@ impl<'a> Run<'a> {
         }
         self.module = Reached::Loaded(module);
         Ok(())
+    }
+
+    /// The steps of `load` after the mod is resolved, what is known of its files: the dating,
+    /// and in a port the inventory and the file provenance, which the run holds.
+    fn files_known(&mut self, module: &Mod) -> Result<(Dating, Option<Inventory>), RunError> {
+        let env = self.env;
+        let mut sink = self.log.at(Stage::Load);
+        sink.next_step()?;
+        let found = Dating::find(module, env.history());
+        let found = found.map_err(|error| RunError::Load(LoadError::History(error)))?;
+        if self.mode == Mode::InPlace {
+            return Ok((found, None));
+        }
+        let speller = Speller::new(&self.book, env.names());
+        sink.next_step()?;
+        let inventory = Inventory::take(module, &speller);
+        inventory.report(&mut sink);
+        sink.next_step()?;
+        let provenance = FileProvenance::find(module, &against(env, &speller));
+        let provenance = provenance.map_err(|fault| RunError::Load(fault.into()))?;
+        provenance.report(&mut sink);
+        self.provenance = Some(provenance);
+        Ok((found, Some(inventory)))
     }
 
     /// The load snapshot of the mod `load` left, at the dating `load` found, with what the
@@ -1007,7 +1111,7 @@ impl<'a> Run<'a> {
                     // The report of a run ended here still holds what `load` gave.
                     Err(unfixed) => {
                         self.module = Reached::Loaded(unfixed.module);
-                        return Err(RunError::Fix(unfixed.fault));
+                        return Err(RunError::of_fix(unfixed.fault));
                     }
                 }
             }
@@ -1068,8 +1172,9 @@ impl<'a> Run<'a> {
                 names: &speller,
                 reworks: &self.settings.reworks,
             };
-            let facts = Facts::gather(fixed, &inputs).map_err(RunError::Facts)?;
-            facts.report(&mut self.log.at(Stage::Facts));
+            let mut sink = self.log.at(Stage::Facts);
+            let facts = Facts::gather(fixed, &inputs, &mut sink).map_err(RunError::of_facts)?;
+            facts.report(&mut sink);
             let findings = self.log.logged_from(self.first);
             let snapshot = FactsSnapshot::of(&facts, self.settings.facts_settings(), findings);
             self.facts_snapshot = Some(snapshot);
@@ -1085,9 +1190,15 @@ impl<'a> Run<'a> {
         self.of_a_port(Stage::Decide)?;
         if self.decide_snapshot.is_none() {
             let facts = held(self.facts.as_ref(), Stage::Decide, Stage::Facts)?;
-            let targets = self.settings.policy.decide(facts);
-            targets.report(&mut self.log.at(Stage::Decide));
-            let targets = targets.compared(facts, &self.settings.compared);
+            // A step is a policy's decisions: the porter's, then each compared with it.
+            let mut sink = self.log.at(Stage::Decide);
+            sink.next_step()?;
+            let mut targets = self.settings.policy.decide(facts);
+            targets.report(&mut sink);
+            for compared in &self.settings.compared {
+                sink.next_step()?;
+                targets = targets.compared(facts, std::slice::from_ref(compared));
+            }
             let findings = self.log.logged_from(self.first);
             let snapshot = DecideSnapshot::of(targets, self.settings.decide_settings(), findings);
             self.decide_snapshot = Some(snapshot);
@@ -1117,7 +1228,7 @@ impl<'a> Run<'a> {
                 options: &options,
             };
             let port = Port::plan(&inputs, &mut self.log.at(Stage::Plan));
-            let port = port.map_err(RunError::Plan)?;
+            let port = port.map_err(RunError::of_plan)?;
             let (paths, entries) = port.made();
             for path in paths {
                 self.book.learn_path(path);
@@ -1209,20 +1320,23 @@ impl<'a> Run<'a> {
         let fixed = self.module.fixed(Stage::Check)?;
         let package = held(self.package.as_ref(), Stage::Check, Stage::Build)?;
         let checks = &self.settings.checks;
+        let mut sink = self.log.at(Stage::Check);
         let overlay = match self.mode {
             Mode::Port => {
                 let port = held(self.plan.as_ref(), Stage::Check, Stage::Plan)?;
                 let game = self.env.game();
+                // The patches applied are a step before the checks that read them.
+                sink.next_step()?;
                 let overlay = Overlay::apply(package, game).map_err(RunError::Check)?;
                 let types = TargetTypes::of(fixed, self.env).map_err(RunError::Check)?;
                 let cx = CheckCx::new(package, &types).of_port(game, &overlay, port);
-                checks.run(&cx, &mut self.log.at(Stage::Check));
+                checks.run(&cx, &mut sink)?;
                 Some(overlay)
             }
             Mode::InPlace => {
                 let types = TargetTypes::of(fixed, self.env).map_err(RunError::Check)?;
                 let cx = CheckCx::new(package, &types);
-                checks.run(&cx, &mut self.log.at(Stage::Check));
+                checks.run(&cx, &mut sink)?;
                 None
             }
         };
@@ -1245,8 +1359,8 @@ impl<'a> Run<'a> {
 
     /// Folds the stages up to `last` over the run's snapshots, in order: each stage the run
     /// holds no snapshot of runs from the one before it and ends by writing its own. A fatal
-    /// diagnostic ends the run early and is no error. `read` and `write` are the caller's to
-    /// call.
+    /// diagnostic or a cancel ends the run early and is no error. `read` and `write` are the
+    /// caller's to call.
     pub fn through(&mut self, last: Stage) -> Result<(), RunError> {
         for &stage in self.mode.stages() {
             if stage > last || self.ran(stage) {
@@ -1254,7 +1368,7 @@ impl<'a> Run<'a> {
             }
             match self.step(stage) {
                 Ok(()) => {}
-                Err(RunError::Halted(_)) => return Ok(()),
+                Err(RunError::Halted(_) | RunError::Cancelled(_)) => return Ok(()),
                 Err(error) => return Err(error),
             }
         }
@@ -1286,10 +1400,14 @@ impl<'a> Run<'a> {
 
     /// Takes the package of a repair through `read`, `load`, `fix` and `build` a second time,
     /// in memory, and holds what the second run changed: nothing, for a repair that is whole.
-    /// The second run is judged with the evidence of this one.
+    /// The second run is judged with the evidence of this one, and reads no cancel. A
+    /// cancelled run is not repaired again.
     pub fn again(&mut self) -> Result<&AgainRow, RunError> {
         if self.mode == Mode::Port {
             return Err(RunError::NotARepair);
+        }
+        if let Some(cancelled) = self.log.cancelled() {
+            return Err(cancelled.into());
         }
         if self.again.is_none() {
             // The second run's `read` reads the package this run built.
@@ -1304,7 +1422,7 @@ impl<'a> Run<'a> {
                     .collect(),
             };
             let bytes = archive_of(first).map_err(RunError::Again)?;
-            let mut second = Run::new(self.env, self.settings).known(evidence);
+            let mut second = Run::new(self.env, self.settings, None).known(evidence);
             let loaded = second.read(&bytes, REPAIRED_NAME).map(drop);
             let loaded = loaded.and_then(|()| second.load().map(drop));
             let row = match loaded {
@@ -1330,12 +1448,16 @@ impl<'a> Run<'a> {
 
     /// The stage `write`: the package through each writer, with the report of the run as it
     /// stands before the write beside it. The caller's policy is asked first, and a refusal
-    /// raises `write.blocked` and writes nothing (#ADR-0003).
+    /// raises `write.blocked` and writes nothing (#ADR-0003). A cancelled run writes nothing.
     pub fn write(
         &mut self,
         writers: &[&dyn PackageWriter],
         policy: &DiagnosticPolicy,
     ) -> Result<(), RunError> {
+        // A package a cancelled `check` holds was never checked.
+        if let Some(cancelled) = self.log.cancelled() {
+            return Err(cancelled.into());
+        }
         if self.package.is_none() {
             return Err(RunError::NotReached {
                 stage: Stage::Write,
@@ -1422,6 +1544,11 @@ impl<'a> Run<'a> {
         self.log.get(halted.0).map(|diagnostic| diagnostic.stage)
     }
 
+    /// The stage the run's cancel ended, when it ended one (#ADR-0097).
+    pub fn cancelled_at(&self) -> Option<Stage> {
+        self.log.cancelled().map(|cancelled| cancelled.0)
+    }
+
     /// The stages of the run, in order, `read` and `write` among them. A repairer's run has
     /// no `facts`, `decide` or `plan` (#ADR-0011).
     pub fn stages(&self) -> &'static [Stage] {
@@ -1429,8 +1556,8 @@ impl<'a> Run<'a> {
     }
 
     /// Whether a stage ran to its end: whether the run holds its snapshot, or for `write`
-    /// whether the package was written. A stage a fatal diagnostic or a fault ended did not,
-    /// and neither did a write the caller's policy refused.
+    /// whether the package was written. A stage a fatal diagnostic, a cancel or a fault ended
+    /// did not, and neither did a write the caller's policy refused.
     pub fn ran(&self, stage: Stage) -> bool {
         match stage {
             Stage::Read => self.raw.is_some() || self.loaded.is_some(),

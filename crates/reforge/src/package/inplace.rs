@@ -11,7 +11,7 @@ use super::texture::TexContainer;
 use super::wired::LeftOut;
 use super::wired::{LeftBehind, Wired};
 use super::{BinWrite, Chunk, ChunkKey, Layer, Origin, Package, WrittenBin};
-use crate::diag::{Halted, Sink};
+use crate::diag::{Cancelled, Halted, Sink};
 use crate::env::Env;
 use crate::fixups::{Changes, FixedMod};
 use crate::game::{GameSource, NameBook, Names, Speller};
@@ -29,6 +29,9 @@ pub enum BuildError {
     /// An input of the run did not answer: a fault of the machine, and no diagnostic.
     #[error("an input of the run did not answer while the package was built")]
     Fault(#[from] Fault),
+    /// The run's cancel ended the stage between two of its steps (#ADR-0097).
+    #[error(transparent)]
+    Cancelled(#[from] Cancelled),
 }
 
 /// Builds a repair's package from a fixed mod and what the fixups changed in it.
@@ -84,7 +87,8 @@ impl<'a> InPlaceBuilder<'a> {
 
     /// The package: every file the client reaches, at its own WAD and path, in the base
     /// layer. A package that would hold nothing, or a material the client crashes on, ends the
-    /// run.
+    /// run. A step is one file of the mod, and the run's cancel ends the stage between two
+    /// (#ADR-0097).
     pub fn build(self, sink: &mut Sink<'_>) -> Result<Package, BuildError> {
         let m: &Mod = self.fixed;
         let _span = tracing::info_span!("build", files = m.files.len()).entered();
@@ -110,6 +114,7 @@ impl<'a> InPlaceBuilder<'a> {
         };
         let mut container = TexContainer::new().keep_dds(self.keep_dds);
         for (id, file) in m.files.iter() {
+            sink.next_step()?;
             if let Err(reason) = wired.judge(file) {
                 found.left.count(reason);
                 continue;

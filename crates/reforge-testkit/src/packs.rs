@@ -69,7 +69,8 @@ impl<'a> PackRun<'a> {
             panic!("no package to check");
         };
         let cx = CheckCx::new(package, &types);
-        checks.run(&cx, &mut self.fix.log.at(Stage::Check));
+        let ran = checks.run(&cx, &mut self.fix.log.at(Stage::Check));
+        ran.unwrap_or_else(|cancelled| panic!("a log with no cancel ended: {cancelled}"));
     }
 
     /// The chunk of the base layer at a path, in any WAD.

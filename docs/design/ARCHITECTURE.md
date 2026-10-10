@@ -151,12 +151,37 @@ let report = run.report();
 a second time, in memory, judged with the `Evidence` of the first run (its dating and its
 restorations, #ADR-0041), and holds what the second run changed.
 
-A stage ends early in two ways, both a `RunError`. A fatal diagnostic leaves nothing to
+A stage ends early in three ways, each a `RunError`. A fatal diagnostic leaves nothing to
 write: the stage answers `Halted` with the diagnostic's id, as every stage asked after it
-does, and `through` and `port` end there with no error. An input that does not answer (a
-game chunk that does not read, a history query that fails) is a fault, with the stage's own
-typed error as its source: a run judged against an input it could not read does not answer as
-if the input held nothing.
+does, and `through` and `port` end there with no error. A cancel ends the stage under way
+after the step it is on (#ADR-0097): the stage answers `Cancelled` with its stage, as every
+stage asked after it does, writes no snapshot, and `through`, `port` and `repair` end there
+with no error. An input that does not answer (a game chunk that does not read, a history
+query that fails) is a fault, with the stage's own typed error as its source: a run judged
+against an input it could not read does not answer as if the input held nothing.
+
+- **A cancel is a flag the caller hands the run** (`Cancel`, an atomic shared by its clones):
+  `Run::cancel`, or `Porter::cancel` and `Repairer::cancel` for each of their runs. A cancel
+  is no setting, and no snapshot names it. The run's log carries it to each stage's sink,
+  and a stage asks `Sink::next_step` before each of its steps, which reads the flag. The log
+  holds the stage a cancel ended (`Run::cancelled_at`), and the report names it
+  (`cancelled`), beside `halted`. A cancelled run writes nothing and is not repaired again;
+  the snapshots of the stages that ended are whole, and a new run resumes from the last.
+- **A step runs to its end.** `read` reads no cancel: its bytes are under the caps. The
+  steps of the other stages:
+
+  | stage | a step |
+  |---|---|
+  | load | one part: the WADs and files opened, the file fixups, the game's bins for a WAD with no skin bin, the survey, the client's load, the dating, and in a port the inventory and the file provenance |
+  | fix | one fixup over the objects of one bin |
+  | facts | one result: the catalogs, the copies, the objects' provenance, the origins, the rigs, the clips, the reworks, the sounds, the candidates |
+  | decide | one policy's decisions: the porter's, then each compared with it |
+  | plan | one step of the plan: the reach and the file refs under the mod's names, the shipping, the renames, the audio, the reach and the file refs at the target, the units linked, the HUD |
+  | build | in a port one unit, one bank, one file or one champion's HUD; in a repair one file |
+  | check | in a port the patches applied; then one check |
+
+  A step of `facts` or `plan` is one of its results, not one unit: each result is found for
+  every unit at once, and reads the results before it.
 
 The stages are fixed. What a caller turns on and off is inside two of them: the fixups in `fix`
 and `load`, and the checks in `check`. Both are lists of objects that describe themselves
@@ -199,7 +224,7 @@ The modules of `reforge`, each using only the ones above it:
 | module | holds |
 |---|---|
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
-| `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)) |
+| `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); the run's `Cancel`, which the log carries to the stages |
 | `store` | `BlobStore`: bytes by content id (#ADR-0093); `MemoryStore`, and `Layered`, a store over another |
 | `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store, and what the read raised |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |

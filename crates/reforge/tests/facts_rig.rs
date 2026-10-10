@@ -711,7 +711,9 @@ fn a_game_chunk_that_does_not_read_is_a_fault() {
         names: &speller,
         reworks: &reforge::load::ReworkTable::standard(),
     };
-    let gathered = reforge::facts::Facts::gather(&fix.fixed, &inputs);
+    let mut log = reforge::diag::Diagnostics::new();
+    let mut sink = log.at(reforge::diag::Stage::Facts);
+    let gathered = reforge::facts::Facts::gather(&fix.fixed, &inputs, &mut sink);
     assert!(matches!(gathered, Err(FactsError::Game(_))));
 }
 
@@ -739,6 +741,39 @@ fn a_history_that_does_not_answer_is_a_fault() {
         names: &speller,
         reworks: &reforge::load::ReworkTable::standard(),
     };
-    let gathered = reforge::facts::Facts::gather(&fix.fixed, &inputs);
+    let mut log = reforge::diag::Diagnostics::new();
+    let mut sink = log.at(reforge::diag::Stage::Facts);
+    let gathered = reforge::facts::Facts::gather(&fix.fixed, &inputs, &mut sink);
     assert!(matches!(gathered, Err(FactsError::History(_))));
+}
+
+#[test]
+fn a_cancel_ends_the_facts_before_the_first_result() {
+    // #ADR-0097: a step of `facts` is one of its results.
+    let env = env(game(), NoHistory);
+    let files = [mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    let fix = reforge_testkit::FixRun::of(
+        &env,
+        &reforge::fixups::FixupSet::standard(),
+        &archive(&files),
+    );
+    let speller = fix.speller();
+    let against = reforge::load::against(&env, &speller);
+    let provenance = reforge::load::FileProvenance::find(&fix.fixed, &against);
+    let provenance = provenance.expect("the game answers");
+    let inputs = reforge::facts::FactInputs {
+        env: &env,
+        dating: &fix.dating,
+        files: &provenance,
+        names: &speller,
+        reworks: &reforge::load::ReworkTable::standard(),
+    };
+    let cancel = reforge::diag::Cancel::new();
+    cancel.cancel();
+    let mut log = reforge::diag::Diagnostics::new();
+    log.cancel_on(cancel);
+    let mut sink = log.at(reforge::diag::Stage::Facts);
+    let gathered = reforge::facts::Facts::gather(&fix.fixed, &inputs, &mut sink);
+    let cancelled = reforge::diag::Cancelled(reforge::diag::Stage::Facts);
+    assert!(matches!(gathered, Err(FactsError::Cancelled(c)) if c == cancelled));
 }

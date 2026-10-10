@@ -2,7 +2,7 @@
 //! record of every change, and the contract every fixup is held to.
 
 use ltk_meta::{BinObject, PropertyKind as Kind, PropertyValueEnum as V};
-use reforge::diag::{Record, Severity, Stage};
+use reforge::diag::{Cancel, Cancelled, Record, Severity, Stage};
 use reforge::env::Env;
 use reforge::fixups::{
     After, BinFixup, Changed, Classes, FixCx, FixError, FixInputs, FixupSelection, FixupSet,
@@ -746,6 +746,35 @@ impl BinFixup for Faulty {
     fn fix(&self, cx: &mut FixCx<'_>, _: StructMut<'_>) {
         cx.fault(HistoryError::UnknownFamily("none".into()));
     }
+}
+
+#[test]
+fn a_cancel_ends_fix_before_the_first_fixup_over_a_bin_with_no_fixed_mod() {
+    // #ADR-0097: a step is one fixup over the objects of one bin.
+    let env = env();
+    let LoadRun {
+        result,
+        mut log,
+        mut names,
+        ..
+    } = LoadRun::of(&env, LoadOptions::default(), &old_mod());
+    let m = result.expect("a mod");
+    let dating = Dating::default();
+    let mut inputs = FixInputs {
+        env: &env,
+        dating: &dating,
+        names: &mut names,
+    };
+    let cancel = Cancel::new();
+    cancel.cancel();
+    log.cancel_on(cancel);
+    let set = FixupSet::standard();
+    let applied = set.apply(m, &ObjectSet::every(), &mut inputs, &mut log.at(Stage::Fix));
+    assert!(
+        matches!(applied, Err(FixError::Cancelled(Cancelled(Stage::Fix)))),
+        "the stage ends at its first step"
+    );
+    assert!(log.iter().all(|d| d.stage != Stage::Fix));
 }
 
 #[test]

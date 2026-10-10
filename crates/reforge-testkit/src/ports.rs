@@ -97,7 +97,8 @@ impl<'a> PortRun<'a> {
             let types = TargetTypes::of(&facts.fix.fixed, env)
                 .unwrap_or_else(|error| panic!("the game reads: {error}"));
             let cx = CheckCx::new(package, &types).of_port(env.game(), &overlay, &port);
-            CheckSet::standard().run(&cx, &mut log.at(Stage::Check));
+            let ran = CheckSet::standard().run(&cx, &mut log.at(Stage::Check));
+            ran.unwrap_or_else(|cancelled| panic!("a log with no cancel ended: {cancelled}"));
         }
         Self {
             env,

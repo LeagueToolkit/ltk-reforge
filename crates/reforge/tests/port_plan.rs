@@ -676,6 +676,33 @@ fn env_broken_at(path: &str) -> Env {
 }
 
 #[test]
+fn a_cancel_ends_the_plan_before_its_first_step() {
+    // #ADR-0097: a step of `plan` is one step of the plan.
+    let env = env(skins::game(), NoHistory);
+    let facts = FactRun::of(&env, &archive(&own_mod(&[], vec![])));
+    let targets = Policy::default().decide(&facts.facts);
+    let options = reforge::port::PortOptions::default();
+    let speller = facts.fix.speller();
+    let inputs = reforge::port::PortInputs {
+        fixed: &facts.fix.fixed,
+        facts: &facts.facts,
+        targets: &targets,
+        env: &env,
+        files: &facts.files,
+        names: &speller,
+        options: &options,
+    };
+    let cancel = reforge::diag::Cancel::new();
+    cancel.cancel();
+    let mut log = reforge::diag::Diagnostics::new();
+    log.cancel_on(cancel);
+    let port = reforge::port::Port::plan(&inputs, &mut log.at(reforge::diag::Stage::Plan));
+    let cancelled = reforge::diag::Cancelled(reforge::diag::Stage::Plan);
+    assert!(matches!(port, Err(PlanError::Cancelled(c)) if c == cancelled));
+    assert!(log.is_empty(), "a cancel is no diagnostic");
+}
+
+#[test]
 fn a_game_bin_that_does_not_read_ends_the_plan_with_a_fault() {
     let good = env(skins::game(), NoHistory);
     let facts = FactRun::of(&good, &archive(&own_mod(&[], vec![])));

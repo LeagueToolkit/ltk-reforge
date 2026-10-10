@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::diag::{Diagnostic, Diagnostics, Render};
+use crate::diag::{Diagnostic, Diagnostics, Render, Stage};
 use crate::env::Env;
 use crate::facts::{
     ClipsAt, Facts, Judged, ObjectOrigin, Origin, UnitCandidates, UnitRig, UnitRole, UnitSounds,
@@ -938,6 +938,9 @@ pub struct Report {
     pub inputs: Option<Inputs>,
     /// The id of the diagnostic that ended the run, when one did.
     pub halted: Option<u32>,
+    /// The stage the run's cancel ended, when it ended one (#ADR-0097).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cancelled: Option<Stage>,
     /// The mod's WADs.
     pub wads: Vec<WadRow>,
     /// The mod's files.
@@ -986,6 +989,7 @@ impl Report {
                 meta: None,
                 inputs: None,
                 halted: None,
+                cancelled: None,
                 wads: Vec::new(),
                 files: Vec::new(),
                 characters: Vec::new(),
@@ -1140,11 +1144,13 @@ impl ReportBuilder {
         self
     }
 
-    /// Every diagnostic of the log, each written with `cx`, and the one that ended the run.
+    /// Every diagnostic of the log, each written with `cx`, the one that ended the run, and
+    /// the stage a cancel ended.
     #[must_use]
     pub fn diagnostics(mut self, log: &Diagnostics, cx: &Render<'_>) -> Self {
         self.report.diagnostics = log.iter().map(|d| DiagnosticRow::of(d, cx)).collect();
         self.report.halted = log.halted().map(|halted| halted.0.0);
+        self.report.cancelled = log.cancelled().map(|cancelled| cancelled.0);
         self
     }
 

@@ -139,6 +139,8 @@ fixup that moves 400 fields in a unit raises one `fixup.changed` whose `data` li
 - **A stage returns its result.** Only a `fatal` diagnostic ends the run, as
   `Err(Halted(id))`. Every stage of a `Run` asked after it answers the same `Halted`, and the
   report is built all the same.
+- **A cancel is no diagnostic.** The log carries the run's cancel to the sinks, and holds the
+  stage a cancel ended, which the report names as `cancelled` (#ADR-0097).
 - **Results point at their reason.** Where a diagnostic explains a state, the state holds its
   id: a unit left out of the port holds the id of its character's `unit.left`. A caller goes
   from "this unit is not in the output" to why. The files not shipped are counted by reason

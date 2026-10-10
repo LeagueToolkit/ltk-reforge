@@ -56,7 +56,7 @@ pub use self::rework::{Around, ReworkTable};
 pub use self::stale::Staleness;
 use self::survey::Survey;
 use crate::archive::{RawSnapshot, file_kind};
-use crate::diag::{Halted, Sink};
+use crate::diag::{Cancelled, Halted, Sink};
 use crate::env::Env;
 use crate::game::{GameError, NameBook, Speller};
 use crate::history::HistoryError;
@@ -88,6 +88,9 @@ pub enum LoadError {
     /// A fatal diagnostic: the archive leaves nothing to write.
     #[error(transparent)]
     Halted(#[from] Halted),
+    /// The run's cancel ended the stage between two of its steps (#ADR-0097).
+    #[error(transparent)]
+    Cancelled(#[from] Cancelled),
     /// The history did not answer: a fault of the index or the machine, and no diagnostic.
     #[error("the history did not answer while the mod was loaded")]
     History(#[source] HistoryError),
@@ -481,8 +484,9 @@ impl<'a> Loader<'a> {
         self.run_file_fixups(FileStep::AfterResolve, m, sink)
     }
 
-    /// The whole stage: the five steps in order. The results on the files (`Dating`,
-    /// `Inventory`, `FileProvenance`) are the caller's to gather on the mod returned.
+    /// The whole stage: the five steps in order, the run's cancel read before each
+    /// (#ADR-0097). The results on the files (`Dating`, `Inventory`, `FileProvenance`) are
+    /// the caller's to gather on the mod returned.
     pub fn load(
         &mut self,
         raw: &RawSnapshot,
@@ -490,10 +494,15 @@ impl<'a> Loader<'a> {
         sink: &mut Sink<'_>,
     ) -> Result<Mod, LoadError> {
         let _span = tracing::info_span!("load", archive = %raw.meta.file_name).entered();
+        sink.next_step()?;
         let mut m = self.open(raw, store)?;
+        sink.next_step()?;
         self.fix_files(&mut m, sink)?;
+        sink.next_step()?;
         self.take_game_bins(&mut m, sink)?;
+        sink.next_step()?;
         self.survey(&mut m, sink)?;
+        sink.next_step()?;
         self.resolve(&mut m, sink)?;
         Ok(m)
     }

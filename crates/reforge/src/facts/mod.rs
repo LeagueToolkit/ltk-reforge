@@ -42,7 +42,7 @@ pub use self::rig::{COPIED_SHARE, RigInputs, Rigs, Source, UnitRig, Visibility};
 pub use self::sounds::{
     BankFile, ClipOrigin, LeftOut, SoundClip, SoundInputs, SoundUnit, Sounds, UnitSounds,
 };
-use crate::diag::Sink;
+use crate::diag::{Cancelled, Sink};
 use crate::env::Env;
 use crate::fixups::FixedMod;
 use crate::game::{GameError, SkinCatalog};
@@ -61,6 +61,9 @@ pub enum FactsError {
     /// The history's index did not answer a question.
     #[error("the history did not answer")]
     History(#[from] HistoryError),
+    /// The run's cancel ended the stage between two of its steps (#ADR-0097).
+    #[error(transparent)]
+    Cancelled(#[from] Cancelled),
 }
 
 fn entry_hex<S: Serializer>(entry: &BinHash, s: S) -> Result<S::Ok, S::Error> {
@@ -226,8 +229,14 @@ pub struct Facts {
 }
 
 impl Facts {
-    /// The stage `facts`: every result, in the order of what each is found from.
-    pub fn gather(fixed: &FixedMod, inputs: &FactInputs<'_>) -> Result<Self, FactsError> {
+    /// The stage `facts`: every result, in the order of what each is found from. Each result
+    /// is a step, and the run's cancel ends the stage between two (#ADR-0097). The facts raise
+    /// nothing until they are reported.
+    pub fn gather(
+        fixed: &FixedMod,
+        inputs: &FactInputs<'_>,
+        sink: &mut Sink<'_>,
+    ) -> Result<Self, FactsError> {
         let _span = tracing::info_span!("facts").entered();
         let FactInputs {
             env,
@@ -236,8 +245,11 @@ impl Facts {
             names,
             reworks,
         } = *inputs;
+        sink.next_step()?;
         let catalogs = Catalogs::find(fixed, env)?;
+        sink.next_step()?;
         let copies = Copies::find(fixed, env)?;
+        sink.next_step()?;
         let objects = ObjectProvenance::find(fixed, env, &catalogs)?;
         let origin_inputs = OriginInputs {
             catalogs: &catalogs,
@@ -246,6 +258,7 @@ impl Facts {
             objects: &objects,
             names,
         };
+        sink.next_step()?;
         let origins = Origins::find(fixed, &origin_inputs);
         let rig_inputs = RigInputs {
             env,
@@ -255,8 +268,11 @@ impl Facts {
             origins: &origins,
             names,
         };
+        sink.next_step()?;
         let rigs = Rigs::find(fixed, &rig_inputs)?;
+        sink.next_step()?;
         let clips = Clips::find(fixed, env, &catalogs, &copies, &origins, &rigs)?;
+        sink.next_step()?;
         let reworks = Reworks::find(fixed, env.history(), dating, reworks)?;
         let sound_inputs = SoundInputs {
             env,
@@ -264,6 +280,7 @@ impl Facts {
             catalogs: &catalogs,
             dating,
         };
+        sink.next_step()?;
         let sounds = Sounds::find(fixed, &sound_inputs)?;
         let mut facts = Self {
             roster: Roster::of(fixed),
@@ -277,6 +294,7 @@ impl Facts {
             reworks,
             sounds,
         };
+        sink.next_step()?;
         facts.candidates = facts.find_candidates(fixed);
         Ok(facts)
     }

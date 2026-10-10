@@ -140,7 +140,9 @@ impl<'a> FactRun<'a> {
             names: &speller,
             reworks,
         };
-        let facts = Facts::gather(&fix.fixed, &inputs);
+        // The facts raise nothing until they are reported.
+        let mut log = Diagnostics::new();
+        let facts = Facts::gather(&fix.fixed, &inputs, &mut log.at(Stage::Facts));
         let facts = facts.unwrap_or_else(|error| panic!("the facts are gathered: {error}"));
         Self {
             env,

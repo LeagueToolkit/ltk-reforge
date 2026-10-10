@@ -1,11 +1,13 @@
 //! Diagnostics: what a run found about a mod or about its own inputs. One ordered log runs
-//! through every stage, and a stage returns its result whatever it found.
+//! through every stage, and a stage returns its result whatever it found. The log carries the
+//! run's cancel to the stages, which read it between their steps.
 //!
 //! `docs/design/DIAGNOSTICS.md`.
 
 mod filter;
 mod log;
 mod message;
+mod steps;
 
 use std::fmt;
 
@@ -14,6 +16,7 @@ use serde::{Deserialize, Serialize};
 pub use self::filter::{Action, DiagnosticPolicy, Filter, FilterError, PolicyRule};
 pub use self::log::{DiagId, Diagnostic, Diagnostics, Halted, Logged, Sink, UnknownCode};
 pub use self::message::{Message, Part, Render};
+pub use self::steps::{Cancel, Cancelled};
 use crate::model::entity::{BinId, CharId, FileId, ObjectId, UnitId, WadId};
 pub use crate::model::record::{Record, Series};
 use crate::model::{ChunkPath, Spelled};

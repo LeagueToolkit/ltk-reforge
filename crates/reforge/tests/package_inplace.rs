@@ -4,7 +4,7 @@
 
 use ltk_meta::property::values;
 use ltk_meta::{PropertyKind, PropertyValueEnum};
-use reforge::diag::{Diagnostics, Stage};
+use reforge::diag::{Cancel, Cancelled, Diagnostics, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixInputs, FixupSet, ObjectSet, Rule};
 use reforge::game::{NameBook, Schema};
@@ -388,6 +388,25 @@ fn a_bin_of_the_old_numbering_is_written_whole() {
     let round_trip = CheckSet::from(&CheckSelection::standard().without("types"));
     run.check(&round_trip);
     assert_eq!(run.fix.log.of::<RoundTripFailed>().count(), 0);
+}
+
+#[test]
+fn a_cancel_ends_the_build_before_its_first_file() {
+    // #ADR-0097: a step of a repair's build is one file of the mod.
+    let env = env();
+    let mut fix = FixRun::of(&env, &set(), &the_mod());
+    let raised = fix.log.len();
+    let cancel = Cancel::new();
+    cancel.cancel();
+    fix.log.cancel_on(cancel);
+    let builder = InPlaceBuilder::new(&fix.fixed, &fix.changes);
+    let built = builder.build(&mut fix.log.at(Stage::Build));
+    assert!(
+        matches!(built, Err(BuildError::Cancelled(Cancelled(Stage::Build)))),
+        "{built:?}"
+    );
+    assert_eq!((fix.log.len(), fix.log.halted()), (raised, None));
+    assert_eq!(fix.log.cancelled(), Some(Cancelled(Stage::Build)));
 }
 
 #[test]

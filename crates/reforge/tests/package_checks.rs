@@ -119,7 +119,9 @@ fn checked(package: &Package, schema: Option<&Schema>, checks: &CheckSet) -> Dia
     let types = TargetTypes::new(schema, build.as_ref());
     let mut log = Diagnostics::new();
     let cx = CheckCx::new(package, &types);
-    checks.run(&cx, &mut log.at(Stage::Check));
+    checks
+        .run(&cx, &mut log.at(Stage::Check))
+        .expect("a log with no cancel runs every check");
     log
 }
 
@@ -420,7 +422,9 @@ fn a_struct_of_a_derived_class_second_in_a_list_reads_as_its_base() {
 fn typed(package: &Package, types: &TargetTypes<'_>) -> Diagnostics {
     let mut log = Diagnostics::new();
     let cx = CheckCx::new(package, types);
-    types_only().run(&cx, &mut log.at(Stage::Check));
+    types_only()
+        .run(&cx, &mut log.at(Stage::Check))
+        .expect("a log with no cancel runs every check");
     log
 }
 
@@ -568,7 +572,9 @@ fn without_a_schema_the_types_are_the_ones_the_installs_bins_hold() {
     let package = package_of(kept(mistyped()));
     let mut log = Diagnostics::new();
     let cx = CheckCx::new(&package, &types);
-    types_only().run(&cx, &mut log.at(Stage::Check));
+    types_only()
+        .run(&cx, &mut log.at(Stage::Check))
+        .expect("a log with no cancel runs every check");
     let found = log.of::<TypeMismatch>().next().expect("it is found");
     assert_eq!((found.values, found.fields.len()), (2, 1));
     // Nothing is said of a field no bin of the install holds.
