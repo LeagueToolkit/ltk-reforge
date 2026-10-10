@@ -32,9 +32,14 @@ call, 2026-10-10).
     package written, when one was. It is written when the run ends.
 - The three are rows of a SQLite file in the app's data folder, with the mod's name, author
   and version beside each raw snapshot so that the Runs page lists mods without opening a
-  snapshot; the bytes they name are in the disk store beside it (#ADR-0093). The two have
-  one format version between them, and a store of another format is opened read-only or
-  rebuilt, never migrated in place.
+  snapshot; the bytes they name are in the ingest tier and the run tier beside it
+  (#ADR-0093). The three have one format version between them, and a store of another format
+  is opened read-only or rebuilt, never migrated in place.
+- A run is saved when it writes a package: its memory layer is flushed into the run tier and
+  its rows written, in that order, so a row never names a byte the tier lacks. A run a person
+  is still iterating on, through check and no further, stays in memory and goes with the
+  next rerun. The package already embeds the run's report, so nothing on disk as a package is
+  without its run.
 - The store is one per app, in its data folder. Two runs of one load share it and every blob
   it names; two mods that share files share those.
 - A **project** is a run with its load, its raw snapshot and the bytes they name, as one
@@ -46,11 +51,13 @@ call, 2026-10-10).
   time a run was made is the store's, shown by the app, and never part of a report.
 - A person removes a run, every run of a mod, or every run, and unmarks a kept run. A removal
   drops the run and sweeps what no remaining snapshot names: its load and its raw snapshot
-  when no other run refers to them, and the blobs.
+  when no other run refers to them, and the run tier's blobs. The ingest tier is cleared by
+  mod, as its own action, and clearing a mod a kept run still refers to leaves the run
+  read-only until the archive is ingested again.
 - The sweep marks every id the remaining snapshots and an open run's name, then deletes what
-  is unmarked, in one SQLite transaction for the rows and a delete per blob after it, which
-  gives the space back at once. It runs after a removal and after the bound cuts, never while
-  a run is flushing. The settings page shows the store's size. A load stays while a run refers to it, a raw
+  is unmarked, in one SQLite transaction for the rows and the run tier's deletes after it;
+  the tier's garbage collection gives the space back. It runs after a removal and after the
+  bound cuts, never while a run is flushing. The settings page shows each tier's size. A load stays while a run refers to it, a raw
   snapshot while a load does, and a blob while any snapshot names it.
 - Reopening a run resumes it when its archive is at its path with its SHA-256, the program is
   the one that wrote it and the inputs match (#ADR-0094). Otherwise the run opens read-only

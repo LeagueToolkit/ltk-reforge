@@ -31,11 +31,12 @@ The raw snapshot is a cache the corpus scripts may populate once and read in eve
   reports for every mod. This is checked by comparing the two runs as a change is compared
   with a baseline, and the check is run once when the cache lands and once whenever the raw
   snapshot's shape changes.
-- The cache is a disk store of #ADR-0093, which any number of processes read and write at
-  once, so the runner stays one command per mod at 24 in parallel. The first run over a mod
-  populates its entry and every run after reads it; no separate pass is needed. The table of
-  archive SHA-256 to raw snapshot is a file per archive beside the blobs, written by a rename
-  the same way.
+- The cache is an ingest tier of #ADR-0093, which any number of processes read and write at
+  once, so the runner stays one command per mod at 24 in parallel. The command takes the
+  directory as an option, and the corpus scripts name one under `data/corpus/`. The first run
+  over a mod populates its entry and every run after reads it; no separate pass is needed.
+  The table of archive SHA-256 to raw snapshot is a file per archive beside the blobs,
+  written by a rename the same way.
 
 ## Consequences
 

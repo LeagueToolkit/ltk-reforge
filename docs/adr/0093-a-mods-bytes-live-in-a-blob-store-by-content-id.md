@@ -60,37 +60,57 @@ run's, never a location in a store or on disk.
 - The rule in `AGENTS.md` is restated: no archive is extracted to disk under its own names;
   bytes are written only into the blob store, under their content id.
 
-The disk store is `cacache` (the user's call, 2026-10-10): a content-addressed store of one
-file per blob under a fanout, written by a rename and verified by its hash on read. Used by
-its hash alone, with SHA-256 as its algorithm so that its address is the content id, it is the
-plain-files store with the atomic writes and the verification done. It evicts nothing and
-collects nothing: content stays until the sweep removes it (#ADR-0096), and the space comes
-back at once. SQLite keeps blobs inside B-tree pages, which it documents as faster than files
-only below about 100 KB, and gives space back only by rewriting the file; an LSM store with a
-value log would fit the writes but opens for one process. The runs, their snapshots and what a
-person sees of a mod are small rows, and those are SQLite's (#ADR-0096).
+The bytes are in three tiers (the user's call, 2026-10-10), one layered store over the next,
+and a get walks them by one id and stops at the first hit. Which tier holds a byte is
+invisible to a snapshot, which names ids only. The tiers differ in what makes their bytes and
+how long they live:
 
-- The store is lockless across processes: a blob written by a rename is whole or absent, so
-  any number of processes read and write one store at once, and the corpus runner stays one
-  command per mod (#ADR-0095).
-- Its index, a caller's key to a hash, is not used: the id is the key. The sync API with the
-  default features off, so no async runtime comes in, and its memory-mapped reads.
-- One file per blob is its cost: the datasets' 417,503 distinct contents are that many files,
-  and on Windows each new file is an NTFS entry and a scan by the system's antivirus. The
-  cost is measured when the store lands and recorded in `docs/design/RUNS.md`; a value log
-  is the fallback if it is too high.
-- A run's memory layer is where every byte a stage makes or rewrites goes, and the layer is
-  flushed into the store under it once, when the run is saved. The stages read the store
-  under it only, so a run's threads share one open store for reading and serialise on
-  nothing until the flush.
+- **The ingest tier** holds what `read` makes of an archive: the raw snapshot's bytes. They
+  are derivable from the archive alone by any version of the program, shared by every run of
+  the mod, by the command and the app, and across processes. The store is `cacache`: one
+  file per blob under a fanout, written by a rename and verified by its hash on read. Used by
+  its hash alone, with SHA-256 as its algorithm so that its address is the content id, its
+  index, a caller's key to a hash, is not used. It evicts nothing and collects nothing:
+  content stays until cleared per mod (#ADR-0096), and the space comes back at once. It is
+  lockless across processes, so the corpus runner stays one command per mod (#ADR-0095). The
+  sync API with the default features off, so no async runtime comes in, and its
+  memory-mapped reads. The app's ingest tier is a directory in its data folder, and the
+  command takes the directory to use as an option, so the corpus and an experiment name
+  theirs.
+- **The run tier** holds what a run makes: the bins the fixups rewrote, the files the plan
+  made, a package's chunks. They are derivable only by the program that made them, which
+  after an upgrade is gone, and they are small, a few MB per run and mostly the same between
+  reruns of one mod. The app alone keeps them, in one process, and sweeps them with the runs
+  that name them (#ADR-0096). The store is `fjall`: an LSM store with its large values in a
+  value log, which fits many small values written by one process and gives space back by
+  its garbage collection. A put is a plain insert, since the id is the content and two
+  threads writing one id write one value.
+- **The memory tier** is the run's own layer, where every byte a stage makes goes while the
+  run is under way. It is flushed into the run tier once, when the run is saved, and goes
+  with the run otherwise. The stages read the tiers under it only, so a run's threads share
+  the open stores for reading and serialise on nothing until the flush.
+
+SQLite keeps blobs inside B-tree pages, which it documents as faster than files only below
+about 100 KB, and gives space back only by rewriting the file, so it holds no bytes. The
+runs, their snapshots and what a person sees of a mod are small rows, and those are
+SQLite's (#ADR-0096).
+
+One file per blob is the ingest tier's cost: the datasets' 417,503 distinct contents are that
+many files, and on Windows each new file is an NTFS entry and a scan by the system's
+antivirus. The cost is measured when the store lands and recorded in `docs/design/RUNS.md`;
+a value log is the fallback if it is too high.
 
 ## Consequences
 
 - The bytes of a stage's output are written to the store once per distinct content. A fixup
   that rewrites a bin adds one blob; the files it does not touch add none.
-- `cacache` lands in `[workspace.dependencies]` from crates.io, pinned. The library ships the
-  trait, the memory store, the layered store and the disk store, since the command opens one
-  for the corpus cache (#ADR-0095) and the app opens one for its runs (#ADR-0096).
+- `cacache` and `fjall` land in `[workspace.dependencies]` from crates.io, pinned. The
+  library ships the trait, the memory store, the layered store and the ingest store, since the
+  command opens one for the corpus cache (#ADR-0095); the app crate ships the run store, since
+  the app alone keeps runs (#ADR-0096).
+- The two sweeps have no cross-reference: the run tier is swept by the runs that name its
+  bytes, the ingest tier is cleared by mod. A run whose mod was cleared from the ingest tier
+  opens read-only until the archive is ingested again.
 - A big mod becomes a disk cost, not a memory one. The caps on what is inflated (#ADR-0051)
   stay, since they bound what one run allocates.
 - A mod's text still reaches a person through `clean` only. A store holds bytes, and no viewer
