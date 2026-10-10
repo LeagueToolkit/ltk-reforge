@@ -1881,3 +1881,49 @@ from none.
 - **Time.** The times are the load snapshot's runs' within a second: the bins `fix` writes
   again, the facts and targets cloned, and the port's values written into the layer cost
   nothing a run of the reduced corpus shows.
+
+## The snapshots through check (2026-10-10)
+
+The branch `run-state-store` at `554b5aa`: a snapshot after `build` and after `check`
+(#ADR-0094); a run folded over its snapshots, every stage ending by writing its own, a run
+judged with an earlier run's evidence among them, which gives none out; the targets, the
+inventory, the package's part of the report and what each patch came to read from their
+snapshots; each stage's settings declared (`Settings::declared`, `earliest_changed`); and the
+snapshots written and read at one JSON edge. The same inputs as "The load snapshot", over the
+reduced corpus, compared with `baseline-port-6` and `baseline-repair-6`. Every run writes each
+snapshot at the end of its stage and resumes from none.
+
+| run | command | done | ended by a fatal diagnostic | time | the snapshots through plan |
+|---|---|---:|---|---|---|
+| `check-snapshot-port` | `port --no-write` | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 34 s | 35 s |
+| `check-snapshot-repair` | `repair --no-write --again` | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 51 s | 48 s |
+
+- **Against the baselines** (`check-snapshot-{port,repair}-vs-baseline-6`, expected as "The
+  load snapshot"): the 68 mods of each command differ in the report's two new inputs alone,
+  136 differences each, all expected. The exits are the baselines', mod for mod.
+- **Resumed from each snapshot.** A program of the library's API, not kept, took each archive
+  through a port and a repair to the end of `check`, wrote each snapshot as JSON and read it
+  back, flushed the run's layer into a store, and resumed after every stage the run has.
+  Every resumed run gives the report of the straight run: after `load`, `fix`, `build` and
+  `check` in 128 runs (63 ports, 65 repairs), after `facts`, `decide` and `plan` in 63 ports.
+- **Sizes.** The snapshots as JSON, of the 67 mods `read` does not end, and the time to read
+  the largest of each stage back from its JSON, the least of five reads, one thread:
+
+  | stage | port: mean | port: largest | read | repair: mean | repair: largest | read |
+  |---|---:|---:|---:|---:|---:|---:|
+  | load | 464 KB | 4.1 MB | 22 ms | 379 KB | 2.7 MB | 13 ms |
+  | fix | 504 KB | 5.9 MB | 12 ms | 501 KB | 5.9 MB | 12 ms |
+  | facts | 616 KB | 12.2 MB | 25 ms | | | |
+  | decide | 94 KB | 1.0 MB | 0.7 ms | | | |
+  | plan | 308 KB | 1.9 MB | 10 ms | | | |
+  | build | 191 KB | 1.3 MB | 1.7 ms | 312 KB | 2.9 MB | 8.5 ms |
+  | check | 111 KB | 1.1 MB | 0.7 ms | 85 KB | 1.0 MB | 0.5 ms |
+
+  The build and check snapshots are of the mods that reach them, 63 ports and 65 repairs.
+  The largest facts snapshot is the mod whose plan snapshot is the largest; the largest
+  decide, build and check snapshots of a port are one mod's. The raw snapshot is not JSON
+  and not measured.
+- **Time.** The port is the run through plan's within a second. The repair is 3 s slower,
+  and a check run of the same code before the settings and the JSON edge landed took 50 s:
+  a repair's second run now keeps its snapshots as its state, the package's part of the
+  report among them, which it did not before.
