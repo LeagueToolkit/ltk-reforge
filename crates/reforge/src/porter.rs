@@ -543,7 +543,6 @@ pub struct Run<'a> {
     provenance: Option<FileProvenance>,
     changes: Option<Changes>,
     facts: Option<Facts>,
-    targets: Option<Targets>,
     plan: Option<Port>,
     package: Option<Package>,
     /// The package's part of the report, as the build snapshot holds it.
@@ -580,7 +579,6 @@ impl<'a> Run<'a> {
             provenance: None,
             changes: None,
             facts: None,
-            targets: None,
             plan: None,
             package: None,
             package_part: None,
@@ -734,7 +732,6 @@ impl<'a> Run<'a> {
         }
         if let Some(decide) = &decide {
             decide.holds(&self.decide_settings())?;
-            self.targets = Some(decide.targets().clone());
             findings = decide.findings();
         }
         if let Some(plan) = &plan {
@@ -1039,11 +1036,10 @@ impl<'a> Run<'a> {
             targets.report(&mut self.log.at(Stage::Decide));
             let targets = targets.compared(facts, &self.settings.compared);
             let findings = self.log.logged_from(self.first);
-            let snapshot = DecideSnapshot::of(&targets, self.decide_settings(), findings);
+            let snapshot = DecideSnapshot::of(targets, self.decide_settings(), findings);
             self.decide_snapshot = Some(snapshot);
-            self.targets = Some(targets);
         }
-        held(self.targets.as_ref(), Stage::Decide, Stage::Facts)
+        held(self.targets(), Stage::Decide, Stage::Facts)
     }
 
     /// The stage `plan`: the port of the fixed mod at its targets. The run learns the names
@@ -1057,7 +1053,11 @@ impl<'a> Run<'a> {
             let inputs = PortInputs {
                 fixed: self.module.fixed(Stage::Plan)?,
                 facts: held(self.facts.as_ref(), Stage::Plan, Stage::Facts)?,
-                targets: held(self.targets.as_ref(), Stage::Plan, Stage::Decide)?,
+                targets: held(
+                    self.decide_snapshot.as_ref().map(DecideSnapshot::targets),
+                    Stage::Plan,
+                    Stage::Decide,
+                )?,
                 env: self.env,
                 files: held(self.provenance.as_ref(), Stage::Plan, Stage::Load)?,
                 names: &speller,
@@ -1140,7 +1140,7 @@ impl<'a> Run<'a> {
         let dating = held(self.dating.as_ref(), Stage::Build, Stage::Load)?;
         let doc = EvidenceDoc::of(self.mode.made(), fixed, dating, self.env)
             .fixups(self.settings.fixups.ids());
-        Ok(Some(match (&self.targets, &self.plan) {
+        Ok(Some(match (self.targets(), &self.plan) {
             (Some(targets), Some(port)) => doc.ported(targets, port, fixed),
             _ => doc,
         }))
@@ -1329,7 +1329,7 @@ impl<'a> Run<'a> {
         if let Some(facts) = &self.facts {
             report = report.facts(facts, self.env, &speller);
         }
-        if let Some(targets) = &self.targets {
+        if let Some(targets) = self.targets() {
             report = report.targets(targets);
         }
         if let Some(port) = &self.plan {
@@ -1525,9 +1525,9 @@ impl<'a> Run<'a> {
         self.facts.as_ref()
     }
 
-    /// Where each unit goes.
+    /// Where each unit goes, as the decide snapshot holds it.
     pub fn targets(&self) -> Option<&Targets> {
-        self.targets.as_ref()
+        self.decide_snapshot.as_ref().map(DecideSnapshot::targets)
     }
 
     /// The plan of the port.

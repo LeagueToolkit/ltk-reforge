@@ -41,12 +41,12 @@ pub struct DecideSnapshot {
 impl DecideSnapshot {
     /// The snapshot of the targets `decide` chose under `settings`, with the findings raised
     /// from the start of `read` to the end of `decide`.
-    pub fn of(targets: &Targets, settings: DecideSettings, findings: Vec<Logged>) -> Self {
+    pub fn of(targets: Targets, settings: DecideSettings, findings: Vec<Logged>) -> Self {
         Self {
             format: SNAPSHOT_FORMAT,
             program: Program::this(),
             settings,
-            targets: targets.clone(),
+            targets,
             findings,
         }
     }
