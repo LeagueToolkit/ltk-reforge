@@ -131,7 +131,7 @@ fn folders(root: &Utf8Path) -> Vec<Utf8PathBuf> {
 
 /// The bytes of the files under `path`. A link is counted as itself and not followed, and what
 /// does not read counts as nothing.
-fn bytes_of(path: &Utf8Path) -> u64 {
+pub(crate) fn bytes_of(path: &Utf8Path) -> u64 {
     let Ok(meta) = fs::symlink_metadata(path) else {
         return 0;
     };

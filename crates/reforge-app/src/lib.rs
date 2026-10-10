@@ -19,6 +19,7 @@ pub mod selection;
 pub mod settings;
 pub mod state;
 pub mod storage;
+pub mod store;
 pub mod view;
 
 use std::sync::Arc;

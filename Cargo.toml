@@ -52,6 +52,9 @@ byteview = "0.10"
 # does not build without an async runtime: a function of its writer names a type only one
 # declares.
 cacache = { version = "=13.0.0", default-features = false, features = ["mmap"] }
+# The blob store's run tier, the app's (#ADR-0093): an LSM store with its large values in a
+# value log, written by one process, its space given back by the log's garbage collection.
+fjall = "=3.1.12"
 # Whether the process that named a scratch file of the ingest store still runs (#ADR-0100):
 # `OpenProcess` on Windows, `kill(pid, 0)` on Unix.
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
