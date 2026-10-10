@@ -17,8 +17,6 @@ mod name;
 mod packed;
 mod reader;
 
-use std::sync::Arc;
-
 use camino::Utf8Path;
 
 pub use self::caps::Caps;
@@ -33,7 +31,7 @@ pub use self::packed::PackedError;
 use self::reader::Reader;
 use crate::diag::{Halted, Sink};
 use crate::model::entity::{Extra, FileKind, ModImage, ModMeta, WadLayout};
-use crate::model::{ChunkPath, ContentId, Spelled, WadHash, WadName};
+use crate::model::{ByteView, ChunkPath, ContentId, Spelled, WadHash, WadName};
 
 /// One file of a WAD of the archive, in memory.
 #[derive(Debug, Clone)]
@@ -44,7 +42,7 @@ pub struct Chunk {
     /// WAD have none, unless another entry of the WAD spells the same path.
     pub path: Option<ChunkPath>,
     /// Its bytes, inflated.
-    pub bytes: Arc<[u8]>,
+    pub bytes: ByteView,
     /// The digest of its bytes.
     pub content: ContentId,
     /// What it is, by its first bytes.
@@ -56,7 +54,7 @@ impl Chunk {
         Self {
             hash,
             path,
-            bytes: Arc::from(bytes),
+            bytes: ByteView::from(bytes),
             content: ContentId::of(bytes),
             kind: file_kind(bytes),
         }

@@ -2,14 +2,13 @@
 //! its place and renamed into it, with the report. A write that fails leaves nothing.
 
 use std::io::Cursor;
-use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use ltk_modpkg::Modpkg as Packed;
 use reforge::diag::{Diagnostics, Render, Stage};
 use reforge::model::entity::FileId;
-use reforge::model::{ChunkPath, Spelled, WadName, path_hash};
+use reforge::model::{ByteView, ChunkPath, Spelled, WadName, path_hash};
 use reforge::package::{
     ArchiveRef, Chunk, ChunkKey, EVIDENCE_FORMAT, EvidenceDating, EvidenceDoc, EvidenceInputs,
     Layer, MAX_NAME_BYTES, Made, Modpkg, Package, PackageWriter, Program, ProjectConfig,
@@ -41,7 +40,7 @@ fn key(path: &str) -> ChunkKey {
 }
 
 fn chunk(bytes: Vec<u8>) -> Chunk {
-    Chunk::kept(FileId::new(0), Arc::from(bytes))
+    Chunk::kept(FileId::new(0), ByteView::from(bytes))
 }
 
 fn skin_bytes() -> Vec<u8> {

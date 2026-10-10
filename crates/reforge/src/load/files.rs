@@ -2,13 +2,11 @@
 //! are found, so that what it makes is seen as the mod's own file at its path. One that
 //! rewrites a file the client uses runs once each file has its use.
 
-use std::sync::Arc;
-
 use crate::diag::{Record, Sink};
 use crate::game::{GameSource, NameBook, Names, Speller};
 use crate::history::{History, HistoryError};
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, MadeBy, Occupied};
-use crate::model::{ChunkPath, ContentId, FixupInfo, Mod, Spell};
+use crate::model::{ByteView, ChunkPath, ContentId, FixupInfo, Mod, Spell};
 
 /// When in `load` a file fixup runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -72,7 +70,7 @@ pub struct NewFile {
     /// Its path.
     pub to: ChunkPath,
     /// Its bytes: the source's own, or new ones.
-    pub bytes: Arc<[u8]>,
+    pub bytes: ByteView,
     /// The kind the bytes are.
     pub kind: FileKind,
 }
@@ -114,7 +112,9 @@ impl FileFixCx<'_, '_> {
     pub fn add(&mut self, file: NewFile) -> Result<FileId, Occupied> {
         let source = &self.module.files[file.from];
         let wad = source.wad;
-        let content = if Arc::ptr_eq(&file.bytes, &source.bytes) {
+        let same_view =
+            file.bytes.as_ptr() == source.bytes.as_ptr() && file.bytes.len() == source.bytes.len();
+        let content = if same_view {
             source.content
         } else {
             ContentId::of(&file.bytes)
@@ -139,7 +139,7 @@ impl FileFixCx<'_, '_> {
     /// Replaces the bytes of a file with the ones a fixup wrote, where the file is. The file
     /// keeps its id, its path, its kind and its use, and its size and content follow the new
     /// bytes. A file the archive ships keeps the digest of the bytes it shipped in its source.
-    pub fn rewrite(&mut self, file: FileId, bytes: Arc<[u8]>, by: MadeBy) {
+    pub fn rewrite(&mut self, file: FileId, bytes: ByteView, by: MadeBy) {
         let node = &mut self.module.files[file];
         if node.source == FileSource::Archive {
             let shipped = node.content;

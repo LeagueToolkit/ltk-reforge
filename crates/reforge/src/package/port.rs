@@ -258,7 +258,7 @@ impl<'a> PortBuilder<'a> {
                         origin: Origin::Contained(file),
                     }
                 }
-                None => Chunk::kept(file, Arc::clone(&node.bytes)),
+                None => Chunk::kept(file, node.bytes.clone()),
             };
             let key = ChunkKey::new(m.wads[node.wad].name.clone(), place.clone());
             package.insert(layer, key, chunk);

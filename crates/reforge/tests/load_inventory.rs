@@ -2,7 +2,6 @@
 //! once per finding. The archive's own metadata is not the mod's content.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use reforge::archive::file_kind;
 use reforge::diag::{Channel, Code, Diag, Diagnostics, Record, Render, Severity, Stage, Subject};
@@ -15,7 +14,8 @@ use reforge::model::entity::{
     WadRole,
 };
 use reforge::model::{
-    BinHash, ChunkPath, ContentId, Mod, NoNames, Spell, Spelled, WadHash, WadName, path_hash,
+    BinHash, ByteView, ChunkPath, ContentId, Mod, NoNames, Spell, Spelled, WadHash, WadName,
+    path_hash,
 };
 use reforge_magic::{Confidence, Kind};
 
@@ -73,7 +73,7 @@ fn node(wad: WadId, hash: WadHash, path: Option<&str>, bytes: &[u8]) -> FileNode
         size: bytes.len() as u64,
         content: ContentId::of(bytes),
         kind: file_kind(bytes),
-        bytes: Arc::from(bytes),
+        bytes: ByteView::from(bytes),
         used: FileUse::Unused,
         source: FileSource::Archive,
     }

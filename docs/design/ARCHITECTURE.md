@@ -184,6 +184,9 @@ tables (`history`) and the bin value helpers (`model`).
 - **Closed sets are enums.** A layer is `Layer::Base`, `Voice` with its locale when it is one
   locale's, or `Hud`. A unit that leaves the port has a `Left` reason. A rig check has an
   `Aspect`.
+- **Bytes are views.** A file's bytes, the image's and a package chunk's are a `ByteView`
+  (`model::ByteView`): the type the blob store hands out (#ADR-0093), shared on clone and
+  sliced without a copy, so a file read from the store and a chunk kept from it are one blob.
 - **Paths are checked types.** `ChunkPath` is a path inside a WAD, lowercased, with no `..`, no
   root and no drive. `WadName` is one file name with its stem and locale parsed. Only these
   reach a writer. A name spelled by a mod is `Spelled` and is cleaned when printed.

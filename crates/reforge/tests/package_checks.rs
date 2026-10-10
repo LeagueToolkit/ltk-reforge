@@ -3,7 +3,6 @@
 //! write, unless a caller's policy says so.
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use ltk_meta::property::values;
 use ltk_meta::{BinObject, PropertyKind, PropertyValueEnum};
@@ -12,7 +11,9 @@ use reforge::fixups::TargetTypes;
 use reforge::game::{Build, Schema};
 use reforge::model::entity::FileId;
 use reforge::model::known::field;
-use reforge::model::{BinHash, ChunkPath, SkinEntry, Spelled, WadName, name_hash, path_hash};
+use reforge::model::{
+    BinHash, ByteView, ChunkPath, SkinEntry, Spelled, WadName, name_hash, path_hash,
+};
 use reforge::package::{
     Against, BaseSkin, BinWrite, Blocked, Check, CheckCx, CheckInfo, CheckSelection, CheckSet,
     Chunk, ChunkKey, ClassUndeclared, Coverage, Done, FieldUndeclared, HeldBy, Layer, Origin,
@@ -89,7 +90,7 @@ fn rewritten(bytes: Vec<u8>) -> Chunk {
 }
 
 fn kept(objects: Vec<BinObject>) -> Chunk {
-    Chunk::kept(file(), Arc::from(bin(objects)))
+    Chunk::kept(file(), ByteView::from(bin(objects)))
 }
 
 /// A target whose `Material` holds a count, a texture name, and a child, a list of children
@@ -244,7 +245,7 @@ fn the_round_trip_finds_a_bank_made_that_the_client_does_not_load() {
 fn a_file_kept_as_it_is_is_not_read_back() {
     let schema = schema();
     let set = CheckSet::from(&CheckSelection::standard().without("types"));
-    let package = package_of(Chunk::kept(file(), Arc::from(b"no bin at all".to_vec())));
+    let package = package_of(Chunk::kept(file(), ByteView::from(b"no bin at all")));
     let log = checked(&package, Some(&schema), &set);
     let covered = Coverage::RoundTrip {
         bins: 0,

@@ -25,7 +25,7 @@ use crate::diag::Sink;
 use crate::game::GameSkin;
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, WadId};
 use crate::model::hash::skin_paths;
-use crate::model::{ContentId, MAX_SLOT, Slot, Spell, WadHash, path_hash};
+use crate::model::{ByteView, ContentId, MAX_SLOT, Slot, Spell, WadHash, path_hash};
 
 /// The files of one WAD against the game's files at their paths.
 #[derive(Default)]
@@ -275,7 +275,7 @@ impl<'a> Binless<'a> {
                 size: bin.bytes.len() as u64,
                 content: ContentId::of(&bin.bytes),
                 kind: FileKind::Bin,
-                bytes: bin.bytes.clone(),
+                bytes: ByteView::from(&*bin.bytes),
                 used: FileUse::Unused,
                 source: FileSource::Game,
             });

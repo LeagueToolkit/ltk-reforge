@@ -5,7 +5,6 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::io::{self, Cursor, Read};
-use std::sync::Arc;
 
 use reforge_magic::HEAD_LEN;
 use zip::result::ZipError;
@@ -18,7 +17,7 @@ use super::name::{EntryName, WadPart};
 use super::packed::{PackedFailure, PackedWad};
 use super::{ArchiveWad, Chunk};
 use crate::model::entity::{Extra, MAX_IMAGE_BYTES, ModImage, WadLayout};
-use crate::model::{ChunkPath, Spelled, WadHash, WadName};
+use crate::model::{ByteView, ChunkPath, Spelled, WadHash, WadName};
 
 /// The two codecs a run reads. Fewer decoders are fewer for an untrusted archive to reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -401,7 +400,7 @@ impl<'a> Reader<'a> {
             Ok(inflated) if inflated.bytes.len() as u64 > MAX_IMAGE_BYTES => {
                 ModImage::TooLarge(inflated.bytes.len() as u64)
             }
-            Ok(inflated) => ModImage::Held(Arc::from(inflated.bytes)),
+            Ok(inflated) => ModImage::Held(ByteView::from(inflated.bytes)),
             Err(_) => ModImage::Unreadable,
         }
     }

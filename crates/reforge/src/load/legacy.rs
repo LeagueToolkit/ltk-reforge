@@ -10,21 +10,19 @@
 //! - A file already of the kind the twin holds, under the dropped extension, is made the twin
 //!   with its bytes as they are.
 
+use ltk_mesh::StaticMesh;
+use serde::{Serialize, Serializer};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Arc;
-
-use ltk_mesh::StaticMesh;
-use serde::{Serialize, Serializer};
 
 use super::files::{FileFixCx, FileFixup, NewFile};
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
 use crate::game::GameSource;
 use crate::history::HistoryError;
 use crate::model::entity::{FileId, FileKind, MadeBy, WadId};
-use crate::model::{ChunkPath, FixupInfo, Phase, panic_text};
+use crate::model::{ByteView, ChunkPath, FixupInfo, Phase, panic_text};
 
 /// A format the game dropped for another at the same stem.
 #[derive(Debug, PartialEq, Eq)]
@@ -214,7 +212,7 @@ pub fn sco_to_scb(bytes: &[u8]) -> Result<Vec<u8>, ConvertError> {
 /// A file a fixup made from another, before it is added to the mod.
 pub(super) struct Made {
     /// Its bytes.
-    pub(super) bytes: Arc<[u8]>,
+    pub(super) bytes: ByteView,
     /// The kind the bytes are.
     pub(super) kind: FileKind,
     /// How it was made.
@@ -238,12 +236,12 @@ impl Made {
 /// the kinds agree or the client reads either, an SCB written from an SCO. `None` when no
 /// conversion exists.
 pub(super) fn make(
-    bytes: &Arc<[u8]>,
+    bytes: &ByteView,
     from: FileKind,
     to: FileKind,
 ) -> Result<Option<Made>, ConvertError> {
     let as_it_is = |how| Made {
-        bytes: Arc::clone(bytes),
+        bytes: bytes.clone(),
         kind: from,
         how,
     };

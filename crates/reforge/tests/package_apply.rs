@@ -2,13 +2,11 @@
 //! and each finding is shown on that package with one patch or one chunk changed by hand.
 //! The game is `reforge_testkit::skins`.
 
-use std::sync::Arc;
-
 use reforge::diag::{Diagnostics, Stage};
 use reforge::env::Env;
 use reforge::fixups::TargetTypes;
 use reforge::history::NoHistory;
-use reforge::model::{ChunkPath, Layer, NoNames, name_hash, path_hash};
+use reforge::model::{ByteView, ChunkPath, Layer, NoNames, name_hash, path_hash};
 use reforge::package::{
     Apply, ApplyFailed, Check, CheckCx, Chunk, ChunkKey, Coverage, Done, FileMissing,
     LinkUnresolved, ManifestUnreadable, NameUnresolved, Overlay, Package, Patch, PatchOf,
@@ -243,7 +241,7 @@ fn a_name_the_patched_entry_reaches_that_no_loaded_bin_holds_is_unresolved() {
     let vfx = format!("{DIR}/vfx.bin");
     let mut package = run.package().clone();
     let emptied = Chunk {
-        bytes: Arc::from(bin(vec![])),
+        bytes: ByteView::from(bin(vec![])),
         origin: run.chunk(&vfx).origin.clone(),
     };
     let key = package.chunks().map(|(_, key, _)| key.clone());

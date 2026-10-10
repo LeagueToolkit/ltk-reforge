@@ -2,7 +2,6 @@
 //! the file's path and at the chunks of its size in the champion's WAD, then the history.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use reforge::archive::file_kind;
 use reforge::diag::{Channel, Diag, Diagnostics, Render, Severity, Stage, Subject};
@@ -17,7 +16,8 @@ use reforge::model::entity::{
     FileId, FileNode, FileSource, FileUse, ModMeta, ModWad, WadId, WadLayout, WadRole,
 };
 use reforge::model::{
-    BinHash, ChunkPath, ContentId, Mod, NoNames, Slot, Spell, Spelled, WadHash, WadName, path_hash,
+    BinHash, ByteView, ChunkPath, ContentId, Mod, NoNames, Slot, Spell, Spelled, WadHash, WadName,
+    path_hash,
 };
 use reforge_testkit::{BrokenHistory, MemoryGame, MemoryHistory};
 
@@ -146,7 +146,7 @@ fn file_used(m: &mut Mod, wad: WadId, path: &str, bytes: &[u8], used: FileUse) -
         size: bytes.len() as u64,
         content: ContentId::of(bytes),
         kind: file_kind(bytes),
-        bytes: Arc::from(bytes),
+        bytes: ByteView::from(bytes),
         used,
         source: FileSource::Archive,
     })

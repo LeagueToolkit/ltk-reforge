@@ -24,12 +24,10 @@ mod thumbnail;
 mod wired;
 mod write;
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write as _;
-use std::sync::Arc;
-
 use ltk_meta::BinObject;
 use serde::Serialize;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 
 pub use self::check::{
     Apply, BaseSkin, Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, RoundTrip, Types,
@@ -64,7 +62,7 @@ pub use self::write::{
 use crate::diag::{Code, Diag};
 pub use crate::model::Layer;
 use crate::model::entity::{CharId, FileId, UnitId};
-use crate::model::{BinHash, ChunkPath, Dump, DumpCx, WadHash, WadName};
+use crate::model::{BinHash, ByteView, ChunkPath, Dump, DumpCx, WadHash, WadName};
 
 /// Every diagnostic code this module raises.
 pub const CODES: &[Code] = &[
@@ -234,7 +232,7 @@ pub struct Patch {
     /// Where the PTCH is, in its layer.
     pub path: ChunkPath,
     /// The PTCH.
-    pub bytes: Arc<[u8]>,
+    pub bytes: ByteView,
     /// The bins the manifest links to the patched bin.
     pub links: Vec<ChunkPath>,
     /// What it is of.
@@ -247,14 +245,14 @@ pub struct Patch {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Chunk {
     /// Its bytes, as a writer writes them.
-    pub bytes: Arc<[u8]>,
+    pub bytes: ByteView,
     /// Where they come from.
     pub origin: Origin,
 }
 
 impl Chunk {
     /// A file of the mod with the bytes it has.
-    pub fn kept(file: FileId, bytes: Arc<[u8]>) -> Self {
+    pub fn kept(file: FileId, bytes: ByteView) -> Self {
         Self {
             bytes,
             origin: Origin::Kept(file),

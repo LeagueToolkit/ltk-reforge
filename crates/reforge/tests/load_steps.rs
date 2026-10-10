@@ -282,7 +282,7 @@ impl FileFixup for Copies {
             .iter()
             .find(|(_, f)| f.path.as_ref().is_some_and(|p| p.as_str() == BASE_TEX));
         let (from, node) = from.expect("the base texture");
-        let bytes = Arc::clone(&node.bytes);
+        let bytes = node.bytes.clone();
         let to = ChunkPath::parse(self.to).expect("a path");
         let made = cx
             .add(NewFile {

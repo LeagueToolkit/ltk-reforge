@@ -9,9 +9,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, PoisonError, RwLock};
 
-pub use byteview::ByteView;
-
-use crate::model::ContentId;
+use crate::model::{ByteView, ContentId};
 
 /// Bytes by content id.
 pub trait BlobStore: Send + Sync {

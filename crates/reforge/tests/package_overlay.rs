@@ -3,15 +3,13 @@
 //! game is `reforge_testkit::skins`, its base skin bin linking a bin of its own and its
 //! skin 7 bin of a version the overlay does not take.
 
-use std::sync::Arc;
-
 use ltk_meta::Bin;
 use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::model::entity::{FileId, UnitId};
 use reforge::model::known::field;
 use reforge::model::{
-    BinHash, ChunkPath, NoNames, SkinEntry, Spelled, WadName, name_hash, path_hash,
+    BinHash, ByteView, ChunkPath, NoNames, SkinEntry, Spelled, WadName, name_hash, path_hash,
 };
 use reforge::package::{
     Chunk, ChunkKey, Held, Layer, Outcome, Overlay, Package, Patch, PatchOf, ProjectConfig,
@@ -112,7 +110,7 @@ fn a_patch_applies_to_the_games_bin_which_loads_the_packages_bins_and_the_games(
     let wad = WadName::parse(WAD).expect("a WAD name");
     let own = Chunk::kept(
         FileId::new(0),
-        Arc::from(bin(vec![particle("Own", OWN_TEX)])),
+        ByteView::from(bin(vec![particle("Own", OWN_TEX)])),
     );
     package.insert(Layer::Base, ChunkKey::new(wad, path(OWN_BIN)), own);
     package.patch(Layer::Base, skin0_patch(retexture(SKIN0), &[OWN_BIN]));

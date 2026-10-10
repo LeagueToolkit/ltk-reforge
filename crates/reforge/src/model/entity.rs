@@ -2,8 +2,8 @@
 //! destination and a dropped state belong to later stages and are not here.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
+use byteview::ByteView;
 use ltk_meta::BinObject;
 use serde::Serialize;
 
@@ -185,7 +185,7 @@ pub const MAX_IMAGE_BYTES: u64 = 5 << 20;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModImage {
     /// The entry's bytes, inflated. Nothing says yet that they are an image.
-    Held(Arc<[u8]>),
+    Held(ByteView),
     /// The entry is over [`MAX_IMAGE_BYTES`], at this size.
     TooLarge(u64),
     /// The entry does not read.
@@ -291,7 +291,7 @@ pub struct FileNode {
     /// What it is, by its first bytes.
     pub kind: FileKind,
     /// Its bytes.
-    pub bytes: Arc<[u8]>,
+    pub bytes: ByteView,
     /// How the client comes to use it.
     pub used: FileUse,
     /// Where it comes from.

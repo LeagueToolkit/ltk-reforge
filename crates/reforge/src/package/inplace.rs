@@ -2,12 +2,10 @@
 //! WAD and path (#ADR-0039). A bin an object of which a fixup changed is written again, and
 //! every other file keeps its bytes.
 
+use ltk_meta::{Bin, BinDelta, BinObject, BinStream};
 use std::collections::BTreeSet;
 use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Arc;
-
-use ltk_meta::{Bin, BinDelta, BinObject, BinStream};
 
 use super::config::{Made, ProjectConfig};
 use super::findings::{Empty, InPlace};
@@ -148,7 +146,7 @@ impl<'a> InPlaceBuilder<'a> {
                             origin: Origin::Contained(id),
                         }
                     }
-                    None => Chunk::kept(id, Arc::clone(&file.bytes)),
+                    None => Chunk::kept(id, file.bytes.clone()),
                 },
             };
             found.kept += 1;

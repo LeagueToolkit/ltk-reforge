@@ -2,8 +2,6 @@
 //! was made at from below. Small pieces, the game's own bins and bytes the history does not hold
 //! date nothing.
 
-use std::sync::Arc;
-
 use ltk_meta::BinObject;
 use ltk_meta::property::values;
 use reforge::archive::file_kind;
@@ -16,7 +14,7 @@ use reforge::model::entity::{
     WadId, WadLayout, WadRole,
 };
 use reforge::model::{
-    ChunkPath, ContentId, Mod, NormKey, ObjectKey, Spelled, WadName, name_hash, path_hash,
+    ByteView, ChunkPath, ContentId, Mod, NormKey, ObjectKey, Spelled, WadName, name_hash, path_hash,
 };
 use reforge_testkit::MemoryHistory;
 
@@ -65,7 +63,7 @@ fn file(m: &mut Mod, wad: WadId, path: &str, bytes: &[u8], source: FileSource) -
         size: bytes.len() as u64,
         content: ContentId::of(bytes),
         kind: file_kind(bytes),
-        bytes: Arc::from(bytes),
+        bytes: ByteView::from(bytes),
         used: FileUse::Referenced,
         source,
     })

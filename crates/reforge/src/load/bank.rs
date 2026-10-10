@@ -4,12 +4,10 @@
 //! bins the client loads are read, when a file has the path a bin of the mod spells for it.
 //! It rewrites the banks the client uses and leaves a file nothing loads as it is.
 
-use std::collections::BTreeMap;
-use std::fmt::Write as _;
-use std::sync::Arc;
-
 use reforge_wwise::{Bank, BankKind, id_of};
 use serde::Serialize;
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 use super::files::{FileFixCx, FileFixup, FileStep};
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Subject};
@@ -160,7 +158,7 @@ impl FileFixup for BankId {
                 continue;
             }
             let wad = node.wad;
-            let bytes = Arc::clone(&node.bytes);
+            let bytes = node.bytes.clone();
             let Some(bank) = ZeroId::read(&bytes) else {
                 continue;
             };

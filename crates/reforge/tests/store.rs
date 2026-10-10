@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use reforge::model::ContentId;
-use reforge::store::{BlobStore, ByteView, Layered, MemoryStore};
+use reforge::model::{ByteView, ContentId};
+use reforge::store::{BlobStore, Layered, MemoryStore};
 
 #[test]
 fn a_put_gives_the_content_id_and_a_get_by_it_gives_the_bytes() {
