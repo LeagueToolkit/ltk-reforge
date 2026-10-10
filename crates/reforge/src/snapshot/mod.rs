@@ -227,6 +227,8 @@ pub enum Setting {
     Policy,
     /// The policies compared with it.
     Compared,
+    /// The targets given to units alone (#ADR-0098).
+    UnitTargets,
     /// Whether a bank's events are cut from the game's events bank only.
     GameEventsOnly,
     /// Whether the units at slots other than their champion's target ship.

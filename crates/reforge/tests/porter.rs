@@ -25,7 +25,7 @@ use reforge::package::{
     EvidenceUnit, MAX_OVERLAY_BINS, Made, Modpkg, OverlayCapped, PackageWriter, PieceKind,
     ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
-use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
+use reforge::port::{AnimReuse, PlanError, Policy, Reason, TargetPolicy, UnitTarget};
 use reforge::snapshot::{
     BuildSnapshot, CheckSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, ResumeError,
     SNAPSHOT_FORMAT, Setting, Snapshots, StageSnapshot, from_json, to_json,
@@ -1536,6 +1536,38 @@ fn a_decide_snapshot_is_refused_when_the_policy_or_a_compared_one_is_not_the_run
     let start = Start::Facts(Box::new(snapshots));
     let porter = Porter::new(&env).policy(base);
     assert!(porter.resume(start, Arc::clone(&store)).is_ok());
+}
+
+#[test]
+fn a_units_target_changed_resumes_after_facts_and_reports_as_a_straight_run() {
+    // #ADR-0098: `decide` reads the targets given to units, and no stage before it does.
+    let env = legacy_env();
+    let (snapshots, store) = legacy_snapshots(&Porter::new(&env), Stage::Check);
+    let given = UnitTarget::parse("test:0=3").expect("a unit's target");
+    let porter = Porter::new(&env).unit_targets(vec![given.clone()]);
+    let start = Start::Decide(Box::new(snapshots.clone()));
+    let refused = porter.resume(start, Arc::clone(&store)).map(drop);
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::UnitTargets))
+    ));
+    let start = Start::Facts(Box::new(snapshots));
+    let mut resumed = porter.resume(start, store).expect("the run resumes");
+    resumed.through(Stage::Check).expect("no fault");
+    let mut straight = porter.run();
+    straight
+        .read(&legacy_archive().build(), FILE_NAME)
+        .expect("the archive reads");
+    straight.through(Stage::Check).expect("no fault");
+    assert_eq!(resumed.report().to_json(), straight.report().to_json());
+    let report = resumed.report();
+    let targets = report.targets.expect("the decisions");
+    assert_eq!(targets.unit_targets, [given]);
+    let decision = &targets.decisions[0].decision;
+    assert_eq!(
+        (decision.chosen, decision.reason),
+        (Some(reforge::model::Slot(3)), Reason::PerUnit)
+    );
 }
 
 #[test]

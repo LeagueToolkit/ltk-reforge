@@ -35,7 +35,7 @@ use crate::model::{
 use crate::package::{
     EvidenceDoc, Layer, Origin as ChunkOrigin, Outcome, Overlay, Package, Patch, PatchOf,
 };
-use crate::port::{Alternative, Decision, Policy, Port, Targets};
+use crate::port::{Alternative, Decision, Policy, Port, Targets, UnitTarget};
 
 /// The schema a report states. A field is added under the same schema; a field renamed or
 /// retyped takes the next number.
@@ -846,6 +846,9 @@ pub struct TargetsRow {
     pub decisions: Vec<DecisionRow>,
     /// The slots two units of the same rank target.
     pub conflicts: Vec<crate::port::Conflict>,
+    /// The targets given to units alone, as given (#ADR-0098).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unit_targets: Vec<UnitTarget>,
 }
 
 impl TargetsRow {
@@ -862,6 +865,7 @@ impl TargetsRow {
             policy: targets.policy,
             decisions: decisions.collect(),
             conflicts: targets.conflicts.clone(),
+            unit_targets: targets.unit_targets.clone(),
         }
     }
 }

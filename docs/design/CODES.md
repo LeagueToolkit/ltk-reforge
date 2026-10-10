@@ -118,7 +118,7 @@ The facts and the decision. `catalog` and `copies` are channel `input`, the rest
 | `rig.submesh-copied` | warning | a submesh copied whole from a premium skin, with its visibility | `rig.copied-submesh` |
 | `rig.unreadable` | warning | a mesh, skeleton or clip that does not parse | `rig.unreadable` |
 | `target.chosen` | note | the unit's target and the reason: base, paste cleaned, slot, fallback, clips origin, skeleton origin, follows its champion | `target.base`, `target.paste-cleaned`, `target.slot`, `target.fallback`, `target.clips-origin`, `target.sub-follows` |
-| `target.forced-unfit` | warning | a target a person or the champion forced, which the work does not fit | `target.forced` |
+| `target.forced-unfit` | warning | a target the policy, a target given to the unit alone or the champion forced, which the work does not fit | `target.forced` |
 | `target.superseded` | note | another unit of the character took the slot | `target.superseded` |
 | `target.conflict` | warning | units of one character, of the same rank, target one slot; each leaves it to the game | `target.conflict` |
 | `target.sub-left` | warning | a sub-character whose model does not fit the base, left to the game | `target.sub-left-to-base` |

@@ -60,7 +60,8 @@ let report = run.report();
 ```
 
 - **A `Porter` holds what a caller chose**, built once and used for any number of runs: the
-  policy and the policies compared with it, the fixups, the checks, the caps, the reworks,
+  policy and the policies compared with it, the targets given to units, the fixups, the
+  checks, the caps, the reworks,
   whether stale copies are carried, whether a bank's events are cut from the game's events
   bank only. `Porter::new` takes the standard of each. They are its `Settings`, data a
   caller reads (`Porter::settings`): `declared(stage)` is the part a stage reads, as its
@@ -126,7 +127,7 @@ let report = run.report();
   | load | `LoadSnapshot` | `LoadInputs`: the install's build, the history, the hash tables' stamp | `LoadSettings`: the mode, the file fixups, the stale keep, the reworks |
   | fix | `FixSnapshot` | `FixInputs`: the schema | `FixSettings`: the fixups on bin values, and the table rules among them as data |
   | facts | `FactsSnapshot` | none of its own | `FactsSettings`: the reworks |
-  | decide | `DecideSnapshot` | none | `DecideSettings`: the policy, the policies compared with it |
+  | decide | `DecideSnapshot` | none | `DecideSettings`: the policy, the policies compared with it, the targets given to units |
   | plan | `PlanSnapshot` | none of its own | `PlanSettings`: the stale keep, the game's events only, the other slots kept |
   | build | `BuildSnapshot` | none of its own: the install's shader bin and shader cache, the game's skin bins a port patches and a sub-character's skin0 bin it copies, the game's files and the history a repair's texture is judged stale against, the hash tables that spell a repair's paths and a patch's fields | `BuildSettings`: the DDS keep, the stale keep |
   | check | `CheckSnapshot` | none of its own: the install's bins the patches apply to, every bin a patched bin loads and the shader bin; the target build's types, from the schema and the install | `CheckSettings`: the checks |
@@ -567,6 +568,15 @@ level of animation reuse (`AnimReuse`). It reads neither the mod nor the game.
   premium origin, else to the skin whose clips it mostly plays (#ADR-0015), else to the
   premium skin whose skeleton file it takes (#ADR-0062), else stays on skin0 for a person to
   decide (#ADR-0016).
+- **A target given to one unit** (`UnitTarget`, #ADR-0098) names the unit by its character
+  and the slot the mod ships it at, and gives the slot it ships to or none.
+  `Policy::decide_with(&Facts, &[UnitTarget])` takes it in place of the policy's choice for
+  that unit, after the rework's rule and before a sub-character's following its champion, and
+  judges it as the policy's fixed slot (`Considered::PerUnit`): the reason is
+  `Reason::PerUnit`, and a slot the work does not fit is flagged as a forced one is. A
+  champion's unit given a target takes its sub-characters along. Every unit not named follows
+  the policy, and a target that names no unit of the mod changes nothing. `Targets` holds the
+  targets as given, and the policies compared with it decide without them.
 - **Two units on one slot.** One keeps it: a unit whose entry reads, then the unit written for
   the slot, then a skin0 unit, then one that is no spread. The others get no target. When the
   best two are of one rank, each unit on the slot leaves it to the game (#ADR-0076).
@@ -859,7 +869,8 @@ object takes a name of its own, which every link to it follows.
   diagnostic with its data. A later stage adds its part: `fix` what each fixup changed, `facts`
   the copies, the objects that are the game's, the origins with their evidence, the rigs, the
   clips at each candidate slot, the candidates, the reworks and the sounds, `decide` the policy
-  with each decision and what the other policies choose, `plan` the `Port` as serde writes it,
+  with each decision and what the other policies choose, and the targets given to units as
+  given when there are any, `plan` the `Port` as serde writes it,
   without the values `PortValues` keeps
   (the units that ship and why the others left, the reach, the file verdicts, the renames, each
   unit and each file's place, the audio, the HUD edits), `build` and `check` the package with

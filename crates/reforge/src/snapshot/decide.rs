@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
 use crate::diag::{Logged, Stage};
-use crate::port::{Policy, Targets};
+use crate::port::{Policy, Targets, UnitTarget};
 
 /// The settings `decide` reads (#ADR-0094). It reads no input: only the facts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -14,6 +14,8 @@ pub struct DecideSettings {
     pub policy: Policy,
     /// The policies whose choices are recorded beside it.
     pub compared: Vec<Policy>,
+    /// The targets given to units alone, as given (#ADR-0098).
+    pub unit_targets: Vec<UnitTarget>,
 }
 
 impl DecideSettings {
@@ -22,6 +24,8 @@ impl DecideSettings {
             Some(Setting::Policy)
         } else if self.compared != other.compared {
             Some(Setting::Compared)
+        } else if self.unit_targets != other.unit_targets {
+            Some(Setting::UnitTargets)
         } else {
             None
         }

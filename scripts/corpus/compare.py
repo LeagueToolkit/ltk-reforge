@@ -13,7 +13,8 @@ unit's character and slot), so an id that moved is no difference. The sections:
                the mod as loaded, row by row and field by field
   units        per unit: its bin and entry, whether it ships, why it left the port otherwise
   facts        per unit and table (copies, origins, rigs, clips, candidates, sounds): a digest
-  decisions    per unit: origin, target, reason, and each candidate with its checks
+  decisions    per unit: origin, target, reason, and each candidate with its checks; the
+               policy, the conflicts and the targets given to units
   plan         per unit: what its entry reaches, its place, its audio; the HUD edits
   refs         per unit and file named: where the file is found
   renames      the units retargeted, the names made, the place each file ships at
@@ -171,7 +172,7 @@ def decisions(report):
     targets = report.get("targets")
     if not targets:
         return {}
-    table = {"-": {"policy": targets["policy"], "conflicts": targets["conflicts"]}}
+    table = {"-": {"policy": targets["policy"], "conflicts": targets["conflicts"], "unit_targets": targets.get("unit_targets")}}
     for decision in targets["decisions"]:
         row = without(decision, "unit", "character", "candidates", "alternatives", "policy")
         for candidate in decision["candidates"]:

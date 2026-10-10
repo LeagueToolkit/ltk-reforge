@@ -63,7 +63,7 @@ FIXUPS = (
     "vfx-spawn-shape-birth-translation material-sampler-fields contextual-gear-equip vfx-emission-surface reshape-hoist "
     "reshape-wrap retype strip-undeclared"
 )
-REASONS = "base paste-cleaned slot fallback clips-origin skeleton-origin forced infeasible sub-follows sub-left-to-base unjudged superseded conflict pre-rework"
+REASONS = "base paste-cleaned slot fallback clips-origin skeleton-origin forced per-unit infeasible sub-follows sub-left-to-base unjudged superseded conflict pre-rework"
 LEFT = "copy superseded conflict pre-rework sub-left equal-to-game no-target game-skin chroma-folded off-target"
 CHECK_WHY = (
     "no-such-skin no-mesh slot-mesh other-skin-mesh own-mesh foreign-mesh copied-visible copied-shown "
@@ -162,7 +162,7 @@ RULES = [
     ("decision", "decision by the clips played", SET, ".targets.decisions[].played"),
     ("decision", "decision makes a new bin", SET, ".targets.decisions[].new_bin"),
     ("decision", "decision made before a rework", SET, ".targets.decisions[].made_before"),
-    ("decision", "candidate", VALUE, ".targets.decisions[].candidates[].why", "skin0 first|the premium origin|the skin whose clips it plays|the skin whose skeleton it takes|the champion's target|the policy"),
+    ("decision", "candidate", VALUE, ".targets.decisions[].candidates[].why", "skin0 first|the premium origin|the skin whose clips it plays|the skin whose skeleton it takes|the champion's target|the policy|the unit's own target"),
     ("decision", "candidate feasible", VALUE, ".targets.decisions[].candidates[].feasible", "true false"),
     ("decision", "alternative reason", VALUE, ".targets.decisions[].alternatives[].reason"),
     ("decision", "targets conflict", SET, ".targets.conflicts"),
@@ -292,6 +292,7 @@ SKIP = {
     ".facts.clips[].at.*.reused[].extra_joints", ".facts.rigs[].skeleton.joints",
     ".targets.policy", ".targets.decisions[].policy", ".targets.decisions[].origin", ".targets.decisions[].placed",
     ".targets.decisions[].alternatives[].policy", ".targets.decisions[].made_before", ".targets.conflicts",
+    ".targets.unit_targets",
     ".port.options", ".port.layout", ".port.files", ".port.renames.names", ".port.audio.banks", ".port.audio.units[].renamed",
     ".port.hud.champions[].edits", ".port.hud.champions[].files",
     ".package.paths", ".package.entries", ".package.chunks[].objects", ".package.chunks[].values", ".package.patches[].applied.objects",

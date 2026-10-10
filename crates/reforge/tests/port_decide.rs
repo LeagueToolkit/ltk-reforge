@@ -1,7 +1,7 @@
 //! The decision over synthetic mods: the skin0-first rule with its premium fallback, a paste
 //! on the base's rig staying on skin0, a mod for a premium slot staying there, forced targets,
-//! sub-characters, two units on one slot, the levels of animation reuse and reworks. The game
-//! is `reforge_testkit::skins`.
+//! sub-characters, two units on one slot, the levels of animation reuse, reworks and targets
+//! given to one unit. The game is `reforge_testkit::skins`.
 
 use std::collections::BTreeMap;
 
@@ -12,7 +12,7 @@ use reforge::load::ReworkTable;
 use reforge::model::Slot;
 use reforge::port::{
     AnimReuse, Considered, ForcedUnfit, Infeasible, Policy, PreRework, Reason, SubLeft, Superseded,
-    TargetChosen, TargetConflict, TargetPolicy, Unjudged, clip_fit,
+    TargetChosen, TargetConflict, TargetPolicy, UnitTarget, Unjudged, clip_fit,
 };
 use reforge_testkit::bins::{self, Skin, blob, graph, resolver};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
@@ -1019,5 +1019,117 @@ fn the_report_holds_the_facts_and_the_decisions() {
         report().to_json(),
         report().to_json(),
         "two reports of one run are equal"
+    );
+}
+
+/// A target given to one unit (#ADR-0098), from its words.
+fn given(text: &str) -> UnitTarget {
+    UnitTarget::parse(text).expect("a unit's target")
+}
+
+/// What decisions under `given` raise, in a log of their own.
+fn raised(run: &FactRun<'_>, given: &[UnitTarget]) -> Diagnostics {
+    let mut log = Diagnostics::new();
+    let targets = block().decide_with(&run.facts, given);
+    targets.report(&mut log.at(Stage::Decide));
+    log
+}
+
+#[test]
+fn a_target_given_to_one_unit_stands_for_it_and_the_other_follows_the_policy() {
+    // The paste of skin 3 at skin0 falls back to skin 3, where the unit written for skin 3
+    // supersedes it. Given no target, the paste leaves, and skin 3's unit is the policy's.
+    let env = env(skins::game(), NoHistory);
+    let run = FactRun::of(&env, &archive(&paste_and_own_skin3()));
+    let targets = block().decide_with(&run.facts, &[given("Test:0=none")]);
+    let paste = run.decision(&targets, "test", 0);
+    let written = run.decision(&targets, "test", 3);
+    assert_eq!(
+        (paste.chosen, paste.reason, paste.taken_by),
+        (None, Reason::PerUnit, None),
+        "{}",
+        run.dump()
+    );
+    assert!(paste.candidates.is_empty(), "no slot is weighed");
+    assert_eq!(
+        (written.chosen, written.reason),
+        (Some(Slot(3)), Reason::Slot)
+    );
+    assert_eq!(targets.unit_targets, [given("test:0=none")]);
+    let log = raised(&run, &[given("test:0=none")]);
+    assert_eq!(log.of::<Superseded>().count(), 0);
+    assert_eq!(log.of::<TargetChosen>().count(), 1);
+}
+
+#[test]
+fn a_target_given_to_a_unit_that_fits_it_raises_nothing_of_its_own() {
+    let env = env(skins::game(), NoHistory);
+    let files = [mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    let run = FactRun::of(&env, &archive(&files));
+    let targets = block().decide_with(&run.facts, &[given("test:0=3")]);
+    let decision = run.decision(&targets, "test", 0);
+    assert_eq!(
+        (decision.chosen, decision.reason, decision.unfit),
+        (Some(Slot(3)), Reason::PerUnit, false),
+        "{}",
+        run.dump()
+    );
+    assert_eq!(decision.candidates[0].why, Considered::PerUnit);
+    assert!(raised(&run, &[given("test:0=3")]).is_empty());
+}
+
+#[test]
+fn a_target_given_to_a_unit_its_work_does_not_fit_is_flagged() {
+    // Under `auto` the paste of skin 3 falls back to skin 3: given skin0, it stays there.
+    let env = env(skins::game(), NoHistory);
+    let files = [mod_skin("test", 0, SKIN0, &skins::skin3(), vec![])];
+    let run = FactRun::of(&env, &archive(&files));
+    let targets = block().decide_with(&run.facts, &[given("test:0=0")]);
+    let decision = run.decision(&targets, "test", 0);
+    assert_eq!(
+        (decision.chosen, decision.reason, decision.unfit),
+        (Some(Slot(0)), Reason::PerUnit, true),
+        "{}",
+        run.dump()
+    );
+    let log = raised(&run, &[given("test:0=0")]);
+    let unfit: Vec<&ForcedUnfit> = log.of().collect();
+    assert_eq!(unfit.len(), 1);
+    assert_eq!((unfit[0].slot, unfit[0].follows), (Slot(0), false));
+    assert_eq!(log.of::<TargetChosen>().count(), 0);
+}
+
+#[test]
+fn a_target_given_to_one_of_two_tied_units_leaves_the_slot_to_the_other() {
+    // #ADR-0076: the two pets tie on skin 3 and each leaves it. Given no target, the pet of
+    // slot 2 leaves, and the pet of slot 1 follows its champion alone.
+    let env = env(skins::game(), NoHistory);
+    let run = FactRun::of(&env, &archive(&paste_and_two_pets()));
+    let targets = block().decide_with(&run.facts, &[given("testpet:2=none")]);
+    let kept = run.decision(&targets, "testpet", 1);
+    let left = run.decision(&targets, "testpet", 2);
+    assert_eq!(
+        (kept.chosen, kept.reason),
+        (Some(Slot(3)), Reason::SubFollows),
+        "{}",
+        run.dump()
+    );
+    assert_eq!((left.chosen, left.reason), (None, Reason::PerUnit));
+    assert!(targets.conflicts.is_empty());
+    assert_eq!(targets.target(run.unit("test", 0)), Some(Slot(3)));
+}
+
+#[test]
+fn a_target_given_to_a_unit_the_mod_lacks_changes_nothing() {
+    let env = env(skins::game(), NoHistory);
+    let run = FactRun::of(&env, &archive(&paste_and_own_skin3()));
+    let absent = [given("test:5=0"), given("other:0=3")];
+    let mut targets = block().decide_with(&run.facts, &absent);
+    assert_eq!(targets.unit_targets, absent, "the targets as given");
+    targets.unit_targets.clear();
+    assert_eq!(targets, block().decide(&run.facts));
+    assert_eq!(
+        raised(&run, &absent).iter().count(),
+        run.decided(block()).iter().count()
     );
 }

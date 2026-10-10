@@ -132,6 +132,8 @@ pub struct RosterUnit {
 pub struct RosterCharacter {
     /// The character.
     pub id: CharId,
+    /// Its name, lowercase, as the mod's directory spells it.
+    pub name: String,
     /// Whether it is a sub-character.
     pub sub: bool,
     /// Its units.
@@ -163,6 +165,7 @@ impl Roster {
         };
         let character = |&id: &CharId| RosterCharacter {
             id,
+            name: m.characters[id].name.clone(),
             sub: m.characters[id].kind != CharKind::Champion,
             units: m.characters[id].units.iter().map(unit).collect(),
         };

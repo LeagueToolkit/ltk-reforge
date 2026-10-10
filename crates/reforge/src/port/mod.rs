@@ -53,6 +53,60 @@ pub enum PolicyError {
     /// No level of animation reuse has the name.
     #[error("{0:?} is no level of animation reuse: block, same-joints, own-rig or allow")]
     AnimReuse(String),
+    /// The text names no unit's target.
+    #[error("{0:?} is no unit's target: <character>:<slot>=<slot>, or =none to leave it out")]
+    UnitTarget(String),
+}
+
+/// A target given to one unit (#ADR-0098): the unit by its character and the slot the mod
+/// ships it at, and the slot it ships to, or none to leave it to the game. It is the policy's
+/// fixed slot for that unit alone.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct UnitTarget {
+    /// The character's name, lowercase, as the mod's directory spells it.
+    pub character: String,
+    /// The slot the mod ships the unit at.
+    pub slot: Slot,
+    /// The slot it ships to. None: it is left to the game.
+    pub target: Option<Slot>,
+}
+
+impl UnitTarget {
+    /// The target `<character>:<slot>=<slot>` names, or `<character>:<slot>=none`.
+    pub fn parse(text: &str) -> Result<Self, PolicyError> {
+        let refused = || PolicyError::UnitTarget(text.to_string());
+        let (unit, target) = text.split_once('=').ok_or_else(refused)?;
+        let (character, slot) = unit.split_once(':').ok_or_else(refused)?;
+        let character = character.trim();
+        if character.is_empty() || character.contains(['/', '\\']) {
+            return Err(refused());
+        }
+        let slot = slot.trim().parse().map_err(|_| refused())?;
+        let target = match target.trim() {
+            "none" => None,
+            number => Some(Slot(number.parse().map_err(|_| refused())?)),
+        };
+        Ok(Self {
+            character: character.to_ascii_lowercase(),
+            slot: Slot(slot),
+            target,
+        })
+    }
+
+    /// Whether it names a unit of this character at this slot.
+    pub fn names(&self, character: &str, slot: Slot) -> bool {
+        self.slot == slot && self.character.eq_ignore_ascii_case(character)
+    }
+}
+
+impl fmt::Display for UnitTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}=", self.character, self.slot)?;
+        match self.target {
+            Some(slot) => write!(f, "{slot}"),
+            None => f.write_str("none"),
+        }
+    }
 }
 
 /// How the target slot is chosen.
@@ -204,5 +258,25 @@ mod tests {
         assert!(AnimReuse::parse("some").is_err());
         assert_eq!(Policy::default().label(), "auto/own-rig");
         assert_eq!(Policy::default().other_levels().len(), 3);
+    }
+
+    #[test]
+    fn a_units_target_is_named_by_its_character_and_two_slots() {
+        let given = UnitTarget::parse("Test:3=0").expect("a unit's target");
+        assert_eq!((given.character.as_str(), given.slot), ("test", Slot(3)));
+        assert_eq!(given.target, Some(Slot(0)));
+        assert_eq!(given.to_string(), "test:3=0");
+        let left = UnitTarget::parse("testpet:2=none").expect("a unit left out");
+        assert_eq!(left.target, None);
+        for refused in [
+            "test:3",
+            "test=0",
+            ":3=0",
+            "test:x=0",
+            "test:3=premium",
+            "a/b:3=0",
+        ] {
+            assert!(UnitTarget::parse(refused).is_err(), "{refused}");
+        }
     }
 }

@@ -36,7 +36,7 @@ use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
 };
-use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
+use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets, UnitTarget};
 use crate::report::{AgainRow, AppliedRow, PackageRow, Report};
 use crate::snapshot::{
     self, BuildSettings, BuildSnapshot, CheckSettings, CheckSnapshot, DecideSettings,
@@ -204,6 +204,7 @@ pub struct Settings {
     reworks: ReworkTable,
     policy: Policy,
     compared: Vec<Policy>,
+    unit_targets: Vec<UnitTarget>,
     game_events_only: bool,
     keep_dds: bool,
     keep_other_slots: bool,
@@ -282,6 +283,7 @@ impl Settings {
         DecideSettings {
             policy: self.policy,
             compared: self.compared.clone(),
+            unit_targets: self.unit_targets.clone(),
         }
     }
 
@@ -413,6 +415,14 @@ impl<'a> Porter<'a> {
     #[must_use]
     pub fn policy(mut self, policy: Policy) -> Self {
         self.settings.policy = policy;
+        self
+    }
+
+    /// Gives these units their targets in place of the policy's (#ADR-0098). A target that
+    /// names no unit of the mod changes nothing, and the settings hold it as given.
+    #[must_use]
+    pub fn unit_targets(mut self, given: Vec<UnitTarget>) -> Self {
+        self.settings.unit_targets = given;
         self
     }
 
@@ -1211,7 +1221,7 @@ impl<'a> Run<'a> {
                 policy: policy.label(),
             };
             steps.begin(&mut sink, || named(&policy))?;
-            let mut targets = policy.decide(facts);
+            let mut targets = policy.decide_with(facts, &self.settings.unit_targets);
             targets.report(&mut sink);
             for compared in &self.settings.compared {
                 steps.begin(&mut sink, || named(compared))?;

@@ -7,6 +7,7 @@
 //! - When nothing fits, skin0 is kept and a person decides (#ADR-0016).
 //! - A sub-character follows its champion (#ADR-0013, #ADR-0017).
 //! - A unit made for a model before its rework gets no target (#ADR-0019).
+//! - A target given to one unit stands in place of the policy's for that unit (#ADR-0098).
 //! - Of two units of one character on one slot, the one written for it keeps it, then a skin0
 //!   unit, then one that is no spread; two of one rank leave it to the game (#ADR-0076).
 //!
@@ -21,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use super::findings::{
     ForcedUnfit, Infeasible, PreRework, SubLeft, Superseded, TargetChosen, TargetConflict, Unjudged,
 };
-use super::{AnimReuse, Policy, TargetPolicy};
+use super::{AnimReuse, Policy, TargetPolicy, UnitTarget};
 use crate::diag::Sink;
 use crate::facts::{
     Aspect, ClipBlock, ClipsAt, Facts, Fit, RigCheck, RosterCharacter, RosterGroup, RosterUnit,
@@ -48,6 +49,9 @@ pub enum Reason {
     SkeletonOrigin,
     /// The policy named the slot.
     Forced,
+    /// A target given to the unit alone named the slot, or left the unit to the game
+    /// (#ADR-0098).
+    PerUnit,
     /// Nothing fits: skin0 is kept for a person to decide.
     Infeasible,
     /// A sub-character goes where its champion goes.
@@ -75,6 +79,7 @@ impl Reason {
             Reason::ClipsOrigin => "clips-origin",
             Reason::SkeletonOrigin => "skeleton-origin",
             Reason::Forced => "forced",
+            Reason::PerUnit => "per-unit",
             Reason::Infeasible => "infeasible",
             Reason::SubFollows => "sub-follows",
             Reason::SubLeftToBase => "sub-left-to-base",
@@ -101,6 +106,8 @@ pub enum Considered {
     ChampionTarget,
     /// The slot the policy names.
     Policy,
+    /// The slot a target given to the unit alone names (#ADR-0098).
+    PerUnit,
 }
 
 impl Considered {
@@ -113,6 +120,7 @@ impl Considered {
             Considered::SkeletonSkin => "the skin whose skeleton it takes",
             Considered::ChampionTarget => "the champion's target",
             Considered::Policy => "the policy",
+            Considered::PerUnit => "the unit's own target",
         }
     }
 }
@@ -133,6 +141,7 @@ impl<'de> Deserialize<'de> for Considered {
             Considered::SkeletonSkin,
             Considered::ChampionTarget,
             Considered::Policy,
+            Considered::PerUnit,
         ];
         let named = every.into_iter().find(|why| why.as_str() == text);
         named.ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no reason")))
@@ -316,6 +325,10 @@ pub struct Targets {
     pub conflicts: Vec<Conflict>,
     /// What each compared policy chooses, per unit.
     pub alternatives: BTreeMap<UnitId, Vec<Alternative>>,
+    /// The targets given to units alone, as given, a unit the mod lacks among them
+    /// (#ADR-0098).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unit_targets: Vec<UnitTarget>,
 }
 
 /// The decisions of one group, as they are made.
@@ -323,6 +336,8 @@ struct Deciding<'a> {
     policy: Policy,
     facts: &'a Facts,
     group: &'a RosterGroup,
+    /// The targets given to units alone.
+    given: &'a [UnitTarget],
     /// The target of each of the champion's units, by source slot. A spread stands for the
     /// base too.
     champion_targets: BTreeMap<Slot, Option<Slot>>,
@@ -370,6 +385,8 @@ impl Deciding<'_> {
             .reworks
             .before(self.group.champion)
             .filter(|_| leans_on_old);
+        let mut given = self.given.iter().rev();
+        let given = given.find(|given| given.names(&character.name, s));
         let (chosen, reason) = if let Some(judged) = before {
             if !character.sub {
                 self.pre_rework.push(s);
@@ -381,6 +398,8 @@ impl Deciding<'_> {
                 });
             }
             (None, Reason::PreRework)
+        } else if let Some(given) = given {
+            Self::given(&mut decision, character.sub, given.target, &at, anim)
         } else if character.sub {
             let own = self.champion_targets.get(&s);
             let followed = own.or_else(|| self.champion_targets.get(&Slot::BASE));
@@ -430,6 +449,28 @@ impl Deciding<'_> {
         decision.placed = (chosen, reason);
         decision.chroma_followers = chosen.map_or(Vec::new(), |t| catalog.chromas_of(t));
         Some(decision)
+    }
+
+    /// A target given to the unit alone, judged as the policy's fixed slot is (#ADR-0098). It
+    /// stands for a sub-character's following its champion too: a person named the unit.
+    fn given(
+        decision: &mut Decision,
+        sub: bool,
+        target: Option<Slot>,
+        at: &dyn Fn(Slot) -> SlotFacts,
+        anim: AnimReuse,
+    ) -> (Option<Slot>, Reason) {
+        let Some(t) = target else {
+            return (None, Reason::PerUnit);
+        };
+        let there = at(t);
+        if sub && !there.game_has_bin {
+            decision.new_bin = Some(t);
+        }
+        let candidate = Candidate::judge(&there, Considered::PerUnit, anim);
+        decision.unfit = !candidate.feasible;
+        decision.candidates.push(candidate);
+        (Some(t), Reason::PerUnit)
     }
 
     /// A skin0 unit or a spread under `auto`: skin0 first, then the premium origin, then the
@@ -502,6 +543,14 @@ impl Policy {
     /// The stage `decide`: every representative unit's decision under this policy. A pure
     /// function of the facts.
     pub fn decide(&self, facts: &Facts) -> Targets {
+        self.decide_with(facts, &[])
+    }
+
+    /// The stage `decide` with targets given to units alone (#ADR-0098): a unit named takes
+    /// its given target in place of the policy's, and every other unit follows the policy. A
+    /// target names a unit by its character and the slot the mod ships it at; one that names
+    /// no unit of the mod changes nothing. Of two that name one unit, the later stands.
+    pub fn decide_with(&self, facts: &Facts, given: &[UnitTarget]) -> Targets {
         let mut decisions: BTreeMap<UnitId, Decision> = BTreeMap::new();
         let mut conflicts = Vec::new();
         for group in &facts.roster.groups {
@@ -509,6 +558,7 @@ impl Policy {
                 policy: *self,
                 facts,
                 group,
+                given,
                 champion_targets: BTreeMap::new(),
                 pre_rework: Vec::new(),
             };
@@ -530,6 +580,7 @@ impl Policy {
             decisions,
             conflicts,
             alternatives: BTreeMap::new(),
+            unit_targets: given.to_vec(),
         }
     }
 }
@@ -647,7 +698,7 @@ impl Targets {
                         follows: reason == Reason::SubFollows,
                     });
                 }
-                (Some(_), Reason::Forced) => {}
+                (Some(_), Reason::Forced | Reason::PerUnit) => {}
                 // #ADR-0076: `target.conflict` says where the unit was placed.
                 (Some(_), _) if decision.reason == Reason::Conflict => {}
                 (Some(slot), reason) => {
