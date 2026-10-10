@@ -416,3 +416,79 @@ fn the_second_run_of_an_archive_starts_from_the_ingest_tiers_raw_snapshot() {
         .collect();
     assert_eq!(reports[0], reports[1], "the reports of a read and a resume");
 }
+
+#[test]
+fn the_runs_are_listed_newest_first_with_the_stages_each_reached() {
+    let bench = Bench::new();
+    let repair = bench.request(&own_mod(), "repaired.fantome", StageName::Write);
+    let mut port = bench.request(&own_mod(), "ported.fantome", StageName::Write);
+    port.kind = RunKind::Port;
+    bench.run(&repair);
+    bench.run(&port);
+
+    let listed = bench.store.list().unwrap();
+
+    let ids: Vec<u64> = listed.iter().map(|row| row.id).collect();
+    assert_eq!(ids, [2, 1]);
+    let (ported, repaired) = (&listed[0], &listed[1]);
+    assert_eq!(
+        (ported.kind, repaired.kind),
+        (RunKind::Port, RunKind::Repair)
+    );
+    use StageName::*;
+    assert_eq!(repaired.reached, [Load, Fix, Build, Check]);
+    assert_eq!(
+        ported.reached,
+        [Load, Fix, Facts, Decide, Plan, Build, Check]
+    );
+    // One archive under two names: one raw row, named by the last read.
+    assert_eq!(ported.file_name, "ported.fantome");
+    assert_eq!(ported.sha256, repaired.sha256);
+    assert_eq!(ported.sha256.len(), 64);
+    assert!(!ported.kept);
+    assert!(
+        ported
+            .package
+            .as_deref()
+            .is_some_and(|p| p.ends_with(".modpkg"))
+    );
+    let view = bench.store.view().unwrap();
+    assert_eq!((view.runs, view.kept, view.mods), (2, 0, 1));
+    assert!(view.rows_bytes > 0 && view.tier_bytes > 0 && view.ingest_bytes > 0);
+}
+
+#[test]
+fn a_mods_text_reaches_the_listing_cleaned() {
+    let bench = Bench::new();
+    bench.run(&bench.request(&own_mod(), "mod.fantome", StageName::Write));
+    // A right-to-left override in the name, an escape sequence in the author.
+    bench
+        .rows()
+        .execute(
+            "UPDATE raw SET name = ?1, author = ?2",
+            [
+                format!("Evil{}Name", '\u{202e}'),
+                format!("a{}[31m", '\u{1b}'),
+            ],
+        )
+        .unwrap();
+
+    let listed = bench.store.list().unwrap();
+
+    assert_eq!(listed[0].name.as_deref(), Some(r"Evil\u{202e}Name"));
+    assert_eq!(listed[0].author.as_deref(), Some(r"a\u{1b}[31m"));
+}
+
+#[test]
+fn a_kept_runs_report_reads_back_as_the_run_wrote_it() {
+    let bench = Bench::new();
+    let request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+    let view = bench.run(&request);
+    let id = view.saved.unwrap();
+
+    let report = bench.store.report(id).unwrap().expect("the report");
+
+    let report: serde_json::Value = serde_json::from_str(&report).unwrap();
+    assert!(report.get("package").is_some(), "{report}");
+    assert_eq!(bench.store.report(id + 1).unwrap(), None);
+}

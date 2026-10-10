@@ -9,6 +9,7 @@
 //! The rows and the run tier are behind one lock, so a sweep never runs while a save flushes.
 //! A rows file of another format is moved aside and a new one made, never migrated in place.
 
+mod read;
 mod tier;
 
 use std::collections::BTreeMap;
@@ -22,6 +23,7 @@ use reforge::report::Report;
 use reforge::snapshot::{self, LoadSnapshot, RawCache, Snapshots, StageSnapshot};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
+pub use self::read::{RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
 use crate::error::AppError;
 use crate::run::{RunKind, RunSettings};
@@ -90,6 +92,7 @@ CREATE INDEX run_blob_id ON run_blob(id);
 
 /// The runs the app keeps, their snapshots and the bytes they name.
 pub struct AppStore {
+    dir: Utf8PathBuf,
     ingest: RawCache,
     tier: RunTier,
     rows: Mutex<Connection>,
@@ -127,6 +130,7 @@ impl AppStore {
         let tier = RunTier::open(dir.join(RUN_TIER_DIR))?;
         let rows = open_rows(&dir.join(ROWS_FILE))?;
         Ok(Self {
+            dir: dir.to_path_buf(),
             ingest,
             tier,
             rows: Mutex::new(rows),
@@ -215,7 +219,13 @@ fn insert_run(tx: &Transaction<'_>, saved: &Saved) -> Result<u64, AppError> {
     for id in saved.layer.keys() {
         blob.execute(params![run_id, id.0.as_slice()])?;
     }
-    Ok(u64::try_from(run_id).unwrap_or_else(|_| panic!("SQLite numbered a run {run_id}")))
+    Ok(number(run_id))
+}
+
+/// A run's number or a count, as SQLite gives it: never negative, since SQLite numbers rows
+/// from 1.
+fn number(value: i64) -> u64 {
+    u64::try_from(value).unwrap_or_else(|_| panic!("SQLite gave {value} for a number or a count"))
 }
 
 /// The key of a load (#ADR-0096): the hex of the SHA-256 over the JSON of what the snapshot
@@ -256,6 +266,12 @@ fn pack_snapshot<S: StageSnapshot>(snapshot: &S) -> Result<Vec<u8>, AppError> {
 /// JSON as a column: one zstd frame.
 fn pack(json: &str) -> Result<Vec<u8>, AppError> {
     zstd::encode_all(json.as_bytes(), ZSTD_LEVEL).map_err(failed)
+}
+
+/// A column as JSON.
+fn unpack(column: &[u8]) -> Result<String, AppError> {
+    let bytes = zstd::decode_all(column).map_err(failed)?;
+    String::from_utf8(bytes).map_err(failed)
 }
 
 /// The rows' database at `path`: the one there when it is of this format, else a new one.
