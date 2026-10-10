@@ -90,7 +90,14 @@ fn a_port_runs_every_stage_but_the_write() {
     let run = porter.port(&own_mod(), FILE_NAME).expect("no fault");
 
     assert_eq!(run.halted(), None);
-    assert!(run.archive().is_none(), "load took the archive");
+    let raw = run.archive().expect("the run holds the raw snapshot");
+    assert!(
+        raw.wads
+            .iter()
+            .flat_map(|wad| wad.files.values())
+            .all(|file| run.store().get(file.content).is_some()),
+        "every file's bytes are in the run's store"
+    );
     assert!(run.fixed().is_some());
     assert!(run.dating().is_some() && run.inventory().is_some() && run.provenance().is_some());
     assert!(run.changes().is_some());

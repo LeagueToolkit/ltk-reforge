@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use fs_err as fs;
-use reforge::archive::{Archive, Caps};
+use reforge::archive::{self, Caps, RawSnapshot};
 use reforge::diag::{Channel, Diagnostics, Record, Render, Stage};
 use reforge::env::Env;
 use reforge::game::{GameSource, NameBook};
@@ -15,6 +15,7 @@ use reforge::load::{
 };
 use reforge::model::entity::{FileKind, FileSource, FileUse, MadeBy, WadRole};
 use reforge::model::{ChunkPath, Dump, DumpCx, FixupInfo, NoNames, Phase, Spell, name_hash};
+use reforge::store::MemoryStore;
 use reforge_testkit::bins::{Skin, bin, blob, entry, linked_bin};
 use reforge_testkit::mods::FILE_NAME;
 use reforge_testkit::skins::{self, BASE_TEX, WAD, base_skin, skin_bin};
@@ -49,26 +50,24 @@ fn small_mod() -> ModArchive {
         .file(WAD, BASE_TEX, blob("repainted"))
 }
 
-fn read(archive: &ModArchive, log: &mut Diagnostics) -> Archive {
-    let bytes = archive.build();
-    Archive::read(
-        &bytes,
-        FILE_NAME,
-        &Caps::default(),
-        &mut log.at(Stage::Read),
-    )
-    .expect("it reads")
+/// An archive read into a store of its own.
+fn read(built: &ModArchive, log: &mut Diagnostics) -> (RawSnapshot, MemoryStore) {
+    let bytes = built.build();
+    let store = MemoryStore::new();
+    let caps = Caps::default();
+    let raw = archive::read(&bytes, FILE_NAME, &caps, &store, &mut log.at(Stage::Read));
+    (raw.expect("it reads"), store)
 }
 
 #[test]
 fn each_step_leaves_the_mod_as_far_as_it_goes() {
     let env = env();
     let mut log = Diagnostics::new();
-    let archive = read(&small_mod(), &mut log);
+    let (raw, store) = read(&small_mod(), &mut log);
     let mut loader = Loader::new(&env).options(LoadOptions::new());
     let mut sink = log.at(Stage::Load);
 
-    let mut m = loader.open(archive);
+    let mut m = loader.open(&raw, &store).expect("the store answers");
     assert_eq!((m.wads.len(), m.files.len()), (1, 3));
     assert!(m.wads.values().all(|wad| wad.role == WadRole::Other));
     assert!(
@@ -176,10 +175,12 @@ fn text_a_mod_spells_is_cleaned_in_the_dump() {
     let mut log = Diagnostics::new();
     let bytes = archive.build();
     let name = "evil\u{202e}emotnaf.zip";
-    let archive = Archive::read(&bytes, name, &Caps::default(), &mut log.at(Stage::Read));
+    let store = MemoryStore::new();
+    let caps = Caps::default();
+    let raw = archive::read(&bytes, name, &caps, &store, &mut log.at(Stage::Read));
     let mut loader = Loader::new(&env);
     let m = loader
-        .load(archive.expect("it reads"), &mut log.at(Stage::Load))
+        .load(&raw.expect("it reads"), &store, &mut log.at(Stage::Load))
         .expect("a mod");
     let dump = m.dump(&DumpCx::new(&NoNames).every_file());
     assert!(
@@ -200,6 +201,26 @@ fn text_a_mod_spells_is_cleaned_in_the_dump() {
         messages.iter().all(|m| !m.contains('\u{1b}')),
         "{messages:?}"
     );
+}
+
+#[test]
+fn a_snapshot_naming_bytes_the_store_lacks_is_a_fault_of_the_store() {
+    // #ADR-0093: the snapshot names bytes by id. A store that lacks them does not answer as
+    // if the file held nothing.
+    let env = env();
+    let mut log = Diagnostics::new();
+    let (raw, _store) = read(&small_mod(), &mut log);
+    let mut loader = Loader::new(&env);
+    let Err(LoadError::Store(id)) = loader.open(&raw, &MemoryStore::new()) else {
+        panic!("an empty store is a fault");
+    };
+    let named: Vec<_> = raw
+        .wads
+        .iter()
+        .flat_map(|wad| wad.files.values().map(|file| file.content))
+        .chain(raw.extras.iter().map(|extra| extra.head))
+        .collect();
+    assert!(named.contains(&id), "{id:?} is one the snapshot names");
 }
 
 #[test]
@@ -238,12 +259,12 @@ fn the_paths_a_bin_spells_name_the_chunks_of_a_packed_wad() {
 fn a_character_is_spelled_as_its_skin_entry_spells_it_and_its_names_are_learnt() {
     let env = env();
     let mut log = Diagnostics::new();
-    let archive = read(&small_mod(), &mut log);
+    let (raw, store) = read(&small_mod(), &mut log);
     let mut book = NameBook::new();
     book.learn_entry(ENTRY);
     let mut loader = Loader::new(&env).book(book);
     let m = loader
-        .load(archive, &mut log.at(Stage::Load))
+        .load(&raw, &store, &mut log.at(Stage::Load))
         .expect("a mod");
     assert_eq!(m.characters.values().next().expect("test").spelled, "Test");
     let names = loader.into_names();
@@ -402,10 +423,10 @@ fn a_fault_of_a_file_fixup_ends_the_load() {
 
     // The step gives the fault as it is, and the stage makes it its own error.
     let mut log = Diagnostics::new();
-    let archive = read(&small_mod(), &mut log);
+    let (raw, store) = read(&small_mod(), &mut log);
     let options = LoadOptions::new().without_fixups().fixup(Faulty);
     let mut loader = Loader::new(&env).options(options);
-    let mut m = loader.open(archive);
+    let mut m = loader.open(&raw, &store).expect("the store answers");
     let fixed = loader.fix_files(&mut m, &mut log.at(Stage::Load));
     assert!(matches!(
         fixed,

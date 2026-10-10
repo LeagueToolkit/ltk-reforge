@@ -1,30 +1,76 @@
 //! The archive reader over zips built here: every layout, the caps, the names it refuses, what
-//! it skips and what it notes.
+//! it skips and what it notes, and the raw snapshot it gives with the bytes in the store.
 
 use std::collections::BTreeMap;
+use std::ops::Deref;
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
 use reforge::archive::{
-    Archive, BudgetExceeded, CODES, Caps, ChunkDuplicates, CodecsUnsupported, EntriesCorrupt,
+    self, BudgetExceeded, CODES, Caps, ChunkDuplicates, CodecsUnsupported, EntriesCorrupt,
     EntriesTooLarge, EntriesUnreadable, InfoUnreadable, NamesUnsafe, NotZip, PackedError,
-    RepackDuplicates, StoredCrcWrong, TooManyEntries, WadUnreadable, file_kind,
+    RAW_VERSION, RawFile, RawImage, RawSnapshot, RepackDuplicates, StoredCrcWrong, TooManyEntries,
+    WadUnreadable, file_kind,
 };
 use reforge::diag::{Channel, Diag, Diagnostics, Halted, Render, Severity, Stage, Subject};
-use reforge::model::entity::{FileKind, MAX_IMAGE_BYTES, ModImage, WadLayout};
-use reforge::model::{ContentId, PathError, Spelled, WadHash, path_hash};
+use reforge::model::entity::{FileKind, MAX_IMAGE_BYTES, WadLayout};
+use reforge::model::{ByteView, ContentId, PathError, Spelled, WadHash, path_hash};
+use reforge::store::{BlobStore, MemoryStore};
 
 use reforge_testkit::archive::{
     DEFLATED, Field, STORED, WAD_COUNT_AT, WAD_TABLE_AT, get_u32, packed_wad, put_u32, rewrite, zip,
 };
 
-fn read_with(bytes: &[u8], caps: &Caps) -> (Result<Archive, Halted>, Diagnostics) {
-    let mut log = Diagnostics::new();
-    let result = Archive::read(bytes, "mod.fantome", caps, &mut log.at(Stage::Read));
-    (result, log)
+/// An archive read into a store of its own.
+#[derive(Debug)]
+struct Read {
+    raw: RawSnapshot,
+    store: MemoryStore,
 }
 
-fn read(bytes: &[u8]) -> (Archive, Diagnostics) {
+impl Deref for Read {
+    type Target = RawSnapshot;
+
+    fn deref(&self) -> &RawSnapshot {
+        &self.raw
+    }
+}
+
+impl Read {
+    /// The file of a WAD at a path hash.
+    fn file(&self, wad: usize, hash: WadHash) -> &RawFile {
+        self.raw.wads[wad]
+            .files
+            .get(&hash)
+            .unwrap_or_else(|| panic!("no file at {hash:?} in WAD {wad}"))
+    }
+
+    /// The first file of a WAD, in path-hash order.
+    fn first(&self, wad: usize) -> &RawFile {
+        self.raw.wads[wad].files.values().next().expect("a file")
+    }
+
+    /// A file's bytes, from the store.
+    fn bytes(&self, file: &RawFile) -> ByteView {
+        self.store
+            .get(file.content)
+            .unwrap_or_else(|| panic!("the store holds {:?}", file.content))
+    }
+
+    /// The bytes of a WAD's file at a path.
+    fn bytes_at(&self, wad: usize, path: &str) -> ByteView {
+        self.bytes(self.file(wad, path_hash(path)))
+    }
+}
+
+fn read_with(bytes: &[u8], caps: &Caps) -> (Result<Read, Halted>, Diagnostics) {
+    let mut log = Diagnostics::new();
+    let store = MemoryStore::new();
+    let result = archive::read(bytes, "mod.fantome", caps, &store, &mut log.at(Stage::Read));
+    (result.map(|raw| Read { raw, store }), log)
+}
+
+fn read(bytes: &[u8]) -> (Read, Diagnostics) {
     let (result, log) = read_with(bytes, &Caps::default());
     let archive =
         result.unwrap_or_else(|halted| panic!("the read ended: {halted}, {:?}", log.get(halted.0)));
@@ -89,30 +135,18 @@ fn chunks_are_found_by_path_and_by_hash() {
     let wad = &archive.wads[0];
     assert_eq!(wad.name.as_str(), "Lux.wad.client");
     assert_eq!(wad.layout, WadLayout::Loose);
-    assert_eq!(wad.chunks.len(), 3);
+    assert_eq!(wad.files.len(), 3);
 
-    let by_path = wad
-        .chunks
-        .iter()
-        .find(|c| c.hash == path_hash(SKIN))
-        .unwrap();
+    let by_path = archive.file(0, path_hash(SKIN));
     assert_eq!(by_path.path.as_ref().map(|p| p.as_str()), Some(SKIN));
-    assert_eq!(&*by_path.bytes, b"PROP-ish");
+    assert_eq!(&*archive.bytes(by_path), b"PROP-ish");
     assert_eq!(by_path.content, ContentId::of(b"PROP-ish"));
 
-    let by_hash = wad
-        .chunks
-        .iter()
-        .find(|c| c.hash == WadHash(0x0123_4567_89ab_cdef))
-        .unwrap();
-    assert_eq!(&*by_hash.bytes, b"hashed");
+    let by_hash = archive.file(0, WadHash(0x0123_4567_89ab_cdef));
+    assert_eq!(&*archive.bytes(by_hash), b"hashed");
     assert_eq!(by_hash.path, None);
-    let with_extension = wad
-        .chunks
-        .iter()
-        .find(|c| c.hash == WadHash(0xfedc_ba98_7654_3210))
-        .unwrap();
-    assert_eq!(&*with_extension.bytes, b"hashed too");
+    let with_extension = archive.file(0, WadHash(0xfedc_ba98_7654_3210));
+    assert_eq!(&*archive.bytes(with_extension), b"hashed too");
 
     let repack = one::<RepackDuplicates>(&log);
     assert_eq!(repack.wad.raw(), "Lux.wad.client");
@@ -121,6 +155,46 @@ fn chunks_are_found_by_path_and_by_hash() {
         ["WAD/Lux.wad.client/0123456789abcdef.1"]
     );
     assert_eq!(codes(&log), ["archive.repack-duplicate"]);
+}
+
+#[test]
+fn the_read_puts_every_entrys_bytes_in_the_store_once_and_the_snapshot_names_them() {
+    // #ADR-0093, #ADR-0094: two chunks of one content are one blob, and the extras' first
+    // bytes and the image are blobs too.
+    let bytes = zip(&[
+        ("WAD/Lux.wad.client/data/a.bin", b"the same bytes", STORED),
+        ("WAD/Lux.wad.client/data/b.bin", b"the same bytes", DEFLATED),
+        ("WAD/Ahri.wad.client/data/c.bin", b"other bytes", STORED),
+        ("META/image.png", b"the image", STORED),
+        ("RAW/readme.txt", b"a readme", STORED),
+    ]);
+    let (archive, log) = read(&bytes);
+    assert!(log.is_empty(), "{:?}", codes(&log));
+    assert_eq!(archive.version, RAW_VERSION);
+    let same = ContentId::of(b"the same bytes");
+    assert_eq!(archive.file(1, path_hash("data/a.bin")).content, same);
+    assert_eq!(archive.file(1, path_hash("data/b.bin")).content, same);
+    let mut ids = vec![
+        same,
+        ContentId::of(b"other bytes"),
+        ContentId::of(b"the image"),
+        ContentId::of(b"a readme"),
+    ];
+    ids.sort();
+    assert_eq!(archive.store.ids(), ids, "one blob per distinct content");
+    assert_eq!(
+        archive.image,
+        Some(RawImage::Held(ContentId::of(b"the image")))
+    );
+    let heads: Vec<ContentId> = archive.extras.iter().map(|e| e.head).collect();
+    assert_eq!(
+        heads,
+        [ContentId::of(b"the image"), ContentId::of(b"a readme")]
+    );
+    assert_eq!(
+        archive.store.get(same).as_deref(),
+        Some(&b"the same bytes"[..])
+    );
 }
 
 #[test]
@@ -139,9 +213,9 @@ fn a_name_is_a_hash_directly_under_its_wad_and_a_duplicate_by_a_whole_number() {
     ]);
     let (archive, log) = read(&bytes);
     let mut chunks: Vec<(WadHash, Option<&str>)> = archive.wads[0]
-        .chunks
+        .files
         .iter()
-        .map(|c| (c.hash, c.path.as_ref().map(|p| p.as_str())))
+        .map(|(hash, file)| (*hash, file.path.as_ref().map(|p| p.as_str())))
         .collect();
     chunks.sort_by_key(|(_, path)| path.is_none());
     assert_eq!(chunks[0], (path_hash(in_folder), Some(in_folder)));
@@ -169,21 +243,30 @@ fn entries_outside_the_wads_are_kept_as_a_name_a_size_and_first_bytes() {
     rewrite(&mut bytes, "tool.exe", Field::Method(14));
     let (archive, log) = read(&bytes);
     assert!(archive.wads.is_empty());
-    let extras: Vec<(&str, u64, &[u8])> = archive
+    let extras: Vec<(&str, u64, Vec<u8>)> = archive
         .extras
         .iter()
-        .map(|e| (e.name.raw(), e.size, e.head.as_slice()))
+        .map(|e| {
+            let head = archive.store.get(e.head).expect("the head is held");
+            (e.name.raw(), e.size, head.to_vec())
+        })
         .collect();
     assert_eq!(
         extras,
         [
-            ("RAW/readme.txt", 7, &b"ignored"[..]),
-            ("WAD/Lux.wad.client.pyntex.json", 2, &b"{}"[..]),
-            ("WAD/notes/todo.txt", 200, &long[..64]),
-            ("tool.exe", 11, &[][..]),
+            ("RAW/readme.txt", 7, b"ignored".to_vec()),
+            ("WAD/Lux.wad.client.pyntex.json", 2, b"{}".to_vec()),
+            ("WAD/notes/todo.txt", 200, long[..64].to_vec()),
+            ("tool.exe", 11, Vec::new()),
         ],
         "a directory is no entry, and a codec that is not read leaves the name"
     );
+    let opened = archive
+        .open_extras(&archive.store)
+        .expect("the store answers");
+    let heads: Vec<&[u8]> = opened.iter().map(|e| e.head.as_slice()).collect();
+    assert_eq!(heads[0], b"ignored");
+    assert_eq!(heads[3], b"");
     assert!(log.is_empty(), "{:?}", codes(&log));
 }
 
@@ -197,10 +280,17 @@ fn the_mods_image_is_held_whole_and_no_other_extra_is() {
         ("META/image.jpg", b"another name", STORED),
     ]);
     let (archive, log) = read(&bytes);
+    let id = ContentId::of(b"the image");
     assert_eq!(
         archive.image,
-        Some(ModImage::Held(b"the image"[..].into())),
+        Some(RawImage::Held(id)),
         "the first entry at the name, in any case"
+    );
+    assert_eq!(archive.store.get(id).as_deref(), Some(&b"the image"[..]));
+    assert_eq!(
+        archive.extras[1].head,
+        ContentId::of(b"a second image"),
+        "the second entry at the name is an extra, by its first bytes alone"
     );
     assert_eq!(archive.extras.len(), 3, "the image is an extra as before");
     assert!(log.is_empty(), "{:?}", codes(&log));
@@ -214,13 +304,13 @@ fn an_image_over_the_cap_or_that_does_not_read_is_not_held_and_raises_nothing() 
     let wad = ("WAD/Lux.wad.client/data/x.bin", &b"one"[..], STORED);
     let large = vec![0u8; MAX_IMAGE_BYTES as usize + 1];
     let (archive, log) = read(&zip(&[wad, ("META/image.png", &large, DEFLATED)]));
-    assert_eq!(archive.image, Some(ModImage::TooLarge(MAX_IMAGE_BYTES + 1)));
+    assert_eq!(archive.image, Some(RawImage::TooLarge(MAX_IMAGE_BYTES + 1)));
     assert!(log.is_empty(), "{:?}", codes(&log));
 
     let mut bytes = zip(&[wad, ("META/image.png", b"the image", STORED)]);
     rewrite(&mut bytes, "META/image.png", Field::Method(14));
     let (archive, log) = read(&bytes);
-    assert_eq!(archive.image, Some(ModImage::Unreadable));
+    assert_eq!(archive.image, Some(RawImage::Unreadable));
     assert!(log.is_empty(), "{:?}", codes(&log));
 }
 
@@ -237,9 +327,9 @@ fn a_name_is_read_in_any_case_and_with_either_separator() {
     let wad = &archive.wads[0];
     assert_eq!(wad.name.as_str(), "Lux.wad.client", "as first spelled");
     let mut paths: Vec<&str> = wad
-        .chunks
-        .iter()
-        .map(|c| c.path.as_ref().unwrap().as_str())
+        .files
+        .values()
+        .map(|f| f.path.as_ref().unwrap().as_str())
         .collect();
     paths.sort_unstable();
     assert_eq!(paths, ["data/sub/x.bin", "data/y.bin"]);
@@ -258,7 +348,7 @@ fn wads_come_in_name_order_and_chunks_in_hash_order() {
     let (archive, _) = read(&bytes);
     let names: Vec<&str> = archive.wads.iter().map(|w| w.name.as_str()).collect();
     assert_eq!(names, ["A.wad.client", "b.wad.client"]);
-    let hashes: Vec<WadHash> = archive.wads[0].chunks.iter().map(|c| c.hash).collect();
+    let hashes: Vec<WadHash> = archive.wads[0].files.keys().copied().collect();
     let mut sorted = hashes.clone();
     sorted.sort();
     assert_eq!(hashes, sorted);
@@ -273,13 +363,9 @@ fn a_packed_wad_is_mounted_from_memory() {
     let (archive, log) = read(&bytes);
     let lux = &archive.wads[0];
     assert_eq!(lux.layout, WadLayout::Packed);
-    assert_eq!(lux.chunks.len(), 2);
-    let skin = lux
-        .chunks
-        .iter()
-        .find(|c| c.hash == path_hash(SKIN))
-        .unwrap();
-    assert_eq!(&*skin.bytes, b"inside a packed wad");
+    assert_eq!(lux.files.len(), 2);
+    let skin = archive.file(0, path_hash(SKIN));
+    assert_eq!(&*archive.bytes(skin), b"inside a packed wad");
     assert_eq!(skin.content, ContentId::of(b"inside a packed wad"));
     assert_eq!(skin.path, None, "a packed WAD spells no path");
     assert!(log.is_empty());
@@ -297,14 +383,7 @@ fn a_chunk_has_the_kind_its_first_bytes_say() {
         ("WAD/Ahri.wad.client", &wad, STORED),
     ]);
     let (archive, _) = read(&bytes);
-    let kind = |wad: usize, path: &str| {
-        archive.wads[wad]
-            .chunks
-            .iter()
-            .find(|c| c.hash == path_hash(path))
-            .unwrap()
-            .kind
-    };
+    let kind = |wad: usize, path: &str| file_kind(&archive.bytes_at(wad, path));
     assert_eq!(kind(0, "data/packed.bin"), FileKind::Bin);
     assert_eq!(kind(1, "data/a.bin"), FileKind::Bin);
     assert_eq!(kind(1, "data/b.bin"), FileKind::Ptch);
@@ -344,7 +423,7 @@ fn info_that_does_not_parse_is_noted_and_the_archive_is_read() {
     ]);
     let (archive, log) = read(&bytes);
     assert_eq!(archive.meta.name, None);
-    assert_eq!(archive.wads[0].chunks.len(), 1);
+    assert_eq!(archive.wads[0].files.len(), 1);
     let unreadable = one::<InfoUnreadable>(&log);
     assert_eq!(unreadable.entry.raw(), "META/info.json");
     assert!(!unreadable.reason.is_empty());
@@ -366,8 +445,8 @@ fn a_name_that_is_no_path_inside_a_wad_is_skipped() {
     let (archive, log) = read(&bytes);
     assert_eq!(archive.wads.len(), 1);
     assert_eq!(archive.wads[0].name.as_str(), "X.wad.client");
-    assert_eq!(archive.wads[0].chunks.len(), 1);
-    assert_eq!(&*archive.wads[0].chunks[0].bytes, b"e");
+    assert_eq!(archive.wads[0].files.len(), 1);
+    assert_eq!(&*archive.bytes(archive.first(0)), b"e");
     assert!(archive.extras.is_empty(), "a refused name is no extra");
 
     let found: Vec<&NamesUnsafe> = log.of::<NamesUnsafe>().collect();
@@ -422,7 +501,7 @@ fn an_entry_declaring_more_than_the_cap_is_skipped() {
     };
     let (archive, log) = read_with(&bytes, &caps);
     let archive = archive.unwrap();
-    assert_eq!(archive.wads[0].chunks.len(), 1);
+    assert_eq!(archive.wads[0].files.len(), 1);
     let large = one::<EntriesTooLarge>(&log);
     assert_eq!(large.within.raw(), "Lux.wad.client");
     assert_eq!(large.cap, 1024);
@@ -502,6 +581,32 @@ fn the_inflate_budget_ends_the_read_and_what_was_found_before_is_kept() {
 }
 
 #[test]
+fn a_read_that_ends_early_puts_nothing_in_the_store() {
+    // #ADR-0093: the bytes go into the store when the read is whole, so a halted read
+    // leaves nothing behind.
+    let chunk = vec![1u8; 600];
+    let bytes = zip(&[
+        ("WAD/Lux.wad.client/a.bin", &chunk, STORED),
+        ("WAD/Lux.wad.client/b.bin", &chunk, DEFLATED),
+    ]);
+    let caps = Caps {
+        total_bytes: 1000,
+        ..Caps::default()
+    };
+    let mut log = Diagnostics::new();
+    let store = MemoryStore::new();
+    let result = archive::read(
+        &bytes,
+        "mod.fantome",
+        &caps,
+        &store,
+        &mut log.at(Stage::Read),
+    );
+    assert!(result.is_err());
+    assert!(store.is_empty());
+}
+
+#[test]
 fn a_packed_chunk_is_charged_by_its_declared_size_before_it_is_decompressed() {
     let zeros = vec![0u8; 600];
     let wad = packed_wad(&[("data/a.bin", &zeros), ("data/b.bin", &zeros)]);
@@ -525,7 +630,7 @@ fn a_packed_chunk_is_charged_by_its_declared_size_before_it_is_decompressed() {
         ..Caps::default()
     };
     let (result, log) = read_with(&bytes, &enough);
-    assert_eq!(result.unwrap().wads[0].chunks.len(), 2);
+    assert_eq!(result.unwrap().wads[0].files.len(), 2);
     assert!(log.is_empty());
 }
 
@@ -686,7 +791,7 @@ fn a_stored_entry_with_a_wrong_checksum_is_read_and_noted() {
     let mut bytes = zip(&[(name, b"stored bytes", STORED)]);
     rewrite(&mut bytes, name, Field::Crc(0xdead_beef));
     let (archive, log) = read(&bytes);
-    assert_eq!(&*archive.wads[0].chunks[0].bytes, b"stored bytes");
+    assert_eq!(&*archive.bytes(archive.first(0)), b"stored bytes");
     let wrong = one::<StoredCrcWrong>(&log);
     assert_eq!(wrong.within.raw(), "Lux.wad.client");
     assert_eq!(spelled(&wrong.entries), [name]);
@@ -713,7 +818,7 @@ fn a_packed_wad_stored_with_a_wrong_checksum_is_mounted_and_noted() {
         (lux.name.as_str(), lux.layout),
         ("Lux.wad.client", WadLayout::Packed)
     );
-    assert_eq!(&*lux.chunks[0].bytes, b"inside a packed wad");
+    assert_eq!(&*archive.bytes(archive.first(0)), b"inside a packed wad");
     let wrong: Vec<(&str, Vec<&str>)> = log
         .of::<StoredCrcWrong>()
         .map(|found| (found.within.raw(), spelled(&found.entries)))
@@ -743,8 +848,8 @@ fn a_compressed_entry_that_fails_its_checksum_is_skipped() {
     ]);
     rewrite(&mut bytes, name, Field::Crc(0xdead_beef));
     let (archive, log) = read(&bytes);
-    assert_eq!(archive.wads[0].chunks.len(), 1);
-    assert_eq!(&*archive.wads[0].chunks[0].bytes, b"fine");
+    assert_eq!(archive.wads[0].files.len(), 1);
+    assert_eq!(&*archive.bytes(archive.first(0)), b"fine");
     let corrupt = one::<EntriesCorrupt>(&log);
     assert_eq!(corrupt.within.raw(), "Lux.wad.client");
     assert_eq!(spelled(&corrupt.entries), [name]);
@@ -771,7 +876,7 @@ fn an_entry_in_a_codec_other_than_deflate_or_stored_is_skipped() {
     );
     rewrite(&mut bytes, "META/info.json", Field::Method(14));
     let (archive, log) = read(&bytes);
-    assert_eq!(archive.wads[0].chunks.len(), 1);
+    assert_eq!(archive.wads[0].files.len(), 1);
     let found: Vec<&CodecsUnsupported> = log.of::<CodecsUnsupported>().collect();
     assert_eq!(
         found.len(),
@@ -795,7 +900,7 @@ fn an_entry_that_does_not_read_is_skipped_under_its_own_code() {
     // Stored bytes read as a deflate stream: the stream is damaged, not its checksum.
     rewrite(&mut bytes, name, Field::Method(8));
     let (archive, log) = read(&bytes);
-    assert_eq!(archive.wads[0].chunks.len(), 1);
+    assert_eq!(archive.wads[0].files.len(), 1);
     let unreadable = one::<EntriesUnreadable>(&log);
     assert_eq!(unreadable.within.raw(), "Lux.wad.client");
     assert_eq!(unreadable.entries[0].entry.raw(), name);
@@ -824,10 +929,13 @@ fn an_archive_file_is_read_from_disk_under_the_cap_for_the_file() {
     fs::write(&path, &bytes).unwrap();
 
     let mut log = Diagnostics::new();
-    let archive = Archive::read_file(&path, &Caps::default(), &mut log.at(Stage::Read)).unwrap();
-    assert_eq!(archive.meta.file_name.raw(), "lux.fantome");
-    assert_eq!(archive.meta.sha256, ContentId::of(&bytes));
-    assert_eq!(archive.wads[0].chunks.len(), 1);
+    let store = MemoryStore::new();
+    let caps = Caps::default();
+    let raw = archive::read_file(&path, &caps, &store, &mut log.at(Stage::Read)).unwrap();
+    assert_eq!(raw.meta.file_name.raw(), "lux.fantome");
+    assert_eq!(raw.meta.sha256, ContentId::of(&bytes));
+    assert_eq!(raw.wads[0].files.len(), 1);
+    assert_eq!(store.len(), 1);
     assert!(log.is_empty());
 
     let caps = Caps {
@@ -839,7 +947,8 @@ fn an_archive_file_is_read_from_disk_under_the_cap_for_the_file() {
         cap: 10,
     };
     let mut log = Diagnostics::new();
-    assert!(Archive::read_file(&path, &caps, &mut log.at(Stage::Read)).is_err());
+    let store = MemoryStore::new();
+    assert!(archive::read_file(&path, &caps, &store, &mut log.at(Stage::Read)).is_err());
     assert_eq!(one::<BudgetExceeded>(&log), &over);
     let (result, log) = read_with(&bytes, &caps);
     assert!(result.is_err(), "bytes in memory are held to the same cap");
@@ -847,7 +956,8 @@ fn an_archive_file_is_read_from_disk_under_the_cap_for_the_file() {
 
     let mut log = Diagnostics::new();
     let missing = root.join("missing.fantome");
-    assert!(Archive::read_file(&missing, &Caps::default(), &mut log.at(Stage::Read)).is_err());
+    let caps = Caps::default();
+    assert!(archive::read_file(&missing, &caps, &store, &mut log.at(Stage::Read)).is_err());
     assert_eq!(one::<NotZip>(&log).file.raw(), "missing.fantome");
 }
 
@@ -863,17 +973,15 @@ fn the_first_chunk_at_a_path_stays_and_the_later_ones_are_noted() {
     ]);
     let (archive, log) = read(&bytes);
     let wad = &archive.wads[0];
-    assert_eq!(wad.chunks.len(), 2);
-    let chunk = |path: &str| {
-        wad.chunks
-            .iter()
-            .find(|c| c.hash == path_hash(path))
-            .unwrap()
-    };
-    assert_eq!(&*chunk("data/x.bin").bytes, b"first");
-    assert_eq!(&*chunk("data/y.bin").bytes, b"by hash");
+    assert_eq!(wad.files.len(), 2);
+    assert_eq!(&*archive.bytes_at(0, "data/x.bin"), b"first");
+    assert_eq!(&*archive.bytes_at(0, "data/y.bin"), b"by hash");
     assert_eq!(
-        chunk("data/y.bin").path.as_ref().map(|p| p.as_str()),
+        archive
+            .file(0, path_hash("data/y.bin"))
+            .path
+            .as_ref()
+            .map(|p| p.as_str()),
         Some("data/y.bin"),
         "the later entry spells the path of the chunk that stays"
     );
@@ -917,34 +1025,33 @@ fn the_loose_and_the_packed_form_of_one_wad_are_one_wad() {
         ["Ahri.wad.client", "Jax.wad.client", "Zed.wad.client"]
     );
     let bytes_of = |wad: usize, path: &str| {
-        let chunk = archive.wads[wad]
-            .chunks
-            .iter()
-            .find(|c| c.hash == path_hash(path))
-            .unwrap();
-        (&*chunk.bytes, chunk.path.as_ref().map(|p| p.as_str()))
+        let file = archive.file(wad, path_hash(path));
+        (
+            archive.bytes(file).to_vec(),
+            file.path.as_ref().map(|p| p.as_str()),
+        )
     };
     for wad in &archive.wads {
         assert_eq!(wad.layout, WadLayout::Packed, "{}", wad.name);
     }
 
-    assert_eq!(archive.wads[0].chunks.len(), 3);
+    assert_eq!(archive.wads[0].files.len(), 3);
     assert_eq!(
         bytes_of(0, "data/a.bin"),
-        (&b"packed a"[..], Some("data/a.bin")),
+        (b"packed a".to_vec(), Some("data/a.bin")),
         "the packed chunk came first, and the loose entry spells its path"
     );
-    assert_eq!(bytes_of(0, "data/b.bin"), (&b"packed b"[..], None));
+    assert_eq!(bytes_of(0, "data/b.bin"), (b"packed b".to_vec(), None));
     assert_eq!(
         bytes_of(0, "data/c.bin"),
-        (&b"loose c"[..], Some("data/c.bin"))
+        (b"loose c".to_vec(), Some("data/c.bin"))
     );
 
-    assert_eq!(archive.wads[1].chunks.len(), 2);
+    assert_eq!(archive.wads[1].files.len(), 2);
     assert_eq!(bytes_of(1, "data/a.bin").0, b"first packed");
     assert_eq!(bytes_of(1, "data/c.bin").0, b"c");
 
-    assert_eq!(archive.wads[2].chunks.len(), 2);
+    assert_eq!(archive.wads[2].files.len(), 2);
     assert_eq!(bytes_of(2, "data/a.bin").0, b"loose a");
     assert_eq!(bytes_of(2, "data/b.bin").0, b"packed b");
 
@@ -987,8 +1094,8 @@ fn a_code_is_raised_once_per_subject_with_every_instance_in_it() {
         "a WAD of repack duplicates alone is none"
     );
     assert_eq!(
-        archive.wads[0].chunks[0].hash,
-        WadHash(0xaaaa_aaaa_aaaa_aaaa)
+        archive.wads[0].files.keys().next(),
+        Some(&WadHash(0xaaaa_aaaa_aaaa_aaaa))
     );
     let found: Vec<(&str, Vec<&str>)> = log
         .of::<RepackDuplicates>()
@@ -1029,10 +1136,11 @@ fn text_of_the_archive_prints_cleaned() {
         ("WAD/Lu\u{7}x.wad.client/data/b.dds", b"x", STORED),
     ]);
     let mut log = Diagnostics::new();
-    let archive = Archive::read(
+    let archive = archive::read(
         &bytes,
         "mod\u{1b}.fantome",
         &Caps::default(),
+        &MemoryStore::new(),
         &mut log.at(Stage::Read),
     )
     .unwrap();

@@ -410,16 +410,18 @@ fn the_fixup_is_a_standard_file_fixup_that_runs_once_each_file_has_its_use() {
     let mut log = Diagnostics::new();
     let bytes = mod_with(0).build();
     let caps = reforge::archive::Caps::default();
-    let archive = reforge::archive::Archive::read(
+    let store = reforge::store::MemoryStore::new();
+    let raw = reforge::archive::read(
         &bytes,
         reforge_testkit::mods::FILE_NAME,
         &caps,
+        &store,
         &mut log.at(Stage::Read),
     )
     .expect("it reads");
     let mut loader = Loader::new(&env);
     let mut sink = log.at(Stage::Load);
-    let mut m = loader.open(archive);
+    let mut m = loader.open(&raw, &store).expect("the store answers");
     let bank = m
         .file_at(m.wads.ids().next().unwrap(), path_hash(BANK))
         .unwrap();

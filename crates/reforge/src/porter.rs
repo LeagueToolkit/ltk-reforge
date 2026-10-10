@@ -16,7 +16,7 @@ use zip::CompressionMethod;
 use zip::result::ZipError;
 use zip::write::SimpleFileOptions;
 
-use crate::archive::{Archive, Caps};
+use crate::archive::{self, Caps, RawSnapshot};
 use crate::diag::{DiagnosticPolicy, Diagnostics, Halted, Render, Stage};
 use crate::env::Env;
 use crate::facts::{FactInputs, Facts, FactsError};
@@ -32,6 +32,7 @@ use crate::package::{
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
+use crate::store::{BlobStore, MemoryStore};
 
 /// The name the second run of a repair reads the first run's package under.
 const REPAIRED_NAME: &str = "repaired.fantome";
@@ -425,8 +426,8 @@ pub struct Run<'a> {
     known: Option<Evidence>,
     log: Diagnostics,
     book: NameBook,
-    read: bool,
-    archive: Option<Archive>,
+    store: Box<dyn BlobStore>,
+    raw: Option<RawSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -452,8 +453,8 @@ impl<'a> Run<'a> {
             known: None,
             log: Diagnostics::new(),
             book: NameBook::new(),
-            read: false,
-            archive: None,
+            store: Box::new(MemoryStore::new()),
+            raw: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -486,6 +487,14 @@ impl<'a> Run<'a> {
         self
     }
 
+    /// Reads the archive's bytes into this store, in place of a memory store of the run's own
+    /// (#ADR-0093).
+    #[must_use]
+    pub fn in_store(mut self, store: impl BlobStore + 'static) -> Self {
+        self.store = Box::new(store);
+        self
+    }
+
     /// Ends a stage's method where a fatal diagnostic ended the run.
     fn going(&self) -> Result<(), RunError> {
         self.log
@@ -493,35 +502,34 @@ impl<'a> Run<'a> {
             .map_or(Ok(()), |halted| Err(halted.into()))
     }
 
-    /// The stage `read`: the archive from its bytes, which are borrowed for the call.
-    /// `file_name` is for display and is never opened.
-    pub fn read(&mut self, bytes: &[u8], file_name: &str) -> Result<&Archive, RunError> {
+    /// The stage `read`: the archive from its bytes, which are borrowed for the call, read
+    /// into the run's store. The run holds the raw snapshot (#ADR-0094). `file_name` is for
+    /// display and is never opened.
+    pub fn read(&mut self, bytes: &[u8], file_name: &str) -> Result<&RawSnapshot, RunError> {
         self.going()?;
         let mut sink = self.log.at(Stage::Read);
-        let archive = Archive::read(bytes, file_name, &self.settings.caps, &mut sink)?;
-        self.read = true;
-        Ok(self.archive.insert(archive))
+        let caps = &self.settings.caps;
+        let raw = archive::read(bytes, file_name, caps, &*self.store, &mut sink)?;
+        Ok(self.raw.insert(raw))
     }
 
     /// The stage `read`, of an archive file.
-    pub fn read_file(&mut self, path: &Utf8Path) -> Result<&Archive, RunError> {
+    pub fn read_file(&mut self, path: &Utf8Path) -> Result<&RawSnapshot, RunError> {
         self.going()?;
         let mut sink = self.log.at(Stage::Read);
-        let archive = Archive::read_file(path, &self.settings.caps, &mut sink)?;
-        self.read = true;
-        Ok(self.archive.insert(archive))
+        let caps = &self.settings.caps;
+        let raw = archive::read_file(path, caps, &*self.store, &mut sink)?;
+        Ok(self.raw.insert(raw))
     }
 
-    /// The stage `load`: the mod from the archive read, then what is known of its files
-    /// before any value is read. A porter's run gathers the dating, the inventory and the
-    /// file provenance. A repairer's run gathers the dating alone: nothing of a repair reads
-    /// the other two.
+    /// The stage `load`: the mod from the raw snapshot and the store, then what is known of
+    /// its files before any value is read. A porter's run gathers the dating, the inventory
+    /// and the file provenance. A repairer's run gathers the dating alone: nothing of a
+    /// repair reads the other two.
     pub fn load(&mut self) -> Result<&Mod, RunError> {
         self.going()?;
-        if matches!(self.module, Reached::Nothing)
-            && let Some(archive) = self.archive.take()
-        {
-            self.load_archive(archive)?;
+        if matches!(self.module, Reached::Nothing) && self.raw.is_some() {
+            self.load_snapshot()?;
         }
         match &self.module {
             Reached::Loaded(module) => Ok(module),
@@ -533,13 +541,20 @@ impl<'a> Run<'a> {
         }
     }
 
-    fn load_archive(&mut self, archive: Archive) -> Result<(), RunError> {
+    fn load_snapshot(&mut self) -> Result<(), RunError> {
         let env = self.env;
         let book = std::mem::take(&mut self.book);
         let options = self.settings.load_options();
         let mut loader = Loader::new(env).options(options).book(book);
         let mut sink = self.log.at(Stage::Load);
-        let mut module = loader.open(archive);
+        let raw = held(self.raw.as_ref(), Stage::Load, Stage::Read)?;
+        let mut module = match loader.open(raw, &*self.store) {
+            Ok(module) => module,
+            Err(error) => {
+                self.book = loader.into_names();
+                return Err(RunError::Load(error));
+            }
+        };
         let known = self.known.as_ref();
         let mut steps = || -> Result<(), LoadError> {
             loader.fix_files(&mut module, &mut sink)?;
@@ -963,7 +978,7 @@ impl<'a> Run<'a> {
     /// and neither did a write the caller's policy refused.
     pub fn ran(&self, stage: Stage) -> bool {
         match stage {
-            Stage::Read => self.read,
+            Stage::Read => self.raw.is_some(),
             Stage::Load => matches!(self.module, Reached::Loaded(_) | Reached::Fixed(_)),
             Stage::Fix => matches!(self.module, Reached::Fixed(_)),
             Stage::Facts => self.facts.is_some(),
@@ -990,9 +1005,14 @@ impl<'a> Run<'a> {
         self.env
     }
 
-    /// The archive read, until `load` takes it.
-    pub fn archive(&self) -> Option<&Archive> {
-        self.archive.as_ref()
+    /// The raw snapshot of the archive read (#ADR-0094).
+    pub fn archive(&self) -> Option<&RawSnapshot> {
+        self.raw.as_ref()
+    }
+
+    /// The store the run's bytes are in.
+    pub fn store(&self) -> &dyn BlobStore {
+        &*self.store
     }
 
     /// The mod as far as the run took it: fixed, else as `load` left it, else as far as a

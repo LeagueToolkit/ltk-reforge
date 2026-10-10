@@ -1,6 +1,6 @@
 //! The report: a run's results as rows, serialised. The game is `reforge_testkit::skins`.
 
-use reforge::archive::{Archive, Caps};
+use reforge::archive::{self, Caps};
 use reforge::diag::{Diagnostics, Render, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, Rule};
@@ -11,6 +11,7 @@ use reforge::load::{Dating, FileProvenance, Inventory, LoadError, LoadOptions, L
 use reforge::model::entity::{FileSource, FileUse};
 use reforge::model::{ContentId, hash, value};
 use reforge::report::{AgainRow, Report, SCHEMA};
+use reforge::store::MemoryStore;
 use reforge_testkit::bins::{Skin, bin, blob, entry, float, linked_bin, object};
 use reforge_testkit::skins::{self, BASE_TEX, WAD, base_skin, skin_bin};
 use reforge_testkit::{LoadRun, MemoryHistory, ModArchive, PackRun};
@@ -239,14 +240,13 @@ fn a_halted_run_reports_the_mod_as_far_as_it_was_loaded() {
     let archive = ModArchive::new().file("Map11.wad.client", "data/maps/x.bin", bin(vec![]));
     let mut log = Diagnostics::new();
     let bytes = archive.build();
-    let read = Archive::read(
-        &bytes,
-        "m.fantome",
-        &Caps::default(),
-        &mut log.at(Stage::Read),
-    );
+    let store = MemoryStore::new();
+    let caps = Caps::default();
+    let read = archive::read(&bytes, "m.fantome", &caps, &store, &mut log.at(Stage::Read));
     let mut loader = Loader::new(&env);
-    let mut m = loader.open(read.expect("it reads"));
+    let mut m = loader
+        .open(&read.expect("it reads"), &store)
+        .expect("the store answers");
     let mut sink = log.at(Stage::Load);
     loader.fix_files(&mut m, &mut sink).expect("it answers");
     loader

@@ -5,8 +5,9 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use reforge::archive::{Archive, Caps, PackedError, WadUnreadable};
+use reforge::archive::{self, Caps, PackedError, WadUnreadable};
 use reforge::diag::{Diagnostics, Stage};
+use reforge::store::MemoryStore;
 use reforge_testkit::archive::{STORED, WAD_TABLE_AT, packed_wad, put_u32, zip};
 
 /// The system's allocator, with the largest size asked of it.
@@ -50,10 +51,11 @@ const MIB: usize = 1 << 20;
 fn read(bytes: &[u8]) -> (Diagnostics, usize) {
     let mut log = Diagnostics::new();
     LARGEST.store(0, Ordering::Relaxed);
-    let read = Archive::read(
+    let read = archive::read(
         bytes,
         "synthetic.fantome",
         &Caps::default(),
+        &MemoryStore::new(),
         &mut log.at(Stage::Read),
     );
     let largest = LARGEST.load(Ordering::Relaxed);

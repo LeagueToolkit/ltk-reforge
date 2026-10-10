@@ -1,10 +1,11 @@
 //! The mod from its archive: WADs, files, bins and objects, the characters and skin units they
 //! make, and what the client loads of them. Facts of the archive only. Nothing here reads a
-//! value inside an object to judge it.
+//! value inside an object to judge it. The archive comes as its raw snapshot and the store
+//! its bytes are in (#ADR-0094): the snapshot carries everything `load` reads of it.
 //!
 //! The stage is five steps, each a method of [`Loader`], in this order:
 //!
-//! 1. `open`: the WADs and files of the archive;
+//! 1. `open`: the WADs and files of the archive, their bytes from the store;
 //! 2. `fix_files`: the file fixups that make files, so that what they make is seen as the
 //!    mod's own file;
 //! 3. `take_game_bins`: the game's bins for a WAD with no skin bin (#MOD-ARTIFACT-0013);
@@ -54,14 +55,15 @@ pub use self::provenance::{Against, FileProvenance};
 pub use self::rework::{Around, ReworkTable};
 pub use self::stale::Staleness;
 use self::survey::Survey;
-use crate::archive::Archive;
+use crate::archive::{RawSnapshot, file_kind};
 use crate::diag::{Halted, Sink};
 use crate::env::Env;
 use crate::game::{GameError, NameBook, Speller};
 use crate::history::HistoryError;
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, ModWad, WadRole};
 use crate::model::known::{class, field};
-use crate::model::{ChunkPath, Mod, Spell, WadHash, WadName, bin, value};
+use crate::model::{ChunkPath, ContentId, Mod, Spell, WadHash, WadName, bin, value};
+use crate::store::BlobStore;
 
 /// How many bins one root's load follows, the root included.
 // #ADR-0070, measured 2026-10-06: the most bins one root of the datasets reaches is 89, and the
@@ -93,6 +95,10 @@ pub enum LoadError {
     /// diagnostic.
     #[error("the game did not read while the mod was loaded")]
     Game(#[source] GameError),
+    /// The blob store holds nothing under an id the snapshot names: a fault of the store, and
+    /// no diagnostic.
+    #[error("the store held no bytes under {0:?} while the mod was loaded")]
+    Store(ContentId),
 }
 
 impl From<Fault> for LoadError {
@@ -364,9 +370,10 @@ impl<'a> Loader<'a> {
         lent
     }
 
-    /// Step 1: the mod's WADs and files as the archive ships them. No WAD has a role and no
-    /// file a use yet.
-    pub fn open(&mut self, archive: Archive) -> Mod {
+    /// Step 1: the mod's WADs and files as the archive ships them, from its raw snapshot and
+    /// the store its bytes are in. No WAD has a role and no file a use yet. A store that
+    /// holds nothing under an id the snapshot names is a fault, `LoadError::Store`.
+    pub fn open(&mut self, raw: &RawSnapshot, store: &dyn BlobStore) -> Result<Mod, LoadError> {
         // The names a run reads by are spelled whatever tables are installed.
         for name in field::ALL {
             self.book.learn_field(name);
@@ -374,38 +381,42 @@ impl<'a> Loader<'a> {
         for name in class::ALL {
             self.book.learn_class(name);
         }
-        let mut m = Mod::new(archive.meta);
-        m.extras = archive.extras;
-        m.image = archive.image;
-        for wad in archive.wads {
+        let mut m = Mod::new(raw.meta.clone());
+        m.extras = raw.open_extras(store).map_err(LoadError::Store)?;
+        let image = raw.image.map(|image| image.open(store)).transpose();
+        m.image = image.map_err(LoadError::Store)?;
+        for wad in &raw.wads {
             let id = m.wads.push(ModWad {
-                name: wad.name,
+                name: wad.name.clone(),
                 role: WadRole::Other,
                 layout: wad.layout,
-                files: Vec::with_capacity(wad.chunks.len()),
+                files: Vec::with_capacity(wad.files.len()),
                 packed_locale: None,
             });
-            for chunk in wad.chunks {
-                if let Some(path) = &chunk.path {
+            for (&hash, file) in &wad.files {
+                if let Some(path) = &file.path {
                     self.book.learn_path(path.as_str());
                 }
+                let bytes = store
+                    .get(file.content)
+                    .ok_or(LoadError::Store(file.content))?;
                 // The archive gives one chunk per path of a WAD: a second one was skipped and
                 // reported where it was read (`archive.chunk-duplicate`).
                 let _ = m.push_file(FileNode {
                     wad: id,
-                    hash: chunk.hash,
-                    path: chunk.path,
-                    size: chunk.bytes.len() as u64,
-                    content: chunk.content,
-                    kind: chunk.kind,
-                    bytes: chunk.bytes,
+                    hash,
+                    path: file.path.clone(),
+                    size: bytes.len() as u64,
+                    content: file.content,
+                    kind: file_kind(&bytes),
+                    bytes,
                     used: FileUse::Unused,
                     source: FileSource::Archive,
                 });
             }
         }
         self.name_files(&mut m);
-        m
+        Ok(m)
     }
 
     /// Runs the file fixups of one step, in the order the options hold them. Each raises
@@ -472,9 +483,14 @@ impl<'a> Loader<'a> {
 
     /// The whole stage: the five steps in order. The results on the files (`Dating`,
     /// `Inventory`, `FileProvenance`) are the caller's to gather on the mod returned.
-    pub fn load(&mut self, archive: Archive, sink: &mut Sink<'_>) -> Result<Mod, LoadError> {
-        let _span = tracing::info_span!("load", archive = %archive.meta.file_name).entered();
-        let mut m = self.open(archive);
+    pub fn load(
+        &mut self,
+        raw: &RawSnapshot,
+        store: &dyn BlobStore,
+        sink: &mut Sink<'_>,
+    ) -> Result<Mod, LoadError> {
+        let _span = tracing::info_span!("load", archive = %raw.meta.file_name).entered();
+        let mut m = self.open(raw, store)?;
         self.fix_files(&mut m, sink)?;
         self.take_game_bins(&mut m, sink)?;
         self.survey(&mut m, sink)?;

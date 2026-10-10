@@ -12,7 +12,7 @@ earlier one returned, and the compiler enforces the order.
 
 ```
 archive bytes
-   │ read      Archive       the untrusted zip, in memory, under caps
+   │ read      RawSnapshot   the untrusted zip, under caps; its bytes in the blob store by content id
    │ load      Mod           WADs, files, bins, objects, characters, skin units; what the client loads
    │ fix       FixedMod      values as the target build reads them; Changes
    │ facts     Facts         what is true of the mod: copies, provenance, origin, rig, clips
@@ -27,8 +27,8 @@ archive bytes
 
 | stage | reads | may not |
 |---|---|---|
-| read | the archive's bytes | touch the game, the history or the disk |
-| load | `Archive`, the environment | judge values inside objects |
+| read | the archive's bytes | touch the game, the history or the disk; hold bytes outside the store |
+| load | `RawSnapshot`, the store, the environment | judge values inside objects |
 | fix | `Mod`, the schema, the mod's dating | know a target slot |
 | facts | `FixedMod`, the environment | choose; change the mod |
 | decide | `Facts`, the policy | read the mod or the game |
@@ -47,7 +47,7 @@ let env = Env::builder().install(install).history(history).names(names).schema(s
 let porter = Porter::new(&env).policy(policy).fixups(FixupSet::standard());
 
 let mut run = porter.run();
-run.read(&bytes, file_name)?; // &Archive
+run.read(&bytes, file_name)?; // &RawSnapshot; the bytes are in the run's store
 run.load()?;                  // &Mod; the run holds the dating, the inventory, the file provenance
 run.fix()?;                   // &FixedMod; the run holds the Changes
 run.gather()?;                // &Facts, the stage `facts`
@@ -66,14 +66,16 @@ let report = run.report();
 - **A `Run` takes one archive through the stages and owns what passes between them**: the
   log, the names learnt (`NameBook`), the mod, the dating, the inventory, the file
   provenance, what the fixups changed, and every stage's result. A caller reads each by its
-  accessor (`module`, `fixed`, `dating`, `changes`, `facts`, `targets`, `port`, `package`,
-  `overlay`, `log`, `names`) after any stage. `Run::log_from` starts a run from a log of the
+  accessor (`archive`, the raw snapshot, `store`, `module`, `fixed`, `dating`, `changes`,
+  `facts`, `targets`, `port`, `package`, `overlay`, `log`, `names`) after any stage. `Run::log_from` starts a run from a log of the
   caller's: one that holds what the inputs raised when the environment was built, or one with
   a listener.
 - **Each method hands its stage the stage's sink and options** and gives the stage's result.
-  `run.read` is `Archive::read(bytes, file_name, &caps, &mut sink)`: the archive's bytes are
-  borrowed, so the caller holds them once and drops them after the call. `run.read_file`
-  reads an archive file. `load` takes the archive out of the run.
+  `run.read` is `archive::read(bytes, file_name, &caps, &store, &mut sink)`: the archive's
+  bytes are borrowed, so the caller holds them once and drops them after the call, and the
+  entries' bytes go into the run's store, a `MemoryStore` unless the caller gave one
+  (`Run::in_store`). `run.read_file` reads an archive file. `load` opens the mod from the
+  snapshot and the store, and the run keeps the snapshot (#ADR-0094).
 - **A stage runs once.** Its method asked again gives the result the run holds. The stage
   types keep the order in their signatures. The run holds the results, so a method called
   before the result it reads is held answers `RunError::NotReached` with both stages.
@@ -142,7 +144,7 @@ The modules of `reforge`, each using only the ones above it:
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)) |
 | `store` | `BlobStore`: bytes by content id (#ADR-0093); `MemoryStore`, and `Layered`, a store over another |
-| `archive` | `Archive`: the only reader of untrusted zips |
+| `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
 | `env` | `Env`: what a run is judged against, built once |
@@ -765,7 +767,8 @@ object takes a name of its own, which every link to it follows.
 ## Untrusted input
 
 - `archive` is the only module that reads a zip, under the caller's `Caps`. It holds the
-  archive's bytes once.
+  archive's bytes once, and the entries' bytes go into the blob store under their content id
+  and nowhere else (#ADR-0093).
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
   error on any input (banks, file kinds). A reader from another crate runs where its panic is
   caught (bins, packed WADs, meshes, skeletons, clips, the mod's image).

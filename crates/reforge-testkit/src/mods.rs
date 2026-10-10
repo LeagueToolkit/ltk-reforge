@@ -1,12 +1,13 @@
 //! Mod archives for tests of `load`, and one archive taken through `read` and `load`.
 
-use reforge::archive::{Archive, Caps};
+use reforge::archive::{self, Caps};
 use reforge::diag::{Diag, Diagnostics, Render, Stage};
 use reforge::env::Env;
 use reforge::game::{NameBook, Speller};
 use reforge::load::{LoadError, LoadOptions, Loader};
 use reforge::model::entity::{FileId, FileNode, UnitId};
 use reforge::model::{Dump, DumpCx, Mod, path_hash};
+use reforge::store::MemoryStore;
 
 use crate::archive::{STORED, packed_wad, zip};
 
@@ -106,10 +107,12 @@ impl<'a> LoadRun<'a> {
     /// When the archive does not read.
     pub fn of_bytes(env: &'a Env, options: LoadOptions, bytes: &[u8]) -> Self {
         let mut log = Diagnostics::new();
-        let read = Archive::read(bytes, FILE_NAME, &Caps::default(), &mut log.at(Stage::Read));
-        let archive = read.unwrap_or_else(|halted| panic!("the archive reads: {halted}"));
+        let store = MemoryStore::new();
+        let caps = Caps::default();
+        let read = archive::read(bytes, FILE_NAME, &caps, &store, &mut log.at(Stage::Read));
+        let raw = read.unwrap_or_else(|halted| panic!("the archive reads: {halted}"));
         let mut loader = Loader::new(env).options(options);
-        let result = loader.load(archive, &mut log.at(Stage::Load));
+        let result = loader.load(&raw, &store, &mut log.at(Stage::Load));
         Self {
             env,
             result,
