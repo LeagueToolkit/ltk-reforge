@@ -6,9 +6,9 @@ use reforge::diag::Stage;
 use reforge::env::Env;
 use reforge::fixups::{FixupSelection, FixupSet, Rule};
 use reforge::history::NoHistory;
-use reforge::load::ReworkTable;
+use reforge::load::{KeptFile, ReworkTable};
 use reforge::package::CheckSet;
-use reforge::port::{AnimReuse, Policy, TargetPolicy};
+use reforge::port::{AnimReuse, Policy, TargetPolicy, UnitTarget};
 use reforge::snapshot::StageSettings;
 use reforge::{Porter, Repairer};
 use reforge_testkit::facts::env;
@@ -82,6 +82,44 @@ fn each_setting_changes_first_at_the_earliest_stage_that_reads_it() {
     assert_eq!(
         earliest(&env, |p| p.checks(checks.clone())),
         Some(Stage::Check)
+    );
+}
+
+#[test]
+fn a_units_target_changes_first_at_decide_and_a_kept_file_at_load() {
+    // #ADR-0098: `decide` alone reads a unit's own target; `load` marks the stale copies.
+    let env = game_env();
+    let given = UnitTarget::parse("test:0=3").expect("a unit's target");
+    assert_eq!(
+        earliest(&env, |p| p.unit_targets(vec![given.clone()])),
+        Some(Stage::Decide)
+    );
+    let other = UnitTarget::parse("test:0=none").expect("a unit left out");
+    let standard = Porter::new(&env).unit_targets(vec![given.clone()]);
+    let answered = Porter::new(&env).unit_targets(vec![other]);
+    let changed = standard.settings().earliest_changed(answered.settings());
+    assert_eq!(changed, Some(Stage::Decide));
+
+    let kept = KeptFile::parse("Test.wad.client/assets/a.tex").expect("a file to keep");
+    assert_eq!(
+        earliest(&env, |p| p.keep_files(vec![kept.clone()])),
+        Some(Stage::Load)
+    );
+    let repairer = Repairer::new(&env);
+    let keeping = Repairer::new(&env).keep_files(vec![kept.clone()]);
+    let changed = repairer.settings().earliest_changed(keeping.settings());
+    assert_eq!(changed, Some(Stage::Load));
+    // The stages after `load` that judge a stale copy again declare the files as well.
+    let porter = Porter::new(&env).keep_files(vec![kept.clone()]);
+    let StageSettings::Plan(plan) = porter.settings().declared(Stage::Plan) else {
+        panic!("plan declares the plan settings");
+    };
+    let StageSettings::Build(build) = porter.settings().declared(Stage::Build) else {
+        panic!("build declares the build settings");
+    };
+    assert_eq!(
+        (plan.kept_files, build.kept_files),
+        (vec![kept.clone()], vec![kept])
     );
 }
 
