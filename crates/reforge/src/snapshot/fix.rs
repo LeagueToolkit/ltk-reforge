@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{LoadSnapshot, Program, ResumeError, SNAPSHOT_FORMAT, Setting, from_json, to_json};
-use crate::diag::{Input, Logged};
+use super::{LoadSnapshot, Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
+use crate::diag::{Input, Logged, Stage};
 use crate::env::Env;
 use crate::fixups::{After, Change, Changes, FixupSet, Rule, Snapshot as Value};
 use crate::game::NameBook;
@@ -170,6 +170,10 @@ pub struct FixSnapshot {
     findings: Vec<Logged>,
 }
 
+impl StageSnapshot for FixSnapshot {
+    const STAGE: Stage = Stage::Fix;
+}
+
 impl FixSnapshot {
     /// The snapshot of a fixed mod loaded as `load` names it, with the bins `fix` wrote
     /// again by the file each was read from and the id of its new bytes, what the fixups
@@ -256,16 +260,6 @@ impl FixSnapshot {
             }
         }
         Ok(rewritten)
-    }
-
-    /// The snapshot as JSON, every character a terminal acts on written as a JSON escape.
-    pub fn to_json(&self) -> String {
-        to_json(self, "fix")
-    }
-
-    /// A snapshot from its JSON.
-    pub fn from_json(json: &str) -> Result<Self, ResumeError> {
-        from_json(json)
     }
 
     /// Refuses a run whose program, inputs or `fix` settings are not the snapshot's.

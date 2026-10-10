@@ -4,8 +4,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, from_json, to_json};
-use crate::diag::Logged;
+use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
+use crate::diag::{Logged, Stage};
 use crate::facts::{Facts, FactsFound};
 use crate::load::ReworkTable;
 
@@ -31,6 +31,10 @@ pub struct FactsSnapshot {
     settings: FactsSettings,
     facts: FactsFound,
     findings: Vec<Logged>,
+}
+
+impl StageSnapshot for FactsSnapshot {
+    const STAGE: Stage = Stage::Facts;
 }
 
 impl FactsSnapshot {
@@ -64,16 +68,6 @@ impl FactsSnapshot {
     /// The findings from the start of `read` to the end of `facts`, in order.
     pub fn findings(&self) -> &[Logged] {
         &self.findings
-    }
-
-    /// The snapshot as JSON, every character a terminal acts on written as a JSON escape.
-    pub fn to_json(&self) -> String {
-        to_json(self, "facts")
-    }
-
-    /// A snapshot from its JSON.
-    pub fn from_json(json: &str) -> Result<Self, ResumeError> {
-        from_json(json)
     }
 
     /// Refuses a run whose program or `facts` settings are not the snapshot's.

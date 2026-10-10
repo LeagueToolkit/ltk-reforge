@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, from_json, to_json};
-use crate::diag::Logged;
+use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
+use crate::diag::{Logged, Stage};
 use crate::game::NameBook;
 use crate::model::{ContentId, Mod};
 use crate::port::{Port, PortOptions, PortValues, ValuesError};
@@ -59,6 +59,10 @@ pub struct PlanSnapshot {
     values: PortValues,
     names: NameBook,
     findings: Vec<Logged>,
+}
+
+impl StageSnapshot for PlanSnapshot {
+    const STAGE: Stage = Stage::Plan;
 }
 
 impl PlanSnapshot {
@@ -141,16 +145,6 @@ impl PlanSnapshot {
             ValuesError::Missing(id) => ResumeError::Store(id),
             ValuesError::Unreadable(what) => ResumeError::Malformed(what),
         })
-    }
-
-    /// The snapshot as JSON, every character a terminal acts on written as a JSON escape.
-    pub fn to_json(&self) -> String {
-        to_json(self, "plan")
-    }
-
-    /// A snapshot from its JSON.
-    pub fn from_json(json: &str) -> Result<Self, ResumeError> {
-        from_json(json)
     }
 
     /// Refuses a run whose program or `plan` settings are not the snapshot's.

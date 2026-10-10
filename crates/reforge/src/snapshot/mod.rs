@@ -48,19 +48,28 @@ use crate::store::BlobStore;
 /// snapshot of another format is not read.
 pub const SNAPSHOT_FORMAT: u32 = 1;
 
-/// A snapshot as JSON, every character a terminal acts on written as a JSON escape.
+/// The snapshot of a stage, as the JSON edge writes and reads it. A snapshot type holds its
+/// fields and nothing of the format: [`to_json`] and [`from_json`] are the one place a
+/// snapshot becomes text and text a snapshot.
+pub trait StageSnapshot: Serialize + DeserializeOwned {
+    /// The stage it is kept after.
+    const STAGE: Stage;
+}
+
+/// A snapshot as JSON, every character a terminal acts on written as a JSON escape, as the
+/// report is.
 ///
 /// # Panics
 ///
 /// When serde fails to write a snapshot into memory, which no value of one makes it do.
-fn to_json<T: Serialize>(snapshot: &T, stage: &str) -> String {
+pub fn to_json<S: StageSnapshot>(snapshot: &S) -> String {
     let json = serde_json::to_string(snapshot)
-        .unwrap_or_else(|error| panic!("a {stage} snapshot does not write: {error}"));
+        .unwrap_or_else(|error| panic!("a {} snapshot does not write: {error}", S::STAGE));
     clean_json(&json).into_owned()
 }
 
 /// A snapshot from its JSON.
-fn from_json<T: DeserializeOwned>(json: &str) -> Result<T, ResumeError> {
+pub fn from_json<S: StageSnapshot>(json: &str) -> Result<S, ResumeError> {
     serde_json::from_str(json).map_err(ResumeError::Json)
 }
 
@@ -424,6 +433,10 @@ pub struct LoadSnapshot {
     findings: Vec<Logged>,
 }
 
+impl StageSnapshot for LoadSnapshot {
+    const STAGE: Stage = Stage::Load;
+}
+
 impl LoadSnapshot {
     /// The snapshot of a loaded mod, judged against `env` under `settings`, with the findings
     /// raised from the start of `read` to the end of `load`. The bytes a file fixup made or
@@ -544,16 +557,6 @@ impl LoadSnapshot {
             wads.entry(file.wad).or_default().insert(hash, at);
         }
         wads
-    }
-
-    /// The snapshot as JSON, every character a terminal acts on written as a JSON escape.
-    pub fn to_json(&self) -> String {
-        to_json(self, "load")
-    }
-
-    /// A snapshot from its JSON.
-    pub fn from_json(json: &str) -> Result<Self, ResumeError> {
-        from_json(json)
     }
 
     /// Refuses a run whose program, inputs or load settings are not the snapshot's.

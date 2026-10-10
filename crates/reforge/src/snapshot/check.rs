@@ -5,8 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, from_json, to_json};
-use crate::diag::Logged;
+use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
+use crate::diag::{Logged, Stage};
 use crate::model::ContentId;
 use crate::package::{AppliedPatch, CheckId, CheckSet, Outcome};
 use crate::report::AppliedRow;
@@ -44,6 +44,10 @@ pub struct CheckSnapshot {
     applied: Vec<Option<AppliedRow>>,
     bins: Vec<Option<ContentId>>,
     findings: Vec<Logged>,
+}
+
+impl StageSnapshot for CheckSnapshot {
+    const STAGE: Stage = Stage::Check;
 }
 
 impl CheckSnapshot {
@@ -98,16 +102,6 @@ impl CheckSnapshot {
     /// The findings from the start of `read` to the end of `check`, in order.
     pub fn findings(&self) -> &[Logged] {
         &self.findings
-    }
-
-    /// The snapshot as JSON, every character a terminal acts on written as a JSON escape.
-    pub fn to_json(&self) -> String {
-        to_json(self, "check")
-    }
-
-    /// A snapshot from its JSON.
-    pub fn from_json(json: &str) -> Result<Self, ResumeError> {
-        from_json(json)
     }
 
     /// Refuses a run whose program or `check` settings are not the snapshot's.

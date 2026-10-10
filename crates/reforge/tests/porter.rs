@@ -27,8 +27,8 @@ use reforge::package::{
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
 use reforge::snapshot::{
-    BuildSnapshot, CheckSnapshot, DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot,
-    PlanSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
+    BuildSnapshot, CheckSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, ResumeError,
+    SNAPSHOT_FORMAT, Setting, Snapshots, StageSnapshot, from_json, to_json,
 };
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
@@ -1094,12 +1094,12 @@ fn resumed_runs_write_as_the_straight_run<'p>(
     first.read(bytes, FILE_NAME).expect("the archive reads");
     first.load().expect("the mod loads");
     let raw = first.archive().cloned().expect("the raw snapshot");
-    let json = first.load_snapshot().expect("the load snapshot").to_json();
+    let json = to_json(first.load_snapshot().expect("the load snapshot"));
     flush(first, &store);
 
-    let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    let snapshot = from_json::<LoadSnapshot>(&json).expect("the snapshot reads");
     assert_eq!(
-        snapshot.to_json(),
+        to_json(&snapshot),
         json,
         "the snapshot reads back as it was written"
     );
@@ -1185,48 +1185,23 @@ fn a_repair_resumed_from_its_load_snapshot_writes_the_report_and_package_of_the_
     );
 }
 
-/// Each snapshot written as JSON and read back, which must write the same JSON again.
+/// A snapshot written as JSON and read back, which must write the same JSON again.
+fn read_back<S: StageSnapshot>(snapshot: &S) -> S {
+    let json = to_json(snapshot);
+    let back = from_json::<S>(&json).expect("the snapshot reads");
+    assert_eq!(to_json(&back), json, "the {} snapshot reads back", S::STAGE);
+    back
+}
+
+/// Each snapshot written as JSON and read back.
 fn through_json(snapshots: &Snapshots) -> Snapshots {
-    let json = snapshots.load.to_json();
-    let load = LoadSnapshot::from_json(&json).expect("the load snapshot reads");
-    assert_eq!(load.to_json(), json, "the load snapshot reads back");
-    let mut back = Snapshots::new(load);
-    if let Some(fix) = &snapshots.fix {
-        let json = fix.to_json();
-        let fix = FixSnapshot::from_json(&json).expect("the fix snapshot reads");
-        assert_eq!(fix.to_json(), json, "the fix snapshot reads back");
-        back.fix = Some(fix);
-    }
-    if let Some(facts) = &snapshots.facts {
-        let json = facts.to_json();
-        let facts = FactsSnapshot::from_json(&json).expect("the facts snapshot reads");
-        assert_eq!(facts.to_json(), json, "the facts snapshot reads back");
-        back.facts = Some(facts);
-    }
-    if let Some(decide) = &snapshots.decide {
-        let json = decide.to_json();
-        let decide = DecideSnapshot::from_json(&json).expect("the decide snapshot reads");
-        assert_eq!(decide.to_json(), json, "the decide snapshot reads back");
-        back.decide = Some(decide);
-    }
-    if let Some(plan) = &snapshots.plan {
-        let json = plan.to_json();
-        let plan = PlanSnapshot::from_json(&json).expect("the plan snapshot reads");
-        assert_eq!(plan.to_json(), json, "the plan snapshot reads back");
-        back.plan = Some(plan);
-    }
-    if let Some(build) = &snapshots.build {
-        let json = build.to_json();
-        let build = BuildSnapshot::from_json(&json).expect("the build snapshot reads");
-        assert_eq!(build.to_json(), json, "the build snapshot reads back");
-        back.build = Some(build);
-    }
-    if let Some(check) = &snapshots.check {
-        let json = check.to_json();
-        let check = CheckSnapshot::from_json(&json).expect("the check snapshot reads");
-        assert_eq!(check.to_json(), json, "the check snapshot reads back");
-        back.check = Some(check);
-    }
+    let mut back = Snapshots::new(read_back(&snapshots.load));
+    back.fix = snapshots.fix.as_ref().map(read_back);
+    back.facts = snapshots.facts.as_ref().map(read_back);
+    back.decide = snapshots.decide.as_ref().map(read_back);
+    back.plan = snapshots.plan.as_ref().map(read_back);
+    back.build = snapshots.build.as_ref().map(read_back);
+    back.check = snapshots.check.as_ref().map(read_back);
     back
 }
 
@@ -1574,10 +1549,10 @@ fn a_resume_after_facts_is_refused_without_its_snapshot_or_in_a_repair() {
     };
     assert!(resume(snapshots.clone()).is_ok());
     let facts = snapshots.facts.as_ref().expect("the facts snapshot");
-    let mut value: serde_json::Value = serde_json::from_str(&facts.to_json()).expect("JSON");
+    let mut value: serde_json::Value = serde_json::from_str(&to_json(facts)).expect("JSON");
     value["settings"]["reworks"] = serde_json::json!({});
     let mut other = snapshots.clone();
-    other.facts = Some(FactsSnapshot::from_json(&value.to_string()).expect("it reads"));
+    other.facts = Some(from_json::<FactsSnapshot>(&value.to_string()).expect("it reads"));
     let refused = resume(other);
     assert!(matches!(
         refused,
@@ -1606,7 +1581,7 @@ fn legacy_snapshot(porter: &Porter<'_>) -> (String, Arc<MemoryStore>) {
     run.read(&legacy_archive().build(), FILE_NAME)
         .expect("the archive reads");
     run.load().expect("the mod loads");
-    let json = run.load_snapshot().expect("the load snapshot").to_json();
+    let json = to_json(run.load_snapshot().expect("the load snapshot"));
     flush(run, &store);
     (json, store)
 }
@@ -1622,7 +1597,7 @@ fn flush(run: Run<'_>, store: &MemoryStore) {
 fn edited(json: &str, field: &str, key: &str, to: serde_json::Value) -> LoadSnapshot {
     let mut value: serde_json::Value = serde_json::from_str(json).expect("JSON");
     value[field][key] = to;
-    LoadSnapshot::from_json(&value.to_string()).expect("the snapshot reads")
+    from_json::<LoadSnapshot>(&value.to_string()).expect("the snapshot reads")
 }
 
 #[test]
@@ -1630,7 +1605,7 @@ fn a_load_snapshot_is_refused_when_an_input_the_env_has_open_is_not_the_snapshot
     let env = legacy_env();
     let (json, store) = legacy_snapshot(&Porter::new(&env));
     let resume = |env: &Env| {
-        let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+        let snapshot = from_json::<LoadSnapshot>(&json).expect("the snapshot reads");
         Porter::new(env)
             .resume(snapshot, Arc::clone(&store))
             .map(drop)
@@ -1665,7 +1640,7 @@ fn env_of(game: MemoryGame) -> Env {
 fn a_load_snapshot_is_refused_when_a_setting_load_reads_is_not_the_runs() {
     let env = legacy_env();
     let (json, store) = legacy_snapshot(&Porter::new(&env));
-    let snapshot = || LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    let snapshot = || from_json::<LoadSnapshot>(&json).expect("the snapshot reads");
     let setting = |refused: Result<Run<'_>, ResumeError>| match refused {
         Err(ResumeError::Setting(setting)) => Some(setting),
         _ => None,
@@ -1712,7 +1687,7 @@ fn a_load_snapshot_is_refused_when_another_program_wrote_it_or_its_format_is_ano
     assert!(matches!(resume(other), Err(ResumeError::Program { .. })));
     let mut value: serde_json::Value = serde_json::from_str(&json).expect("JSON");
     value["format"] = (SNAPSHOT_FORMAT + 1).into();
-    let other = LoadSnapshot::from_json(&value.to_string()).expect("the snapshot reads");
+    let other = from_json::<LoadSnapshot>(&value.to_string()).expect("the snapshot reads");
     let refused = resume(other);
     assert!(matches!(refused, Err(ResumeError::Format { found }) if found == SNAPSHOT_FORMAT + 1));
 }
@@ -1747,10 +1722,10 @@ fn a_fix_snapshot_is_refused_when_the_schema_or_a_setting_fix_reads_is_not_the_r
         Err(ResumeError::Setting(Setting::BinFixups))
     ));
     let fix = snapshots.fix.as_ref().expect("the fix snapshot");
-    let mut value: serde_json::Value = serde_json::from_str(&fix.to_json()).expect("JSON");
+    let mut value: serde_json::Value = serde_json::from_str(&to_json(fix)).expect("JSON");
     value["settings"]["rules"] = serde_json::json!([]);
     let mut other = snapshots.clone();
-    other.fix = Some(FixSnapshot::from_json(&value.to_string()).expect("the snapshot reads"));
+    other.fix = Some(from_json::<FixSnapshot>(&value.to_string()).expect("the snapshot reads"));
     let refused = resume(Porter::new(&env), other);
     assert!(matches!(refused, Err(ResumeError::Setting(Setting::Rules))));
 
@@ -1771,6 +1746,24 @@ fn a_fix_snapshot_is_refused_when_the_schema_or_a_setting_fix_reads_is_not_the_r
     none.fix = None;
     let refused = resume(Porter::new(&env), none);
     assert!(matches!(refused, Err(ResumeError::Missing(Stage::Fix))));
+}
+
+#[test]
+fn a_snapshot_reads_at_the_json_edge_as_its_own_stage_and_as_no_other() {
+    let env = legacy_env();
+    let (snapshots, _store) = legacy_snapshots(&Porter::new(&env), Stage::Check);
+    let load = to_json(&snapshots.load);
+    assert!(from_json::<LoadSnapshot>(&load).is_ok());
+    let refused = from_json::<FixSnapshot>(&load).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Json(_))));
+    let check = to_json(snapshots.check.as_ref().expect("the check snapshot"));
+    assert!(from_json::<CheckSnapshot>(&check).is_ok());
+    let refused = from_json::<BuildSnapshot>(&check).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Json(_))));
+    assert!(
+        !check.chars().any(char::is_control),
+        "a character a terminal acts on is escaped"
+    );
 }
 
 #[test]
@@ -1829,7 +1822,7 @@ fn a_snapshot_is_refused_when_the_store_lacks_its_bytes_or_its_reading_is_anothe
     let env = legacy_env();
     let porter = Porter::new(&env);
     let (json, _store) = legacy_snapshot(&porter);
-    let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    let snapshot = from_json::<LoadSnapshot>(&json).expect("the snapshot reads");
     let refused = porter.resume(snapshot, MemoryStore::new()).map(drop);
     assert!(matches!(refused, Err(ResumeError::Store(_))));
 
@@ -1855,7 +1848,7 @@ fn a_load_snapshot_names_the_bytes_load_made_and_the_findings_of_read_and_load()
     let env = legacy_env();
     let porter = Porter::new(&env);
     let (json, store) = legacy_snapshot(&porter);
-    let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    let snapshot = from_json::<LoadSnapshot>(&json).expect("the snapshot reads");
     let made = snapshot.part().files.iter().filter(|file| {
         matches!(file.source, FileSource::Made { .. })
             && file

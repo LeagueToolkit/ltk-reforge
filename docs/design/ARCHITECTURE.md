@@ -838,9 +838,12 @@ object takes a name of its own, which every link to it follows.
   names, and a load snapshot carries them with what the rows do not say: where each bin's
   links lead and why a bin did not read, the groups, the files a table named, the names
   learnt, and the findings of `read` and `load` as `Logged` ([DIAGNOSTICS.md](DIAGNOSTICS.md),
-  "Through the run"). `LoadSnapshot::to_json` writes it as JSON, cleaned as the report is,
-  and `from_json` reads it back; `wads()` gives each WAD's files by path hash with the id of
-  their bytes. Its format is `SNAPSHOT_FORMAT`, 1, the format of every snapshot.
+  "Through the run"). `wads()` gives each WAD's files by path hash with the id of their
+  bytes. Its format is `SNAPSHOT_FORMAT`, 1, the format of every snapshot.
+- Every snapshot from `load` on is JSON. `snapshot::to_json` writes one, cleaned as the
+  report is, and `snapshot::from_json` reads one back as the stage asked for: they are the one
+  place a snapshot meets its format. A snapshot type (`StageSnapshot`) holds its fields and
+  names its stage, and knows nothing of the format.
 - The fix snapshot holds each WAD's files by path hash as `fix` left them, a bin a fixup
   changed under the id of the bytes `FixedMod::rewrite` wrote, which a repair's package
   ships; what each fixup changed, a field path with the class of each struct on it, which

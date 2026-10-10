@@ -8,8 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, from_json, to_json};
-use crate::diag::Logged;
+use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
+use crate::diag::{Logged, Stage};
 use crate::model::entity::{CharId, FileId, UnitId};
 use crate::model::hash::bin_hex;
 use crate::model::{BinHash, ByteView, ChunkPath, ContentId, Layer, WadName, bin};
@@ -297,6 +297,10 @@ pub struct BuildSnapshot {
     findings: Vec<Logged>,
 }
 
+impl StageSnapshot for BuildSnapshot {
+    const STAGE: Stage = Stage::Build;
+}
+
 impl BuildSnapshot {
     /// The snapshot of the package `build` gave under `settings`, its bytes put into `store`,
     /// with its part of the report and the findings raised from the start of `read` to the
@@ -354,16 +358,6 @@ impl BuildSnapshot {
     /// The package `build` gave, its bytes read back from `store`.
     pub fn package(&self, store: &dyn BlobStore) -> Result<Package, ResumeError> {
         self.package.package(store)
-    }
-
-    /// The snapshot as JSON, every character a terminal acts on written as a JSON escape.
-    pub fn to_json(&self) -> String {
-        to_json(self, "build")
-    }
-
-    /// A snapshot from its JSON.
-    pub fn from_json(json: &str) -> Result<Self, ResumeError> {
-        from_json(json)
     }
 
     /// Refuses a run whose program or `build` settings are not the snapshot's.
