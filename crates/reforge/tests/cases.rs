@@ -150,7 +150,7 @@ const SETS: &[Set] = &[
     ),
     set("model::Layer", "model/layer.rs", &["port_", "package_"]),
     set("package::Origin", "package/mod.rs", &["package_"]),
-    set("package::BinWrite", "package/mod.rs", &["package_"]),
+    set("fixups::BinWrite", "fixups/rewrite.rs", &["package_"]),
     set("package::LeftOut", "package/wired.rs", &["package_"]),
     set("package::BuildError", "package/inplace.rs", &["package_"]),
     set("package::TexRefusal", "package/texture.rs", &["package_"]),

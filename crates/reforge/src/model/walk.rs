@@ -9,11 +9,12 @@ use std::borrow::Cow;
 use std::fmt;
 
 use indexmap::IndexMap;
-use ltk_meta::path::{FieldNames, MapKey, ValuePath, ValueSegment};
+use ltk_meta::path::{FieldNames, FloatBits, MapKey, ValuePath, ValueSegment};
 use ltk_meta::walk::{Node, NodeRefMut, Trail, TreeNode, Visit, Visitor, VisitorMut};
 use ltk_meta::{BinObject, PropertyValueEnum};
+use ltk_primitives::Color;
 
-use super::hash::BinHash;
+use super::hash::{BinHash, WadHash};
 use super::names::Spell;
 
 /// The fields of a struct, in file order.
@@ -113,6 +114,139 @@ impl fmt::Display for FieldPath {
 impl serde::Serialize for FieldPath {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.collect_str(self)
+    }
+}
+
+/// One step of a [`FieldPath`] as a snapshot keeps it: a field with the class of the struct
+/// it is on, which the hash form leaves out.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Step {
+    /// A field of a struct of `class`; 0 where the class is unknown.
+    Field {
+        /// The field.
+        field: u32,
+        /// The struct's class.
+        class: u32,
+    },
+    /// A list item, or a present option's value at 0.
+    Index(usize),
+    /// A map entry.
+    Key(Key),
+}
+
+/// A map key as a snapshot keeps it: a float by its bits.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[expect(missing_docs, reason = "each variant is the map key of the same name")]
+pub enum Key {
+    None,
+    Bool(bool),
+    I8(i8),
+    U8(u8),
+    I16(i16),
+    U16(u16),
+    I32(i32),
+    U32(u32),
+    I64(i64),
+    U64(u64),
+    F32(u32),
+    Vector2([u32; 2]),
+    Vector3([u32; 3]),
+    Vector4([u32; 4]),
+    Matrix44([u32; 16]),
+    Color([u8; 4]),
+    String(String),
+    Hash(u32),
+    File(u64),
+}
+
+impl Key {
+    fn of(key: &MapKey) -> Self {
+        let bits = |f: FloatBits| f.get().to_bits();
+        match key {
+            MapKey::None => Key::None,
+            MapKey::Bool(v) => Key::Bool(*v),
+            MapKey::I8(v) => Key::I8(*v),
+            MapKey::U8(v) => Key::U8(*v),
+            MapKey::I16(v) => Key::I16(*v),
+            MapKey::U16(v) => Key::U16(*v),
+            MapKey::I32(v) => Key::I32(*v),
+            MapKey::U32(v) => Key::U32(*v),
+            MapKey::I64(v) => Key::I64(*v),
+            MapKey::U64(v) => Key::U64(*v),
+            MapKey::F32(v) => Key::F32(bits(*v)),
+            MapKey::Vector2(v) => Key::Vector2(v.map(bits)),
+            MapKey::Vector3(v) => Key::Vector3(v.map(bits)),
+            MapKey::Vector4(v) => Key::Vector4(v.map(bits)),
+            MapKey::Matrix44(v) => Key::Matrix44(v.map(bits)),
+            MapKey::Color(c) => Key::Color([c.r, c.g, c.b, c.a]),
+            MapKey::String(v) => Key::String(v.clone()),
+            MapKey::Hash(v) => Key::Hash(v.0),
+            MapKey::File(v) => Key::File(v.0),
+        }
+    }
+
+    fn map_key(&self) -> MapKey {
+        let float = |bits: u32| FloatBits::new(f32::from_bits(bits));
+        match self {
+            Key::None => MapKey::None,
+            Key::Bool(v) => MapKey::Bool(*v),
+            Key::I8(v) => MapKey::I8(*v),
+            Key::U8(v) => MapKey::U8(*v),
+            Key::I16(v) => MapKey::I16(*v),
+            Key::U16(v) => MapKey::U16(*v),
+            Key::I32(v) => MapKey::I32(*v),
+            Key::U32(v) => MapKey::U32(*v),
+            Key::I64(v) => MapKey::I64(*v),
+            Key::U64(v) => MapKey::U64(*v),
+            Key::F32(v) => MapKey::F32(float(*v)),
+            Key::Vector2(v) => MapKey::Vector2(v.map(float)),
+            Key::Vector3(v) => MapKey::Vector3(v.map(float)),
+            Key::Vector4(v) => MapKey::Vector4(v.map(float)),
+            Key::Matrix44(v) => MapKey::Matrix44(v.map(float)),
+            Key::Color([r, g, b, a]) => MapKey::Color(Color {
+                r: *r,
+                g: *g,
+                b: *b,
+                a: *a,
+            }),
+            Key::String(v) => MapKey::String(v.clone()),
+            Key::Hash(v) => MapKey::Hash(BinHash(*v)),
+            Key::File(v) => MapKey::File(WadHash(*v)),
+        }
+    }
+}
+
+impl FieldPath {
+    /// The path's steps, each field with its class.
+    pub fn steps(&self) -> Vec<Step> {
+        let mut classes = self
+            .0
+            .fields()
+            .map(|(_, class)| class.unwrap_or(BinHash(0)));
+        let steps = self.0.segments().iter().map(|segment| match segment {
+            ValueSegment::Field(field) => Step::Field {
+                field: field.0,
+                class: classes.next().unwrap_or(BinHash(0)).0,
+            },
+            ValueSegment::Index(index) => Step::Index(*index),
+            ValueSegment::Key(key) => Step::Key(Key::of(key)),
+        });
+        steps.collect()
+    }
+
+    /// The path of these steps.
+    pub fn from_steps(steps: &[Step]) -> Self {
+        let mut path = ValuePath::new();
+        for step in steps {
+            match step {
+                Step::Field { field, class } => path.push_field(BinHash(*field), BinHash(*class)),
+                Step::Index(index) => path.push_index(*index),
+                Step::Key(key) => path.push_key(key.map_key()),
+            }
+        }
+        Self(path)
     }
 }
 

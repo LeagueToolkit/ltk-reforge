@@ -170,7 +170,7 @@ pub struct FixInputs<'a> {
 /// A mod whose values are what the target build reads. Only [`FixupSet::apply`] makes one, and
 /// it is read-only: what is compared with the game afterwards is compared at the target's
 /// types.
-pub struct FixedMod(Mod);
+pub struct FixedMod(pub(super) Mod);
 
 impl FixedMod {
     /// The mod, to take through the fixups again or to change. What comes back is no fixed
@@ -267,6 +267,19 @@ impl FixupSet {
         files
             .chain(self.bins.iter().map(|fixup| fixup.info()))
             .collect()
+    }
+
+    /// The id of every fixup on bin values, in the order they run: what `fix` runs.
+    pub fn bin_ids(&self) -> Vec<FixupId> {
+        self.bins
+            .iter()
+            .map(|fixup| fixup.info().id.clone())
+            .collect()
+    }
+
+    /// The table rules among the fixups on bin values, in the order they run.
+    pub fn rules(&self) -> Vec<&Rule> {
+        self.bins.iter().filter_map(|fixup| fixup.rule()).collect()
     }
 
     /// The id of every fixup of the set, in the order they run.

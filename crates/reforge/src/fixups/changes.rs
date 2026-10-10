@@ -205,6 +205,15 @@ impl Changes {
     }
 }
 
+/// The changes of a run read back, in the order they were made.
+impl FromIterator<Change> for Changes {
+    fn from_iter<I: IntoIterator<Item = Change>>(changes: I) -> Self {
+        Self {
+            items: changes.into_iter().collect(),
+        }
+    }
+}
+
 impl Dump for Changes {
     fn dump(&self, cx: &DumpCx<'_>) -> String {
         let mut out = String::new();

@@ -2,10 +2,7 @@
 //! WAD and path (#ADR-0039). A bin an object of which a fixup changed is written again, and
 //! every other file keeps its bytes.
 
-use ltk_meta::{Bin, BinDelta, BinObject, BinStream};
 use std::collections::BTreeSet;
-use std::io::Cursor;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::config::{Made, ProjectConfig};
 use super::findings::{Empty, InPlace};
@@ -19,9 +16,9 @@ use crate::env::Env;
 use crate::fixups::{Changes, FixedMod};
 use crate::game::{GameSource, NameBook, Names, Speller};
 use crate::load::{Fault, LoadOptions, Staleness};
-use crate::model::entity::{BinId, FileId, FileKind, FileNode, FileSource};
+use crate::model::entity::{BinId, FileKind, FileNode, FileSource};
 use crate::model::value::{self, FileRef};
-use crate::model::{ChunkPath, Mod, Spell, bin};
+use crate::model::{ChunkPath, Mod, Spell};
 
 /// Why a build gives no package.
 #[derive(Debug, thiserror::Error)]
@@ -128,9 +125,9 @@ impl<'a> InPlaceBuilder<'a> {
                 continue;
             }
             found.unnamed += usize::from(named.is_none());
-            let chunk = match self.edited_bin(id, file) {
+            let chunk = match self.fixed.edited_bin(self.changes, id) {
                 Some(bin) => {
-                    let (bytes, written) = self.rewrite(bin, &file.bytes);
+                    let (bytes, written) = self.rewrite(bin);
                     found.rewritten += 1;
                     found.whole += usize::from(written.how == BinWrite::Whole);
                     Chunk {
@@ -178,47 +175,18 @@ impl<'a> InPlaceBuilder<'a> {
         (path.hash() == file.hash).then_some(path)
     }
 
-    /// The loaded bin of a file, when a fixup changed an object of it.
-    fn edited_bin(&self, id: FileId, file: &FileNode) -> Option<BinId> {
-        if file.kind != FileKind::Bin {
-            return None;
-        }
-        let bin = self.fixed.bin_of(id)?;
-        let objects = &self.fixed.bins[bin].objects;
-        let edited = objects.iter().any(|&object| self.changes.edits(object));
-        edited.then_some(bin)
-    }
-
-    /// A bin's bytes with its changed objects written again: through the delta writer where
-    /// it takes the bytes the bin was read from, else the whole bin from the mod's objects.
-    fn rewrite(&self, bin: BinId, base: &[u8]) -> (Vec<u8>, WrittenBin) {
+    /// A bin's bytes with its changed objects written again, and what they were built to hold.
+    fn rewrite(&self, bin: BinId) -> (Vec<u8>, WrittenBin) {
         let m: &Mod = self.fixed;
-        let node = &m.bins[bin];
-        let objects = || node.objects.iter().map(|&object| &m.objects[object]);
-        let edited: Vec<BinObject> = node
-            .objects
-            .iter()
-            .filter(|&&object| self.changes.edits(object))
-            .map(|&object| m.objects[object].value.clone())
-            .collect();
-        let entries: BTreeSet<_> = objects().map(|object| object.entry).collect();
-        let (bytes, how) = match patched(base, &edited) {
-            Some(bytes) => (bytes, BinWrite::Delta),
-            None => {
-                let links = node.links.iter().map(|link| link.path.raw().to_string());
-                let whole = Bin::new(
-                    objects().map(|object| object.value.clone()),
-                    links.collect::<Vec<_>>(),
-                );
-                (bin::write(&whole), BinWrite::Whole)
-            }
-        };
+        let objects = m.bins[bin].objects.iter();
+        let entries: BTreeSet<_> = objects.map(|&object| m.objects[object].entry).collect();
+        let rewritten = self.fixed.rewrite(self.changes, bin);
         let written = WrittenBin {
-            how,
+            how: rewritten.how,
             entries,
-            edited,
+            edited: rewritten.edited,
         };
-        (bytes, written)
+        (rewritten.bytes, written)
     }
 
     /// The names the package ships: the path of each file an object names by its hash, where
@@ -238,23 +206,6 @@ impl<'a> InPlaceBuilder<'a> {
             }
         }
     }
-}
-
-/// The base bytes with these objects in place of the ones under their entry hashes, every
-/// other object copied byte for byte. None where the delta writer refuses the base: a bin of
-/// the old numbering. The base is a mod's, so the writer runs where its panic is caught.
-fn patched(base: &[u8], edited: &[BinObject]) -> Option<Vec<u8>> {
-    let mut delta = BinDelta::new();
-    for object in edited {
-        delta.replace(object.clone());
-    }
-    let write = || {
-        let mut stream = BinStream::mount(Cursor::new(base)).ok()?;
-        let mut out = Vec::new();
-        stream.write_patched(&delta, &mut out).ok()?;
-        Some(out)
-    };
-    catch_unwind(AssertUnwindSafe(write)).ok().flatten()
 }
 
 /// The path of a file no table names: its hash at its WAD's root, which a packer reads back

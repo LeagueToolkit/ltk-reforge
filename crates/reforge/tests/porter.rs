@@ -7,6 +7,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use ltk_meta::BinObject;
 use reforge::archive::{Caps, RAW_VERSION};
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Input, Stage};
 use reforge::env::Env;
@@ -16,6 +17,7 @@ use reforge::game::{MAX_CHAIN, Names, SHADERS_BIN};
 use reforge::history::NoHistory;
 use reforge::load::{Dating, Fault, LoadError, NoSkin, ReworkTable};
 use reforge::model::entity::FileSource;
+use reforge::model::{BinHash, name_hash};
 use reforge::model::{ContentId, path_hash};
 use reforge::package::{
     Blocked, EVIDENCE_FORMAT, EvidenceBound, EvidenceDoc, EvidencePiece, EvidencePolicy,
@@ -23,16 +25,20 @@ use reforge::package::{
     ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
-use reforge::snapshot::{LoadSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting};
+use reforge::snapshot::{
+    FixSnapshot, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
+};
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
-use reforge_testkit::bins::{bin, blob, entry, linked_bin, particle, resolver_with};
+use reforge_testkit::bins::{bin, blob, entry, float, linked_bin, particle, resolver_with};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
 use reforge_testkit::mods::FILE_NAME;
 use reforge_testkit::packs::{DdsPixels, dds};
 use reforge_testkit::plans::{NEW_TEX, OLD_TEX, reworked};
 use reforge_testkit::skins::{self, BASE_MESH, BASE_TEX, WAD, skin_bin};
-use reforge_testkit::{BrokenGame, BrokenHistory, MemoryGame, MemoryHistory, ModArchive};
+use reforge_testkit::{
+    BrokenGame, BrokenHistory, MemoryGame, MemoryHistory, ModArchive, SchemaRows,
+};
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
 const GRAPH0: &str = "Characters/Test/Animations/Skin0";
@@ -967,6 +973,7 @@ fn a_run_judged_with_an_earlier_runs_evidence_embeds_none() {
         run.load_snapshot().is_none(),
         "the evidence is no input a snapshot names"
     );
+    assert!(run.fix_snapshot().is_none() && run.snapshots().is_none());
 }
 
 /// A static mesh the game ships as `.scb`, at a stem the mod ships as `.sco`.
@@ -984,10 +991,23 @@ Faces= 1
 [ObjectEnd]
 ";
 
+/// An object with a field a tool wrote and no build declared (#MOD-ARTIFACT-0020), which `fix`
+/// removes, so it writes the bin again.
+fn tool_artifact() -> BinObject {
+    let entry = name_hash("Characters/Test/Skins/Skin0/Tint");
+    BinObject::builder(entry, name_hash("ValueColor"))
+        .property(BinHash(0xecbe_c3b3), float(1.0))
+        .build()
+}
+
 /// [`own_archive`] with a mesh in a format the game dropped, which `load` makes the format it
-/// reads, a file nothing loads, and a bin the skin bin links that does not read.
+/// reads, a file nothing loads, a bin the skin bin links that does not read, and a field a
+/// tool wrote.
 fn legacy_archive() -> ModArchive {
-    let objects = vec![entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0))];
+    let objects = vec![
+        entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0)),
+        tool_artifact(),
+    ];
     let mut files = own_files("a");
     files.push((format!("{BOMB}.sco"), SCO.as_bytes().to_vec()));
     files.push(("assets/mod/a/notes.txt".into(), blob("notes")));
@@ -1155,6 +1175,129 @@ fn a_repair_resumed_from_its_load_snapshot_writes_the_report_and_package_of_the_
     );
 }
 
+/// Each snapshot written as JSON and read back, which must write the same JSON again.
+fn through_json(snapshots: &Snapshots) -> Snapshots {
+    let json = snapshots.load.to_json();
+    let load = LoadSnapshot::from_json(&json).expect("the load snapshot reads");
+    assert_eq!(load.to_json(), json, "the load snapshot reads back");
+    let mut back = Snapshots::new(load);
+    if let Some(fix) = &snapshots.fix {
+        let json = fix.to_json();
+        let fix = FixSnapshot::from_json(&json).expect("the fix snapshot reads");
+        assert_eq!(fix.to_json(), json, "the fix snapshot reads back");
+        back.fix = Some(fix);
+    }
+    back
+}
+
+/// #ADR-0094: a run through `write`, and one that ran through `last`, kept its snapshots as
+/// JSON and flushed its layer into a store, then resumed after `last` from them, write one
+/// report and one package, byte for byte. Gives the resumed run's snapshots.
+fn resumed_after_writes_as_the_straight_run<'p>(
+    run: impl Fn() -> Run<'p>,
+    resume: impl Fn(Start, Arc<MemoryStore>) -> Result<Run<'p>, ResumeError>,
+    bytes: &[u8],
+    last: Stage,
+    start: impl Fn(Snapshots) -> Start,
+) -> Snapshots {
+    let mut straight = run();
+    straight.read(bytes, FILE_NAME).expect("the archive reads");
+    straight.through(Stage::Check).expect("no fault");
+    assert_eq!(straight.halted(), None);
+    let (report, files) = written(&mut straight);
+
+    let store = Arc::new(MemoryStore::new());
+    let mut first = run().in_store(Arc::clone(&store));
+    first.read(bytes, FILE_NAME).expect("the archive reads");
+    first.through(last).expect("no fault");
+    let snapshots = through_json(&first.snapshots().expect("the snapshots"));
+    flush(first, &store);
+
+    let mut resumed = resume(start(snapshots), store).expect("the run resumes");
+    let stages = resumed.stages();
+    assert!(
+        stages
+            .iter()
+            .all(|&stage| resumed.ran(stage) == (stage <= last))
+    );
+    let kept = resumed.snapshots().expect("the snapshots");
+    resumed.through(Stage::Check).expect("no fault");
+    let (resumed_report, resumed_files) = written(&mut resumed);
+    assert_eq!(
+        resumed_report, report,
+        "the report of a run resumed after {last}"
+    );
+    assert!(
+        resumed_files == files,
+        "the package of a run resumed after {last}"
+    );
+    kept
+}
+
+/// The three ports and the two repairs a resume is tested on, each resumed after `last`.
+/// Gives how many bins the fixups wrote again across them.
+fn every_run_resumed_after(last: Stage, start: impl Fn(Snapshots) -> Start) -> usize {
+    let mut rewritten = 0;
+    let mut count = |snapshots: Snapshots| {
+        let fix = snapshots.fix.expect("the fix snapshot");
+        rewritten += fix.rewritten(&snapshots.load).expect("it holds").len();
+    };
+    let env = game_env();
+    let porter = Porter::new(&env);
+    count(resumed_after_writes_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &own_mod(),
+        last,
+        &start,
+    ));
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    count(resumed_after_writes_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &legacy_archive().build(),
+        last,
+        &start,
+    ));
+    let repairer = Repairer::new(&env);
+    if repairer.run().stages().contains(&last) {
+        count(resumed_after_writes_as_the_straight_run(
+            || repairer.run(),
+            |from, store| repairer.resume(from, store),
+            &legacy_archive().build(),
+            last,
+            &start,
+        ));
+    }
+    let (env, reworks) = reworked_env();
+    let porter = Porter::new(&env).reworks(reworks.clone());
+    count(resumed_after_writes_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &restoring_mod(),
+        last,
+        &start,
+    ));
+    let repairer = Repairer::new(&env).reworks(reworks);
+    if repairer.run().stages().contains(&last) {
+        count(resumed_after_writes_as_the_straight_run(
+            || repairer.run(),
+            |from, store| repairer.resume(from, store),
+            &restoring_mod(),
+            last,
+            &start,
+        ));
+    }
+    rewritten
+}
+
+#[test]
+fn a_run_resumed_after_fix_writes_the_report_and_package_of_the_straight_run() {
+    let rewritten = every_run_resumed_after(Stage::Fix, |s| Start::Fix(Box::new(s)));
+    assert!(rewritten > 0, "a fixup wrote a bin again");
+}
+
 /// A port's load snapshot of [`legacy_archive`], as JSON, and the store its bytes are in.
 fn legacy_snapshot(porter: &Porter<'_>) -> (String, Arc<MemoryStore>) {
     let store = Arc::new(MemoryStore::new());
@@ -1271,6 +1414,62 @@ fn a_load_snapshot_is_refused_when_another_program_wrote_it_or_its_format_is_ano
     let other = LoadSnapshot::from_json(&value.to_string()).expect("the snapshot reads");
     let refused = resume(other);
     assert!(matches!(refused, Err(ResumeError::Format { found }) if found == SNAPSHOT_FORMAT + 1));
+}
+
+/// A port's snapshots of [`legacy_archive`] through `last`, and the store their bytes are in.
+fn legacy_snapshots(porter: &Porter<'_>, last: Stage) -> (Snapshots, Arc<MemoryStore>) {
+    let store = Arc::new(MemoryStore::new());
+    let mut run = porter.run().in_store(Arc::clone(&store));
+    run.read(&legacy_archive().build(), FILE_NAME)
+        .expect("the archive reads");
+    run.through(last).expect("no fault");
+    let snapshots = run.snapshots().expect("the snapshots");
+    flush(run, &store);
+    (snapshots, store)
+}
+
+#[test]
+fn a_fix_snapshot_is_refused_when_the_schema_or_a_setting_fix_reads_is_not_the_runs() {
+    let env = legacy_env();
+    let (snapshots, store) = legacy_snapshots(&Porter::new(&env), Stage::Fix);
+    let resume = |porter: Porter<'_>, snapshots: Snapshots| {
+        let start = Start::Fix(Box::new(snapshots));
+        porter.resume(start, Arc::clone(&store)).map(drop)
+    };
+    assert!(resume(Porter::new(&env), snapshots.clone()).is_ok());
+
+    let selection = FixupSelection::standard().without("known-artifacts-value-color");
+    let fixups = Porter::new(&env).fixups(FixupSet::from(&selection));
+    let refused = resume(fixups, snapshots.clone());
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::BinFixups))
+    ));
+    let fix = snapshots.fix.as_ref().expect("the fix snapshot");
+    let mut value: serde_json::Value = serde_json::from_str(&fix.to_json()).expect("JSON");
+    value["settings"]["rules"] = serde_json::json!([]);
+    let mut other = snapshots.clone();
+    other.fix = Some(FixSnapshot::from_json(&value.to_string()).expect("the snapshot reads"));
+    let refused = resume(Porter::new(&env), other);
+    assert!(matches!(refused, Err(ResumeError::Setting(Setting::Rules))));
+
+    let mut game = skins::game();
+    game.insert(&format!("{BOMB}.scb"), b"the game's bomb".to_vec());
+    let sizes = game.sizes();
+    let schema = SchemaRows::new(300).build();
+    let with_schema = Env::builder()
+        .game(game)
+        .sizes(sizes)
+        .schema(schema)
+        .build();
+    let with_schema = with_schema.expect("an environment");
+    let refused = resume(Porter::new(&with_schema), snapshots.clone());
+    assert!(matches!(refused, Err(ResumeError::Input(Input::Schema))));
+
+    let mut none = snapshots;
+    none.fix = None;
+    let refused = resume(Porter::new(&env), none);
+    assert!(matches!(refused, Err(ResumeError::Missing(Stage::Fix))));
 }
 
 #[test]

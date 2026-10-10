@@ -19,6 +19,7 @@ pub mod conform;
 mod context;
 mod findings;
 pub mod layout;
+mod rewrite;
 pub mod rule;
 pub mod rules;
 mod scope;
@@ -31,6 +32,7 @@ use std::sync::Arc;
 pub use self::changes::{After, Change, Changes, Counts, Outcome, Snapshot};
 pub use self::context::FixCx;
 pub use self::findings::{CatalogCapped, Changed, FieldCount, Lost, Removed, Tally, Unconvertible};
+pub use self::rewrite::{BinWrite, Rewritten};
 pub use self::rule::Rule;
 pub use self::scope::ObjectSet;
 pub use self::set::{
@@ -89,6 +91,12 @@ pub trait BinFixup: Send + Sync {
     /// Fixes one struct, and records each value it changes, removes or cannot convert through
     /// the context. The walk goes on into the struct's fields as the fixup leaves them.
     fn fix(&self, cx: &mut FixCx<'_>, s: StructMut<'_>);
+
+    /// The table rule it is, when it is one: what a snapshot records of it beside its id,
+    /// since a rule a caller adds is data the program's commit does not fix.
+    fn rule(&self) -> Option<&Rule> {
+        None
+    }
 }
 
 /// Every built-in fixup on bin values. The order they run in is each one's phase, build and

@@ -78,21 +78,32 @@ let report = run.report();
   goes into the layer and none into the store under it (#ADR-0093). `Run::into_layer` gives
   the layer's blobs, which the caller flushes into a store it keeps; a run dropped leaves
   nothing. `run.read_file` reads an archive file. `load` opens the mod from the
-  raw snapshot and the store, and the run keeps the raw snapshot and, when `load` ends, the
-  load snapshot beside it (#ADR-0094).
+  raw snapshot and the store. The run keeps the raw snapshot, and a snapshot at the end of
+  each stage from `load` on (#ADR-0094): `load_snapshot`, `fix_snapshot`. `Run::snapshots`
+  gives them together as `Snapshots`, what a caller keeps to resume after any of them.
 - **A run starts from a snapshot in place of `read`** (#ADR-0094). `run.resume(from)`, or
-  `Porter::resume(from, store)`, takes a `Start`: the raw snapshot, after which `load` runs,
-  or the load snapshot, after which `fix` does. The load snapshot reopens the mod from the
-  store's bytes and parses its bins again; the parsed objects are a cache of the snapshot.
-  A run resumed from either writes the report and the package of the run that wrote the
-  snapshot. A snapshot is refused with a `ResumeError` that says why: a raw snapshot of
-  another reading, or read under other caps, which it records (#ADR-0095); a load snapshot of another format or program (version and commit), one
-  whose inputs (`LoadInputs`: the install's build, the history, the hash tables' stamp)
-  are not the environment's, or whose settings (`LoadSettings`: the mode, the file fixups,
-  the stale keep, the reworks) are not the run's. The caller then starts from an earlier
+  `Porter::resume(from, store)`, takes a `Start`: the raw snapshot, after which `load` runs;
+  the load snapshot, after which `fix` does; or `Snapshots`, after the stage the variant
+  names (`Start::Fix`: `facts` runs next in a port, `build` in a repair). The load snapshot
+  reopens the mod from the store's bytes and parses its bins again; the fix snapshot reads
+  the objects of each bin `fix` wrote again from its new bytes (`FixedMod::reopen`) and
+  its changes from the snapshot. The parsed objects are a cache of the snapshots. A run
+  resumed from any of them writes the report and the package of the run that wrote them.
+- **A snapshot is refused** with a `ResumeError` that says why: a raw snapshot of another
+  reading, or read under other caps, which it records (#ADR-0095); a later one of another
+  format or program (version and commit), or one whose stage read an input or a setting
+  that is not the run's, which it names (`Input`, `Setting`); a resume after a stage whose
+  snapshot the `Snapshots` lack (`Missing`). The caller then starts from an earlier
   snapshot. The commit is the one the build script reads from git. A build outside a
   checkout has none, and a snapshot it wrote is refused (`Uncommitted`): its version alone
-  does not say which code wrote it.
+  does not say which code wrote it. Each stage declares what it reads, and its snapshot
+  holds exactly that:
+
+  | stage | snapshot | inputs | settings |
+  |---|---|---|---|
+  | read | `RawSnapshot` | the archive | the caps |
+  | load | `LoadSnapshot` | `LoadInputs`: the install's build, the history, the hash tables' stamp | `LoadSettings`: the mode, the file fixups, the stale keep, the reworks |
+  | fix | `FixSnapshot` | `FixInputs`: the schema | `FixSettings`: the fixups on bin values, and the table rules among them as data |
 - **A stage runs once.** Its method asked again gives the result the run holds. The stage
   types keep the order in their signatures. The run holds the results, so a method called
   before the result it reads is held answers `RunError::NotReached` with both stages.
@@ -166,13 +177,13 @@ The modules of `reforge`, each using only the ones above it:
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
 | `env` | `Env`: what a run is judged against, built once |
 | `load` | `Mod` from a `RawSnapshot`: file fixups, binless mods, characters, units, loads; and what is known of the files before any value is read: `Dating`, `Inventory`, `FileProvenance`; the table of reworks |
-| `fixups` | the fixup engine and every rule |
+| `fixups` | the fixup engine and every rule; a fixed bin written again as bytes (`FixedMod::rewrite`), and a fixed mod reopened from them |
 | `facts` | `Facts` and each result in it: copies, object provenance, origins, rigs, clips, reworks, sounds; `UnitJudge` |
 | `port` | `Policy`, `Targets`; `Port` and the steps of its plan: `Shipping`, `Reach`, `FileRefs`, `Layout`, `Renames`, `OwnClips`, `AudioPlan`, `HudPlan`; `Base` |
 | `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers, `EvidenceDoc` |
 | `peek` | `Peek`: an archive read alone, its characters by path and its thumbnail, for a page that shows a mod before a run |
 | `report` | `Report` and its rows; `LoadPart`, the rows `load` gives |
-| `snapshot` | `LoadSnapshot`, the mod as `load` left it named by content id (#ADR-0094), with what it was judged under: `LoadInputs`, `LoadSettings`, `Program`; how it reopens, and `ResumeError` |
+| `snapshot` | the snapshot after each stage from `load` on, the mod as the stage left it named by content id (#ADR-0094), with what it was judged under: `LoadSnapshot` with `LoadInputs` and `LoadSettings`, `FixSnapshot` with `FixInputs` and `FixSettings`, `Program`; `Snapshots`, a run's together; how each reopens, and `ResumeError` |
 | `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)), and started from a snapshot; `codes()`, every code a run can raise |
 
 A test (`tests/layers.rs`) reads every `crate::` path of the sources and fails when a module
@@ -188,7 +199,8 @@ tables (`history`) and the bin value helpers (`model`).
 `model` holds the mod as the archive ships it. It keeps forge's entities and ids (`%w`,
 `%f`, `%b`, `%o`, `%c`, `%u`) and the creation order that makes a dump deterministic.
 
-- **A `Mod` is frozen after `fix`.** `FixedMod` is a newtype only `FixupSet::apply` makes.
+- **A `Mod` is frozen after `fix`.** `FixedMod` is a newtype only `FixupSet::apply` makes,
+  or `FixedMod::reopen` from the bins a fix wrote again (#ADR-0094).
   `Facts::gather` takes `&FixedMod`, so values are compared only at the target's types.
 - **No field belongs to a later stage.** A node holds what `load` found: a file's use, where it
   came from (`FileSource::Archive`, `Made { from, by }`, `Rewritten { by }`, `Game`), a unit's
@@ -795,7 +807,12 @@ object takes a name of its own, which every link to it follows.
   learnt, and the findings of `read` and `load` as `Logged` ([DIAGNOSTICS.md](DIAGNOSTICS.md),
   "Through the run"). `LoadSnapshot::to_json` writes it as JSON, cleaned as the report is,
   and `from_json` reads it back; `wads()` gives each WAD's files by path hash with the id of
-  their bytes. Its format is `SNAPSHOT_FORMAT`, 1.
+  their bytes. Its format is `SNAPSHOT_FORMAT`, 1, the format of every snapshot.
+- The fix snapshot holds each WAD's files by path hash as `fix` left them, a bin a fixup
+  changed under the id of the bytes `FixedMod::rewrite` wrote, which a repair's package
+  ships; what each fixup changed, a field path with the class of each struct on it, which
+  the report's hash form leaves out; the names learnt; and the findings from `read` to the
+  end of `fix`. A repair's second run, judged with the first's evidence, keeps no snapshot.
 - The corpus scripts (`scripts/corpus/`) compare the reports of a run with the baseline's
   reports of the same mods (#ADR-0044).
 

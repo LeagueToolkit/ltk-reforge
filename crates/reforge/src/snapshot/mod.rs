@@ -1,19 +1,27 @@
-//! The load snapshot (#ADR-0094): the mod as `load` left it, its bytes named by content id in
-//! the blob store, with what the stage was judged under. A run starts from one in place of
-//! `read` and `load`, and reparses the bins from the store's bytes.
+//! The snapshots after `load` and the stages after it (#ADR-0094): the mod as each stage left
+//! it, its bytes named by content id in the blob store, with what the stage was judged under.
+//! A run starts from one in place of the stages up to it, and reparses the bins from the
+//! store's bytes.
 //!
-//! The snapshot is the report's load part with what the report's tables do not say: where
-//! each bin's links lead, the groups, the files a table named, the names learnt and the
+//! The load snapshot is the report's load part with what the report's tables do not say:
+//! where each bin's links lead, the groups, the files a table named, the names learnt and the
 //! findings as data. The parsed objects are not in it; they are a cache of the bins' bytes.
+//! A snapshot of the run group (`fix` and after) holds what its stage added, and a run
+//! resumes from it with the load snapshot and the run group's snapshots before it
+//! ([`Snapshots`]).
 //!
 //! `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump".
 
+mod fix;
+
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
 use crate::archive::{RawExtra, RawImage};
-use crate::diag::{Input, Logged, UnknownCode};
+use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
 use crate::game::{Build, NameBook, NamesStamp};
 use crate::load::{Dating, FileProvenance, Inventory, LoadOptions, ReworkTable};
@@ -28,6 +36,44 @@ use crate::store::BlobStore;
 /// The format of every snapshot: one number for their shape, raised when it changes. A
 /// snapshot of another format is not read.
 pub const SNAPSHOT_FORMAT: u32 = 1;
+
+/// A snapshot as JSON, every character a terminal acts on written as a JSON escape.
+///
+/// # Panics
+///
+/// When serde fails to write a snapshot into memory, which no value of one makes it do.
+fn to_json<T: Serialize>(snapshot: &T, stage: &str) -> String {
+    let json = serde_json::to_string(snapshot)
+        .unwrap_or_else(|error| panic!("a {stage} snapshot does not write: {error}"));
+    clean_json(&json).into_owned()
+}
+
+/// A snapshot from its JSON.
+fn from_json<T: DeserializeOwned>(json: &str) -> Result<T, ResumeError> {
+    serde_json::from_str(json).map_err(ResumeError::Json)
+}
+
+/// A run's snapshots from `load` on (#ADR-0094): the load group's, and the run group's as far
+/// as the run went. A run resumes after any stage whose snapshot they hold.
+#[derive(Debug, Clone)]
+pub struct Snapshots {
+    /// The snapshot after `load`.
+    pub load: LoadSnapshot,
+    /// The snapshot after `fix`.
+    pub fix: Option<FixSnapshot>,
+}
+
+impl Snapshots {
+    /// The snapshots from the load snapshot alone.
+    pub fn new(load: LoadSnapshot) -> Self {
+        Self { load, fix: None }
+    }
+
+    /// The snapshot after `fix`, or the refusal of a resume after it.
+    pub fn fix(&self) -> Result<&FixSnapshot, ResumeError> {
+        self.fix.as_ref().ok_or(ResumeError::Missing(Stage::Fix))
+    }
+}
 
 /// The program that wrote a snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,6 +170,10 @@ pub enum Setting {
     KeepStale,
     /// The table of reworks.
     Reworks,
+    /// The fixups on bin values and their order.
+    BinFixups,
+    /// The table rules among them.
+    Rules,
 }
 
 /// The settings `load` reads (#ADR-0094).
@@ -199,6 +249,9 @@ pub enum ResumeError {
     /// A setting a stage up to the snapshot reads is not the snapshot's.
     #[error("the run's {0:?} is not the snapshot's")]
     Setting(Setting),
+    /// A run resumes after a stage whose snapshot the run's snapshots lack.
+    #[error("the snapshots hold none after {0}")]
+    Missing(Stage),
     /// The run has read an archive already.
     #[error("the run has read an archive already")]
     Started,
@@ -414,19 +467,13 @@ impl LoadSnapshot {
     }
 
     /// The snapshot as JSON, every character a terminal acts on written as a JSON escape.
-    ///
-    /// # Panics
-    ///
-    /// When serde fails to write a snapshot into memory, which no value of one makes it do.
     pub fn to_json(&self) -> String {
-        let json = serde_json::to_string(self)
-            .unwrap_or_else(|error| panic!("a load snapshot does not write: {error}"));
-        clean_json(&json).into_owned()
+        to_json(self, "load")
     }
 
     /// A snapshot from its JSON.
     pub fn from_json(json: &str) -> Result<Self, ResumeError> {
-        serde_json::from_str(json).map_err(ResumeError::Json)
+        from_json(json)
     }
 
     /// Refuses a run whose program, inputs or load settings are not the snapshot's.

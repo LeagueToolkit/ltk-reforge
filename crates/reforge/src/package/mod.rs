@@ -60,6 +60,7 @@ pub use self::write::{
     WriteError, WriterKind, permit,
 };
 use crate::diag::{Code, Diag};
+pub use crate::fixups::BinWrite;
 pub use crate::model::Layer;
 use crate::model::entity::{CharId, FileId, UnitId};
 use crate::model::{BinHash, ByteView, ChunkPath, Dump, DumpCx, WadHash, WadName};
@@ -123,17 +124,6 @@ impl ChunkKey {
             .flatten();
         spelled.map_or_else(|| self.path.hash(), WadHash)
     }
-}
-
-/// How a bin was written again.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BinWrite {
-    /// Through `ltk_meta`'s delta writer: every object no fixup changed is copied byte for
-    /// byte.
-    Delta,
-    /// Every object encoded again: the delta writer refuses a bin of the old numbering.
-    Whole,
 }
 
 /// What a bin written again was built to hold: what [`RoundTrip`] reads it back against.

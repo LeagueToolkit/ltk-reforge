@@ -4708,6 +4708,7 @@ dependencies = [
  "ltk_mimir_cache",
  "ltk_mod_project",
  "ltk_modpkg",
+ "ltk_primitives",
  "ltk_shader",
  "ltk_texture",
  "ltk_wad",

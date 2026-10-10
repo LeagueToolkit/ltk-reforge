@@ -597,4 +597,8 @@ impl BinFixup for Rule {
             self.teach(cx.book());
         }
     }
+
+    fn rule(&self) -> Option<&Rule> {
+        Some(self)
+    }
 }

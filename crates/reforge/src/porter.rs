@@ -32,7 +32,10 @@ use crate::package::{
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
-use crate::snapshot::{self, LoadSettings, LoadSnapshot, LoadState, ResumeError, Setting};
+use crate::snapshot::{
+    self, FixSettings, FixSnapshot, LoadSettings, LoadSnapshot, LoadState, ResumeError, Setting,
+    Snapshots,
+};
 use crate::store::{BlobStore, Layered, MemoryStore};
 
 /// The name the second run of a repair reads the first run's package under.
@@ -165,6 +168,9 @@ pub enum Start {
     Raw(Box<RawSnapshot>),
     /// The load snapshot: the run starts at `fix`.
     Load(Box<LoadSnapshot>),
+    /// The snapshots through `fix`: the run starts at `facts` in a port, at `build` in a
+    /// repair.
+    Fix(Box<Snapshots>),
 }
 
 impl From<RawSnapshot> for Start {
@@ -505,6 +511,7 @@ pub struct Run<'a> {
     first: usize,
     raw: Option<RawSnapshot>,
     loaded: Option<LoadSnapshot>,
+    fix_snapshot: Option<FixSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -534,6 +541,7 @@ impl<'a> Run<'a> {
             first: 0,
             raw: None,
             loaded: None,
+            fix_snapshot: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -608,12 +616,14 @@ impl<'a> Run<'a> {
     /// Starts the run from a snapshot in place of `read`, with the bytes it names in the run's
     /// store (#ADR-0094). From the raw snapshot the run holds it as `read` gives it, and
     /// `load` runs next. From the load snapshot the run holds the mod as `load` left it, its
-    /// bins parsed again from the store, and `fix` runs next.
+    /// bins parsed again from the store, and `fix` runs next. From the snapshots after a later
+    /// stage the run holds what that stage left: the objects of the bins `fix` wrote again
+    /// read from their new bytes, and each stage's results read back from its snapshot.
     ///
     /// The raw snapshot is refused when its reading is not this program's or its caps are not
-    /// the run's; the load snapshot
-    /// when its format, its program, an input the environment has open or a setting `load`
-    /// reads is not this run's. A refused run is dropped, and the caller starts again from an
+    /// the run's; a later snapshot when its format, its program, an input its stages read or a
+    /// setting they read is not this run's, each snapshot from the load on judged by what its
+    /// own stage declares. A refused run is dropped, and the caller starts again from an
     /// earlier snapshot.
     pub fn resume(mut self, from: impl Into<Start>) -> Result<Self, ResumeError> {
         let started = self.raw.is_some() || self.loaded.is_some() || self.log.halted().is_some();
@@ -637,19 +647,61 @@ impl<'a> Run<'a> {
                 self.raw = Some(*raw);
             }
             Start::Load(load) => {
-                let inputs = snapshot::LoadInputs::of(self.env);
-                load.holds(&inputs, &self.load_settings())?;
-                let reopened = load.reopen(&self.store)?;
+                let module = self.reopen_load(&load)?;
                 self.log.restore(load.findings(), &codes)?;
-                self.book = reopened.names;
-                self.dating = Some(reopened.dating);
-                self.inventory = reopened.inventory;
-                self.provenance = reopened.provenance;
-                self.module = Reached::Loaded(reopened.module);
+                self.module = Reached::Loaded(module);
                 self.loaded = Some(*load);
+            }
+            Start::Fix(snapshots) => {
+                let Snapshots { load, fix } = *snapshots;
+                let fix = fix.ok_or(ResumeError::Missing(Stage::Fix))?;
+                let module = self.reopen_load(&load)?;
+                let fixed = self.reopen_fix(module, &load, &fix)?;
+                self.log.restore(fix.findings(), &codes)?;
+                self.module = Reached::Fixed(fixed);
+                self.loaded = Some(load);
+                self.fix_snapshot = Some(fix);
             }
         }
         Ok(self)
+    }
+
+    /// The mod as the load snapshot left it, and what the run holds once `load` ends: the
+    /// names, the dating, the inventory and the file provenance.
+    fn reopen_load(&mut self, load: &LoadSnapshot) -> Result<Mod, ResumeError> {
+        let inputs = snapshot::LoadInputs::of(self.env);
+        load.holds(&inputs, &self.load_settings())?;
+        let reopened = load.reopen(&self.store)?;
+        self.book = reopened.names;
+        self.dating = Some(reopened.dating);
+        self.inventory = reopened.inventory;
+        self.provenance = reopened.provenance;
+        Ok(reopened.module)
+    }
+
+    /// The mod as the fix snapshot left it, from the mod as `load` left it, and what the run
+    /// holds once `fix` ends: the names and the changes.
+    fn reopen_fix(
+        &mut self,
+        module: Mod,
+        load: &LoadSnapshot,
+        fix: &FixSnapshot,
+    ) -> Result<FixedMod, ResumeError> {
+        fix.holds(&snapshot::FixInputs::of(self.env), &self.fix_settings())?;
+        let rewritten = fix.rewritten(load)?.into_iter().map(|(file, content)| {
+            let bytes = self.store.get(content).ok_or(ResumeError::Store(content))?;
+            Ok((file, bytes))
+        });
+        let rewritten = rewritten.collect::<Result<Vec<_>, ResumeError>>()?;
+        let fixed = FixedMod::reopen(module, rewritten).map_err(ResumeError::Malformed)?;
+        self.changes = Some(fix.changes()?);
+        self.book = fix.names().clone();
+        Ok(fixed)
+    }
+
+    /// The settings `fix` reads in this run.
+    fn fix_settings(&self) -> FixSettings {
+        FixSettings::of(&self.settings.fixups)
     }
 
     /// The settings `load` reads in this run.
@@ -782,6 +834,7 @@ impl<'a> Run<'a> {
                 let set = &self.settings.fixups;
                 match set.apply_or_keep(module, &ObjectSet::every(), &mut inputs, &mut sink) {
                     Ok((fixed, changes)) => {
+                        self.fix_snapshot = self.fix_snapshot_of(&fixed, &changes);
                         self.module = Reached::Fixed(fixed);
                         self.changes = Some(changes);
                     }
@@ -800,6 +853,25 @@ impl<'a> Run<'a> {
                 needs: Stage::Load,
             }),
         }
+    }
+
+    /// The fix snapshot of the mod `fix` left, the bins it wrote again put into the run's
+    /// store. A run with no load snapshot keeps none: a repair's second run, judged with the
+    /// first's evidence, keeps no snapshot after `load` as it keeps none of `load`.
+    fn fix_snapshot_of(&self, fixed: &FixedMod, changes: &Changes) -> Option<FixSnapshot> {
+        let load = self.loaded.as_ref()?;
+        let rewritten = fixed.rewritten(changes).into_iter();
+        let rewritten = rewritten.map(|(file, bin)| (file, self.store.put(bin.bytes.into())));
+        let declared = (snapshot::FixInputs::of(self.env), self.fix_settings());
+        let findings = self.log.logged_from(self.first);
+        Some(FixSnapshot::of(
+            load,
+            &rewritten.collect(),
+            changes,
+            &self.book,
+            declared,
+            findings,
+        ))
     }
 
     /// Ends a stage's method on a repairer's run, which has no such stage.
@@ -1175,6 +1247,20 @@ impl<'a> Run<'a> {
     /// The load snapshot, once `load` ended or the run started from one (#ADR-0094).
     pub fn load_snapshot(&self) -> Option<&LoadSnapshot> {
         self.loaded.as_ref()
+    }
+
+    /// The fix snapshot, once `fix` ended or the run started from one (#ADR-0094).
+    pub fn fix_snapshot(&self) -> Option<&FixSnapshot> {
+        self.fix_snapshot.as_ref()
+    }
+
+    /// The run's snapshots from `load` on, as far as it went: what a caller keeps to resume
+    /// after any of its stages. None before `load` ends, and in a run that keeps no load
+    /// snapshot.
+    pub fn snapshots(&self) -> Option<Snapshots> {
+        let mut snapshots = Snapshots::new(self.loaded.clone()?);
+        snapshots.fix = self.fix_snapshot.clone();
+        Some(snapshots)
     }
 
     /// The store the run's bytes are in: its memory layer over the caller's store.

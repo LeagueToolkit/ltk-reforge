@@ -15,6 +15,7 @@ reforge-magic.workspace = true
 reforge-wwise.workspace = true
 ltk_hash.workspace = true
 ltk_meta.workspace = true
+ltk_primitives.workspace = true
 ltk_wad.workspace = true
 ltk_mesh.workspace = true
 ltk_anim.workspace = true

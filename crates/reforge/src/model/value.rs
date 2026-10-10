@@ -386,6 +386,40 @@ pub fn kind_name(kind: Kind) -> &'static str {
     }
 }
 
+/// The name [`kind_name`] gives, when `name` is one: how a kind's name is read back.
+pub fn kind_named(name: &str) -> Option<&'static str> {
+    const KINDS: [Kind; 27] = [
+        Kind::None,
+        Kind::Bool,
+        Kind::I8,
+        Kind::U8,
+        Kind::I16,
+        Kind::U16,
+        Kind::I32,
+        Kind::U32,
+        Kind::I64,
+        Kind::U64,
+        Kind::F32,
+        Kind::Vector2,
+        Kind::Vector3,
+        Kind::Vector4,
+        Kind::Matrix44,
+        Kind::Color,
+        Kind::String,
+        Kind::Hash,
+        Kind::WadChunkLink,
+        Kind::Container,
+        Kind::UnorderedContainer,
+        Kind::Struct,
+        Kind::Embedded,
+        Kind::ObjectLink,
+        Kind::Optional,
+        Kind::Map,
+        Kind::BitBool,
+    ];
+    KINDS.into_iter().map(kind_name).find(|&kind| kind == name)
+}
+
 /// How many characters of a string [`brief`] shows before it cuts it.
 pub const BRIEF_TEXT: usize = 96;
 
