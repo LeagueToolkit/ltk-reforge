@@ -1774,3 +1774,28 @@ size and SHA-256, the archive's bytes from the datasets on disk. No run was made
 
 The reduced corpus is chosen to cover cases, so the sharing between mods shows only over the
 datasets: 45 % of the raw bytes.
+
+## The blob store and the raw snapshot (2026-10-10)
+
+The branch `run-state-store` at `b582589` (the blob store, #ADR-0093; the bytes as views; the
+raw snapshot, #ADR-0094), against the 16.19.8207193 copy, at 24 in parallel with one thread
+each, over the reduced corpus. The 757-build index of `baseline-port-5` and
+`baseline-repair-5` was no longer on disk, so the runs use the app's own index of 758 builds
+(head `d991890173fb`, 16.20.8248524), and the change is compared with its base commit
+`ebdd720` (master's head) run over the same index (`raw-snapshot-base-{port,repair}`).
+
+| run | command | done | ended by a fatal diagnostic | time | base commit's time |
+|---|---|---:|---|---|---|
+| `raw-snapshot-port` | `port --no-write` | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 34 s | 32 s |
+| `raw-snapshot-repair` | `repair --no-write --again` | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 45 s | 48 s |
+
+- **Against the base commit** (`raw-snapshot-{port,repair}-vs-base`): the reports are equal in
+  all 68 mods, port and repair. The store and the snapshot are invisible in the output, as
+  #ADR-0093 requires. The run's store is a memory store, and the entries' bytes reach it once
+  per distinct content.
+- **Against the baselines** (`raw-snapshot-{port,repair}-vs-baseline-5`): every mod differs in
+  the history's head, the evidence's program and inputs, and the evidence's fixup list; the
+  rest are the changes landed on master since `8cacfff` (the shader variant fixup among them)
+  and the one build the index gained, which the base commit's run shows alike.
+- **Time.** The difference of 2 s either way is within the noise of a run of 34 to 48 s; the
+  one hash per file is now taken in the store's put, where the reader took it before.
