@@ -52,6 +52,10 @@ byteview = "0.10"
 # does not build without an async runtime: a function of its writer names a type only one
 # declares.
 cacache = { version = "=13.0.0", default-features = false, features = ["mmap"] }
+# Whether the process that named a scratch file of the ingest store still runs (#ADR-0100):
+# `OpenProcess` on Windows, `kill(pid, 0)` on Unix.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+rustix = { version = "1", features = ["process"] }
 # A shader variant's key, which keeps the defines' case: ltk_hash's xxh64 lowercases.
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 rusqlite = { version = "0.40", features = ["bundled"] }

@@ -128,16 +128,72 @@ fn a_spool_of_the_ingest_store_is_a_scratch_file_removed_once_read() {
     assert_eq!(files(&dir), Vec::<Utf8PathBuf>::new(), "removed unfinished");
 }
 
+/// The id of a process that ran and is gone.
+fn dead_process() -> u32 {
+    let exe = std::env::current_exe().expect("the test's own program");
+    let mut child = std::process::Command::new(exe)
+        .arg("--list")
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("the test's program starts");
+    child.wait().expect("it ends");
+    child.id()
+}
+
 #[test]
-fn a_scratch_file_a_process_left_is_removed_when_the_store_opens() {
+fn a_scratch_file_whose_process_is_gone_is_removed_when_the_store_opens() {
     let (_scratch, dir) = scratch();
-    fs_err::create_dir_all(dir.join("scratch")).expect("the directory is made");
-    fs_err::write(dir.join("scratch").join(".tmp-left"), b"left").expect("the file writes");
+    let scratch = dir.join("scratch");
+    fs_err::create_dir_all(&scratch).expect("the directory is made");
+    fs_err::write(scratch.join(format!("{}-gone", dead_process())), b"left")
+        .expect("the file writes");
+    fs_err::write(scratch.join(".tmp-unnamed"), b"left").expect("the file writes");
     let store = IngestStore::new(&dir);
     assert_eq!(files(&dir), Vec::<Utf8PathBuf>::new());
     store.put(ByteView::from(b"a blob"));
     IngestStore::new(&dir);
     assert_eq!(files(&dir).len(), 1, "the blobs stay");
+}
+
+#[test]
+fn a_scratch_file_of_a_running_process_survives_an_open_for_a_day() {
+    let (_scratch, dir) = scratch();
+    let scratch = dir.join("scratch");
+    fs_err::create_dir_all(&scratch).expect("the directory is made");
+    let live = scratch.join(format!("{}-reading", std::process::id()));
+    fs_err::write(&live, b"read by this process").expect("the file writes");
+    IngestStore::new(&dir);
+    assert!(live.exists(), "a running process's file stays");
+
+    let two_days = std::time::Duration::from_secs(2 * 24 * 60 * 60);
+    let file = fs_err::File::options()
+        .write(true)
+        .open(&live)
+        .expect("it opens");
+    file.set_modified(std::time::SystemTime::now() - two_days)
+        .expect("its time is set");
+    drop(file);
+    IngestStore::new(&dir);
+    assert!(
+        !live.exists(),
+        "a file older than a day goes whatever its name says"
+    );
+}
+
+#[test]
+fn a_spool_of_the_ingest_store_is_named_by_its_process() {
+    let (_scratch, dir) = scratch();
+    let store = IngestStore::new(&dir);
+    let mut spool = store.spool().expect("a spool opens");
+    spool.write_all(b"spooled").expect("the spool writes");
+    let named = files(&dir);
+    assert_eq!(named.len(), 1);
+    let name = named[0].file_name().expect("a name");
+    let prefix = format!("{}-", std::process::id());
+    assert!(name.starts_with(&prefix), "{name}");
+    assert!(name.len() > prefix.len(), "a random part: {name}");
+    IngestStore::new(&dir);
+    assert_eq!(files(&dir).len(), 1, "another open leaves it");
 }
 
 #[test]

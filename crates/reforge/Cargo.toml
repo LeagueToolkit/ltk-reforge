@@ -47,6 +47,12 @@ camino.workspace = true
 tracing.workspace = true
 tempfile.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rustix.workspace = true
+
 [dev-dependencies]
 reforge-testkit.workspace = true
 tempfile.workspace = true

@@ -89,8 +89,8 @@ let report = run.report();
   (`archive::Archive::file`, #ADR-0100): its SHA-256 is taken in one pass, and a packed WAD
   stored as it is is mounted over its part of the file, which `ltk_wad` reads chunk by chunk.
   A deflated packed WAD is inflated once into the store's spool (`BlobStore::spool`) and
-  mounted from there: the ingest store writes it to a scratch file under a temporary name in
-  its directory, and a store in memory holds it in memory. Its chunks are the blobs; the spool
+  mounted from there: the ingest store writes it to a scratch file in its directory, named by
+  the process's id and a random part, and a store in memory holds it in memory. Its chunks are the blobs; the spool
   is removed once they are read, and kept by neither store. Each chunk, loose or packed, goes
   into the store as it is read and is dropped, the reader keeping its id alone, so a read
   that a fatal diagnostic ends leaves the chunks read before it in the store, named by no
@@ -960,9 +960,10 @@ object takes a name of its own, which every link to it follows.
   archive file entry by entry, holds an archive in memory once, and puts the entries' bytes
   into the blob store under their content id and nowhere else (#ADR-0093, #ADR-0100). On
   disk that is the ingest store, a file per blob named by its id. A deflated packed WAD is
-  inflated there into a scratch file under a temporary name, never the archive's, removed
-  once its chunks are read and on an error too; one a process that died left is removed when
-  the store is next opened. The raw cache's entry beside the blobs is named by the archive's SHA-256, the reading
+  inflated there into a scratch file named by the process's id and a random part, never the
+  archive's, removed once its chunks are read and on an error too. When the store is next
+  opened, a scratch file whose process is gone is removed, and one older than a day by its
+  own modified time whatever its process; a running process's file stays. The raw cache's entry beside the blobs is named by the archive's SHA-256, the reading
   and the caps, and holds the raw snapshot's JSON, the mod's names in it as JSON strings.
 - No parser of mod bytes ends a run by a panic. A reader of this repository's own returns an
   error on any input (banks, file kinds). A reader from another crate runs where its panic is
