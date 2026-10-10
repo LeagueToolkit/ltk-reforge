@@ -31,9 +31,10 @@ The raw snapshot is a cache the corpus scripts may populate once and read in eve
   reports for every mod. This is checked by comparing the two runs as a change is compared
   with a baseline, and the check is run once when the cache lands and once whenever the raw
   snapshot's shape changes.
-- The corpus populates the cache in one pass, and the runs read it. The engine of the disk
-  store is chosen on this pass (#ADR-0093): 24 processes writing at once is the load an LSM
-  store takes and SQLite serialises.
+- The cache is the plain-files store of #ADR-0093, since the runner is 24 processes and
+  `fjall` opens for one process at a time. A blob written by a rename is whole or absent, so
+  the processes populate and read it at once with no lock. The table of archive SHA-256 to
+  raw snapshot is a file per archive beside the blobs, written the same way.
 
 ## Consequences
 

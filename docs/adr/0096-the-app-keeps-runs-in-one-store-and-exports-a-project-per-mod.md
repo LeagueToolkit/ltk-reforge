@@ -30,8 +30,11 @@ call, 2026-10-10).
   - a **run**: the snapshot of each stage after load that was reached, keyed by its load; the
     whole settings; the schema's build; the program's version and commit; the path of the
     package written, when one was. It is written when the run ends.
-- The store has a format version of its own, and a store of another format is opened
-  read-only or rebuilt, never migrated in place.
+- The three are rows of a SQLite file in the app's data folder, with the mod's name, author
+  and version beside each raw snapshot so that the Runs page lists mods without opening a
+  snapshot; the bytes they name are in the `fjall` store beside it (#ADR-0093). The two have
+  one format version between them, and a store of another format is opened read-only or
+  rebuilt, never migrated in place.
 - The store is one per app, in its data folder. Two runs of one load share it and every blob
   it names; two mods that share files share those.
 - A **project** is a run with its load, its raw snapshot and the bytes they name, as one
@@ -45,9 +48,9 @@ call, 2026-10-10).
   drops the run and sweeps what no remaining snapshot names: its load and its raw snapshot
   when no other run refers to them, and the blobs.
 - The sweep marks every id the remaining snapshots and an open run's name, then deletes what
-  is unmarked, in one transaction. It runs after a removal and after the bound cuts, never
-  while a stage is writing. After a sweep the app compacts the store, so the space comes back,
-  and the settings page shows the store's size. A load stays while a run refers to it, a raw
+  is unmarked, in one SQLite transaction for the rows and a delete per blob after it. It runs
+  after a removal and after the bound cuts, never while a run is flushing. The blob store's
+  garbage collection gives the space back, and the settings page shows the store's size. A load stays while a run refers to it, a raw
   snapshot while a load does, and a blob while any snapshot names it.
 - Reopening a run resumes it when its archive is at its path with its SHA-256, the program is
   the one that wrote it and the inputs match (#ADR-0094). Otherwise the run opens read-only

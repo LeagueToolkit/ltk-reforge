@@ -60,15 +60,28 @@ run's, never a location in a store or on disk.
 - The rule in `AGENTS.md` is restated: no archive is extracted to disk under its own names;
   bytes are written only into the blob store, under their content id.
 
-The engine of the disk store is chosen by measurement once the trait exists, not here. SQLite
-is the first candidate, since `rusqlite` is in the workspace and the history index keeps blob
-bytes in it (#ADR-0078); its one writer is the point to measure against the corpus populating
-a cache at 24 in parallel, where an LSM store would do better.
+The disk store is `fjall` (the user's call, 2026-10-10): an LSM store with its large values
+kept apart in a value log, which is the shape of this workload: values written once, read by
+key, and space given back by the log's garbage collection after a sweep. SQLite keeps blobs
+inside B-tree pages, which it documents as faster than files only below about 100 KB, and
+gives space back only by rewriting the file. The runs, their snapshots and what a person sees
+of a mod are small rows, and those are SQLite's (#ADR-0096).
+
+- The trait admits a store of plain files, one per blob under a two-level fanout of the id's
+  hex as git keeps loose objects, written by a rename. It is the store for a test and for a
+  reader that many processes share (#ADR-0095), and needs no engine.
+- A run's memory layer is where every byte a stage makes or rewrites goes, and the layer is
+  flushed into the store under it once, when the run is saved. The stages read the store
+  under it only, so a run's threads share one open store for reading and serialise on
+  nothing until the flush.
 
 ## Consequences
 
 - The bytes of a stage's output are written to the store once per distinct content. A fixup
   that rewrites a bin adds one blob; the files it does not touch add none.
+- `fjall` lands in `[workspace.dependencies]` from crates.io, pinned, and is used by the app
+  crate alone: the library ships the trait, the memory store, the layered store and the
+  plain-files store.
 - A big mod becomes a disk cost, not a memory one. The caps on what is inflated (#ADR-0051)
   stay, since they bound what one run allocates.
 - A mod's text still reaches a person through `clean` only. A store holds bytes, and no viewer
