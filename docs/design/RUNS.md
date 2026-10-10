@@ -1799,3 +1799,34 @@ each, over the reduced corpus. The 757-build index of `baseline-port-5` and
   and the one build the index gained, which the base commit's run shows alike.
 - **Time.** The difference of 2 s either way is within the noise of a run of 34 to 48 s; the
   one hash per file is now taken in the store's put, where the reader took it before.
+
+## The baselines at ea2dd79 (2026-10-10)
+
+Made again over the 4,909 mods in scope with the program at `ea2dd79`, master's head, against
+the 16.19.8207193 copy and the app's history index of 758 builds in format 1 (head
+`d991890173fb`, newest build 16.20.8248524), at 24 in parallel with one thread each. The
+757-build index the baselines at `8cacfff` used is no longer on disk, so they are replaced
+rather than extended: every later run is compared with these.
+
+| baseline | command | done | ended by a fatal diagnostic | failed | time | differs from the one replaced |
+|---|---|---:|---|---:|---|---:|
+| `baseline-port-6` | `port --no-write` | 4,879 | 30: one `archive.no-skin`, 13 `package.empty`, 16 `package.shader-missing` | 0 | 922 s | 4,909 mods |
+| `baseline-repair-6` | `repair --no-write --again` | 4,884 | 25: one `archive.no-skin`, 24 `package.shader-missing` | 0 | 1,197 s | 4,909 mods |
+
+The exits are those of the baselines replaced, mod for mod. The comparison
+(`baseline-6-vs-5-{port,repair}`) differs in every mod by the history's head and by the
+evidence's program, inputs and list of fixups; the rest is the commits since `8cacfff` and the
+index's one build, each as its own run recorded it:
+
+- **The index's build** (16.20.8248524): `provenance` life and paths in 147 and 35 ports, the
+  game's facts in 55, the reworks in 9, and `rework.restoration` in 2 of each.
+- **A copy's own files** (#ADR-0088): the verdicts of the files a copy names in 156 ports
+  (4,932 `refs` rows), and 25 ports that ship 261 own files their copies name, with their
+  renames, chunks, package paths, what is left behind, `object.carried` and
+  `package.texture-contained`.
+- **The gear condition** and **the nearest shader variant** (#GAME-CHANGE-0027, #ADR-0092):
+  `fixup.changed` and the fixups' kinds in 14 mods of each command, and in the repair the 101
+  bins that copy the gear rule's object, edited in 5 mods.
+- **The class of each struct** (#MOD-ARTIFACT-0039): `check.class-undeclared` in 231 repairs,
+  `check.field-undeclared` gone from 198 and `check.done` counting fewer in 205;
+  `check.type-mismatch` in 8 repairs and 5 ports, the gear condition's among them.
