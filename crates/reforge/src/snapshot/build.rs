@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
 use crate::diag::{Logged, Stage};
+use crate::load::KeptFile;
 use crate::model::entity::{CharId, FileId, UnitId};
 use crate::model::hash::bin_hex;
 use crate::model::{BinHash, ByteView, ChunkPath, ContentId, Layer, WadName, bin};
@@ -32,6 +33,9 @@ pub struct BuildSettings {
     /// Whether stale copies are carried: a repair judges a texture again in the container it
     /// ships in.
     pub keep_stale: bool,
+    /// The files carried where they are stale copies, each named alone (#ADR-0098): a repair
+    /// judges such a texture again as it does under `keep_stale`.
+    pub kept_files: Vec<KeptFile>,
 }
 
 impl BuildSettings {
@@ -40,6 +44,8 @@ impl BuildSettings {
             Some(Setting::KeepDds)
         } else if self.keep_stale != other.keep_stale {
             Some(Setting::KeepStale)
+        } else if self.kept_files != other.kept_files {
+            Some(Setting::KeptFiles)
         } else {
             None
         }

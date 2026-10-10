@@ -14,7 +14,7 @@ use super::plan::{Objects, PlanError, PortInputs};
 use super::reach::{Fate, Reach};
 use crate::diag::Sink;
 use crate::load::provenance::{AtPath, BytesOrigin};
-use crate::load::{LoadOptions, Staleness, legacy, moved};
+use crate::load::{Staleness, legacy, moved};
 use crate::model::entity::{FileId, Mod, UnitId};
 use crate::model::value::{self, FileRef};
 use crate::model::{ChunkPath, Dump, DumpCx, Spell, WadHash, WadName, clean, name_hash};
@@ -233,10 +233,9 @@ impl FileRefs {
                 *held = id;
             }
         }
-        let options = LoadOptions::default().keep_stale(inputs.options.keep_stale);
         let finder = Finder {
             inputs,
-            stale: Staleness::new(inputs.env, &options),
+            stale: Staleness::new(inputs.env, &inputs.options.stale_options()),
             shipped,
         };
         let carried: Vec<_> = CARRIED_FIELDS

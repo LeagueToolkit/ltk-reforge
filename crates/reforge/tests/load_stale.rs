@@ -1,14 +1,16 @@
 //! Stale copies (#MOD-ARTIFACT-0004): a file at a game path holding the bytes the game shipped
-//! there at an earlier build is no override, unless the options keep it or the WAD restores a
-//! model from before its champion's rework. The game is `reforge_testkit::skins`. Its history
+//! there at an earlier build is no override, unless the options keep it, alone or with every
+//! other, or the WAD restores a model from before its champion's rework. The game is `reforge_testkit::skins`. Its history
 //! here has two builds, and at the first the game held other bytes at the base texture.
 
 use reforge::env::Env;
 use reforge::history::History;
 use reforge::load::{
-    LoadError, LoadOptions, Restoration, ReworkTable, StaleFiles, Staleness, TakenFromGame,
+    KeptFile, LoadError, LoadOptions, Restoration, ReworkTable, StaleFiles, Staleness,
+    TakenFromGame,
 };
 use reforge::model::entity::{FileSource, FileUse};
+use reforge::model::path_hash;
 use reforge_testkit::bins::{bin, entry};
 use reforge_testkit::skins::{self, BASE_MESH, BASE_TEX, WAD, base_skin, skin_bin};
 use reforge_testkit::{BrokenHistory, LoadRun, MemoryHistory, ModArchive};
@@ -78,6 +80,60 @@ fn the_options_keep_stale_copies() {
     assert_eq!(run.file(BASE_TEX).1.used, FileUse::Referenced);
     assert_eq!(run.log.of::<StaleFiles>().count(), 0);
     assert_eq!(run.only::<TakenFromGame>().overridden, 2);
+}
+
+/// A file of the champion's WAD named to be kept (#ADR-0098).
+fn kept(path: &str) -> KeptFile {
+    KeptFile::new(WAD, path).expect("a file to keep")
+}
+
+#[test]
+fn a_file_named_to_be_kept_is_no_stale_copy() {
+    let env = env_with(history());
+    let by_path = options().keep_files(vec![kept(BASE_TEX)]);
+    let run = LoadRun::of(&env, by_path, &binless(OLD_TEX));
+    assert_eq!(run.file(BASE_TEX).1.used, FileUse::Referenced);
+    assert_eq!(run.log.of::<StaleFiles>().count(), 0);
+    assert_eq!(run.only::<TakenFromGame>().overridden, 2);
+    // A file no table names is named by its hash.
+    let hashed = format!("{:016x}.tex", path_hash(BASE_TEX).0);
+    let by_hash = options().keep_files(vec![kept(&hashed)]);
+    let run = LoadRun::of(&env, by_hash, &binless(OLD_TEX));
+    assert_eq!(run.file(BASE_TEX).1.used, FileUse::Referenced);
+}
+
+#[test]
+fn a_file_named_to_be_kept_that_is_no_stale_copy_keeps_nothing() {
+    let env = env_with(history());
+    let standard = LoadRun::of(&env, options(), &binless(OLD_TEX));
+    let others = vec![
+        kept(BASE_MESH),
+        KeptFile::new("Other.wad.client", BASE_TEX).expect("a file to keep"),
+    ];
+    let run = LoadRun::of(&env, options().keep_files(others), &binless(OLD_TEX));
+    assert_eq!(run.file(BASE_TEX).1.used, FileUse::Stale);
+    assert_eq!(run.file(BASE_MESH).1.used, FileUse::Referenced);
+    assert_eq!(run.dump(), standard.dump());
+    assert_eq!(run.messages(), standard.messages());
+}
+
+#[test]
+fn a_file_to_keep_is_named_by_its_wad_and_its_path() {
+    let named = KeptFile::parse("Test.wad.client/ASSETS\\Characters/x.tex").expect("a file");
+    assert_eq!(
+        (named.wad.as_str(), named.path.as_str()),
+        ("test.wad.client", "assets/characters/x.tex")
+    );
+    assert_eq!(named.to_string(), "test.wad.client/assets/characters/x.tex");
+    assert_eq!(named.hash(), path_hash("assets/characters/x.tex"));
+    for refused in [
+        "x.tex",
+        "Test/x.tex",
+        "Test.wad.client/",
+        "Test.wad.client/a/../b.tex",
+    ] {
+        assert!(KeptFile::parse(refused).is_err(), "{refused}");
+    }
 }
 
 #[test]

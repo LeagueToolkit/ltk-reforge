@@ -36,7 +36,7 @@ use crate::facts::Facts;
 use crate::fixups::FixedMod;
 use crate::game::{GameError, Speller};
 use crate::history::HistoryError;
-use crate::load::{Fault, FileProvenance};
+use crate::load::{Fault, FileProvenance, KeptFile, LoadOptions};
 use crate::model::entity::{CharId, FileId, Mod, ObjectId, UnitId};
 use crate::model::known::{class, field};
 use crate::model::{
@@ -44,16 +44,29 @@ use crate::model::{
 };
 
 /// What `plan` is configured with.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortOptions {
     /// Stale copies were loaded as the mod's own files, and a port ships them.
     pub keep_stale: bool,
+    /// These files were loaded as the mod's own where they are stale copies, each named alone,
+    /// and a port ships them (#ADR-0098).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kept_files: Vec<KeptFile>,
     /// A bank's events are cut from the game's events bank only: a bank the author added,
     /// which no event of the game's plays, is reported and not carried (#ADR-0030).
     pub game_events_only: bool,
     /// The units at slots other than their champion's target ship too, each at its own slot,
     /// for a mod that works on several skins (#ADR-0082).
     pub keep_other_slots: bool,
+}
+
+impl PortOptions {
+    /// The options `load` judged stale copies under, which the plan judges them under again.
+    pub(crate) fn stale_options(&self) -> LoadOptions {
+        LoadOptions::default()
+            .keep_stale(self.keep_stale)
+            .keep_files(self.kept_files.clone())
+    }
 }
 
 /// An input of the run that did not answer while the port was planned: a fault of the machine
@@ -558,7 +571,7 @@ impl Port {
             layout.made_path(place);
         }
         Ok(Self {
-            options: *inputs.options,
+            options: inputs.options.clone(),
             shipping,
             reach,
             refs,

@@ -140,7 +140,7 @@ impl Port {
             ..unit.clone()
         });
         Port {
-            options: self.options,
+            options: self.options.clone(),
             shipping: self.shipping.clone(),
             reach: self.reach.clone(),
             refs: self.refs.clone(),

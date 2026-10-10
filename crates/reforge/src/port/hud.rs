@@ -16,7 +16,7 @@ use super::findings::{HudCarried, entry_hex, hashes_hex_list, hex_entry, hex_has
 use super::layout::Layout;
 use super::plan::{PlanError, PortInputs};
 use crate::diag::Sink;
-use crate::load::{LoadOptions, Staleness, legacy};
+use crate::load::{Staleness, legacy};
 use crate::model::entity::{CharId, CharKind, FileId, FileKind, FileSource, Mod, UnitId};
 use crate::model::hash::skin_paths;
 use crate::model::{
@@ -108,8 +108,7 @@ impl HudPlan {
     ) -> Result<Self, PlanError> {
         let m: &Mod = inputs.fixed;
         let game = inputs.env.game();
-        let options = LoadOptions::default().keep_stale(inputs.options.keep_stale);
-        let stale = Staleness::new(inputs.env, &options);
+        let stale = Staleness::new(inputs.env, &inputs.options.stale_options());
         // The champions the port writes, each with the first of its units that has a target.
         let mut champions: BTreeMap<CharId, UnitId> = BTreeMap::new();
         for (unit, node) in m.units.iter() {

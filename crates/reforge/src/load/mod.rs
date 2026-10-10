@@ -53,7 +53,7 @@ use self::legacy::LegacyFormats;
 use self::moved::MovedAssets;
 pub use self::provenance::{Against, FileProvenance};
 pub use self::rework::{Around, ReworkTable};
-pub use self::stale::Staleness;
+pub use self::stale::{KeptFile, KeptFileError, Staleness};
 use self::survey::Survey;
 use crate::archive::{RawSnapshot, file_kind};
 use crate::diag::{Cancelled, Halted, Parts, Sink};
@@ -119,6 +119,9 @@ pub struct LoadOptions {
     /// Carries stale copies (#MOD-ARTIFACT-0004) as the mod's own files. Off: they are no
     /// override (#ADR-0023).
     pub keep_stale: bool,
+    /// The files carried as the mod's own where they are stale copies, each named alone
+    /// (#ADR-0098), as given. A file named that is no stale copy is judged as any other.
+    pub kept_files: Vec<KeptFile>,
     /// The champions whose model was replaced, and when.
     pub reworks: ReworkTable,
     /// The file fixups to run, in this order.
@@ -129,6 +132,7 @@ impl Default for LoadOptions {
     fn default() -> Self {
         Self {
             keep_stale: false,
+            kept_files: Vec::new(),
             reworks: ReworkTable::standard(),
             fixups: Self::standard_fixups(),
         }
@@ -183,6 +187,13 @@ impl LoadOptions {
         self
     }
 
+    /// Carries these files where they are stale copies (#ADR-0098).
+    #[must_use]
+    pub fn keep_files(mut self, kept: Vec<KeptFile>) -> Self {
+        self.kept_files = kept;
+        self
+    }
+
     /// Judges restorations against these reworks.
     #[must_use]
     pub fn reworks(mut self, reworks: ReworkTable) -> Self {
@@ -203,6 +214,7 @@ impl std::fmt::Debug for LoadOptions {
         let fixups: Vec<&str> = self.fixups.iter().map(|fixup| fixup.id()).collect();
         f.debug_struct("LoadOptions")
             .field("keep_stale", &self.keep_stale)
+            .field("kept_files", &self.kept_files)
             .field("reworks", &self.reworks)
             .field("fixups", &fixups)
             .finish()

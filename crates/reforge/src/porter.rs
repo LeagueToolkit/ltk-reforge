@@ -28,7 +28,7 @@ use crate::facts::{FactInputs, Facts, FactsError};
 use crate::fixups::{Changes, FixError, FixInputs, FixedMod, FixupSet, ObjectSet, TargetTypes};
 use crate::game::{GameError, NameBook, Speller};
 use crate::load::{
-    Dating, Fault, FileProvenance, Inventory, LOAD_PARTS, LoadError, LoadOptions, Loader,
+    Dating, Fault, FileProvenance, Inventory, KeptFile, LOAD_PARTS, LoadError, LoadOptions, Loader,
     ReworkTable, against,
 };
 use crate::model::{ByteView, ContentId, Mod};
@@ -201,6 +201,7 @@ pub struct Settings {
     checks: CheckSet,
     caps: Caps,
     keep_stale: bool,
+    kept_files: Vec<KeptFile>,
     reworks: ReworkTable,
     policy: Policy,
     compared: Vec<Policy>,
@@ -249,6 +250,7 @@ impl Settings {
     fn load_options(&self) -> LoadOptions {
         LoadOptions::new()
             .keep_stale(self.keep_stale)
+            .keep_files(self.kept_files.clone())
             .reworks(self.reworks.clone())
             .file_fixups(self.fixups.file_fixups())
     }
@@ -256,6 +258,7 @@ impl Settings {
     fn port_options(&self) -> PortOptions {
         PortOptions {
             keep_stale: self.keep_stale,
+            kept_files: self.kept_files.clone(),
             game_events_only: self.game_events_only,
             keep_other_slots: self.keep_other_slots,
         }
@@ -297,6 +300,7 @@ impl Settings {
         BuildSettings {
             keep_dds: self.keep_dds,
             keep_stale: self.keep_stale,
+            kept_files: self.kept_files.clone(),
         }
     }
 
@@ -461,6 +465,14 @@ impl<'a> Porter<'a> {
         self
     }
 
+    /// Carries these files as the mod's own where they are stale copies (#ADR-0098). A file
+    /// named that is no stale copy is judged as any other, and the settings hold it as given.
+    #[must_use]
+    pub fn keep_files(mut self, kept: Vec<KeptFile>) -> Self {
+        self.settings.kept_files = kept;
+        self
+    }
+
     /// Judges restorations and reworked champions against these reworks.
     #[must_use]
     pub fn reworks(mut self, reworks: ReworkTable) -> Self {
@@ -575,6 +587,14 @@ impl<'a> Repairer<'a> {
     #[must_use]
     pub fn keep_stale(mut self, keep: bool) -> Self {
         self.settings.keep_stale = keep;
+        self
+    }
+
+    /// Carries these files as the mod's own where they are stale copies (#ADR-0098). A file
+    /// named that is no stale copy is judged as any other, and the settings hold it as given.
+    #[must_use]
+    pub fn keep_files(mut self, kept: Vec<KeptFile>) -> Self {
+        self.settings.kept_files = kept;
         self
     }
 

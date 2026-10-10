@@ -61,9 +61,9 @@ let report = run.report();
 
 - **A `Porter` holds what a caller chose**, built once and used for any number of runs: the
   policy and the policies compared with it, the targets given to units, the fixups, the
-  checks, the caps, the reworks,
-  whether stale copies are carried, whether a bank's events are cut from the game's events
-  bank only. `Porter::new` takes the standard of each. They are its `Settings`, data a
+  checks, the caps, the reworks, whether stale copies are carried and which files are kept
+  each alone, whether a bank's events are cut from the game's events bank only.
+  `Porter::new` takes the standard of each. They are its `Settings`, data a
   caller reads (`Porter::settings`): `declared(stage)` is the part a stage reads, as its
   snapshot holds it (`StageSettings`), and `earliest_changed(other)` the first stage, in run
   order, whose declared part differs, which is the stage a rerun under `other` resumes from
@@ -124,13 +124,18 @@ let report = run.report();
   | stage | snapshot | inputs | settings |
   |---|---|---|---|
   | read | `RawSnapshot` | the archive | the caps |
-  | load | `LoadSnapshot` | `LoadInputs`: the install's build, the history, the hash tables' stamp | `LoadSettings`: the mode, the file fixups, the stale keep, the reworks |
+  | load | `LoadSnapshot` | `LoadInputs`: the install's build, the history, the hash tables' stamp | `LoadSettings`: the mode, the file fixups, the stale keep, the files kept, the reworks |
   | fix | `FixSnapshot` | `FixInputs`: the schema | `FixSettings`: the fixups on bin values, and the table rules among them as data |
   | facts | `FactsSnapshot` | none of its own | `FactsSettings`: the reworks |
   | decide | `DecideSnapshot` | none | `DecideSettings`: the policy, the policies compared with it, the targets given to units |
-  | plan | `PlanSnapshot` | none of its own | `PlanSettings`: the stale keep, the game's events only, the other slots kept |
-  | build | `BuildSnapshot` | none of its own: the install's shader bin and shader cache, the game's skin bins a port patches and a sub-character's skin0 bin it copies, the game's files and the history a repair's texture is judged stale against, the hash tables that spell a repair's paths and a patch's fields | `BuildSettings`: the DDS keep, the stale keep |
+  | plan | `PlanSnapshot` | none of its own | `PlanSettings`: the stale keep, the files kept, the game's events only, the other slots kept |
+  | build | `BuildSnapshot` | none of its own: the install's shader bin and shader cache, the game's skin bins a port patches and a sub-character's skin0 bin it copies, the game's files and the history a repair's texture is judged stale against, the hash tables that spell a repair's paths and a patch's fields | `BuildSettings`: the DDS keep, the stale keep, the files kept |
   | check | `CheckSnapshot` | none of its own: the install's bins the patches apply to, every bin a patched bin loads and the shader bin; the target build's types, from the schema and the install | `CheckSettings`: the checks |
+
+  `load` marks the stale copies, and `plan` and `build` judge a file again by the same rule,
+  so the files kept (#ADR-0098) are `load`'s setting as the stale keep is, and a change of
+  them resumes from the raw snapshot. The targets given to units are `decide`'s alone, and a
+  change of them resumes after `facts`.
 - **A stage runs once.** A stage ran when the run holds its snapshot (`Run::ran`), and its
   method asked again gives the result the run holds. The stage types keep the order in
   their signatures. A method called before the result it reads is held answers
@@ -701,8 +706,8 @@ object takes a name of its own, which every link to it follows.
   WADs holding a path. No code of `port` reads a chunk.
 - **Faults.** A game chunk that does not read and a history that does not answer end `plan`
   with a `PlanError`.
-- `PortOptions` holds whether stale copies are carried, and whether a bank's events are cut
-  from the game's events bank only.
+- `PortOptions` holds whether stale copies are carried, the files kept each alone, and
+  whether a bank's events are cut from the game's events bank only.
 
 ## Package
 
@@ -742,7 +747,9 @@ object takes a name of its own, which every link to it follows.
   path the game's own bins read, a file a run made for one of those. A bin at a former path
   that nothing loads, a file nothing names, a file that only a value a fixup removed named, and
   a stale copy stay behind, each counted by its reason in the package's finding. A caller that
-  asks to keep stale copies gets them. A port ships a file only when an object it answers for
+  asks to keep stale copies gets them, and one that names a file to keep (`KeptFile`, by its
+  WAD and path, #ADR-0098) gets that file where it is a stale copy; a file named that is no
+  stale copy is judged as any other. A port ships a file only when an object it answers for
   names it with the mod's own bytes: a file the game holds where the champion plays is named
   at the game's path, and a file no ported object names stays behind, both counted. A bank a
   port made ships only with the record that names its unit. A bank of the mod whose own

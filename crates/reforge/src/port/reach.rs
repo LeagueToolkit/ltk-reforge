@@ -21,7 +21,7 @@ use super::plan::{Objects, PlanError, PortInputs};
 use crate::diag::Sink;
 use crate::game::SkinCatalog;
 use crate::load::provenance::{AtPath, BytesOrigin};
-use crate::model::entity::{CharId, LinkTo, Mod, ObjectId, UnitId};
+use crate::model::entity::{CharId, FileId, LinkTo, Mod, ObjectId, UnitId};
 use crate::model::hash::skin_paths;
 use crate::model::known::class;
 use crate::model::{
@@ -473,15 +473,17 @@ impl Reach {
     /// read as `objects` holds them.
     pub fn find(inputs: &PortInputs<'_>, objects: &Objects<'_>) -> Result<Self, PlanError> {
         let m: &Mod = inputs.fixed;
-        let kept_stale = |file: &crate::model::entity::FileNode, origin: &BytesOrigin| {
+        let options = inputs.options;
+        let kept_stale = |file: FileId, origin: &BytesOrigin| {
             let at_own_path =
-                matches!(origin, BytesOrigin::History { path, .. } if *path == file.hash);
-            inputs.options.keep_stale && at_own_path
+                matches!(origin, BytesOrigin::History { path, .. } if *path == m.files[file].hash);
+            let kept = options.kept_files.iter().any(|kept| kept.names(m, file));
+            (options.keep_stale || kept) && at_own_path
         };
         let overridden = inputs.files.iter().filter(|(file, fact)| {
             let origin = &fact.origin;
             fact.at_path == AtPath::OtherBytes
-                && (*origin == BytesOrigin::Own || kept_stale(&m.files[*file], origin))
+                && (*origin == BytesOrigin::Own || kept_stale(*file, origin))
         });
         let walk = Walk {
             inputs,

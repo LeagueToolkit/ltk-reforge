@@ -16,23 +16,24 @@ use reforge::facts::FactsError;
 use reforge::fixups::{FixError, FixupSelection, FixupSet};
 use reforge::game::{MAX_CHAIN, Names, SHADERS_BIN};
 use reforge::history::NoHistory;
-use reforge::load::{Dating, Fault, LoadError, NoSkin, ReworkTable};
+use reforge::load::{Dating, Fault, KeptFile, LoadError, NoSkin, ReworkTable, StaleFiles};
 use reforge::model::entity::FileSource;
 use reforge::model::{BinHash, name_hash};
 use reforge::model::{ContentId, path_hash};
 use reforge::package::{
     Blocked, CheckSet, EVIDENCE_FORMAT, EvidenceBound, EvidenceDoc, EvidencePiece, EvidencePolicy,
-    EvidenceUnit, MAX_OVERLAY_BINS, Made, Modpkg, OverlayCapped, PackageWriter, PieceKind,
+    EvidenceUnit, MAX_OVERLAY_BINS, Made, Modpkg, OverlayCapped, PackageWriter, PieceKind, Ported,
     ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
 use reforge::port::{AnimReuse, PlanError, Policy, Reason, TargetPolicy, UnitTarget};
+use reforge::report::Report;
 use reforge::snapshot::{
     BuildSnapshot, CheckSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, ResumeError,
     SNAPSHOT_FORMAT, Setting, Snapshots, StageSnapshot, from_json, to_json,
 };
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
-use reforge_testkit::bins::{bin, blob, entry, float, linked_bin, particle, resolver_with};
+use reforge_testkit::bins::{Skin, bin, blob, entry, float, linked_bin, particle, resolver_with};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
 use reforge_testkit::mods::FILE_NAME;
 use reforge_testkit::packs::{DdsPixels, dds};
@@ -1568,6 +1569,98 @@ fn a_units_target_changed_resumes_after_facts_and_reports_as_a_straight_run() {
         (decision.chosen, decision.reason),
         (Some(reforge::model::Slot(3)), Reason::PerUnit)
     );
+}
+
+/// The base texture as the game shipped it one build ago.
+const STALE_TEX: &str = "the base texture one build ago";
+
+/// The mod's own rig at skin0, its skin naming the base's texture, which it ships as the game
+/// had it one build ago: a stale copy (#MOD-ARTIFACT-0004).
+fn stale_archive() -> ModArchive {
+    let skin = Skin {
+        texture: BASE_TEX.into(),
+        ..own_skin("a", GRAPH0, RESOURCES0)
+    };
+    let mut files = own_files("a");
+    files.push((BASE_TEX.into(), blob(STALE_TEX)));
+    let objects = vec![entry(SKIN0, &skin), own_graph("a", GRAPH0)];
+    files.push((skin_bin("test", 0), bin(objects)));
+    archive(&files)
+}
+
+/// The game, with a history of the base texture's older bytes.
+fn stale_env() -> Env {
+    let history =
+        MemoryHistory::new(&["16.18.1", "16.19.1"]).with_content(BASE_TEX, &blob(STALE_TEX), 0..=0);
+    env(skins::game(), history)
+}
+
+/// A file of the champion's WAD named to be kept (#ADR-0098).
+fn kept(path: &str) -> KeptFile {
+    KeptFile::new(WAD, path).expect("a file to keep")
+}
+
+/// A report as JSON with the files named to be kept left out of the port's options.
+fn without_kept(report: &Report) -> serde_json::Value {
+    let mut value = serde_json::to_value(report).expect("the report writes");
+    if let Some(options) = value["port"]["options"].as_object_mut() {
+        options.remove("kept_files");
+    }
+    value
+}
+
+#[test]
+fn a_file_named_to_be_kept_ships_where_a_port_leaves_it_as_a_stale_copy() {
+    let env = stale_env();
+    let bytes = stale_archive().build();
+    let ported = |porter: &Porter<'_>| {
+        let run = porter.port(&bytes, FILE_NAME).expect("no fault");
+        let left = run
+            .log()
+            .of::<Ported>()
+            .next()
+            .map(|ported| ported.left.stale);
+        (left, run.log().of::<StaleFiles>().count(), run.report())
+    };
+    let (left, found, standard) = ported(&Porter::new(&env));
+    assert_eq!((left, found), (Some(1), 1));
+    let (left, found, report) = ported(&Porter::new(&env).keep_files(vec![kept(BASE_TEX)]));
+    assert_eq!((left, found), (Some(0), 0));
+    let options = report.port.expect("the port").options;
+    assert_eq!(options.kept_files, [kept(BASE_TEX)], "as given");
+    // The mod's own texture is no stale copy: naming it keeps nothing.
+    let own = Porter::new(&env).keep_files(vec![kept("assets/mod/a/body.tex")]);
+    let (_, _, report) = ported(&own);
+    assert_eq!(without_kept(&report), without_kept(&standard));
+}
+
+#[test]
+fn a_file_named_to_be_kept_resumes_from_the_raw_snapshot() {
+    // #ADR-0098: `load` marks the stale copies, so it reads the files named to be kept.
+    let env = stale_env();
+    let bytes = stale_archive().build();
+    let store = Arc::new(MemoryStore::new());
+    let porter = Porter::new(&env);
+    let mut first = porter.run().in_store(Arc::clone(&store));
+    first.read(&bytes, FILE_NAME).expect("the archive reads");
+    first.through(Stage::Check).expect("no fault");
+    let raw = first.archive().cloned().expect("the raw snapshot");
+    let snapshots = first.snapshots().expect("the snapshots");
+    flush(first, &store);
+
+    let keeping = Porter::new(&env).keep_files(vec![kept(BASE_TEX)]);
+    let refused = |start: Start| match keeping.resume(start, Arc::clone(&store)) {
+        Err(ResumeError::Setting(setting)) => Some(setting),
+        _ => None,
+    };
+    let load = snapshots.load.clone();
+    assert_eq!(refused(load.into()), Some(Setting::KeptFiles));
+    let after_plan = Start::Plan(Box::new(snapshots));
+    assert_eq!(refused(after_plan), Some(Setting::KeptFiles));
+    let mut resumed = keeping.resume(raw, store).expect("the run resumes");
+    resumed.through(Stage::Check).expect("no fault");
+    let straight = keeping.port(&bytes, FILE_NAME).expect("no fault");
+    assert_eq!(resumed.report().to_json(), straight.report().to_json());
 }
 
 #[test]

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
 use crate::diag::{Logged, Stage};
 use crate::game::NameBook;
+use crate::load::KeptFile;
 use crate::model::{ContentId, Mod};
 use crate::port::{Port, PortOptions, PortValues, ValuesError};
 use crate::store::BlobStore;
@@ -19,6 +20,8 @@ use crate::store::BlobStore;
 pub struct PlanSettings {
     /// Whether stale copies are carried.
     pub keep_stale: bool,
+    /// The files carried where they are stale copies, each named alone (#ADR-0098).
+    pub kept_files: Vec<KeptFile>,
     /// Whether a bank's events are cut from the game's events bank only (#ADR-0030).
     pub game_events_only: bool,
     /// Whether the units at slots other than their champion's target ship (#ADR-0082).
@@ -30,6 +33,7 @@ impl PlanSettings {
     pub fn of(options: &PortOptions) -> Self {
         Self {
             keep_stale: options.keep_stale,
+            kept_files: options.kept_files.clone(),
             game_events_only: options.game_events_only,
             keep_other_slots: options.keep_other_slots,
         }
@@ -38,6 +42,8 @@ impl PlanSettings {
     fn differs(&self, other: &Self) -> Option<Setting> {
         if self.keep_stale != other.keep_stale {
             Some(Setting::KeepStale)
+        } else if self.kept_files != other.kept_files {
+            Some(Setting::KeptFiles)
         } else if self.game_events_only != other.game_events_only {
             Some(Setting::GameEventsOnly)
         } else if self.keep_other_slots != other.keep_other_slots {

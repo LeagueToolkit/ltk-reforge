@@ -35,7 +35,7 @@ use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
 use crate::facts::FactsError;
 use crate::game::{Build, NameBook, NamesStamp};
-use crate::load::{Dating, FileProvenance, Inventory, LoadOptions, ReworkTable};
+use crate::load::{Dating, FileProvenance, Inventory, KeptFile, LoadOptions, ReworkTable};
 use crate::model::entity::{
     BinNode, Character, FileId, FileNode, FileSource, Group, Link, ModMeta, ModWad, SkinUnit, WadId,
 };
@@ -217,6 +217,8 @@ pub enum Setting {
     FileFixups,
     /// Whether stale copies are carried.
     KeepStale,
+    /// The files carried where they are stale copies, each named alone (#ADR-0098).
+    KeptFiles,
     /// The table of reworks.
     Reworks,
     /// The fixups on bin values and their order.
@@ -271,6 +273,8 @@ pub struct LoadSettings {
     pub file_fixups: Vec<String>,
     /// Whether stale copies are carried as the mod's own files.
     pub keep_stale: bool,
+    /// The files carried where they are stale copies, each named alone (#ADR-0098).
+    pub kept_files: Vec<KeptFile>,
     /// The champions whose model was replaced, and when.
     pub reworks: ReworkTable,
 }
@@ -282,6 +286,7 @@ impl LoadSettings {
             mode,
             file_fixups: options.fixups.iter().map(|f| f.id().to_string()).collect(),
             keep_stale: options.keep_stale,
+            kept_files: options.kept_files.clone(),
             reworks: options.reworks.clone(),
         }
     }
@@ -294,6 +299,8 @@ impl LoadSettings {
             Some(Setting::FileFixups)
         } else if self.keep_stale != other.keep_stale {
             Some(Setting::KeepStale)
+        } else if self.kept_files != other.kept_files {
+            Some(Setting::KeptFiles)
         } else if self.reworks != other.reworks {
             Some(Setting::Reworks)
         } else {
