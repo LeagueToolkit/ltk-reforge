@@ -2134,3 +2134,15 @@ measured as in "A read streamed into the store".
   the exits are the baselines', mod for mod. With each other, the report files without a
   store, with a fresh one and from the store by hash are equal byte for byte. The store after
   the populating run holds the 19,365 blobs and no scratch file.
+
+## The ingest tier warmed with the datasets (2026-10-10)
+
+`load` at `70a2340` over the 4,909 mods in scope, with `--store` into a fresh ingest tier
+under `data/corpus/` (#ADR-0093, #ADR-0100), at 24 in parallel with one thread each: the
+read and load of every archive and nothing after, so that every later corpus run can start
+from the store by hash.
+
+- 4,909 mods with a report, 4,908 done, one ended by `archive.no-skin`, in 954 s.
+- The store after: 136,315,016,480 bytes in 419,305 files and 65,677 folders, 4,909 of the
+  files the per-archive entries. The file rows of `baseline-port-6` name 417,503 distinct
+  contents of 130.4 GB ("What a blob store holds"), so the tier holds each once.
