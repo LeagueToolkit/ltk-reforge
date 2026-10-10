@@ -17,7 +17,7 @@ use zip::result::ZipError;
 use zip::write::SimpleFileOptions;
 
 use crate::archive::{self, Caps, RawSnapshot};
-use crate::diag::{DiagnosticPolicy, Diagnostics, Halted, Render, Stage};
+use crate::diag::{Code, DiagnosticPolicy, Diagnostics, Halted, Render, Stage};
 use crate::env::Env;
 use crate::facts::{FactInputs, Facts, FactsError};
 use crate::fixups::{Changes, FixError, FixInputs, FixedMod, FixupSet, ObjectSet, TargetTypes};
@@ -32,10 +32,35 @@ use crate::package::{
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
+use crate::snapshot::{self, LoadSettings, LoadSnapshot, LoadState, ResumeError};
 use crate::store::{BlobStore, MemoryStore};
 
 /// The name the second run of a repair reads the first run's package under.
 const REPAIRED_NAME: &str = "repaired.fantome";
+
+/// Every diagnostic code a run can raise, in the order of the modules that declare them.
+/// `docs/design/CODES.md` lists the same codes.
+pub fn codes() -> impl Iterator<Item = Code> {
+    [
+        archive::CODES,
+        crate::game::CODES,
+        crate::history::CODES,
+        crate::load::CODES,
+        crate::load::legacy::CODES,
+        crate::load::moved::CODES,
+        crate::load::dating::CODES,
+        crate::load::inventory::CODES,
+        crate::load::provenance::CODES,
+        crate::load::bank::CODES,
+        crate::fixups::CODES,
+        crate::facts::CODES,
+        crate::port::CODES,
+        crate::package::CODES,
+    ]
+    .into_iter()
+    .flatten()
+    .copied()
+}
 
 /// Why a stage of a run gives no result.
 #[derive(Debug, thiserror::Error)]
@@ -133,6 +158,27 @@ struct Settings {
     keep_other_slots: bool,
 }
 
+/// A snapshot a run starts from (#ADR-0094).
+#[derive(Debug, Clone)]
+pub enum Start {
+    /// The raw snapshot: the run starts at `load`.
+    Raw(Box<RawSnapshot>),
+    /// The load snapshot: the run starts at `fix`.
+    Load(Box<LoadSnapshot>),
+}
+
+impl From<RawSnapshot> for Start {
+    fn from(raw: RawSnapshot) -> Self {
+        Start::Raw(Box::new(raw))
+    }
+}
+
+impl From<LoadSnapshot> for Start {
+    fn from(load: LoadSnapshot) -> Self {
+        Start::Load(Box::new(load))
+    }
+}
+
 impl Settings {
     /// The options `load` runs under, and a repair's textures are judged under.
     fn load_options(&self) -> LoadOptions {
@@ -161,6 +207,14 @@ enum Mode {
 }
 
 impl Mode {
+    /// The mode as a snapshot names it.
+    fn snapshot(self) -> snapshot::Mode {
+        match self {
+            Mode::Port => snapshot::Mode::Port,
+            Mode::InPlace => snapshot::Mode::Repair,
+        }
+    }
+
     /// The stages of a run of the mode, in order.
     fn stages(self) -> &'static [Stage] {
         match self {
@@ -297,6 +351,15 @@ impl<'a> Porter<'a> {
         run.all(bytes, file_name)?;
         Ok(run)
     }
+
+    /// A run started from a snapshot, its bytes in `store` (#ADR-0094).
+    pub fn resume(
+        &self,
+        from: impl Into<Start>,
+        store: impl BlobStore + 'static,
+    ) -> Result<Run<'_>, ResumeError> {
+        self.run().in_store(store).resume(from)
+    }
 }
 
 /// Repairs mods against one environment: the mod as it is, at its own slots and paths, with
@@ -372,6 +435,15 @@ impl<'a> Repairer<'a> {
         run.all(bytes, file_name)?;
         Ok(run)
     }
+
+    /// A run started from a snapshot, its bytes in `store` (#ADR-0094).
+    pub fn resume(
+        &self,
+        from: impl Into<Start>,
+        store: impl BlobStore + 'static,
+    ) -> Result<Run<'_>, ResumeError> {
+        self.run().in_store(store).resume(from)
+    }
 }
 
 /// The mod as far as a run took it.
@@ -427,7 +499,10 @@ pub struct Run<'a> {
     log: Diagnostics,
     book: NameBook,
     store: Box<dyn BlobStore>,
+    /// Where the findings of `read` begin in the log.
+    first: usize,
     raw: Option<RawSnapshot>,
+    loaded: Option<LoadSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -454,7 +529,9 @@ impl<'a> Run<'a> {
             log: Diagnostics::new(),
             book: NameBook::new(),
             store: Box::new(MemoryStore::new()),
+            first: 0,
             raw: None,
+            loaded: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -507,6 +584,7 @@ impl<'a> Run<'a> {
     /// display and is never opened.
     pub fn read(&mut self, bytes: &[u8], file_name: &str) -> Result<&RawSnapshot, RunError> {
         self.going()?;
+        self.first = self.log.len();
         let mut sink = self.log.at(Stage::Read);
         let caps = &self.settings.caps;
         let raw = archive::read(bytes, file_name, caps, &*self.store, &mut sink)?;
@@ -516,20 +594,69 @@ impl<'a> Run<'a> {
     /// The stage `read`, of an archive file.
     pub fn read_file(&mut self, path: &Utf8Path) -> Result<&RawSnapshot, RunError> {
         self.going()?;
+        self.first = self.log.len();
         let mut sink = self.log.at(Stage::Read);
         let caps = &self.settings.caps;
         let raw = archive::read_file(path, caps, &*self.store, &mut sink)?;
         Ok(self.raw.insert(raw))
     }
 
+    /// Starts the run from a snapshot in place of `read`, with the bytes it names in the run's
+    /// store (#ADR-0094). From the raw snapshot the run holds it as `read` gives it, and
+    /// `load` runs next. From the load snapshot the run holds the mod as `load` left it, its
+    /// bins parsed again from the store, and `fix` runs next.
+    ///
+    /// The raw snapshot is refused when its reading is not this program's; the load snapshot
+    /// when its format, its program, an input the environment has open or a setting `load`
+    /// reads is not this run's. A refused run is dropped, and the caller starts again from an
+    /// earlier snapshot.
+    pub fn resume(mut self, from: impl Into<Start>) -> Result<Self, ResumeError> {
+        let started = self.raw.is_some() || self.loaded.is_some() || self.log.halted().is_some();
+        if started || !matches!(self.module, Reached::Nothing) {
+            return Err(ResumeError::Started);
+        }
+        self.first = self.log.len();
+        let codes: Vec<Code> = codes().collect();
+        match from.into() {
+            Start::Raw(raw) => {
+                if raw.version != archive::RAW_VERSION {
+                    return Err(ResumeError::Reading {
+                        found: raw.version,
+                        reads: archive::RAW_VERSION,
+                    });
+                }
+                self.log.restore(&raw.findings, &codes)?;
+                self.raw = Some(*raw);
+            }
+            Start::Load(load) => {
+                let inputs = snapshot::LoadInputs::of(self.env);
+                load.holds(&inputs, &self.load_settings())?;
+                let reopened = load.reopen(&*self.store)?;
+                self.log.restore(load.findings(), &codes)?;
+                self.book = reopened.names;
+                self.dating = Some(reopened.dating);
+                self.inventory = reopened.inventory;
+                self.provenance = reopened.provenance;
+                self.module = Reached::Loaded(reopened.module);
+                self.loaded = Some(*load);
+            }
+        }
+        Ok(self)
+    }
+
+    /// The settings `load` reads in this run.
+    fn load_settings(&self) -> LoadSettings {
+        LoadSettings::of(self.mode.snapshot(), &self.settings.load_options())
+    }
+
     /// The stage `load`: the mod from the raw snapshot and the store, then what is known of
     /// its files before any value is read. A porter's run gathers the dating, the inventory
     /// and the file provenance. A repairer's run gathers the dating alone: nothing of a
-    /// repair reads the other two.
+    /// repair reads the other two. The run keeps the load snapshot beside the raw one.
     pub fn load(&mut self) -> Result<&Mod, RunError> {
         self.going()?;
         if matches!(self.module, Reached::Nothing) && self.raw.is_some() {
-            self.load_snapshot()?;
+            self.load_raw()?;
         }
         match &self.module {
             Reached::Loaded(module) => Ok(module),
@@ -541,7 +668,7 @@ impl<'a> Run<'a> {
         }
     }
 
-    fn load_snapshot(&mut self) -> Result<(), RunError> {
+    fn load_raw(&mut self) -> Result<(), RunError> {
         let env = self.env;
         let book = std::mem::take(&mut self.book);
         let options = self.settings.load_options();
@@ -599,10 +726,36 @@ impl<'a> Run<'a> {
                 self.dating = Some(known.dating.clone());
                 self.redated = Some(found);
             }
-            None => self.dating = Some(found),
+            None => {
+                self.loaded = Some(self.snapshot_of(&module, &found));
+                self.dating = Some(found);
+            }
         }
         self.module = Reached::Loaded(module);
         Ok(())
+    }
+
+    /// The load snapshot of the mod `load` left. A run judged with an earlier run's evidence
+    /// keeps none: the evidence is no input a snapshot names.
+    fn snapshot_of(&self, module: &Mod, dating: &Dating) -> LoadSnapshot {
+        let raw = self.raw.as_ref();
+        let state = LoadState {
+            module,
+            dating,
+            inventory: self.inventory.as_ref(),
+            provenance: self.provenance.as_ref(),
+            names: &self.book,
+            extras: raw.map_or(&[], |raw| raw.extras.as_slice()),
+            image: raw.and_then(|raw| raw.image),
+        };
+        let findings = self.log.logged_from(self.first);
+        LoadSnapshot::of(
+            &state,
+            self.env,
+            self.load_settings(),
+            findings,
+            &*self.store,
+        )
     }
 
     /// The stage `fix`: the fixups on the bins applied to every loaded object (#ADR-0002).
@@ -978,7 +1131,7 @@ impl<'a> Run<'a> {
     /// and neither did a write the caller's policy refused.
     pub fn ran(&self, stage: Stage) -> bool {
         match stage {
-            Stage::Read => self.raw.is_some(),
+            Stage::Read => self.raw.is_some() || self.loaded.is_some(),
             Stage::Load => matches!(self.module, Reached::Loaded(_) | Reached::Fixed(_)),
             Stage::Fix => matches!(self.module, Reached::Fixed(_)),
             Stage::Facts => self.facts.is_some(),
@@ -1005,9 +1158,15 @@ impl<'a> Run<'a> {
         self.env
     }
 
-    /// The raw snapshot of the archive read (#ADR-0094).
+    /// The raw snapshot of the archive read (#ADR-0094). None for a run started from its load
+    /// snapshot.
     pub fn archive(&self) -> Option<&RawSnapshot> {
         self.raw.as_ref()
+    }
+
+    /// The load snapshot, once `load` ended or the run started from one (#ADR-0094).
+    pub fn load_snapshot(&self) -> Option<&LoadSnapshot> {
+        self.loaded.as_ref()
     }
 
     /// The store the run's bytes are in.

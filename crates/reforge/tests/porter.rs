@@ -2,17 +2,20 @@
 //! stage at a time, with the report of the run as far as it went. The game is
 //! `reforge_testkit::skins`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
+use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use reforge::diag::{Action, DiagnosticPolicy, Filter, Stage};
+use reforge::archive::RAW_VERSION;
+use reforge::diag::{Action, DiagnosticPolicy, Filter, Input, Stage};
 use reforge::env::Env;
 use reforge::facts::FactsError;
-use reforge::fixups::{FixError, FixupSet};
-use reforge::game::{MAX_CHAIN, SHADERS_BIN};
+use reforge::fixups::{FixError, FixupSelection, FixupSet};
+use reforge::game::{MAX_CHAIN, Names, SHADERS_BIN};
 use reforge::history::NoHistory;
 use reforge::load::{Dating, Fault, LoadError, NoSkin, ReworkTable};
+use reforge::model::entity::FileSource;
 use reforge::model::{ContentId, path_hash};
 use reforge::package::{
     Blocked, EVIDENCE_FORMAT, EvidenceBound, EvidenceDoc, EvidencePiece, EvidencePolicy,
@@ -20,7 +23,9 @@ use reforge::package::{
     ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
-use reforge::{Evidence, Porter, Repairer, Run, RunError};
+use reforge::snapshot::{LoadSetting, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT};
+use reforge::store::{BlobStore, MemoryStore};
+use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
 use reforge_testkit::bins::{bin, blob, entry, linked_bin, particle, resolver_with};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
 use reforge_testkit::mods::FILE_NAME;
@@ -958,4 +963,362 @@ fn a_run_judged_with_an_earlier_runs_evidence_embeds_none() {
     run.through(Stage::Check).expect("no fault");
     assert_eq!(run.package().expect("a package").evidence, None);
     assert_eq!(run.report().evidence, None);
+    assert!(
+        run.load_snapshot().is_none(),
+        "the evidence is no input a snapshot names"
+    );
+}
+
+/// A static mesh the game ships as `.scb`, at a stem the mod ships as `.sco`.
+const BOMB: &str = "assets/characters/test/skins/base/particles/bomb";
+
+const SCO: &str = "[ObjectBegin]
+Name= bomb
+CentralPoint= 0.5 0.5 0.0
+Verts= 3
+0.0 0.0 0.0
+1.0 0.0 0.0
+0.0 1.0 0.0
+Faces= 1
+3 0 1 2 bomb 0.0 0.0 1.0 0.0 0.0 1.0
+[ObjectEnd]
+";
+
+/// [`own_archive`] with a mesh in a format the game dropped, which `load` makes the format it
+/// reads, a file nothing loads, and a bin the skin bin links that does not read.
+fn legacy_archive() -> ModArchive {
+    let objects = vec![entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0))];
+    let mut files = own_files("a");
+    files.push((format!("{BOMB}.sco"), SCO.as_bytes().to_vec()));
+    files.push(("assets/mod/a/notes.txt".into(), blob("notes")));
+    files.push(("data/mod/broken.bin".into(), b"PROP not a bin".to_vec()));
+    let skin = linked_bin(objects, &["DATA/mod/broken.bin", "DATA/Nowhere.bin"]);
+    files.push((skin_bin("test", 0), skin));
+    archive(&files)
+}
+
+/// The game, which ships the mesh of [`legacy_archive`] as `.scb`.
+fn legacy_env() -> Env {
+    let mut game = skins::game();
+    game.insert(&format!("{BOMB}.scb"), b"the game's bomb".to_vec());
+    env(game, NoHistory)
+}
+
+/// The report of a run after it wrote a project, and every file it wrote, by its path under
+/// the output. A `.modpkg` is left out: `ltk_modpkg` orders the chunks of one WAD and layer as
+/// a `HashMap` gives them, so two writes of one package differ in their bytes.
+fn written(run: &mut Run<'_>) -> (String, BTreeMap<String, Vec<u8>>) {
+    let (_guard, out) = scratch();
+    let project = ProjectDir::new(&out);
+    let writers: [&dyn PackageWriter; 1] = [&project];
+    run.write(&writers, &DiagnosticPolicy::default())
+        .expect("the package writes");
+    let mut files = BTreeMap::new();
+    let mut dirs = vec![out.clone()];
+    while let Some(dir) = dirs.pop() {
+        for entry in fs_err::read_dir(&dir).expect("the output reads") {
+            let path = Utf8PathBuf::try_from(entry.expect("an entry").path()).expect("UTF-8");
+            if path.is_dir() {
+                dirs.push(path);
+            } else {
+                let name = path
+                    .strip_prefix(&out)
+                    .expect("under the output")
+                    .to_string();
+                files.insert(name, fs_err::read(&path).expect("the file reads"));
+            }
+        }
+    }
+    (run.report().to_json(), files)
+}
+
+/// The JSON of each of the report's load tables.
+fn load_tables(report: &serde_json::Value) -> Vec<serde_json::Value> {
+    let tables = [
+        "wads",
+        "files",
+        "characters",
+        "units",
+        "dating",
+        "inventory",
+        "provenance",
+    ];
+    tables.iter().map(|table| report[table].clone()).collect()
+}
+
+/// #ADR-0094: a run through `write`, and one that read and loaded the archive into a store,
+/// kept its load snapshot as JSON and was dropped, then resumed from the snapshot and from the
+/// raw snapshot, write one report and one package, byte for byte.
+fn resumed_runs_write_as_the_straight_run<'p>(
+    run: impl Fn() -> Run<'p>,
+    resume: impl Fn(Start, Arc<MemoryStore>) -> Result<Run<'p>, ResumeError>,
+    bytes: &[u8],
+) {
+    let mut straight = run();
+    straight.read(bytes, FILE_NAME).expect("the archive reads");
+    straight.through(Stage::Check).expect("no fault");
+    assert_eq!(straight.halted(), None);
+    let (report, files) = written(&mut straight);
+
+    let store = Arc::new(MemoryStore::new());
+    let mut first = run().in_store(Arc::clone(&store));
+    first.read(bytes, FILE_NAME).expect("the archive reads");
+    first.load().expect("the mod loads");
+    let raw = first.archive().cloned().expect("the raw snapshot");
+    let json = first.load_snapshot().expect("the load snapshot").to_json();
+    drop(first);
+
+    let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    assert_eq!(
+        snapshot.to_json(),
+        json,
+        "the snapshot reads back as it was written"
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&report).expect("JSON");
+    let part = serde_json::to_value(snapshot.part()).expect("the part writes");
+    assert_eq!(
+        load_tables(&part),
+        load_tables(&parsed),
+        "the report's tables"
+    );
+    let wads = snapshot.wads();
+    let paths = wads.values().map(|files| files.len()).sum::<usize>();
+    assert_eq!(paths, parsed["files"].as_array().map_or(0, Vec::len));
+
+    let mut resumed = resume(snapshot.into(), Arc::clone(&store)).expect("the run resumes");
+    assert!(resumed.ran(Stage::Read) && resumed.ran(Stage::Load) && !resumed.ran(Stage::Fix));
+    assert!(resumed.archive().is_none());
+    resumed.through(Stage::Check).expect("no fault");
+    let (resumed_report, resumed_files) = written(&mut resumed);
+    assert_eq!(
+        resumed_report, report,
+        "the report of a run resumed from its load"
+    );
+    assert!(
+        resumed_files == files,
+        "the package of a run resumed from its load"
+    );
+
+    let mut from_raw = resume(raw.into(), store).expect("the run resumes");
+    from_raw.through(Stage::Check).expect("no fault");
+    let (raw_report, raw_files) = written(&mut from_raw);
+    assert_eq!(
+        raw_report, report,
+        "the report of a run resumed from its read"
+    );
+    assert_eq!(
+        raw_files, files,
+        "the package of a run resumed from its read"
+    );
+}
+
+#[test]
+fn a_port_resumed_from_its_load_snapshot_writes_the_report_and_package_of_the_straight_run() {
+    let env = game_env();
+    let porter = Porter::new(&env);
+    resumed_runs_write_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &own_mod(),
+    );
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    resumed_runs_write_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &legacy_archive().build(),
+    );
+    // A mod with no bin: the game's bins are taken as the mod's.
+    let (env, reworks) = reworked_env();
+    let porter = Porter::new(&env).reworks(reworks);
+    resumed_runs_write_as_the_straight_run(
+        || porter.run(),
+        |from, store| porter.resume(from, store),
+        &restoring_mod(),
+    );
+}
+
+#[test]
+fn a_repair_resumed_from_its_load_snapshot_writes_the_report_and_package_of_the_straight_run() {
+    let env = legacy_env();
+    let repairer = Repairer::new(&env);
+    resumed_runs_write_as_the_straight_run(
+        || repairer.run(),
+        |from, store| repairer.resume(from, store),
+        &legacy_archive().build(),
+    );
+    let (env, reworks) = reworked_env();
+    let repairer = Repairer::new(&env).reworks(reworks);
+    resumed_runs_write_as_the_straight_run(
+        || repairer.run(),
+        |from, store| repairer.resume(from, store),
+        &restoring_mod(),
+    );
+}
+
+/// A port's load snapshot of [`legacy_archive`], as JSON, and the store its bytes are in.
+fn legacy_snapshot(porter: &Porter<'_>) -> (String, Arc<MemoryStore>) {
+    let store = Arc::new(MemoryStore::new());
+    let mut run = porter.run().in_store(Arc::clone(&store));
+    run.read(&legacy_archive().build(), FILE_NAME)
+        .expect("the archive reads");
+    run.load().expect("the mod loads");
+    let snapshot = run.load_snapshot().expect("the load snapshot");
+    (snapshot.to_json(), store)
+}
+
+/// The snapshot of `json` with one field set to another value.
+fn edited(json: &str, field: &str, key: &str, to: serde_json::Value) -> LoadSnapshot {
+    let mut value: serde_json::Value = serde_json::from_str(json).expect("JSON");
+    value[field][key] = to;
+    LoadSnapshot::from_json(&value.to_string()).expect("the snapshot reads")
+}
+
+#[test]
+fn a_load_snapshot_is_refused_when_an_input_the_env_has_open_is_not_the_snapshots() {
+    let env = legacy_env();
+    let (json, store) = legacy_snapshot(&Porter::new(&env));
+    let resume = |env: &Env| {
+        let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+        Porter::new(env)
+            .resume(snapshot, Arc::clone(&store))
+            .map(drop)
+    };
+    assert!(resume(&env).is_ok());
+    let history = MemoryHistory::new(&["16.18.1", "16.19.1"]);
+    let refused = resume(&reforge_testkit::facts::env(skins::game(), history));
+    assert!(matches!(refused, Err(ResumeError::Input(Input::History))));
+    let refused = resume(&env_of(skins::game_at("16.20.1")));
+    assert!(matches!(refused, Err(ResumeError::Input(Input::Install))));
+
+    let (_guard, dir) = scratch();
+    fs_err::write(dir.join("hashes.binentries.txt"), "1234 Characters/Test\n").expect("written");
+    let names = Names::builder()
+        .text_tables(&dir)
+        .build()
+        .expect("the tables read");
+    let mut game = skins::game();
+    game.insert(&format!("{BOMB}.scb"), b"the game's bomb".to_vec());
+    let sizes = game.sizes();
+    let with_names = Env::builder().game(game).sizes(sizes).names(names).build();
+    let refused = resume(&with_names.expect("an environment"));
+    assert!(matches!(refused, Err(ResumeError::Input(Input::Names))));
+}
+
+/// An environment of a game alone.
+fn env_of(game: MemoryGame) -> Env {
+    env(game, NoHistory)
+}
+
+#[test]
+fn a_load_snapshot_is_refused_when_a_setting_load_reads_is_not_the_runs() {
+    let env = legacy_env();
+    let (json, store) = legacy_snapshot(&Porter::new(&env));
+    let snapshot = || LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    let setting = |refused: Result<Run<'_>, ResumeError>| match refused {
+        Err(ResumeError::Setting(setting)) => Some(setting),
+        _ => None,
+    };
+    let store = || Arc::clone(&store);
+    let stale = Porter::new(&env).keep_stale(true);
+    assert_eq!(
+        setting(stale.resume(snapshot(), store())),
+        Some(LoadSetting::KeepStale)
+    );
+    let selection = FixupSelection::standard().without("legacy-formats");
+    let fixups = Porter::new(&env).fixups(FixupSet::from(&selection));
+    assert_eq!(
+        setting(fixups.resume(snapshot(), store())),
+        Some(LoadSetting::FileFixups)
+    );
+    let reworks = Porter::new(&env).reworks(ReworkTable::new([("test", "16.19")]));
+    assert_eq!(
+        setting(reworks.resume(snapshot(), store())),
+        Some(LoadSetting::Reworks)
+    );
+    let repairer = Repairer::new(&env);
+    assert_eq!(
+        setting(repairer.resume(snapshot(), store())),
+        Some(LoadSetting::Mode)
+    );
+    // What only the stages after `load` read is no setting of the snapshot's.
+    let policy = Porter::new(&env).policy(Policy {
+        target: TargetPolicy::Base,
+        anim_reuse: AnimReuse::Allow,
+    });
+    assert!(policy.keep_dds(true).resume(snapshot(), store()).is_ok());
+}
+
+#[test]
+fn a_load_snapshot_is_refused_when_another_program_wrote_it_or_its_format_is_another() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let (json, store) = legacy_snapshot(&porter);
+    let resume = |snapshot: LoadSnapshot| porter.resume(snapshot, Arc::clone(&store)).map(drop);
+    let other = edited(&json, "program", "commit", "0000000".into());
+    assert!(matches!(resume(other), Err(ResumeError::Program { .. })));
+    let other = edited(&json, "program", "version", "0.0.0".into());
+    assert!(matches!(resume(other), Err(ResumeError::Program { .. })));
+    let mut value: serde_json::Value = serde_json::from_str(&json).expect("JSON");
+    value["format"] = (SNAPSHOT_FORMAT + 1).into();
+    let other = LoadSnapshot::from_json(&value.to_string()).expect("the snapshot reads");
+    let refused = resume(other);
+    assert!(matches!(refused, Err(ResumeError::Format { found }) if found == SNAPSHOT_FORMAT + 1));
+}
+
+#[test]
+fn a_snapshot_is_refused_when_the_store_lacks_its_bytes_or_its_reading_is_another() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let (json, _store) = legacy_snapshot(&porter);
+    let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    let refused = porter.resume(snapshot, MemoryStore::new()).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Store(_))));
+
+    let store = Arc::new(MemoryStore::new());
+    let mut run = porter.run().in_store(Arc::clone(&store));
+    let mut raw = run
+        .read(&own_mod(), FILE_NAME)
+        .expect("the archive reads")
+        .clone();
+    raw.version = RAW_VERSION - 1;
+    let refused = porter.resume(raw, store).map(drop);
+    assert!(matches!(refused, Err(ResumeError::Reading { .. })));
+    run.load().expect("the mod loads");
+    let snapshot = run.load_snapshot().expect("the snapshot").clone();
+    assert!(matches!(
+        run.resume(snapshot).map(drop),
+        Err(ResumeError::Started)
+    ));
+}
+
+#[test]
+fn a_load_snapshot_names_the_bytes_load_made_and_the_findings_of_read_and_load() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let (json, store) = legacy_snapshot(&porter);
+    let snapshot = LoadSnapshot::from_json(&json).expect("the snapshot reads");
+    let made = snapshot.part().files.iter().filter(|file| {
+        matches!(file.source, FileSource::Made { .. })
+            && file
+                .path
+                .as_ref()
+                .is_some_and(|p| p.as_str().ends_with(".scb"))
+    });
+    let made: Vec<_> = made.collect();
+    assert_eq!(made.len(), 1, "the mesh is made the format the game reads");
+    assert!(
+        store.get(made[0].content).is_some(),
+        "its bytes are in the store"
+    );
+    let codes: Vec<&str> = snapshot
+        .findings()
+        .iter()
+        .map(|f| f.code.as_str())
+        .collect();
+    assert!(codes.contains(&"file.format-converted"), "{codes:?}");
+    assert!(codes.contains(&"bin.unreadable"), "{codes:?}");
+    assert!(codes.contains(&"bin.link-missing"), "{codes:?}");
+    let stages: BTreeSet<Stage> = snapshot.findings().iter().map(|f| f.stage).collect();
+    assert!(stages.iter().all(|stage| *stage <= Stage::Load));
 }

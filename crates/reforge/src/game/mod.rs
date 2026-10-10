@@ -130,6 +130,14 @@ impl serde::Serialize for Build {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for Build {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <String as serde::Deserialize>::deserialize(d)?;
+        Build::parse(&text)
+            .ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no build")))
+    }
+}
+
 /// Why a chunk of a game does not read.
 #[derive(Debug, thiserror::Error)]
 pub enum GameError {

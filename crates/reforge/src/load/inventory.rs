@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use reforge_magic::{Categories, Confidence, HEAD_LEN, Kind, identify};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::diag::{Channel, Code, Diag, Message, Record, Severity, Sink, Subject};
 use crate::model::entity::{FileId, FileSource, FileUse, Mod};
@@ -29,7 +29,7 @@ pub const CODES: &[Code] = &[
 const ARCHIVE: &str = "archive";
 
 /// Why a file is worth a reader's look.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Finding {
     /// A program. Never run, never examined.
@@ -86,7 +86,7 @@ impl Finding {
 }
 
 /// One file or entry that is no game file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Item {
     /// The file, for a file of a WAD. None for an entry outside the WADs.
     pub file: Option<FileId>,
@@ -106,7 +106,7 @@ pub struct Item {
 }
 
 /// The files of one kind: how many, and their bytes together.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tally {
     /// How many files.
     pub files: usize,
@@ -123,7 +123,7 @@ impl Tally {
 }
 
 /// What the archive carries, by kind, and what of it is no game file.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Inventory {
     /// Every file and entry by kind.
     pub by_kind: BTreeMap<Kind, Tally>,

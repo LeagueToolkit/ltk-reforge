@@ -17,14 +17,14 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use ltk_hashdb::HashDb;
 use ltk_mimir_cache::{HashStore, Table};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::namehash::{NameHashError, NameHashIndex, NameHashSlot};
 use crate::diag::{Channel, Code, Diag, Input, Message, Severity, Sink, Subject};
 use crate::model::{BinHash, ContentId, WadHash, name_hash, path_hash};
 
 /// A kind of hash, and the table that spells it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NameTable {
     /// Chunk paths, by path hash.
@@ -135,7 +135,7 @@ pub enum NameSource {
 
 /// What identifies the name tables a run spells with (#ADR-0094): the manifest's entry for
 /// each table of the hash cache that opened, and the digest of each text table file read.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NamesStamp {
     /// The tables of the hash cache that opened, in the order of [`NameTable::ALL`].
     pub cache: Vec<CachedTable>,
@@ -144,7 +144,7 @@ pub struct NamesStamp {
 }
 
 /// A table of the hash cache, as its manifest names it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CachedTable {
     /// The table.
     pub table: NameTable,
@@ -155,7 +155,7 @@ pub struct CachedTable {
 }
 
 /// A text table file read.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextTableFile {
     /// The table it holds.
     pub table: NameTable,

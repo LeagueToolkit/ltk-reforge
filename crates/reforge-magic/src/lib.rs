@@ -16,7 +16,7 @@ mod kind;
 mod sniff;
 mod table;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use categories::Categories;
 pub use kind::{Info, Kind};
@@ -25,7 +25,7 @@ pub use kind::{Info, Kind};
 pub const HEAD_LEN: usize = 64;
 
 /// How [`identify`] knew.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Confidence {
     /// A fixed magic, or text whose opening says what it is.

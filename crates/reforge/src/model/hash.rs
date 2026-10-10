@@ -91,6 +91,11 @@ fn hex_number(text: &str, len: usize) -> Option<u64> {
     Some(digits.iter().fold(0u64, |n, &d| n << 4 | u64::from(d)))
 }
 
+/// The chunk hash sixteen hex digits spell, as a report writes one.
+pub fn wad_hash_of_hex(text: &str) -> Option<WadHash> {
+    hex_number(text, 16).map(WadHash)
+}
+
 /// A chunk hash as a report writes it: sixteen hex digits. For `#[serde(with)]`.
 pub mod wad_hex {
     use super::{WadHash, hex_number};
@@ -106,6 +111,29 @@ pub mod wad_hex {
         hex_number(&text, 16)
             .map(WadHash)
             .ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no chunk hash")))
+    }
+}
+
+/// Chunk hashes as a report writes them: each sixteen hex digits. For `#[serde(with)]`.
+pub mod wad_hexes {
+    use serde::de::Error as _;
+
+    use super::{WadHash, hex_number};
+
+    /// Writes the hashes.
+    pub fn serialize<S: serde::Serializer>(hashes: &[WadHash], s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(hashes.iter().map(|hash| format!("{:016x}", hash.0)))
+    }
+
+    /// Reads the hashes.
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<WadHash>, D::Error> {
+        let texts = <Vec<String> as serde::Deserialize>::deserialize(d)?;
+        let hash = |text: &String| {
+            hex_number(text, 16)
+                .map(WadHash)
+                .ok_or_else(|| D::Error::custom(format_args!("{text:?} is no chunk hash")))
+        };
+        texts.iter().map(hash).collect()
     }
 }
 

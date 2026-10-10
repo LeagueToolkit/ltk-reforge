@@ -66,16 +66,29 @@ let report = run.report();
 - **A `Run` takes one archive through the stages and owns what passes between them**: the
   log, the names learnt (`NameBook`), the mod, the dating, the inventory, the file
   provenance, what the fixups changed, and every stage's result. A caller reads each by its
-  accessor (`archive`, the raw snapshot, `store`, `module`, `fixed`, `dating`, `changes`,
-  `facts`, `targets`, `port`, `package`, `overlay`, `log`, `names`) after any stage. `Run::log_from` starts a run from a log of the
-  caller's: one that holds what the inputs raised when the environment was built, or one with
-  a listener.
+  accessor (`archive`, the raw snapshot, `load_snapshot`, `store`, `module`, `fixed`,
+  `dating`, `changes`, `facts`, `targets`, `port`, `package`, `overlay`, `log`, `names`)
+  after any stage. `Run::log_from` starts a run from a log of the caller's: one that holds
+  what the inputs raised when the environment was built, or one with a listener.
 - **Each method hands its stage the stage's sink and options** and gives the stage's result.
   `run.read` is `archive::read(bytes, file_name, &caps, &store, &mut sink)`: the archive's
   bytes are borrowed, so the caller holds them once and drops them after the call, and the
   entries' bytes go into the run's store, a `MemoryStore` unless the caller gave one
   (`Run::in_store`). `run.read_file` reads an archive file. `load` opens the mod from the
-  snapshot and the store, and the run keeps the snapshot (#ADR-0094).
+  raw snapshot and the store, and the run keeps the raw snapshot and, when `load` ends, the
+  load snapshot beside it (#ADR-0094).
+- **A run starts from a snapshot in place of `read`** (#ADR-0094). `run.resume(from)`, or
+  `Porter::resume(from, store)`, takes a `Start`: the raw snapshot, after which `load` runs,
+  or the load snapshot, after which `fix` does. The load snapshot reopens the mod from the
+  store's bytes and parses its bins again; the parsed objects are a cache of the snapshot.
+  A run resumed from either writes the report and the package of the run that wrote the
+  snapshot. A snapshot is refused with a `ResumeError` that says why: a raw snapshot of
+  another reading; a load snapshot of another format or program (version and commit), one
+  whose inputs (`LoadInputs`: the install's build, the history, the hash tables' stamp)
+  are not the environment's, or whose settings (`LoadSettings`: the mode, the file fixups,
+  the stale keep, the reworks) are not the run's. The caller then starts from an earlier
+  snapshot. The commit is the one the build script reads from git, and a build outside a
+  checkout has none.
 - **A stage runs once.** Its method asked again gives the result the run holds. The stage
   types keep the order in their signatures. The run holds the results, so a method called
   before the result it reads is held answers `RunError::NotReached` with both stages.
@@ -148,14 +161,15 @@ The modules of `reforge`, each using only the ones above it:
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
 | `env` | `Env`: what a run is judged against, built once |
-| `load` | `Mod` from an `Archive`: file fixups, binless mods, characters, units, loads; and what is known of the files before any value is read: `Dating`, `Inventory`, `FileProvenance`; the table of reworks |
+| `load` | `Mod` from a `RawSnapshot`: file fixups, binless mods, characters, units, loads; and what is known of the files before any value is read: `Dating`, `Inventory`, `FileProvenance`; the table of reworks |
 | `fixups` | the fixup engine and every rule |
 | `facts` | `Facts` and each result in it: copies, object provenance, origins, rigs, clips, reworks, sounds; `UnitJudge` |
 | `port` | `Policy`, `Targets`; `Port` and the steps of its plan: `Shipping`, `Reach`, `FileRefs`, `Layout`, `Renames`, `OwnClips`, `AudioPlan`, `HudPlan`; `Base` |
 | `package` | `Package`, its builders for a port and for a repair, `PtchBuilder`, `Wired`, `TexContainer`, `Overlay`, the checks, the writers, `EvidenceDoc` |
 | `peek` | `Peek`: an archive read alone, its characters by path and its thumbnail, for a page that shows a mod before a run |
-| `report` | `Report` and its rows |
-| `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)) |
+| `report` | `Report` and its rows; `LoadPart`, the rows `load` gives |
+| `snapshot` | `LoadSnapshot`, the mod as `load` left it named by content id (#ADR-0094), with what it was judged under: `LoadInputs`, `LoadSettings`, `Program`; how it reopens, and `ResumeError` |
+| `porter` | `Porter`, `Repairer` and `Run`: the stages driven in order ([Shape](#shape)), and started from a snapshot; `codes()`, every code a run can raise |
 
 A test (`tests/layers.rs`) reads every `crate::` path of the sources and fails when a module
 uses one below it in this table. The same test fails when `facts` or `port` reads a game chunk
@@ -257,6 +271,12 @@ immutable and built once by `Env::builder()`.
 - **`Schema`** answers the target build's type of a class's field: the meta database, else the
   install's bins. A revision the reader does not understand refuses the whole database: a
   skipped revision would read as a field no build declares.
+
+A stage names the inputs it reads by what identifies each (#ADR-0094). `load` reads the
+install, the history and the names: `LoadInputs` is the install's build, the history's head,
+newest build and count of builds, and the names' stamp. A load snapshot carries it, and a run
+resumes from the snapshot only where the environment's is the same. The schema is read from
+`fix` on, so a load snapshot does not name it; the report's inputs do.
 
 No input is found by itself. The Mimir cache directory and the Manager's schema file each have
 a function that names the usual place, and the caller passes the result to the builder. An
@@ -764,6 +784,14 @@ object takes a name of its own, which every link to it follows.
   object of that bin after the patch, and as the part `evidence` the document the package
   embeds ([Package](#package)), field for field. `reforge repair --again` adds what repairing
   the package a second time, in memory, changed.
+- The rows `load` gives, the WADs, files, characters and units, the dating, and in a port the
+  inventory and the file provenance, are `LoadPart`. The report holds them under the same
+  names, and a load snapshot carries them with what the rows do not say: where each bin's
+  links lead and why a bin did not read, the groups, the files a table named, the names
+  learnt, and the findings of `read` and `load` as `Logged` ([DIAGNOSTICS.md](DIAGNOSTICS.md),
+  "Through the run"). `LoadSnapshot::to_json` writes it as JSON, cleaned as the report is,
+  and `from_json` reads it back; `wads()` gives each WAD's files by path hash with the id of
+  their bytes. Its format is `SNAPSHOT_FORMAT`, 1.
 - The corpus scripts (`scripts/corpus/`) compare the reports of a run with the baseline's
   reports of the same mods (#ADR-0044).
 
@@ -827,8 +855,11 @@ object takes a name of its own, which every link to it follows.
 - A failed assertion on a run prints the run's dump and its diagnostics. No dump is compared
   with a stored one.
 - `tests/porter.rs` holds `Porter`, `Repairer` and `Run`: a port and a repair, a run a stage
-  at a time, a run stopped after each stage, a halted run's report, and that two runs of one
-  archive give the same report, which holds the digest of every chunk.
+  at a time, a run stopped after each stage, a halted run's report, that two runs of one
+  archive give the same report, which holds the digest of every chunk, and that a run
+  resumed from its load snapshot, read back from JSON, or from its raw snapshot writes the
+  report and the project of the run straight through, byte for byte, and is refused when an
+  input, a setting, the program or the format is another.
 - `tests/layers.rs` holds the modules to their order, and `tests/catalogue.rs` holds
   [CODES.md](CODES.md) to the codes declared.
 - The corpus compares reforge with forge (#ADR-0004). [RUNS.md](RUNS.md) holds each run.

@@ -6,7 +6,7 @@
 //! The evidence is gathered first, each piece of the mod the history holds with the build the
 //! game first shipped it at. The verdict is read from it.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::diag::Code;
 use crate::game::Build;
@@ -26,7 +26,7 @@ pub const MIN_FILE: u64 = 4096;
 pub const MIN_PROPERTIES: usize = 4;
 
 /// A piece of the mod the game shipped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(tag = "piece", content = "id", rename_all = "kebab-case")]
 pub enum Piece {
     /// A file, by its bytes.
@@ -91,7 +91,7 @@ impl DatingEvidence {
 }
 
 /// The build a mod was made at or after.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Bound {
     /// The build's position in the history.
     pub at: Position,

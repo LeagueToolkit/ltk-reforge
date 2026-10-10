@@ -5,8 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use byteview::ByteView;
 use ltk_meta::BinObject;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
+use super::bin::ParsedObject;
 use super::hash::{BinHash, ContentId, MAX_SLOT, Slot, WadHash, path_hash, skin_paths};
 use super::id::{Arena, Id, Sigil};
 use super::path::{ChunkPath, WadName};
@@ -45,7 +46,7 @@ impl Sigil for SkinUnit {
 }
 
 /// What the archive says of itself, and what identifies it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModMeta {
     /// The archive's file name, for display and as the fallback mod name.
     pub file_name: Spelled,
@@ -64,7 +65,7 @@ pub struct ModMeta {
 }
 
 /// Whose WAD a WAD of the mod is.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum WadRole {
     /// `<champion>.wad.client`.
@@ -84,7 +85,7 @@ pub enum WadRole {
 }
 
 /// How the archive holds a WAD.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WadLayout {
     /// Chunks as zip entries under `WAD/<name>/`.
@@ -111,7 +112,7 @@ pub struct ModWad {
 }
 
 /// The kind of a file by its first bytes, for the kinds a run reads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FileKind {
     /// A bin.
@@ -193,7 +194,7 @@ pub enum ModImage {
 }
 
 /// The rule by which a file fixup made a file from another, or rewrote a file where it is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MadeBy {
     /// A file in a format the game dropped, made the format it reads at the same stem.
@@ -216,7 +217,7 @@ impl MadeBy {
 }
 
 /// Where a file of the mod comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "source", rename_all = "kebab-case")]
 pub enum FileSource {
     /// The archive ships it.
@@ -243,7 +244,7 @@ pub enum FileSource {
 
 /// How the client comes to use a file of the mod. Mods carry stale bins, working copies and
 /// leftovers, and only what the client would load is judged and carried.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FileUse {
     /// Nothing loads it.
@@ -300,7 +301,7 @@ pub struct FileNode {
 
 /// Where a bin's linked path leads when the client loads it: the mod's file wins over the
 /// game's, and a path neither holds is skipped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "to", content = "file", rename_all = "lowercase")]
 pub enum LinkTo {
     /// A file of the mod.
@@ -312,7 +313,7 @@ pub enum LinkTo {
 }
 
 /// One entry of a bin's list of linked bins.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
     /// The path as the bin spells it.
     pub path: Spelled,
@@ -352,7 +353,7 @@ pub struct ObjectNode {
 }
 
 /// What a character is.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum CharKind {
     /// A character the game keeps in a WAD of its own name.
@@ -402,7 +403,7 @@ pub struct SkinUnit {
 }
 
 /// A champion and its sub-characters, which load together.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Group {
     /// The champion's WAD.
     pub wad: WadId,
@@ -496,6 +497,21 @@ impl Mod {
         let id = self.bins.push(bin);
         self.bin_of.insert(file, id);
         id
+    }
+
+    /// Adds the objects a bin's bytes parsed to, in their file order, to the loaded bin.
+    pub fn push_objects(&mut self, bin: BinId, objects: Vec<ParsedObject>) {
+        for object in objects {
+            let id = self.objects.push(ObjectNode {
+                bin,
+                entry: object.value.path_hash,
+                class: object.value.class_hash,
+                raw: object.raw,
+                body: object.body,
+                value: object.value,
+            });
+            self.bins[bin].objects.push(id);
+        }
     }
 
     /// The file at a path of a WAD.

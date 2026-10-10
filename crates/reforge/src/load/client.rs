@@ -20,7 +20,7 @@ use super::{Fault, MAX_LOAD_BINS, Run};
 use crate::diag::Sink;
 use crate::history::HistoryError;
 use crate::model::entity::{
-    BinId, BinNode, CharId, FileId, FileUse, Link, LinkTo, ObjectId, ObjectNode, UnitId,
+    BinId, BinNode, CharId, FileId, FileUse, Link, LinkTo, ObjectId, UnitId,
 };
 use crate::model::hash::skin_paths;
 use crate::model::{
@@ -83,17 +83,7 @@ impl<'a> ClientLoad<'a> {
                         entries: parsed.duplicates,
                     });
                 }
-                for object in parsed.objects {
-                    let id = module.objects.push(ObjectNode {
-                        bin,
-                        entry: object.value.path_hash,
-                        class: object.value.class_hash,
-                        raw: object.raw,
-                        body: object.body,
-                        value: object.value,
-                    });
-                    module.bins[bin].objects.push(id);
-                }
+                module.push_objects(bin, parsed.objects);
             }
             Err(why) => {
                 module.bins[bin].error = Some(why.to_string());

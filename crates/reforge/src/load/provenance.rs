@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use serde::ser::SerializeSeq as _;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 use super::Fault;
 use crate::diag::{Channel, Code, Diag, Message, Severity, Sink, Subject};
@@ -19,14 +19,14 @@ pub use crate::game::MAX_SAME_SIZE_READS;
 use crate::game::{GameError, GameSource};
 use crate::history::{History, Life};
 use crate::model::entity::{FileId, FileNode, FileUse, Mod, WadId, WadRole};
-use crate::model::hash::skin_paths;
+use crate::model::hash::{skin_paths, wad_hex, wad_hexes};
 use crate::model::{FileKey, SideTable, Slot, Spell, WadHash, WadName};
 
 /// Every diagnostic code file provenance raises.
 pub const CODES: &[Code] = &[OlderGameFiles::CODE, SameSizeCapped::CODE];
 
 /// What the install holds at a file's own path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AtPath {
     /// The game has no chunk at the path.
@@ -37,23 +37,15 @@ pub enum AtPath {
     OtherBytes,
 }
 
-fn hash_hex<S: Serializer>(hash: &WadHash, s: S) -> Result<S::Ok, S::Error> {
-    s.collect_str(&format_args!("{:016x}", hash.0))
-}
-
-fn hashes_hex<S: Serializer>(hashes: &[WadHash], s: S) -> Result<S::Ok, S::Error> {
-    s.collect_seq(hashes.iter().map(|hash| format!("{:016x}", hash.0)))
-}
-
 /// Whose bytes a file's are.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "origin", rename_all = "kebab-case")]
 pub enum BytesOrigin {
     /// The install holds the bytes.
     Install {
         /// The paths it holds them at, the best name first: the character's base skin folder,
         /// the character's folders, any named path, a path no table names.
-        #[serde(serialize_with = "hashes_hex")]
+        #[serde(with = "wad_hexes")]
         paths: Vec<WadHash>,
     },
     /// The game shipped the bytes at some build, and the install does not hold them.
@@ -61,7 +53,7 @@ pub enum BytesOrigin {
         /// The builds the game held them.
         life: Life,
         /// The first path the game held them at.
-        #[serde(serialize_with = "hash_hex")]
+        #[serde(with = "wad_hex")]
         path: WadHash,
         /// Whether the game holds them at the history's head, where the install does not.
         still_shipped: bool,
@@ -83,7 +75,7 @@ impl BytesOrigin {
 }
 
 /// A skin's folder: `assets/characters/<character>/skins/skin<slot>/`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkinFolder {
     /// The character's directory name, lowercase.
     pub character: String,
@@ -99,7 +91,7 @@ impl SkinFolder {
 }
 
 /// What is known of one file's bytes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileFact {
     /// What the install holds at the file's own path.
     pub at_path: AtPath,
@@ -238,14 +230,35 @@ impl FileProvenance {
             against: *against,
             capped: Vec::new(),
         };
-        let mut out = Self::default();
-        let mut older: BTreeMap<WadId, OlderGameFiles> = BTreeMap::new();
+        let mut facts = SideTable::default();
         for (id, file) in m.files.iter() {
             if file.used == FileUse::Unused {
                 continue;
             }
-            let fact = finder.fact(m, id)?;
+            facts.insert(id, finder.fact(m, id)?);
+        }
+        Ok(Self::of_facts(m, facts, finder.capped))
+    }
+
+    /// The provenance a snapshot names (#ADR-0094): each judged file's fact, and the files
+    /// whose chunks of their size passed the cap.
+    pub fn reopen(
+        m: &Mod,
+        facts: impl IntoIterator<Item = (FileId, FileFact)>,
+        capped: Vec<FileId>,
+    ) -> Self {
+        let mut table = SideTable::default();
+        for (file, fact) in facts {
+            table.insert(file, fact);
+        }
+        Self::of_facts(m, table, capped)
+    }
+
+    fn of_facts(m: &Mod, facts: SideTable<FileNode, FileFact>, capped: Vec<FileId>) -> Self {
+        let mut older: BTreeMap<WadId, OlderGameFiles> = BTreeMap::new();
+        for (id, fact) in facts.iter() {
             if let BytesOrigin::History { still_shipped, .. } = fact.origin {
+                let file = &m.files[id];
                 let of_wad = older.entry(file.wad).or_insert_with(|| OlderGameFiles {
                     wad: file.wad,
                     files: Vec::new(),
@@ -256,11 +269,17 @@ impl FileProvenance {
                 of_wad.bytes = of_wad.bytes.saturating_add(file.size);
                 of_wad.still_shipped += usize::from(still_shipped);
             }
-            out.facts.insert(id, fact);
         }
-        out.older = older.into_values().collect();
-        out.capped = finder.capped;
-        Ok(out)
+        Self {
+            facts,
+            older: older.into_values().collect(),
+            capped,
+        }
+    }
+
+    /// The files whose chunks of their size passed the cap.
+    pub fn capped(&self) -> &[FileId] {
+        &self.capped
     }
 
     /// What is known of a file's bytes. None for a file nothing loads.

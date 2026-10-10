@@ -31,7 +31,9 @@ pub use crate::model::EventsBank;
 use crate::model::{BinHash, ClipKey, FileKey, NormKey, ObjectKey, WadHash};
 
 /// A build's number in the history, from 0, in the order the builds arrived.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct Position(pub u16);
 
 impl fmt::Display for Position {
@@ -42,7 +44,7 @@ impl fmt::Display for Position {
 
 /// The first and the last build a key was present in. A key that goes and comes back keeps the
 /// hull.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Life {
     /// The first build the key was present in.
     pub first: Position,

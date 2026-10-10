@@ -25,6 +25,7 @@ mod reader;
 use std::collections::BTreeMap;
 
 use camino::Utf8Path;
+use serde::{Deserialize, Serialize};
 
 pub use self::caps::Caps;
 pub use self::findings::{
@@ -102,7 +103,7 @@ pub struct RawWad {
 
 /// An entry of the archive outside `META/info.json` and the WADs. Its first bytes are in the
 /// store, enough to tell what it is; the rest are not read (#ADR-0051).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawExtra {
     /// The entry's name.
     pub name: Spelled,
@@ -114,7 +115,8 @@ pub struct RawExtra {
 
 /// The archive's `META/image.png`: the id of its bytes, or why the run does not hold them
 /// (#ADR-0051). The image is the one extra read whole.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "image", content = "of", rename_all = "kebab-case")]
 pub enum RawImage {
     /// The entry's bytes, inflated, are in the store under this id.
     Held(ContentId),
@@ -156,20 +158,23 @@ pub struct RawSnapshot {
     pub findings: Vec<Logged>,
 }
 
+impl RawExtra {
+    /// The extra as the mod holds it, with its first bytes from the store, or the id the store
+    /// lacks.
+    pub fn open(&self, store: &dyn BlobStore) -> Result<Extra, ContentId> {
+        Ok(Extra {
+            name: self.name.clone(),
+            size: self.size,
+            head: store.get(self.head).ok_or(self.head)?.to_vec(),
+        })
+    }
+}
+
 impl RawSnapshot {
     /// The extras as the mod holds them, with each one's first bytes from the store, or the
     /// first id the store lacks.
     pub fn open_extras(&self, store: &dyn BlobStore) -> Result<Vec<Extra>, ContentId> {
-        self.extras
-            .iter()
-            .map(|extra| {
-                Ok(Extra {
-                    name: extra.name.clone(),
-                    size: extra.size,
-                    head: store.get(extra.head).ok_or(extra.head)?.to_vec(),
-                })
-            })
-            .collect()
+        self.extras.iter().map(|extra| extra.open(store)).collect()
     }
 
     /// What the reader found, its bytes put into the store.

@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::diag::{Diagnostic, Diagnostics, Render};
 use crate::env::Env;
@@ -42,7 +42,7 @@ use crate::port::{Alternative, Decision, Policy, Port, Targets};
 pub const SCHEMA: &str = "reforge.report/1";
 
 /// The history a run was judged against.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryInput {
     /// The commit of the build the history took in last.
     pub head: String,
@@ -53,7 +53,7 @@ pub struct HistoryInput {
 }
 
 /// The schema a run was judged against.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SchemaInput {
     /// The newest build it describes.
     pub latest: u64,
@@ -94,7 +94,7 @@ impl Inputs {
 }
 
 /// A WAD of the mod.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WadRow {
     /// Its id.
     pub id: WadId,
@@ -118,7 +118,7 @@ pub struct WadRow {
 }
 
 /// A file of the mod.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileRow {
     /// Its id.
     pub id: FileId,
@@ -143,7 +143,7 @@ pub struct FileRow {
 }
 
 /// A character.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterRow {
     /// Its id.
     pub id: CharId,
@@ -165,7 +165,7 @@ pub struct CharacterRow {
 }
 
 /// A skin unit.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnitRow {
     /// Its id.
     pub id: UnitId,
@@ -188,7 +188,7 @@ pub struct UnitRow {
 }
 
 /// The piece that sets a mod's dating, with the hash a reader finds it by.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvidenceRow {
     /// The piece.
     #[serde(flatten)]
@@ -198,7 +198,7 @@ pub struct EvidenceRow {
 }
 
 /// The dating of the mod.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatingRow {
     /// The build the mod was made at or after.
     pub not_before: Option<Bound>,
@@ -211,7 +211,7 @@ pub struct DatingRow {
 }
 
 /// What is known of one file's bytes.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProvenanceRow {
     /// The file.
     pub file: FileId,
@@ -1001,70 +1001,17 @@ impl ReportBuilder {
     #[must_use]
     pub fn module(mut self, m: &Mod) -> Self {
         self.report.meta = Some(m.meta.clone());
-        self.report.wads = m.wads.iter().map(|(id, wad)| wad_row(m, id, wad)).collect();
-        self.report.files = m
-            .files
-            .iter()
-            .map(|(id, file)| FileRow {
-                id,
-                wad: file.wad,
-                hash: format!("{:016x}", file.hash.0),
-                path: file.path.clone(),
-                kind: file.kind,
-                size: file.size,
-                content: file.content,
-                used: file.used,
-                source: file.source,
-            })
-            .collect();
-        self.report.characters = m
-            .characters
-            .iter()
-            .map(|(id, character)| CharacterRow {
-                id,
-                name: character.name.clone(),
-                spelled: character.spelled.clone(),
-                kind: character.kind.clone(),
-                wad: character.wad,
-                units: character.units.clone(),
-                root_bin: character.root_bin,
-                equal_to_game: m.equal_to_game.contains(&id),
-            })
-            .collect();
-        self.report.units = m
-            .units
-            .iter()
-            .map(|(id, unit)| UnitRow {
-                id,
-                character: unit.character,
-                character_name: m.characters[unit.character].name.clone(),
-                slot: unit.source_slot,
-                file: unit.file,
-                bin: unit.bin,
-                loads: unit.loads.iter().map(|&bin| m.bins[bin].file).collect(),
-                entry: unit.entry,
-                entry_name_slot: unit.entry_name_slot,
-            })
-            .collect();
+        self.report.wads = wad_rows(m);
+        self.report.files = file_rows(m);
+        self.report.characters = character_rows(m);
+        self.report.units = unit_rows(m);
         self
     }
 
     /// The dating of the mod. The mod gives the hash of the piece that sets it.
     #[must_use]
     pub fn dating(mut self, dating: &Dating, m: &Mod) -> Self {
-        let evidence = dating.evidence.map(|piece| EvidenceRow {
-            piece,
-            hash: match piece {
-                Piece::File(file) => format!("{:016x}", m.files[file].hash.0),
-                Piece::Object(object) => format!("{:08x}", m.objects[object].entry.0),
-            },
-        });
-        self.report.dating = Some(DatingRow {
-            not_before: dating.not_before.clone(),
-            evidence,
-            dated: dating.dated,
-            at_bound: dating.at_bound,
-        });
+        self.report.dating = Some(DatingRow::of(dating, m));
         self
     }
 
@@ -1078,11 +1025,7 @@ impl ReportBuilder {
     /// Whose bytes each used file holds.
     #[must_use]
     pub fn provenance(mut self, provenance: &FileProvenance) -> Self {
-        let rows = provenance.iter().map(|(file, fact)| ProvenanceRow {
-            file,
-            fact: fact.clone(),
-        });
-        self.report.provenance = Some(rows.collect());
+        self.report.provenance = Some(provenance_rows(provenance));
         self
     }
 
@@ -1226,6 +1169,69 @@ impl ReportBuilder {
     }
 }
 
+/// What `load` gives the report: the mod's tables and what is known of its files (#ADR-0094).
+/// The report holds the same rows under the same names, and a load snapshot carries them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadPart {
+    /// The mod's WADs.
+    pub wads: Vec<WadRow>,
+    /// The mod's files.
+    pub files: Vec<FileRow>,
+    /// The characters.
+    pub characters: Vec<CharacterRow>,
+    /// The skin units.
+    pub units: Vec<UnitRow>,
+    /// The dating.
+    pub dating: DatingRow,
+    /// What the archive carries, when it was taken: in a port, not in a repair.
+    pub inventory: Option<Inventory>,
+    /// Whose bytes each used file holds, in file order, when it was found: in a port, not in
+    /// a repair.
+    pub provenance: Option<Vec<ProvenanceRow>>,
+}
+
+impl LoadPart {
+    /// The part of a mod as `load` left it, with what is known of its files.
+    pub fn of(
+        m: &Mod,
+        dating: &Dating,
+        inventory: Option<&Inventory>,
+        provenance: Option<&FileProvenance>,
+    ) -> Self {
+        Self {
+            wads: wad_rows(m),
+            files: file_rows(m),
+            characters: character_rows(m),
+            units: unit_rows(m),
+            dating: DatingRow::of(dating, m),
+            inventory: inventory.cloned(),
+            provenance: provenance.map(provenance_rows),
+        }
+    }
+}
+
+impl DatingRow {
+    fn of(dating: &Dating, m: &Mod) -> Self {
+        let evidence = dating.evidence.map(|piece| EvidenceRow {
+            piece,
+            hash: match piece {
+                Piece::File(file) => format!("{:016x}", m.files[file].hash.0),
+                Piece::Object(object) => format!("{:08x}", m.objects[object].entry.0),
+            },
+        });
+        Self {
+            not_before: dating.not_before.clone(),
+            evidence,
+            dated: dating.dated,
+            at_bound: dating.at_bound,
+        }
+    }
+}
+
+fn wad_rows(m: &Mod) -> Vec<WadRow> {
+    m.wads.iter().map(|(id, wad)| wad_row(m, id, wad)).collect()
+}
+
 fn wad_row(m: &Mod, id: WadId, wad: &crate::model::entity::ModWad) -> WadRow {
     let named = wad
         .files
@@ -1241,4 +1247,56 @@ fn wad_row(m: &Mod, id: WadId, wad: &crate::model::entity::ModWad) -> WadRow {
         packed_locale: wad.packed_locale.clone(),
         restoration: m.restorations.contains(&id),
     }
+}
+
+fn file_rows(m: &Mod) -> Vec<FileRow> {
+    let rows = m.files.iter().map(|(id, file)| FileRow {
+        id,
+        wad: file.wad,
+        hash: format!("{:016x}", file.hash.0),
+        path: file.path.clone(),
+        kind: file.kind,
+        size: file.size,
+        content: file.content,
+        used: file.used,
+        source: file.source,
+    });
+    rows.collect()
+}
+
+fn character_rows(m: &Mod) -> Vec<CharacterRow> {
+    let rows = m.characters.iter().map(|(id, character)| CharacterRow {
+        id,
+        name: character.name.clone(),
+        spelled: character.spelled.clone(),
+        kind: character.kind.clone(),
+        wad: character.wad,
+        units: character.units.clone(),
+        root_bin: character.root_bin,
+        equal_to_game: m.equal_to_game.contains(&id),
+    });
+    rows.collect()
+}
+
+fn unit_rows(m: &Mod) -> Vec<UnitRow> {
+    let rows = m.units.iter().map(|(id, unit)| UnitRow {
+        id,
+        character: unit.character,
+        character_name: m.characters[unit.character].name.clone(),
+        slot: unit.source_slot,
+        file: unit.file,
+        bin: unit.bin,
+        loads: unit.loads.iter().map(|&bin| m.bins[bin].file).collect(),
+        entry: unit.entry,
+        entry_name_slot: unit.entry_name_slot,
+    });
+    rows.collect()
+}
+
+fn provenance_rows(provenance: &FileProvenance) -> Vec<ProvenanceRow> {
+    let rows = provenance.iter().map(|(file, fact)| ProvenanceRow {
+        file,
+        fact: fact.clone(),
+    });
+    rows.collect()
 }

@@ -2,6 +2,8 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use super::names::NameTable;
 use crate::model::{BinHash, WadHash, name_hash, path_hash};
 
@@ -136,5 +138,105 @@ impl NameBook {
 
     fn each(names: &BTreeMap<BinHash, String>) -> impl Iterator<Item = (BinHash, &str)> {
         names.iter().map(|(hash, name)| (*hash, name.as_str()))
+    }
+}
+
+/// A book as a snapshot keeps it: each table by hash, a chunk hash as sixteen hex digits and a
+/// bin hash as eight.
+#[derive(Serialize, Deserialize)]
+struct Rows {
+    paths: BTreeMap<String, String>,
+    paths_by_name_hash: BTreeMap<String, String>,
+    entries: BTreeMap<String, String>,
+    fields: BTreeMap<String, String>,
+    classes: BTreeMap<String, String>,
+    hashes: BTreeMap<String, String>,
+}
+
+fn wad_key(hash: WadHash) -> String {
+    format!("{:016x}", hash.0)
+}
+
+fn bin_key(hash: BinHash) -> String {
+    format!("{:08x}", hash.0)
+}
+
+fn names_by_key(names: &BTreeMap<BinHash, String>) -> BTreeMap<String, String> {
+    names
+        .iter()
+        .map(|(&hash, name)| (bin_key(hash), name.clone()))
+        .collect()
+}
+
+/// A table read back, each name checked against the hash it is kept under.
+fn names_of<E: serde::de::Error>(
+    rows: BTreeMap<String, String>,
+) -> Result<BTreeMap<BinHash, String>, E> {
+    let mut names = BTreeMap::new();
+    for (key, name) in rows {
+        let hash = name_hash(&name);
+        if bin_key(hash) != key {
+            return Err(E::custom(format_args!("{name:?} does not hash to {key}")));
+        }
+        names.insert(hash, name);
+    }
+    Ok(names)
+}
+
+impl Serialize for NameBook {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let paths = self
+            .paths
+            .iter()
+            .map(|(&hash, path)| (wad_key(hash), path.clone()));
+        let firsts = self.paths_by_name_hash.iter();
+        let firsts = firsts.map(|(&name, &path)| (bin_key(name), wad_key(path)));
+        Rows {
+            paths: paths.collect(),
+            paths_by_name_hash: firsts.collect(),
+            entries: names_by_key(&self.entries),
+            fields: names_by_key(&self.fields),
+            classes: names_by_key(&self.classes),
+            hashes: names_by_key(&self.hashes),
+        }
+        .serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for NameBook {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+        let rows = Rows::deserialize(d)?;
+        let mut book = NameBook::new();
+        for (key, path) in rows.paths {
+            let hash = path_hash(&path);
+            if wad_key(hash) != key || path.to_ascii_lowercase() != path {
+                return Err(D::Error::custom(format_args!(
+                    "{path:?} is no path of {key}"
+                )));
+            }
+            book.paths.insert(hash, path);
+        }
+        let by_key: BTreeMap<String, WadHash> = book
+            .paths
+            .keys()
+            .map(|&hash| (wad_key(hash), hash))
+            .collect();
+        for (key, value) in rows.paths_by_name_hash {
+            let hash = by_key.get(&value).copied();
+            let first = hash.filter(|hash| bin_key(name_hash(&book.paths[hash])) == key);
+            let Some(hash) = first else {
+                return Err(D::Error::custom(format_args!(
+                    "{value} is no path of {key}"
+                )));
+            };
+            book.paths_by_name_hash
+                .insert(name_hash(&book.paths[&hash]), hash);
+        }
+        book.entries = names_of(rows.entries)?;
+        book.fields = names_of(rows.fields)?;
+        book.classes = names_of(rows.classes)?;
+        book.hashes = names_of(rows.hashes)?;
+        Ok(book)
     }
 }

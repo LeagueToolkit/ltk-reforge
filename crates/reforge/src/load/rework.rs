@@ -30,7 +30,8 @@ const REWORKS: &[(&str, &str)] = &[
 ];
 
 /// The champions whose model was replaced, each with the patch the new model shipped in.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct ReworkTable {
     patches: BTreeMap<String, String>,
 }

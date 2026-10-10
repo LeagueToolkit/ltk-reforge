@@ -245,7 +245,7 @@ impl Run<'_> {
     }
 }
 
-/// The stage `load`: a `Mod` from an `Archive`.
+/// The stage `load`: a `Mod` from a raw snapshot.
 ///
 /// A loader serves one run. It holds the names the run learns: the paths the archive and its
 /// bins spell, and the entry names of each character's skins.

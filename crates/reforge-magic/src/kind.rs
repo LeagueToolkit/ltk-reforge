@@ -1,12 +1,12 @@
 //! The kinds of file [`identify`](crate::identify) tells apart, and what each one is.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::Categories;
 use crate::table;
 
 /// A kind of file: a League format, or one of the other formats mods carry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Kind {
     // League
