@@ -1742,3 +1742,18 @@ history index of 757 builds in format 1, at 24 in parallel with one thread each.
 |---|---|---:|---|
 | `Shaders/SkinnedMesh/Leona_Texture_Transition` | pixel | 7 | `OFF_VALUE_ON_TEXTURE=1`, a static switch the materials leave off |
 | `Shaders/SkinnedMesh/TFT_FixedUVSpace_Bloom` | pixel | 2 | `SKINNED_MATERIAL_ADDITIVE=1`, a macro every material of Riot's on the shader sets |
+
+## The nearest shader variant (2026-10-10)
+
+The fixup `shader-variant` (#ADR-0092), on the working tree at `31a289a`, against the
+16.19.8207193 copy and the history index of 757 builds in format 1, over five of the 9 mods
+`package.shader-variant-missing` stopped: three Zed skins, the Mordekaiser and the Warwick
+(`shader-variant-five-{port,repair}`).
+
+- Port and repair: 5 done, 0 ended by a fatal diagnostic, each in 2 s. The fixup set
+  `OFF_VALUE_ON_TEXTURE` on in the Zed materials' own `switches`, where each held it off (one
+  material in two mods, two in the third), and added `SKINNED_MATERIAL_ADDITIVE=1` to the
+  `shaderMacros` of the Mordekaiser's one material and the Warwick's two. No other fixup changed.
+- Against `shader-variant-full-{port,repair}-after` the five differ in every section after the
+  fixups: the earlier reports are those of a run the check ended.
+- The reduced corpus holds no mod the check stops, so a run over it shows nothing of the fixup.

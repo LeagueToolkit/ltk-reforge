@@ -14,6 +14,7 @@ pub mod id;
 pub mod keys;
 pub mod known;
 pub mod layer;
+pub mod material;
 pub mod names;
 pub mod path;
 pub mod record;

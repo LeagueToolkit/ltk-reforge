@@ -65,6 +65,12 @@ impl FixCx<'_> {
         })
     }
 
+    /// The target game, for a question `game_bin` does not ask. An error it answers with is a
+    /// fault, which the fixup hands to [`FixCx::fault`].
+    pub fn game(&self) -> &dyn GameSource {
+        self.game
+    }
+
     /// The number of the build the mod was made at or after. None for a mod the history does
     /// not date.
     pub fn source_build(&self) -> Option<u64> {

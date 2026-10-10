@@ -319,7 +319,8 @@ pub struct FixupInfo {
   alignment,
   the spawn shape, the emission surface, the sampler's fields, the default
   technique, the texture-mult strays, the simple-particle fields (a table rule's move, and a
-  removal from a complex emitter), the shader relink, the hoist and the wrap, retype, strip. Retype's conversions are a
+  removal from a complex emitter), the shader relink, the shader variant, which judges a
+  material against the target's shader cache, the hoist and the wrap, retype, strip. Retype's conversions are a
   catalogue of named items, one function each. A `Rule` grows a new shape only when a second
   fixup needs it. Both kinds are listed, ordered and
   turned on and off the same way.
@@ -636,9 +637,11 @@ object takes a name of its own, which every link to it follows.
   Nor is one in which a material's pass, on a shader of the game's shader bin, asks for a variant
   the target's shader cache lacks (`package.shader-variant-missing`, #GAME-BEHAVIOR-0029): the
   pass's defines are made from the shader's definition in the game's bin and the material's
-  switches and macros, and the key of each technique and each child technique is looked up in
-  the tables of both the pixel and the vertex programs. A shader the mod's objects define, and one
-  with no table in the cache, is not judged.
+  switches and macros (`model::material`), and the key of each technique and each child
+  technique is looked up in the tables of both the pixel and the vertex programs
+  (`game::asked_variants`). A shader the mod's objects define, and one with no table in the
+  cache, is not judged. The fixup `shader-variant` has moved each material that one define
+  brings to a compiled variant (#ADR-0092), by the same reading.
 - **A repaired package is not the whole evidence of the mod.** The files left behind are part
   of what `load` judged by: a mod's date, and that a WAD restores a model from before a rework.
   A package repaired again from its own bytes alone dates differently in about half the mods,

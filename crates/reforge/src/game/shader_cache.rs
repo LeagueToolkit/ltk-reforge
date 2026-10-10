@@ -3,12 +3,16 @@
 
 use std::collections::BTreeSet;
 use std::io::Cursor;
+use std::sync::Arc;
 
 use ltk_shader::toc::ShaderToc;
 use serde::Serialize;
 use xxhash_rust::xxh64::xxh64;
 
-use crate::model::{WadHash, path_hash};
+use super::GameError;
+use super::source::{GameBin, GameSource};
+use crate::model::material::{GameShader, Material};
+use crate::model::{BinHash, WadHash, path_hash};
 
 /// A stage of a shader's programs, each a file of its own in the cache.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -97,11 +101,98 @@ impl ShaderVariants {
         self.keys.contains(&variant_key(filtered))
     }
 
+    /// The base defines, each a name and a value, by name then value.
+    pub fn base(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.base
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+    }
+
     fn is_base(&self, name: &str, value: &str) -> bool {
         self.base
             .iter()
             .any(|(base, paired)| base == name && paired == value)
     }
+}
+
+/// A variant a material's pass asks a game shader for, and whether one file of the cache holds
+/// it.
+#[derive(Debug, Clone)]
+pub struct AskedVariant {
+    /// The shader the pass links.
+    pub shader: BinHash,
+    /// The pass's technique.
+    pub technique: String,
+    /// The child technique the pass is drawn under, if any.
+    pub child: Option<String>,
+    /// The file.
+    pub stage: ShaderStage,
+    /// The defines the key is made of.
+    pub filtered: String,
+    /// Whether the file holds the variant.
+    pub held: bool,
+    /// The file's table.
+    pub file: Arc<ShaderVariants>,
+}
+
+/// Every variant the passes of a material ask of the game's shaders, judged against the cache.
+/// A pass whose shader `skipped` names or the shader bin lacks is left to #GAME-BEHAVIOR-0022
+/// and #GAME-BEHAVIOR-0023; one whose shader has no file in the cache for either stage is not
+/// judged.
+pub fn asked_variants(
+    material: &Material<'_>,
+    shaders: &GameBin,
+    game: &dyn GameSource,
+    skipped: &dyn Fn(BinHash) -> bool,
+) -> Result<Vec<AskedVariant>, GameError> {
+    let mut asked = Vec::new();
+    for pass in material.passes() {
+        if skipped(pass.shader) {
+            continue;
+        }
+        let Some(definition) = shaders.object(pass.shader) else {
+            continue;
+        };
+        let Some(shader) = GameShader::of(&definition.value) else {
+            continue;
+        };
+        let mut files = Vec::new();
+        for stage in ShaderStage::ALL {
+            match game.shader_variants(shader_file(shader.object_path, stage))? {
+                Some(held) => files.push((stage, held)),
+                None => break,
+            }
+        }
+        if files.len() < ShaderStage::ALL.len() {
+            continue;
+        }
+        for child in material.children_of(&pass) {
+            let defines = material.defines(&shader, &pass, child);
+            for (stage, file) in &files {
+                let filtered = file.filtered(defines.iter().map(|(n, v)| (*n, *v)));
+                asked.push(AskedVariant {
+                    shader: pass.shader,
+                    technique: pass.technique.to_owned(),
+                    child: child.map(|child| child.name.to_owned()),
+                    stage: *stage,
+                    held: file.holds(&filtered),
+                    filtered,
+                    file: Arc::clone(file),
+                });
+            }
+        }
+    }
+    Ok(asked)
+}
+
+/// Whether a name is a static switch of a shader one of the material's passes links.
+pub fn is_switch_of(material: &Material<'_>, shaders: &GameBin, name: &str) -> bool {
+    material.passes().any(|pass| {
+        shaders
+            .object(pass.shader)
+            .and_then(|definition| GameShader::of(&definition.value))
+            .is_some_and(|shader| shader.has_switch(name))
+    })
 }
 
 #[cfg(test)]

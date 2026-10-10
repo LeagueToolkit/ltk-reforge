@@ -34,7 +34,10 @@ pub use self::schema::{
     FieldType, SCHEMA_FILE, Schema, SchemaAbsent, SchemaError, SchemaInstallNewer,
     SchemaUnreadable, meta_cache_dir,
 };
-pub use self::shader_cache::{ShaderStage, ShaderVariants, shader_file, variant_key};
+pub use self::shader_cache::{
+    AskedVariant, ShaderStage, ShaderVariants, asked_variants, is_switch_of, shader_file,
+    variant_key,
+};
 pub use self::source::{Copies, GameBin, GameSkin, GameSource, MAX_SAME_SIZE_READS};
 pub use self::speller::Speller;
 pub use self::view::GameView;

@@ -15,6 +15,7 @@
 mod conversion;
 mod hoist;
 mod retype;
+mod shader_variant;
 mod strip;
 mod wrap;
 
@@ -25,6 +26,7 @@ use ltk_meta::PropertyKind as Kind;
 pub use self::conversion::Conversion;
 pub use self::hoist::Hoist;
 pub use self::retype::Retype;
+pub use self::shader_variant::ShaderVariantNearest;
 pub use self::strip::StripUndeclared;
 pub use self::wrap::Wrap;
 use super::{BinFixup, FixCx};
@@ -45,6 +47,7 @@ pub fn all() -> Vec<Arc<dyn BinFixup>> {
         Arc::new(Hoist),
         Arc::new(Wrap),
         Arc::new(Retype),
+        Arc::new(ShaderVariantNearest),
         Arc::new(StripUndeclared),
     ]
 }

@@ -4,8 +4,7 @@
 //! that asks a game shader for a variant the target's shader cache lacks gets no package either,
 //! since the client crashes at its draw (#GAME-BEHAVIOR-0029).
 
-use ltk_meta::property::values;
-use ltk_meta::{BinObject, PropertyKind as Kind, PropertyValueEnum as V};
+use ltk_meta::{BinObject, PropertyValueEnum as V};
 use reforge::diag::{Diag, Record};
 use reforge::env::Env;
 use reforge::fixups::layout::ShaderRelink;
@@ -15,10 +14,10 @@ use reforge::model::name_hash;
 use reforge::package::{
     BuildError, ShaderLink, ShaderMissing, ShaderVariant, ShaderVariantMissing,
 };
-use reforge_testkit::bins::{bin, embedded, flag, link, object, text};
+use reforge_testkit::bins::{bin, embedded, link, object};
 use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{field, kind};
-use reforge_testkit::shaders::toc;
+use reforge_testkit::shaders::{self, Asks, embeds, toc};
 use reforge_testkit::{PackRun, SchemaRows, skins};
 
 const RELINK_ID: &str = "material-shader-relink";
@@ -48,10 +47,6 @@ fn env(shaders: bool) -> Env {
         .schema(schema())
         .build()
         .expect("an environment")
-}
-
-fn embeds(items: Vec<V>) -> V {
-    V::Container(values::Container::new(Kind::Embedded, items).expect("a list of embeds"))
 }
 
 /// A material of one technique whose passes link these shaders.
@@ -169,26 +164,12 @@ fn variant_env(files: Vec<(&str, Vec<u8>)>) -> Env {
         .expect("an environment")
 }
 
-/// The definition of `VARIANTS`.
+/// The definition of `VARIANTS`: `USE_RIM` on by default, `OFF_VALUE_ON_TEXTURE` off.
 fn variants_shader() -> BinObject {
-    let switch = |name: &str, on: bool| {
-        embedded(
-            "ShaderStaticSwitch",
-            vec![("name", text(name)), ("onByDefault", flag(on))],
-        )
-    };
-    let switches = vec![
-        switch("USE_RIM", true),
-        switch("OFF_VALUE_ON_TEXTURE", false),
-    ];
-    object(
+    shaders::shader(
         VARIANTS,
-        "CustomShaderDef",
-        vec![
-            ("objectPath", text(VARIANTS)),
-            ("featureDefines", strings(&[("FEATURE_BLOOM", "1")])),
-            ("staticSwitches", embeds(switches)),
-        ],
+        &[("FEATURE_BLOOM", "1")],
+        &[("USE_RIM", true), ("OFF_VALUE_ON_TEXTURE", false)],
     )
 }
 
@@ -197,60 +178,9 @@ fn both(variants: &[&str]) -> Vec<(&'static str, Vec<u8>)> {
     vec![(PIXEL, toc(BASE, variants)), (VERTEX, toc(BASE, variants))]
 }
 
-fn strings(pairs: &[(&str, &str)]) -> V {
-    let entries = pairs.iter().map(|(k, v)| (text(k), text(v))).collect();
-    V::Map(values::Map::new(Kind::String, Kind::String, entries).expect("a map of strings"))
-}
-
-/// What a material on `VARIANTS` sets.
-#[derive(Default)]
-struct Asks<'a> {
-    switches: &'a [(&'a str, bool)],
-    macros: &'a [(&'a str, &'a str)],
-    pass_macros: &'a [(&'a str, &'a str)],
-    /// The child techniques of its technique, each by its name and its macros.
-    children: &'a [(&'a str, &'a [(&'a str, &'a str)])],
-}
-
 /// A material of one technique of one pass on `VARIANTS`.
 fn variant_material(asks: &Asks<'_>) -> BinObject {
-    let switches = asks.switches.iter().map(|&(name, on)| {
-        embedded(
-            "StaticMaterialSwitchDef",
-            vec![("name", text(name)), ("on", flag(on))],
-        )
-    });
-    let pass = embedded(
-        "StaticMaterialPassDef",
-        vec![
-            ("shader", link(VARIANTS)),
-            ("shaderMacros", strings(asks.pass_macros)),
-        ],
-    );
-    let technique = embedded(
-        "StaticMaterialTechniqueDef",
-        vec![("name", text(TECHNIQUE)), ("passes", embeds(vec![pass]))],
-    );
-    let children = asks.children.iter().map(|&(name, macros)| {
-        embedded(
-            "StaticMaterialChildTechniqueDef",
-            vec![
-                ("name", text(name)),
-                ("parentName", text(TECHNIQUE)),
-                ("shaderMacros", strings(macros)),
-            ],
-        )
-    });
-    object(
-        MATERIAL,
-        "StaticMaterialDef",
-        vec![
-            ("switches", embeds(switches.collect())),
-            ("shaderMacros", strings(asks.macros)),
-            ("techniques", embeds(vec![technique])),
-            ("childTechniques", embeds(children.collect())),
-        ],
-    )
+    shaders::material(MATERIAL, VARIANTS, TECHNIQUE, asks)
 }
 
 fn variant_run<'e>(env: &'e Env, asks: &Asks<'_>) -> PackRun<'e> {

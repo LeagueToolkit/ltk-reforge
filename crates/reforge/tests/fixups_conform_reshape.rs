@@ -430,6 +430,7 @@ fn the_conforming_fixups_run_after_every_layout_and_strip_last() {
         "reshape-hoist",
         "reshape-wrap",
         "retype",
+        "shader-variant",
         "strip-undeclared",
     ];
     let ids = set.ids();
