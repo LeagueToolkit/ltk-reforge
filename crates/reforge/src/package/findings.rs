@@ -50,7 +50,7 @@ impl Diag for TextureContained {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.contained, "DDS texture")
             .text(" at .tex paths put in TEX's container, their blocks as they are");
         if !self.kept.is_empty() {
@@ -88,7 +88,7 @@ impl Diag for InPlace {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.kept, "file")
             .text(" kept at their paths, ")
             .count(self.rewritten, "bin")
@@ -143,7 +143,7 @@ impl Diag for NotWritten {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "the game has no {} that reads as a bin; the unit is not written",
@@ -173,7 +173,7 @@ impl Diag for NewBinFailed {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "{} written from the game's skin0: {} records applied, {} did not",
@@ -200,7 +200,7 @@ impl Diag for NewBin {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "the game has no {} for the character; the port writes one from its skin0",
@@ -233,7 +233,7 @@ impl Diag for UnitPorted {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.records, "record");
         let _ = write!(f, " on {}, ", self.target);
         f.count(self.carried, "object").text(" carried");
@@ -264,7 +264,7 @@ impl Diag for FieldKept {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the mod's entry lacks ");
         f.list(&self.fields, |f, field| {
             f.field(*field);
@@ -287,7 +287,7 @@ impl Diag for EntryWhole {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text(
             "the game's bin holds no entry under the target's name; the mod's entry goes in whole",
         );
@@ -311,7 +311,7 @@ impl Diag for ResolverFrozen {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "the resolver's map is written whole ({} keys): keys the game adds later are not seen until the port is made again",
@@ -344,7 +344,7 @@ impl Diag for Ported {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files, "file")
             .text(" shipped under the namespace, ")
             .count(self.bins, "bin")
@@ -380,7 +380,7 @@ impl Diag for ManifestUnreadable {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the manifest of the layer ")
             .text(&self.layer)
             .text(" does not load: ")
@@ -406,7 +406,7 @@ impl Diag for ApplyFailed {
         Subject::Chunk(self.target.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the patch of the layer ").text(&self.layer);
         match &self.reason {
             Some(reason) => f.text(" does not apply: ").spelled(reason),
@@ -433,7 +433,7 @@ impl Diag for RecordSkipped {
         Subject::Chunk(self.target.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.records.len(), "edit")
             .text(" of the layer ")
             .text(&self.layer)
@@ -460,7 +460,7 @@ impl Diag for LinkUnresolved {
         Subject::Chunk(self.target.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("links the port adds resolve to nothing: ");
         f.list(&self.links, |f, link| {
             f.spelled(link);
@@ -485,7 +485,7 @@ impl Diag for OverlayCapped {
         Subject::Chunk(self.target.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "its load stops at {} bins; names in the bins past it are not checked",
@@ -512,7 +512,7 @@ impl Diag for NameUnresolved {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.names.len(), "name")
             .text(" the patched entry reaches resolve to nothing: ");
         f.list(&self.names, |f, name| {
@@ -538,7 +538,7 @@ impl Diag for FileMissing {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file")
             .text(" the port names are neither shipped nor the game's: ");
         f.list(&self.files, |f, file| {
@@ -604,7 +604,7 @@ impl Diag for OtherSkin {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the patched base skin names another skin of the champion: ");
         f.list(&self.values, |f, value| {
             f.text(value.value.as_str()).text(" ").spelled(&value.names);
@@ -626,7 +626,7 @@ impl Diag for Empty {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the package holds nothing: the client uses none of the mod's ")
             .count(self.files, "file");
     }
@@ -659,7 +659,7 @@ impl Diag for ShaderMissing {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.links.len(), "material")
             .text(" linking a shader the target's shader bin lacks; the client crashes at load: ");
         f.list(&self.links, |f, link| {
@@ -710,7 +710,7 @@ impl Diag for ShaderVariantMissing {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let mut materials: Vec<BinHash> = self.variants.iter().map(|v| v.material).collect();
         materials.dedup();
         f.count(materials.len(), "material").text(
@@ -753,7 +753,7 @@ impl Diag for ThumbnailDropped {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the mod's image is not carried as the thumbnail: ");
         match self.why {
             ThumbnailRefusal::EntryTooLarge { bytes } => {
@@ -806,9 +806,9 @@ impl Shape {
     }
 
     /// Writes `Map<Hash, Embed<Class>>`: the class beside the kind that holds a struct.
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let strukt = [kind_name(Kind::Embedded), kind_name(Kind::Struct)];
-        let item = |f: &mut Message<'_>, kind: &str| {
+        let item = |f: &mut Message, kind: &str| {
             f.text(kind);
             if let Some(class) = self.class.filter(|_| strukt.contains(&kind)) {
                 f.text("<").class(class).text(">");
@@ -879,7 +879,7 @@ impl Diag for TypeMismatch {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.values, "value")
             .text(" the client skips, of another type than the target build declares: ");
         f.list(&self.fields, |f, row| {
@@ -927,7 +927,7 @@ impl Diag for FieldUndeclared {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.values, "field")
             .text(" the client does not read, undeclared at the target build: ");
         f.list(&self.fields, |f, row| {
@@ -982,7 +982,7 @@ impl Diag for ClassUndeclared {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.structs, "struct")
             .text(" of a class the target build does not declare: ");
         f.list(&self.classes, |f, row| {
@@ -1045,7 +1045,7 @@ impl Diag for RoundTripFailed {
         Subject::Chunk(self.path.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the bin written again does not read back as built: ");
         f.list(&self.problems, |f, problem| match problem {
             RoundTripProblem::Unreadable { reason } => {
@@ -1132,7 +1132,7 @@ impl Diag for Done {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         match self.0 {
             Coverage::RoundTrip {
                 bins,
@@ -1213,7 +1213,7 @@ impl Diag for Written {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("wrote the ")
             .text(self.kind.as_str())
             .text(" ")
@@ -1241,7 +1241,7 @@ impl Diag for Blocked {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("nothing is written: the caller's policy blocks on ")
             .count(self.by.len(), "diagnostic")
             .text(" (");

@@ -91,7 +91,7 @@ impl Diag for WadsUnreadable {
         Subject::Input(Input::Install)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.wads.len(), "WAD")
             .text(" of the install with a table of contents that does not read: ");
         f.list(&self.wads, |f, wad| {
@@ -116,7 +116,7 @@ impl Diag for VersionUnknown {
         Subject::Input(Input::Install)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the install does not say its build: ");
         match &self.why {
             NoBuild::MetadataMissing => f.text("no content-metadata.json"),

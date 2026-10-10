@@ -73,7 +73,7 @@ impl Tally {
     }
 
     /// Writes `12 values in 3 objects <what>: Class.field (8), Class.other (4)`.
-    fn message(&self, f: &mut Message<'_>, what: &str) {
+    fn message(&self, f: &mut Message, what: &str) {
         f.count(self.values, "value")
             .text(" in ")
             .count(self.objects, "object")
@@ -106,7 +106,7 @@ impl Diag for CatalogCapped {
         Subject::Character(self.character)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let slots: Vec<String> = self.slots.iter().map(Slot::to_string).collect();
         let _ = write!(
             f,
@@ -129,7 +129,7 @@ impl Diag for Changed {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         self.0
             .message(f, "kept, in the form the target build reads");
     }
@@ -147,7 +147,7 @@ impl Diag for Removed {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         self.0.message(f, "removed with nothing lost");
     }
 }
@@ -163,7 +163,7 @@ impl Diag for Lost {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         self.0.message(
             f,
             "removed that the mod's own build read and the target build cannot hold",
@@ -183,7 +183,7 @@ impl Diag for Unconvertible {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         self.0.message(
             f,
             "left as they are, with no conversion to what the target build reads; the client \

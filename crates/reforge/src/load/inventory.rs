@@ -227,7 +227,7 @@ impl Inventory {
 }
 
 /// Writes `3 executables, not examined (0.4 MiB; <mime> 3): <place>/<name>, ...`.
-fn write_items(f: &mut Message<'_>, items: &[Item], noun: &str, what: &str) {
+fn write_items(f: &mut Message, items: &[Item], noun: &str, what: &str) {
     let bytes = items
         .iter()
         .fold(0u64, |sum, item| sum.saturating_add(item.size));
@@ -275,7 +275,7 @@ macro_rules! finding {
                 Subject::Run
             }
 
-            fn message(&self, f: &mut Message<'_>) {
+            fn message(&self, f: &mut Message) {
                 write_items(f, &self.items, $noun, $what);
             }
         }

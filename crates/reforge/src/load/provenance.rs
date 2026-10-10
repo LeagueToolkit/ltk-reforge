@@ -166,7 +166,7 @@ impl Diag for OlderGameFiles {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file");
         let _ = write!(
             f,
@@ -201,7 +201,7 @@ impl Diag for SameSizeCapped {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file");
         let _ = write!(
             f,

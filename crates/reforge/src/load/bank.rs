@@ -40,7 +40,7 @@ impl Diag for BankIdSet {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.banks.len(), "bank")
             .text(" with header id 0, given the id of the file name: ");
         f.list(&self.banks, |f, bank| {
@@ -67,7 +67,7 @@ impl Diag for BankUnnamed {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.banks.len(), "bank")
             .text(" with header id 0 at a path nothing spells, left as they are: ");
         f.list(&self.banks, |f, bank| {

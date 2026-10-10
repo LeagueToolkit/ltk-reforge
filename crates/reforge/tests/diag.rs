@@ -21,7 +21,7 @@ impl Diag for EntryCorrupt {
         Subject::Entry(self.entry.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the entry fails its checksum; skipped");
     }
 }
@@ -38,7 +38,7 @@ impl Diag for Changed {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.fields.len(), "value")
             .text(" brought to what the build reads: ");
         f.list(&self.fields, |f, hash| {
@@ -57,7 +57,7 @@ impl Diag for NotZip {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the archive is not a zip");
     }
 }
@@ -72,7 +72,7 @@ impl Diag for IndexStale {
         Subject::Input(Input::History)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the index is of another commit than the history's head");
     }
 }

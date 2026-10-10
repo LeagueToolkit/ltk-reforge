@@ -67,7 +67,7 @@ impl Diag for TargetChosen {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let slot = self.slot;
         let _ = match (self.reason, self.origin) {
             (Reason::PasteCleaned, Some(origin)) => write!(
@@ -111,7 +111,7 @@ impl Diag for ForcedUnfit {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let slot = self.slot;
         let _ = match self.follows {
             true => write!(
@@ -141,7 +141,7 @@ impl Diag for Superseded {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(f, "skin{} is taken by ", self.slot);
         f.unit(self.by);
     }
@@ -165,7 +165,7 @@ impl Diag for TargetConflict {
         Subject::Character(self.character)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "{} units of one rank target skin{}, and each leaves it to the game: ",
@@ -192,7 +192,7 @@ impl Diag for SubLeft {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("its model does not fit the base; left to the game's base");
     }
 }
@@ -213,7 +213,7 @@ impl Diag for Unjudged {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "no rig facts (its skin bin did not read): left at skin{} unjudged",
@@ -238,7 +238,7 @@ impl Diag for Infeasible {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = match self.origin {
             Some(origin) => write!(
                 f,
@@ -275,7 +275,7 @@ impl Diag for PreRework {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("made for ").character(self.champion);
         let _ = write!(
             f,
@@ -341,7 +341,7 @@ impl Diag for UnitsLeft {
         Subject::Character(self.character)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.units.len(), "unit").text(" leave the port: ");
         f.list(&self.units, |f, row| {
             f.unit(row.unit).text(" (").text(row.why.as_str()).text(")");
@@ -404,7 +404,7 @@ impl Diag for WorkLeft {
         Subject::Character(self.character)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("own work ")
             .unit(self.target)
             .text(" does not hold leaves with ");
@@ -463,7 +463,7 @@ impl Diag for Retargeted {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(f, "skin{} names become skin{}'s", self.from, self.to);
     }
 }
@@ -484,7 +484,7 @@ impl Diag for GameCarried {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.objects, "object")
             .text(" of the game's carried: they name files the mod overrides at the game's paths");
     }
@@ -510,7 +510,7 @@ impl Diag for LinkDangling {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.names.len(), "name");
         let _ = write!(f, " resolve in nothing loaded at skin{}: ", self.slot);
         f.list(&self.names, |f, name| {
@@ -552,7 +552,7 @@ impl Diag for ObjectsCopied {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.objects.len(), "object");
         let _ = write!(
             f,
@@ -582,7 +582,7 @@ impl Diag for Unreached {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.objects, "object")
             .text(" of the load reached by nothing; not carried");
     }
@@ -607,7 +607,7 @@ impl Diag for RefDangling {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file")
             .text(" named that nothing holds");
         if self.former > 0 {
@@ -643,7 +643,7 @@ impl Diag for RefUnmounted {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file")
             .text(" named that only a WAD not mounted with the champion holds: ");
         f.list(&self.files, |f, file| {
@@ -670,7 +670,7 @@ impl Diag for Carried {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.objects, "object")
             .text(" carried under the namespace, ")
             .count(self.files, "file")
@@ -703,7 +703,7 @@ impl Diag for HudCarried {
         Subject::Character(self.character)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files, "spell icon")
             .text(" and HUD textures the mod overrides, named by ")
             .count(self.objects, "object")
@@ -791,7 +791,7 @@ impl Diag for AudioCarried {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let clips: usize = self.banks.iter().map(|bank| bank.clips).sum();
         f.count(clips, "own clip")
             .text(" carried in ")
@@ -912,7 +912,7 @@ impl Diag for AudioUnitsLeftOut {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the game's units the mod's audio block leaves out, which the game's skin held ")
             .text("when the mod was made, are left out: ");
         f.list(&self.units, |f, left| {
@@ -938,7 +938,7 @@ impl Diag for AudioNotCarried {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("not carried: ");
         f.list(&self.left, |f, left| match left {
             NotCarried::NoGameAudio { clips, target } => {
@@ -1004,7 +1004,7 @@ impl Diag for LiteralsRenamed {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "{} sound names rewritten: {} to the mod's tag, {} to the base's",

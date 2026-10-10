@@ -270,7 +270,7 @@ pub(super) fn record_codes<S: Serializer>(records: &[Record], s: S) -> Result<S:
 
 /// Writes how many files were made each way: `2 .dds as .tex, unchanged; 1 .sco as .scb`, then
 /// the count of those made as they are with `as_is`.
-pub(super) fn count_by_conversion(f: &mut Message<'_>, made: &[Conversion], as_is: &str) {
+pub(super) fn count_by_conversion(f: &mut Message, made: &[Conversion], as_is: &str) {
     let mut first = true;
     for how in Conversion::ALL {
         let n = made.iter().filter(|h| **h == how).count();
@@ -320,7 +320,7 @@ impl Diag for FormatsConverted {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file")
             .text(" at paths the game dropped, made the file it reads at the same stem: ");
         let made: Vec<Conversion> = self.files.iter().map(|c| c.how).collect();
@@ -355,7 +355,7 @@ impl Diag for FormatsUnreadable {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file")
             .text(" at paths the game dropped that do not read, left where they are: ");
         f.list(&self.files, |f, e| {

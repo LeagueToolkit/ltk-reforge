@@ -28,7 +28,7 @@ fn error_text<E: ToString, S: Serializer>(error: &E, s: S) -> Result<S::Ok, S::E
 }
 
 /// Writes `1 entry` or `N entries`, then the text.
-fn entries<'a, 'm>(f: &'a mut Message<'m>, n: usize, text: &str) -> &'a mut Message<'m> {
+fn entries<'a>(f: &'a mut Message, n: usize, text: &str) -> &'a mut Message {
     let _ = write!(f, "{n} {}", if n == 1 { "entry" } else { "entries" });
     f.text(text)
 }
@@ -49,7 +49,7 @@ impl Diag for NotZip {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.spelled(self.file.raw())
             .text(" is not a zip, or does not read: ")
             .spelled(&self.reason);
@@ -72,7 +72,7 @@ impl Diag for TooManyEntries {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(f, "{} entries, over the cap of {}", self.entries, self.cap);
     }
 }
@@ -104,7 +104,7 @@ impl Diag for BudgetExceeded {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         match self {
             BudgetExceeded::ArchiveFile { bytes, cap } => {
                 let _ = write!(f, "the archive is {bytes} bytes, over the cap of {cap}");
@@ -144,7 +144,7 @@ impl Diag for EntriesTooLarge {
         Subject::Entry(self.within.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             entries(f, self.entries.len(), " over the cap of "),
             "{} bytes for one entry, skipped: ",
@@ -172,7 +172,7 @@ impl Diag for EntriesCorrupt {
         Subject::Entry(self.within.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         entries(
             f,
             self.entries.len(),
@@ -209,7 +209,7 @@ impl Diag for EntriesUnreadable {
         Subject::Entry(self.within.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         entries(
             f,
             self.entries.len(),
@@ -249,7 +249,7 @@ impl Diag for CodecsUnsupported {
         Subject::Entry(self.within.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         entries(
             f,
             self.entries.len(),
@@ -289,7 +289,7 @@ impl Diag for NamesUnsafe {
         Subject::Entry(self.wad.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         entries(
             f,
             self.entries.len(),
@@ -330,7 +330,7 @@ impl Diag for WadUnreadable {
         Subject::Entry(self.wad.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.entries.len(), "packed WAD")
             .text(" not reading, skipped: ");
         f.list(&self.entries, |f, e| {
@@ -359,7 +359,7 @@ impl Diag for StoredCrcWrong {
         Subject::Entry(self.within.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         entries(
             f,
             self.entries.len(),
@@ -388,7 +388,7 @@ impl Diag for RepackDuplicates {
         Subject::Entry(self.wad.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         entries(
             f,
             self.entries.len(),
@@ -426,7 +426,7 @@ impl Diag for ChunkDuplicates {
         Subject::Entry(self.wad.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.chunks.len(), "chunk")
             .text(" at a path an earlier chunk holds, skipped: ");
         f.list(&self.chunks, |f, c| {
@@ -451,7 +451,7 @@ impl Diag for InfoUnreadable {
         Subject::Entry(self.entry.clone())
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("META/info.json does not parse: ")
             .spelled(&self.reason);
     }

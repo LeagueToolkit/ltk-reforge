@@ -203,7 +203,7 @@ impl Diag for MimirAbsent {
         Subject::Input(Input::Names)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         if self.tables.len() == NameTable::ALL.len() {
             f.text("the hash cache was not found; names come from the text tables only");
             return;

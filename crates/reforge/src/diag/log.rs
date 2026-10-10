@@ -25,13 +25,13 @@ pub struct Halted(pub DiagId);
 
 /// A finding with its type erased, so one log holds every kind.
 trait Finding: Send + Sync {
-    fn message(&self, f: &mut Message<'_>);
+    fn message(&self, f: &mut Message);
     fn data(&self) -> serde_json::Value;
     fn as_any(&self) -> &dyn Any;
 }
 
 impl<T: Diag> Finding for T {
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         Diag::message(self, f);
     }
 
@@ -87,9 +87,9 @@ impl Diagnostic {
 
     /// One line for a person.
     pub fn message(&self, cx: &Render<'_>) -> String {
-        let mut f = Message::new(cx);
+        let mut f = Message::new();
         self.finding.message(&mut f);
-        f.finish()
+        Message::write(&f.into_parts(), cx)
     }
 
     /// The diagnostic as a report holds it, and as a listener's stream writes it, one per line.

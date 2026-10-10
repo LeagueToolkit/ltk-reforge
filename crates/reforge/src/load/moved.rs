@@ -277,7 +277,7 @@ impl Diag for FilesMoved {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file")
             .text(" at paths the game shipped at earlier builds, made where it ships the asset (");
         let mut first = true;
@@ -322,7 +322,7 @@ impl Diag for MovesFailed {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file")
             .text(" at former paths that do not convert, left where they are: ");
         f.list(&self.files, |f, e| {

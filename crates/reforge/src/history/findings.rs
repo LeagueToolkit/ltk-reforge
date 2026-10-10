@@ -24,7 +24,7 @@ impl Diag for HistoryAbsent {
         Subject::Input(Input::History)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("no history: files, objects and clips are judged against the install only");
     }
 }
@@ -46,7 +46,7 @@ impl Diag for IndexMissing {
         Subject::Input(Input::History)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the index at ")
             .spelled(&self.index)
             .text(" does not open: ")
@@ -71,7 +71,7 @@ impl Diag for IndexStale {
         Subject::Input(Input::History)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the index is of ")
             .spelled(short(&self.index_head))
             .text(", the history is at ")
@@ -97,7 +97,7 @@ impl Diag for InstallNewer {
         Subject::Input(Input::History)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the install is ")
             .text(self.install.as_str())
             .text(", the history ends at ")

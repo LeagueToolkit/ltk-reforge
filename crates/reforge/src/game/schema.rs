@@ -509,7 +509,7 @@ impl Diag for SchemaAbsent {
         Subject::Input(Input::Schema)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("no meta schema database; types come from the install's bins");
     }
 }
@@ -528,7 +528,7 @@ impl Diag for SchemaUnreadable {
         Subject::Input(Input::Schema)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("the meta schema database does not read: ")
             .spelled(&self.reason)
             .text("; types come from the install's bins");
@@ -552,7 +552,7 @@ impl Diag for SchemaInstallNewer {
         Subject::Input(Input::Schema)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         use std::fmt::Write as _;
         let _ = write!(
             f,

@@ -254,5 +254,5 @@ pub trait Diag: Serialize + Send + Sync + 'static {
     fn subject(&self) -> Subject;
 
     /// One line for a person, written from the fields.
-    fn message(&self, f: &mut Message<'_>);
+    fn message(&self, f: &mut Message);
 }

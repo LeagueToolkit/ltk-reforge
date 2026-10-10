@@ -228,7 +228,7 @@ impl Diag for StaleFiles {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file");
         mib(f, self.bytes);
         f.text(" at the game's paths, holding the bytes the game shipped there at earlier builds; not carried");
@@ -236,6 +236,7 @@ impl Diag for StaleFiles {
 }
 ```
 
-`Message` spells ids and hashes through the names it is rendered with (`Render`), so a message
-never holds a hash a table can name. Each module lists its codes in one table (`CODES`), which
+`Message` holds the line as parts, text and the ids and hashes in it, and spells the ids and
+hashes through the names it is rendered with (`Render`). A message never holds a hash a table
+can name, and a finding raised before a name was learnt prints with it. Each module lists its codes in one table (`CODES`), which
 `reforge::codes()` joins for the catalogue and the test.

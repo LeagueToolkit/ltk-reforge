@@ -28,7 +28,7 @@ fn error_text<S: Serializer>(error: &BinError, s: S) -> Result<S::Ok, S::Error> 
 }
 
 /// Writes ` (1.5 MiB)`.
-fn mib(f: &mut Message<'_>, bytes: u64) {
+fn mib(f: &mut Message, bytes: u64) {
     let size = bytes as f64 / (1024.0 * 1024.0);
     let _ = write!(f, " ({size:.1} MiB)");
 }
@@ -47,7 +47,7 @@ impl Diag for NoSkin {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("no WAD ships a champion skin bin or a file at a skin's path: not a skin mod (")
             .count(self.wads, "WAD")
             .text(")");
@@ -72,7 +72,7 @@ impl Diag for LocaleWad {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("a locale WAD of ")
             .spelled(&self.champion)
             .text("; its voice goes to a voice layer");
@@ -99,7 +99,7 @@ impl Diag for LocalePacked {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("a locale WAD holding ")
             .spelled(&self.champion)
             .text("'s skin bins, with no champion WAD beside it: taken as the champion's");
@@ -124,7 +124,7 @@ impl Diag for ChampionGuessed {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("a WAD named for no champion ships ")
             .spelled(&self.champion)
             .text("'s skin bins and no other champion's: taken as ")
@@ -151,7 +151,7 @@ impl Diag for ChampionAmbiguous {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("a WAD named for no champion ships the skin bins of ")
             .count(self.champions.len(), "champion")
             .text(": ");
@@ -181,7 +181,7 @@ impl Diag for WadDuplicate {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("a second WAD for ")
             .spelled(&self.champion)
             .text(" beside ")
@@ -212,7 +212,7 @@ impl Diag for WadDuplicateDiffers {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("a second WAD for ")
             .spelled(&self.champion)
             .text(" beside ")
@@ -240,7 +240,7 @@ impl Diag for SeveralChampions {
         Subject::Run
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.champions.len(), "champion WAD").text(": ");
         f.list(&self.champions, |f, champion| {
             f.character(*champion);
@@ -262,7 +262,7 @@ impl Diag for WadNotCarried {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("ships no champion skin bin; not carried");
     }
 }
@@ -283,7 +283,7 @@ impl Diag for EqualToGame {
         Subject::Character(self.character)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.units.len(), "skin bin")
             .text(", each the game's byte for byte; left to the game");
     }
@@ -309,7 +309,7 @@ impl Diag for UnusedFiles {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file");
         mib(f, self.bytes);
         f.text(" that nothing loads; not judged or carried");
@@ -343,7 +343,7 @@ impl Diag for StaleFiles {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file");
         mib(f, self.bytes);
         f.text(
@@ -371,7 +371,7 @@ impl Diag for FormerPathFiles {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.files.len(), "file");
         mib(f, self.bytes);
         f.text(" at paths the game shipped at earlier builds and does not ship");
@@ -395,7 +395,7 @@ impl Diag for BinUnreadable {
         Subject::Bin(self.bin)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("does not read as a bin: ")
             .spelled(&self.why.to_string());
     }
@@ -419,7 +419,7 @@ impl Diag for EntryDuplicates {
         Subject::Bin(self.bin)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let n = self.entries.len();
         let noun = if n == 1 { "entry hash" } else { "entry hashes" };
         let _ = write!(
@@ -457,7 +457,7 @@ impl Diag for LinksMissing {
         Subject::Bin(self.bin)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.links.len(), "link")
             .text(" neither the mod nor the game holds");
         let former = self.links.iter().filter(|link| link.former).count();
@@ -490,7 +490,7 @@ impl Diag for LoadCapped {
         Subject::Bin(self.bin)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(f, "its load stops at {} bins; ", self.cap);
         f.count(self.left, "linked bin")
             .text(" of the mod not loaded from it");
@@ -544,7 +544,7 @@ impl Diag for TakenFromGame {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("no skin bin: the game's bins of ");
         f.list(&self.skins, |f, skin| {
             f.spelled(&skin.character);
@@ -604,7 +604,7 @@ impl Diag for Restoration {
         Subject::Wad(self.wad)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("restores ")
             .spelled(&self.champion)
             .text("'s model from before its rework of ")

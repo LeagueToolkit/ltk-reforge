@@ -43,7 +43,7 @@ impl Diag for CopiesFound {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let noun = if self.copies.len() == 1 {
             "copy"
         } else {
@@ -77,7 +77,7 @@ impl Diag for NearCopy {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "a near copy of skin{} ({} objects shared, {} differ)",
@@ -102,7 +102,7 @@ impl Diag for DistinctUnits {
         Subject::Character(self.character)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "{} distinct skin bins: each is a unit of its own",
@@ -127,7 +127,7 @@ impl Diag for OriginAmbiguous {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let slots: Vec<String> = self.slots.iter().map(Slot::to_string).collect();
         let _ = write!(f, "skins {} weigh the same", slots.join(", "));
     }
@@ -149,7 +149,7 @@ impl Diag for OriginConflicting {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let _ = write!(
             f,
             "strong evidence for both the base and skin {}",
@@ -172,7 +172,7 @@ impl Diag for OriginNone {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.text("no evidence decides between the base and a premium skin");
     }
 }
@@ -205,7 +205,7 @@ impl Diag for SubmeshesCopied {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let n = self.submeshes.len();
         let _ = write!(
             f,
@@ -260,7 +260,7 @@ impl Diag for RigUnreadable {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         let parts: Vec<&str> = self.parts.iter().map(|part| part.as_str()).collect();
         let _ = write!(f, "the {} does not parse", parts.join(" and the "));
     }
@@ -292,7 +292,7 @@ impl Diag for BankUnreadable {
         Subject::Unit(self.unit)
     }
 
-    fn message(&self, f: &mut Message<'_>) {
+    fn message(&self, f: &mut Message) {
         f.count(self.banks.len(), "bank")
             .text(" of its audio block that do not read, their clips not judged: ");
         f.list(&self.banks, |f, bank| {
