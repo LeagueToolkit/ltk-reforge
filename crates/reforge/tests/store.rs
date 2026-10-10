@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use camino::Utf8PathBuf;
 use reforge::model::{ByteView, ContentId};
-use reforge::store::{BlobStore, IngestStore, Layered, MemoryStore};
+use reforge::store::{BlobStore, IngestStore, Layered, Lru, MemoryStore};
 
 /// A scratch directory, and the path of a store inside it that does not exist yet.
 fn scratch() -> (tempfile::TempDir, Utf8PathBuf) {
@@ -380,4 +380,105 @@ fn a_layer_over_a_layer_and_a_shared_store_answer_alike() {
     assert_eq!(top.get(kept).as_deref(), Some(&b"middle"[..]));
     let boxed: Box<dyn BlobStore> = Box::new(top);
     assert_eq!(boxed.get(bottom).as_deref(), Some(&b"bottom"[..]));
+}
+
+/// A store in memory that counts the reads that reach it.
+#[derive(Default)]
+struct Reached {
+    blobs: MemoryStore,
+    reads: std::sync::Mutex<Vec<ContentId>>,
+}
+
+impl Reached {
+    fn reads(&self) -> Vec<ContentId> {
+        self.reads.lock().expect("the lock").clone()
+    }
+}
+
+impl BlobStore for Reached {
+    fn get(&self, id: ContentId) -> Option<ByteView> {
+        self.reads.lock().expect("the lock").push(id);
+        self.blobs.get(id)
+    }
+
+    fn put(&self, bytes: ByteView) -> ContentId {
+        self.blobs.put(bytes)
+    }
+}
+
+#[test]
+fn an_lru_fills_from_the_store_under_it_and_answers_again_from_what_it_holds() {
+    let under = Reached::default();
+    let id = under.put(ByteView::from(b"read twice"));
+    let lru = Lru::new(&under, 64);
+    assert_eq!(lru.get(id).as_deref(), Some(&b"read twice"[..]), "a fill");
+    assert_eq!(lru.get(id).as_deref(), Some(&b"read twice"[..]), "a hit");
+    assert_eq!(lru.get_unchecked(id).as_deref(), Some(&b"read twice"[..]));
+    let head = lru.get_head(id, 4).expect("held");
+    assert_eq!((&*head.bytes, head.size), (&b"read"[..], 10));
+    assert_eq!(under.reads(), [id], "one read reached the store under it");
+    assert_eq!(lru.held(), 10);
+    assert_eq!(lru.get(ContentId::of(b"absent")), None);
+    assert_eq!(lru.get(ContentId::EMPTY).as_deref(), Some(&b""[..]));
+    assert_eq!(lru.held(), 10, "the empty blob is answered and not held");
+}
+
+#[test]
+fn an_lru_drops_the_blob_read_least_recently_first() {
+    let under = Reached::default();
+    let [a, b, c] = [b"aaaa", b"bbbb", b"cccc"].map(|bytes| under.put(ByteView::from(bytes)));
+    let lru = Lru::new(&under, 10);
+    for id in [a, b, a, c] {
+        lru.get(id);
+    }
+    assert!(lru.holds(a), "read again after b");
+    assert!(!lru.holds(b), "the least recently read");
+    assert!(lru.holds(c));
+    assert_eq!(lru.held(), 8);
+    lru.get(b);
+    assert_eq!(under.reads(), [a, b, c, b], "b is read again from under");
+    assert!(!lru.holds(a), "a is the least recently read now");
+}
+
+#[test]
+fn an_lru_holds_no_more_than_its_bound() {
+    let under = Reached::default();
+    let small = under.put(ByteView::from(b"small"));
+    let large = under.put(ByteView::from(&[7u8; 32][..]));
+    let lru = Lru::new(&under, 16);
+    lru.get(small);
+    assert_eq!(
+        lru.get(large).map(|bytes| bytes.len()),
+        Some(32),
+        "it passes through"
+    );
+    assert!(!lru.holds(large), "a blob over the bound is not held");
+    assert!(lru.holds(small), "and drops nothing");
+    lru.get(large);
+    assert_eq!(under.reads(), [small, large, large]);
+    let fill: Vec<ContentId> = (0..8u8)
+        .map(|n| under.put(ByteView::from(&[n; 5][..])))
+        .collect();
+    for &id in &fill {
+        lru.get(id);
+        assert!(lru.held() <= lru.bound(), "{} held", lru.held());
+    }
+    assert!(lru.holds(fill[7]) && lru.holds(fill[6]) && lru.holds(fill[5]));
+    assert!(!lru.holds(fill[4]));
+}
+
+#[test]
+fn a_checked_read_of_what_an_lru_holds_unchecked_reads_the_store_under_it() {
+    let under = Reached::default();
+    let id = under.put(ByteView::from(b"checked once"));
+    let lru = Lru::new(&under, 64);
+    lru.get_unchecked(id);
+    lru.get(id);
+    lru.get(id);
+    assert_eq!(
+        under.reads(),
+        [id, id],
+        "the checked read reaches under once"
+    );
+    assert!(!lru.on_disk(), "a store in memory under it");
 }

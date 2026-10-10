@@ -33,7 +33,7 @@ use crate::load::{
     Dating, Fault, FileProvenance, Inventory, KeptFile, LOAD_PARTS, LoadError, LoadOptions, Loader,
     ReworkTable, against,
 };
-use crate::model::{Blobs, ByteView, ContentId, FactAccess, Missing, Mod, Spelled};
+use crate::model::{Blobs, ByteView, ContentId, FactAccess, Head, Missing, Mod, Spelled};
 use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
@@ -46,7 +46,9 @@ use crate::snapshot::{
     LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, RawCache, ResumeError, Setting, Snapshots,
     StageSettings,
 };
-use crate::store::{BlobStore, Layered, MemoryFacts, MemoryStore};
+use crate::store::{
+    BlobStore, Layered, Lru, MemoryFacts, MemoryStore, SHARE_OF_WORKING_SET, Spool,
+};
 
 /// The name the second run of a repair reads the first run's package under.
 const REPAIRED_NAME: &str = "repaired.fantome";
@@ -763,9 +765,73 @@ pub const CODES: &[Code] = &[WorkingSetCapped::CODE];
 type Under = Layered<Box<dyn BlobStore>, Box<dyn BlobStore>>;
 
 /// A run's store before any is given: its memory layer over two empty stores.
-fn empty_store() -> Layered<MemoryStore, Under> {
+fn empty_store() -> Layered<MemoryStore, Reads> {
     let under: Under = Layered::new(Box::new(MemoryStore::new()), Box::new(MemoryStore::new()));
-    Layered::new(MemoryStore::new(), under)
+    Layered::new(MemoryStore::new(), Reads::Direct(under))
+}
+
+/// What a run's memory layer reads: the stores under it, through an [`Lru`] when a read of
+/// them may go to disk (#ADR-0100). Stores in memory are read as they are.
+enum Reads {
+    /// Stores in memory.
+    Direct(Under),
+    /// Stores of which one is on disk, what was read of them held up to a share of the
+    /// working-set cap ([`SHARE_OF_WORKING_SET`]).
+    Held(Lru<Under>),
+}
+
+impl Reads {
+    fn of(under: Under, caps: &Caps) -> Self {
+        if under.on_disk() {
+            Reads::Held(Lru::new(under, caps.working_bytes / SHARE_OF_WORKING_SET))
+        } else {
+            Reads::Direct(under)
+        }
+    }
+
+    fn into_under(self) -> Under {
+        match self {
+            Reads::Direct(under) => under,
+            Reads::Held(lru) => lru.into_under(),
+        }
+    }
+
+    fn store(&self) -> &dyn BlobStore {
+        match self {
+            Reads::Direct(under) => under,
+            Reads::Held(lru) => lru,
+        }
+    }
+}
+
+impl BlobStore for Reads {
+    fn get(&self, id: ContentId) -> Option<ByteView> {
+        self.store().get(id)
+    }
+
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        self.store().get_unchecked(id)
+    }
+
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        self.store().get_head(id, len)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        self.store().contains(id)
+    }
+
+    fn put(&self, bytes: ByteView) -> ContentId {
+        self.store().put(bytes)
+    }
+
+    fn spool(&self) -> std::io::Result<Box<dyn Spool>> {
+        self.store().spool()
+    }
+
+    fn on_disk(&self) -> bool {
+        self.store().on_disk()
+    }
 }
 
 /// One archive taken through the stages, with everything the stages gave.
@@ -782,7 +848,7 @@ pub struct Run<'a> {
     book: NameBook,
     /// The run's memory layer over the caller's store, over the cache's ingest store
     /// (#ADR-0093): every byte a stage makes goes into the layer, and the caller flushes it.
-    store: Arc<Layered<MemoryStore, Under>>,
+    store: Arc<Layered<MemoryStore, Reads>>,
     /// The run's store as the mod and its package read it (#ADR-0100).
     blobs: Blobs,
     /// The facts per blob the run reads in place of a blob's head, and adds what it learnt to
@@ -920,7 +986,10 @@ impl<'a> Run<'a> {
         let store = std::mem::replace(&mut self.store, Arc::new(empty_store()));
         let store = Arc::into_inner(store)
             .unwrap_or_else(|| panic!("a run's store is changed after a stage holds it"));
-        self.store = Arc::new(change(store));
+        let (layer, reads) = store.into_parts();
+        let (layer, under) = change(Layered::new(layer, reads.into_under())).into_parts();
+        let reads = Reads::of(under, &self.settings.caps);
+        self.store = Arc::new(Layered::new(layer, reads));
         self.blobs = Blobs::new(self.store.clone()).with_facts(Arc::clone(&self.blob_facts));
         self
     }

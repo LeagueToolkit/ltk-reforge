@@ -241,6 +241,10 @@ impl BlobStore for IngestStore {
         id
     }
 
+    fn on_disk(&self) -> bool {
+        true
+    }
+
     fn spool(&self) -> io::Result<Box<dyn Spool>> {
         let scratch = self.dir.join(SCRATCH);
         fs::create_dir_all(&scratch)?;

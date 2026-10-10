@@ -11,6 +11,7 @@
 
 mod facts;
 mod ingest;
+mod lru;
 
 use std::collections::BTreeMap;
 use std::io::{self, Cursor, Read, Seek, Write};
@@ -18,6 +19,7 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 pub use self::facts::{FACTS_FILE, FactTable, MemoryFacts};
 pub use self::ingest::IngestStore;
+pub use self::lru::{Lru, SHARE_OF_WORKING_SET};
 use crate::model::{BlobAccess, ByteView, ContentId, Head};
 
 /// The bytes of the empty blob, for its id: every store answers it without holding it, so no
@@ -59,6 +61,12 @@ pub trait BlobStore: Send + Sync {
     /// store in memory holds them in memory.
     fn spool(&self) -> io::Result<Box<dyn Spool>> {
         Ok(Box::new(MemorySpool::default()))
+    }
+
+    /// Whether a read of it may go to disk: a run holds what it reads of such a store in an
+    /// [`Lru`].
+    fn on_disk(&self) -> bool {
+        false
     }
 }
 
@@ -138,6 +146,10 @@ impl<S: BlobStore + ?Sized> BlobStore for &S {
     fn spool(&self) -> io::Result<Box<dyn Spool>> {
         (**self).spool()
     }
+
+    fn on_disk(&self) -> bool {
+        (**self).on_disk()
+    }
 }
 
 impl<S: BlobStore + ?Sized> BlobStore for Arc<S> {
@@ -164,6 +176,10 @@ impl<S: BlobStore + ?Sized> BlobStore for Arc<S> {
     fn spool(&self) -> io::Result<Box<dyn Spool>> {
         (**self).spool()
     }
+
+    fn on_disk(&self) -> bool {
+        (**self).on_disk()
+    }
 }
 
 impl<S: BlobStore + ?Sized> BlobStore for Box<S> {
@@ -189,6 +205,10 @@ impl<S: BlobStore + ?Sized> BlobStore for Box<S> {
 
     fn spool(&self) -> io::Result<Box<dyn Spool>> {
         (**self).spool()
+    }
+
+    fn on_disk(&self) -> bool {
+        (**self).on_disk()
     }
 }
 
@@ -320,5 +340,9 @@ impl<T: BlobStore, U: BlobStore> BlobStore for Layered<T, U> {
 
     fn spool(&self) -> io::Result<Box<dyn Spool>> {
         self.top.spool()
+    }
+
+    fn on_disk(&self) -> bool {
+        self.top.on_disk() || self.under.on_disk()
     }
 }
