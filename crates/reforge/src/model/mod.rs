@@ -16,6 +16,7 @@ pub mod known;
 pub mod layer;
 pub mod material;
 pub mod names;
+pub mod pairs;
 pub mod path;
 pub mod record;
 pub mod rig;

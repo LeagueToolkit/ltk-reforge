@@ -5,7 +5,7 @@
 //! build held are one type (`History::events_banks`).
 
 use reforge_wwise::{Bank, BankKind, Object};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::hash::ContentId;
 use super::keys::ClipKey;
@@ -92,7 +92,7 @@ impl BankClip {
 }
 
 /// What a bank's file holds, by the role it has in a bank unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BankRole {
     /// Clips in `DIDX` and `DATA`.

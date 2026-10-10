@@ -210,7 +210,7 @@ pub fn clip_fit(at: &ClipsAt, anim: AnimReuse) -> Fit {
         fits: at.fits + reused,
         total: at.total,
         reused,
-        level: anim.as_str(),
+        level: anim.as_str().into(),
         unknown,
     })
 }

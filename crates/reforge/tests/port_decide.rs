@@ -735,7 +735,7 @@ fn under_block_a_clip_only_another_skin_plays_refuses_the_slot() {
             fits: 2,
             total: 2,
             reused: 0,
-            level: level.as_str(),
+            level: level.as_str().into(),
             unknown: 0,
         };
         assert_eq!(fit_of(&own, level), (Outcome::Fits, why));
@@ -752,7 +752,7 @@ fn under_same_joints_a_clip_fits_when_its_skin_has_the_slots_joints() {
         fits: 3,
         total: 3,
         reused: 1,
-        level: "same-joints",
+        level: "same-joints".into(),
         unknown: 0,
     };
     assert_eq!(
@@ -790,7 +790,7 @@ fn under_allow_a_borrowed_clip_fits_where_it_moves_a_joint_of_the_skeleton() {
         fits: 3,
         total: 4,
         reused: 2,
-        level: "allow",
+        level: "allow".into(),
         unknown: 1,
     };
     assert_eq!(

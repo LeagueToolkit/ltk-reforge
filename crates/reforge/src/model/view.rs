@@ -1,14 +1,14 @@
 //! View types: a bin object of a known class, read by its field names.
 
 use ltk_meta::{BinObject, PropertyValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::hash::{BinHash, name_hash};
 use super::known::{class, field};
 use super::value::{self, FileRef};
 
 /// A bank unit of an audio block: the banks the client loads together under one name.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioUnit {
     /// The unit's name, `Lux_Base_SFX`.
     pub name: String,
@@ -22,7 +22,7 @@ pub struct AudioUnit {
 
 /// A skin entry's audio block, `skinAudioProperties`: the tags spell and buff sound hooks are
 /// composed from (#GAME-BEHAVIOR-0011), and the bank units the client loads.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioBlock {
     /// The tags, in order.
     pub tags: Vec<String>,

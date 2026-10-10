@@ -33,8 +33,8 @@ use crate::package::{
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
 use crate::snapshot::{
-    self, FixSettings, FixSnapshot, LoadSettings, LoadSnapshot, LoadState, ResumeError, Setting,
-    Snapshots,
+    self, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot, LoadSettings, LoadSnapshot,
+    LoadState, ResumeError, Setting, Snapshots,
 };
 use crate::store::{BlobStore, Layered, MemoryStore};
 
@@ -171,6 +171,8 @@ pub enum Start {
     /// The snapshots through `fix`: the run starts at `facts` in a port, at `build` in a
     /// repair.
     Fix(Box<Snapshots>),
+    /// The snapshots through `facts`: the run starts at `decide`. A port's alone.
+    Facts(Box<Snapshots>),
 }
 
 impl From<RawSnapshot> for Start {
@@ -512,6 +514,7 @@ pub struct Run<'a> {
     raw: Option<RawSnapshot>,
     loaded: Option<LoadSnapshot>,
     fix_snapshot: Option<FixSnapshot>,
+    facts_snapshot: Option<FactsSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -542,6 +545,7 @@ impl<'a> Run<'a> {
             raw: None,
             loaded: None,
             fix_snapshot: None,
+            facts_snapshot: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -652,18 +656,54 @@ impl<'a> Run<'a> {
                 self.module = Reached::Loaded(module);
                 self.loaded = Some(*load);
             }
-            Start::Fix(snapshots) => {
-                let Snapshots { load, fix } = *snapshots;
-                let fix = fix.ok_or(ResumeError::Missing(Stage::Fix))?;
-                let module = self.reopen_load(&load)?;
-                let fixed = self.reopen_fix(module, &load, &fix)?;
-                self.log.restore(fix.findings(), &codes)?;
-                self.module = Reached::Fixed(fixed);
-                self.loaded = Some(load);
-                self.fix_snapshot = Some(fix);
-            }
+            Start::Fix(snapshots) => self.reopen_run(*snapshots, Stage::Fix, &codes)?,
+            Start::Facts(snapshots) => self.reopen_run(*snapshots, Stage::Facts, &codes)?,
         }
         Ok(self)
+    }
+
+    /// The run as the snapshots left it after `last`, a stage of the run group: each stage's
+    /// state reopened from its snapshot in order, the findings of the last one restored.
+    fn reopen_run(
+        &mut self,
+        snapshots: Snapshots,
+        last: Stage,
+        codes: &[Code],
+    ) -> Result<(), ResumeError> {
+        if !self.mode.stages().contains(&last) {
+            return Err(ResumeError::NotInARepair(last));
+        }
+        let Snapshots { load, fix, facts } = snapshots;
+        let fix = snapshot::after(fix, Stage::Fix)?;
+        let module = self.reopen_load(&load)?;
+        let fixed = self.reopen_fix(module, &load, &fix)?;
+        let mut findings = fix.findings();
+        let facts = if last >= Stage::Facts {
+            let facts = snapshot::after(facts, Stage::Facts)?;
+            facts.holds(&self.facts_settings())?;
+            let found = facts.found().clone();
+            let reopened = Facts::reopen(&fixed, self.env, found);
+            self.facts = Some(reopened.map_err(ResumeError::Facts)?);
+            Some(facts)
+        } else {
+            None
+        };
+        if let Some(facts) = &facts {
+            findings = facts.findings();
+        }
+        self.log.restore(findings, codes)?;
+        self.module = Reached::Fixed(fixed);
+        self.loaded = Some(load);
+        self.fix_snapshot = Some(fix);
+        self.facts_snapshot = facts;
+        Ok(())
+    }
+
+    /// The settings `facts` reads in this run.
+    fn facts_settings(&self) -> FactsSettings {
+        FactsSettings {
+            reworks: self.settings.reworks.clone(),
+        }
     }
 
     /// The mod as the load snapshot left it, and what the run holds once `load` ends: the
@@ -898,6 +938,12 @@ impl<'a> Run<'a> {
             };
             let facts = Facts::gather(fixed, &inputs).map_err(RunError::Facts)?;
             facts.report(&mut self.log.at(Stage::Facts));
+            // A run keeps a snapshot after a stage only after the snapshots before it.
+            if self.fix_snapshot.is_some() {
+                let findings = self.log.logged_from(self.first);
+                let snapshot = FactsSnapshot::of(&facts, self.facts_settings(), findings);
+                self.facts_snapshot = Some(snapshot);
+            }
             self.facts = Some(facts);
         }
         held(self.facts.as_ref(), Stage::Facts, Stage::Fix)
@@ -1260,7 +1306,13 @@ impl<'a> Run<'a> {
     pub fn snapshots(&self) -> Option<Snapshots> {
         let mut snapshots = Snapshots::new(self.loaded.clone()?);
         snapshots.fix = self.fix_snapshot.clone();
+        snapshots.facts = self.facts_snapshot.clone();
         Some(snapshots)
+    }
+
+    /// The facts snapshot, once `facts` ended or the run started from one (#ADR-0094).
+    pub fn facts_snapshot(&self) -> Option<&FactsSnapshot> {
+        self.facts_snapshot.as_ref()
     }
 
     /// The store the run's bytes are in: its memory layer over the caller's store.

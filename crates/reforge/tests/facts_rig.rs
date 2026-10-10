@@ -4,7 +4,8 @@
 
 use reforge::facts::rig::GraphFrom;
 use reforge::facts::{
-    Aspect, FactsError, Outcome, RigPart, RigUnreadable, Source, SubmeshesCopied, Visibility, Why,
+    Aspect, Facts, FactsError, FactsFound, Outcome, RigPart, RigUnreadable, Source,
+    SubmeshesCopied, Visibility, Why,
 };
 use reforge::game::{Build, Game, GameError, GameSource, GameView, MAX_CHAIN, SkinClass};
 use reforge::history::NoHistory;
@@ -389,10 +390,9 @@ fn a_borrowed_clip_is_counted_by_where_its_tracks_fall() {
     assert!(reused.extra_joints.is_empty());
 }
 
-// #MOD-ARTIFACT-0025: the mod's own clips.
-#[test]
-fn an_own_clip_fits_where_it_moves_a_joint_of_the_skeleton() {
-    let env = env(game(), NoHistory);
+/// The mod's own model, whose graph plays an own clip that moves `Root`, one that moves only
+/// a joint the skeleton lacks, one that does not read and one nothing holds.
+fn own_clips() -> Vec<(String, Vec<u8>)> {
     let mesh = rigs::mesh(&[("hat", HAT)], 0);
     let clips = [
         "assets/mod/a/idle.anm",
@@ -408,7 +408,27 @@ fn an_own_clip_fits_where_it_moves_a_joint_of_the_skeleton() {
     files.push((clips[0].to_string(), rigs::clip(&["Root", "Tail"])));
     files.push((clips[1].to_string(), rigs::clip(&["Tail"])));
     files.push((clips[2].to_string(), blob(clips[2])));
-    let run = FactRun::of(&env, &archive(&files));
+    files
+}
+
+#[test]
+fn the_rigs_a_snapshot_keeps_read_back_with_the_joints_of_each_clip_the_report_leaves_out() {
+    let env = env(game(), NoHistory);
+    let run = FactRun::of(&env, &archive(&own_clips()));
+    let json = serde_json::to_string(&run.facts.found()).expect("the facts write");
+    let found: FactsFound = serde_json::from_str(&json).expect("the facts read");
+    let reopened = Facts::reopen(&run.fix.fixed, &env, found).expect("the game answers");
+    let unit = run.unit("test", 0);
+    let rig = run.facts.rigs.of(unit).expect("the unit has a rig");
+    assert!(rig.clips.iter().any(|clip| clip.joints.is_some()));
+    assert_eq!(reopened.rigs.of(unit), Some(rig));
+}
+
+// #MOD-ARTIFACT-0025: the mod's own clips.
+#[test]
+fn an_own_clip_fits_where_it_moves_a_joint_of_the_skeleton() {
+    let env = env(game(), NoHistory);
+    let run = FactRun::of(&env, &archive(&own_clips()));
     let facts = run.facts.clips.of(run.unit("test", 0));
     let at_base = &facts.expect("the unit has clip facts").at[&Slot(0)];
     // #GAME-BEHAVIOR-0005: a track on `Root` is enough, and a clip with none on a joint of

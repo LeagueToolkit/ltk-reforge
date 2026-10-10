@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use serde::Serializer;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub use self::clips::{Clips, ClipsAt, Reused, UnitClips};
 pub use self::copies::{Copies, CopyKind, Member, NEAR_JACCARD, UnitRole};
@@ -65,6 +65,13 @@ pub enum FactsError {
 
 fn entry_hex<S: Serializer>(entry: &BinHash, s: S) -> Result<S::Ok, S::Error> {
     s.collect_str(&format_args!("{:08x}", entry.0))
+}
+
+fn hex_entry<'de, D: Deserializer<'de>>(d: D) -> Result<BinHash, D::Error> {
+    let text = String::deserialize(d)?;
+    let hash = u32::from_str_radix(&text, 16);
+    let hash = hash.map_err(|_| serde::de::Error::custom(format_args!("{text:?} is no entry")));
+    hash.map(BinHash)
 }
 
 /// Every object the client loads for a unit, in load order, the first under each entry hash.
@@ -180,6 +187,20 @@ pub struct FactInputs<'a> {
     pub reworks: &'a ReworkTable,
 }
 
+/// What `facts` found, as its snapshot keeps it: every result but the roster and the game's
+/// catalogs, which the mod and the game give again.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct FactsFound {
+    copies: Copies,
+    objects: ObjectProvenance,
+    origins: Origins,
+    rigs: Rigs,
+    clips: Clips,
+    candidates: SideTable<SkinUnit, UnitCandidates>,
+    reworks: Reworks,
+    sounds: Sounds,
+}
+
 /// What is true of a mod.
 pub struct Facts {
     /// The groups, characters and units.
@@ -289,6 +310,37 @@ impl Facts {
             out.insert(id, candidates);
         }
         out
+    }
+
+    /// What the facts found, as their snapshot keeps it (#ADR-0094).
+    pub fn found(&self) -> FactsFound {
+        FactsFound {
+            copies: self.copies.clone(),
+            objects: self.objects.clone(),
+            origins: self.origins.clone(),
+            rigs: self.rigs.clone(),
+            clips: self.clips.clone(),
+            candidates: self.candidates.clone(),
+            reworks: self.reworks.clone(),
+            sounds: self.sounds.clone(),
+        }
+    }
+
+    /// The facts of a fixed mod from what a snapshot kept of them: the roster read off the mod
+    /// again, and the catalogs asked of the game again, as `gather` asks them.
+    pub fn reopen(fixed: &FixedMod, env: &Env, found: FactsFound) -> Result<Self, FactsError> {
+        Ok(Self {
+            roster: Roster::of(fixed),
+            catalogs: Catalogs::find(fixed, env)?,
+            copies: found.copies,
+            objects: found.objects,
+            origins: found.origins,
+            rigs: found.rigs,
+            clips: found.clips,
+            candidates: found.candidates,
+            reworks: found.reworks,
+            sounds: found.sounds,
+        })
     }
 
     /// Judges a unit of a character at any slot.

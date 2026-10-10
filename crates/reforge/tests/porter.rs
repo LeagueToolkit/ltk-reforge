@@ -26,7 +26,7 @@ use reforge::package::{
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
 use reforge::snapshot::{
-    FixSnapshot, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
+    FactsSnapshot, FixSnapshot, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT, Setting, Snapshots,
 };
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
@@ -1187,6 +1187,12 @@ fn through_json(snapshots: &Snapshots) -> Snapshots {
         assert_eq!(fix.to_json(), json, "the fix snapshot reads back");
         back.fix = Some(fix);
     }
+    if let Some(facts) = &snapshots.facts {
+        let json = facts.to_json();
+        let facts = FactsSnapshot::from_json(&json).expect("the facts snapshot reads");
+        assert_eq!(facts.to_json(), json, "the facts snapshot reads back");
+        back.facts = Some(facts);
+    }
     back
 }
 
@@ -1296,6 +1302,47 @@ fn every_run_resumed_after(last: Stage, start: impl Fn(Snapshots) -> Start) -> u
 fn a_run_resumed_after_fix_writes_the_report_and_package_of_the_straight_run() {
     let rewritten = every_run_resumed_after(Stage::Fix, |s| Start::Fix(Box::new(s)));
     assert!(rewritten > 0, "a fixup wrote a bin again");
+}
+
+#[test]
+fn a_port_resumed_after_facts_writes_the_report_and_package_of_the_straight_run() {
+    every_run_resumed_after(Stage::Facts, |s| Start::Facts(Box::new(s)));
+}
+
+#[test]
+fn a_resume_after_facts_is_refused_without_its_snapshot_or_in_a_repair() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let (snapshots, store) = legacy_snapshots(&porter, Stage::Facts);
+    let resume = |snapshots: Snapshots| {
+        let start = Start::Facts(Box::new(snapshots));
+        porter.resume(start, Arc::clone(&store)).map(drop)
+    };
+    assert!(resume(snapshots.clone()).is_ok());
+    let facts = snapshots.facts.as_ref().expect("the facts snapshot");
+    let mut value: serde_json::Value = serde_json::from_str(&facts.to_json()).expect("JSON");
+    value["settings"]["reworks"] = serde_json::json!({});
+    let mut other = snapshots.clone();
+    other.facts = Some(FactsSnapshot::from_json(&value.to_string()).expect("it reads"));
+    let refused = resume(other);
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::Reworks))
+    ));
+    let mut none = snapshots.clone();
+    none.facts = None;
+    assert!(matches!(
+        resume(none),
+        Err(ResumeError::Missing(Stage::Facts))
+    ));
+    let start = Start::Facts(Box::new(snapshots));
+    let refused = Repairer::new(&env)
+        .resume(start, Arc::clone(&store))
+        .map(drop);
+    assert!(matches!(
+        refused,
+        Err(ResumeError::NotInARepair(Stage::Facts))
+    ));
 }
 
 /// A port's load snapshot of [`legacy_archive`], as JSON, and the store its bytes are in.

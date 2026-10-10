@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::FactsError;
 use super::findings::{CopiesFound, DistinctUnits, NearCopy};
@@ -28,7 +28,7 @@ pub const NEAR_JACCARD: f64 = 0.8;
 const SLOT_PLACEHOLDER: u32 = 0x5107_0000;
 
 /// How two units are the same work.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum CopyKind {
     /// The same bytes.
@@ -59,7 +59,7 @@ impl CopyKind {
 }
 
 /// A copy of a representative unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Member {
     /// The unit.
     pub unit: UnitId,
@@ -71,7 +71,7 @@ pub struct Member {
 }
 
 /// What a unit is in its cluster.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnitRole {
     /// The one unit its cluster is ported as.
     Representative {
@@ -92,14 +92,14 @@ pub enum UnitRole {
 }
 
 /// The representatives of one character, in the order of their clusters.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 struct OfCharacter {
     character: CharId,
     representatives: Vec<UnitId>,
 }
 
 /// The role of every skin unit the mod adds something to.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Copies {
     roles: SideTable<SkinUnit, UnitRole>,
     slots: SideTable<SkinUnit, Slot>,

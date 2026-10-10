@@ -11,7 +11,7 @@ use std::fmt::Write as _;
 
 use reforge_wwise::Bank;
 use serde::ser::SerializeStruct as _;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 use super::copies::Copies;
 use super::findings::{BankUnreadable, UnreadBank};
@@ -29,7 +29,7 @@ use crate::model::{
 };
 
 /// Whose a clip's bytes are.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "origin", rename_all = "kebab-case")]
 pub enum ClipOrigin {
     /// The game shipped these bytes, first at this build.
@@ -45,7 +45,7 @@ pub enum ClipOrigin {
 }
 
 /// One clip of a bank the mod ships.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SoundClip {
     /// The id sounds name the clip by.
     pub id: u32,
@@ -65,7 +65,7 @@ fn clip_counts<S: Serializer>(clips: &[SoundClip], s: S) -> Result<S::Ok, S::Err
 }
 
 /// One copy the archive ships of a bank a unit names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BankFile {
     /// The path the unit names it by, lowercase.
     pub path: String,
@@ -84,7 +84,7 @@ pub struct BankFile {
     pub objects: usize,
     /// Its clips, in stored order. A report holds how many there are and how many are the
     /// mod's own.
-    #[serde(serialize_with = "clip_counts")]
+    #[serde(serialize_with = "clip_counts", skip_deserializing)]
     pub clips: Vec<SoundClip>,
     /// Why it does not read, when it does not.
     pub unreadable: Option<String>,
@@ -105,7 +105,7 @@ impl BankFile {
 }
 
 /// A bank unit of a skin entry's audio block, with the copies of its banks the archive ships.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SoundUnit {
     /// The unit as the entry declares it.
     #[serde(flatten)]
@@ -123,7 +123,7 @@ impl SoundUnit {
 
 /// A bank unit of the game's skin that the mod's audio block leaves out, which the game's skin
 /// held when the mod was made.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeftOut {
     /// The game unit's name.
     pub name: String,
@@ -132,7 +132,7 @@ pub struct LeftOut {
 }
 
 /// The audio of one skin unit.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitSounds {
     /// The tags of its audio block.
     pub tags: Vec<String>,
@@ -140,7 +140,7 @@ pub struct UnitSounds {
     pub units: Vec<SoundUnit>,
     /// The bank units of the game's skin at the unit's own slot that its block leaves out
     /// (#ADR-0063), in the game's order.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub left_out: Vec<LeftOut>,
 }
 
@@ -164,9 +164,50 @@ pub struct SoundInputs<'a> {
 }
 
 /// The audio of each representative unit whose entry holds an audio block.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(from = "SoundsRecord", into = "SoundsRecord")]
 pub struct Sounds {
     units: SideTable<SkinUnit, UnitSounds>,
+}
+
+/// The sounds as a snapshot keeps them: beside each unit's as the report writes them, the
+/// clips of each bank file, which the report counts.
+#[derive(Serialize, Deserialize)]
+struct SoundsRecord {
+    units: SideTable<SkinUnit, UnitSounds>,
+    /// By unit, by bank unit, by file.
+    clips: SideTable<SkinUnit, Vec<Vec<Vec<SoundClip>>>>,
+}
+
+impl From<Sounds> for SoundsRecord {
+    fn from(sounds: Sounds) -> Self {
+        let mut clips = SideTable::default();
+        for (unit, of_unit) in sounds.units.iter() {
+            let files = |sound: &SoundUnit| sound.files.iter().map(|f| f.clips.clone()).collect();
+            clips.insert(unit, of_unit.units.iter().map(files).collect());
+        }
+        Self {
+            units: sounds.units,
+            clips,
+        }
+    }
+}
+
+impl From<SoundsRecord> for Sounds {
+    fn from(record: SoundsRecord) -> Self {
+        let mut units = record.units;
+        for (unit, of_unit) in record.clips.iter() {
+            let Some(sounds) = units.get_mut(unit) else {
+                continue;
+            };
+            for (sound, files) in sounds.units.iter_mut().zip(of_unit) {
+                for (file, clips) in sound.files.iter_mut().zip(files) {
+                    file.clips.clone_from(clips);
+                }
+            }
+        }
+        Self { units }
+    }
 }
 
 /// The judging of one bank's clips.

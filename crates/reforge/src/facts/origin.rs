@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use ltk_meta::{BinObject, PropertyValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::copies::Copies;
 use super::findings::{OriginAmbiguous, OriginConflicting, OriginNone};
@@ -34,7 +34,7 @@ use crate::model::{
 };
 
 /// How much a piece of evidence weighs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Weight {
     /// It decides only where no strong evidence does.
@@ -54,7 +54,7 @@ impl Weight {
 }
 
 /// What a piece of evidence is read from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Aspect {
     /// The resolver the entry names.
@@ -101,7 +101,7 @@ impl Aspect {
 }
 
 /// What was tallied for weak evidence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Tallied {
     /// Game objects.
@@ -120,13 +120,16 @@ impl Tallied {
 }
 
 /// What a piece of evidence rests on.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Basis {
     /// A link that is a game skin's own, or names its slot.
     Link {
         /// The object named.
-        #[serde(serialize_with = "super::entry_hex")]
+        #[serde(
+            serialize_with = "super::entry_hex",
+            deserialize_with = "super::hex_entry"
+        )]
         entry: BinHash,
     },
     /// A skin name or an audio tag, as the entry spells it.
@@ -169,7 +172,7 @@ pub enum Basis {
 }
 
 /// One piece of evidence for a skin.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Evidence {
     /// What it is read from.
     pub aspect: Aspect,
@@ -208,7 +211,7 @@ impl Evidence {
 }
 
 /// What was gathered of one unit's origin.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OriginEvidence {
     /// The evidence, one piece per aspect and skin, in the order found.
     pub items: Vec<Evidence>,
@@ -217,7 +220,7 @@ pub struct OriginEvidence {
 }
 
 /// The skin a unit's content derives from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "verdict", content = "slot", rename_all = "lowercase")]
 pub enum Verdict {
     /// The base skin.
@@ -243,7 +246,7 @@ impl Verdict {
 }
 
 /// A unit's origin: the verdict, and the evidence it was read from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Origin {
     /// The skin.
     #[serde(flatten)]
@@ -724,7 +727,7 @@ impl OriginInputs<'_> {
 }
 
 /// The origin of each representative unit.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Origins {
     units: SideTable<SkinUnit, Origin>,
 }

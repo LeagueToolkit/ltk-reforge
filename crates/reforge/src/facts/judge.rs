@@ -2,11 +2,12 @@
 //! against the game's skin at the slot, and the unit's clips sorted there (#ADR-0013). No
 //! choice is made here. The clips are judged by the policy, at its level of reuse.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde::ser::SerializeStruct as _;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 use super::clips::{ClipJudge, ClipsAt, UnitClips};
 use super::origin::Verdict;
@@ -16,7 +17,7 @@ use crate::model::entity::CharId;
 use crate::model::{Slot, Spelled, clean};
 
 /// What a check is about.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Aspect {
     /// Whether the game has the slot.
@@ -48,7 +49,7 @@ impl Aspect {
 }
 
 /// A submesh copied from a premium skin.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Copied {
     /// The submesh's name.
     pub name: Spelled,
@@ -71,7 +72,7 @@ fn copied_text(copied: &[Copied]) -> String {
 }
 
 /// Why clips do not fit a slot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ClipBlock {
     /// Clips of another skin that the level refuses.
@@ -133,7 +134,7 @@ impl fmt::Display for ClipBlock {
 }
 
 /// Why a check came out as it did.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Why {
     /// The game has no skin at the slot.
@@ -217,7 +218,7 @@ pub enum Why {
         /// The clips of other skins the level accepts.
         reused: u32,
         /// The level's name.
-        level: &'static str,
+        level: Cow<'static, str>,
         /// The clips nothing judges.
         unknown: u32,
     },
@@ -298,7 +299,7 @@ impl fmt::Display for Why {
 }
 
 /// How a check came out.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Outcome {
     /// The work fits the slot.
@@ -373,8 +374,21 @@ impl Serialize for Fit {
     }
 }
 
+/// A check's result read back: the detail is the reason's text, written from it.
+impl<'de> Deserialize<'de> for Fit {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Record {
+            fit: Outcome,
+            why: Why,
+        }
+        let record = Record::deserialize(d)?;
+        Ok(Self::new(record.fit, record.why))
+    }
+}
+
 /// One check of a unit at a slot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RigCheck {
     /// What it is about.
     pub aspect: Aspect,
@@ -397,7 +411,7 @@ impl RigCheck {
 }
 
 /// Everything known about placing a unit at one slot.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SlotFacts {
     /// The slot.
     pub slot: Slot,
@@ -556,7 +570,7 @@ impl UnitJudge<'_> {
 }
 
 /// What is known of placing one representative unit.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitCandidates {
     /// The unit's origin.
     pub origin: Verdict,

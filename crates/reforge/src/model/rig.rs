@@ -26,7 +26,7 @@ pub fn joint_hashes(name: &str) -> [u32; 2] {
 }
 
 /// A skeleton as the facts read it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Skeleton {
     /// The joints' names, in the file's order.
     pub joints: Vec<String>,

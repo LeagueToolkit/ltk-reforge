@@ -12,6 +12,7 @@
 //!
 //! `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump".
 
+mod facts;
 mod fix;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,10 +20,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
 use crate::archive::{RawExtra, RawImage};
 use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
+use crate::facts::FactsError;
 use crate::game::{Build, NameBook, NamesStamp};
 use crate::load::{Dating, FileProvenance, Inventory, LoadOptions, ReworkTable};
 use crate::model::entity::{
@@ -61,18 +64,24 @@ pub struct Snapshots {
     pub load: LoadSnapshot,
     /// The snapshot after `fix`.
     pub fix: Option<FixSnapshot>,
+    /// The snapshot after `facts`.
+    pub facts: Option<FactsSnapshot>,
 }
 
 impl Snapshots {
     /// The snapshots from the load snapshot alone.
     pub fn new(load: LoadSnapshot) -> Self {
-        Self { load, fix: None }
+        Self {
+            load,
+            fix: None,
+            facts: None,
+        }
     }
+}
 
-    /// The snapshot after `fix`, or the refusal of a resume after it.
-    pub fn fix(&self) -> Result<&FixSnapshot, ResumeError> {
-        self.fix.as_ref().ok_or(ResumeError::Missing(Stage::Fix))
-    }
+/// The snapshot after a stage, or the refusal of a resume after it.
+pub(crate) fn after<T>(snapshot: Option<T>, stage: Stage) -> Result<T, ResumeError> {
+    snapshot.ok_or(ResumeError::Missing(stage))
 }
 
 /// The program that wrote a snapshot.
@@ -252,6 +261,12 @@ pub enum ResumeError {
     /// A run resumes after a stage whose snapshot the run's snapshots lack.
     #[error("the snapshots hold none after {0}")]
     Missing(Stage),
+    /// A repair resumes after a stage it has not (#ADR-0011).
+    #[error("a repair has no stage {0}")]
+    NotInARepair(Stage),
+    /// The game did not answer while the facts were reopened.
+    #[error("the game did not answer while the facts were reopened")]
+    Facts(#[source] FactsError),
     /// The run has read an archive already.
     #[error("the run has read an archive already")]
     Started,

@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
 use ltk_meta::{BinObject, PropertyValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::copies::Copies;
 use super::findings::{CopiedSubmesh, RigPart, RigUnreadable, SubmeshesCopied};
@@ -21,6 +21,7 @@ use crate::fixups::FixedMod;
 use crate::game::{CatalogSkin, SkinCatalog, graph_clips};
 use crate::load::{FileProvenance, legacy, moved};
 use crate::model::entity::{CharId, FileId, Mod, SkinUnit, UnitId, WadId};
+use crate::model::hash::wad_hash_of_hex;
 use crate::model::known::{class, field};
 use crate::model::rig::{self, MeshShape, Skeleton};
 use crate::model::{
@@ -36,7 +37,7 @@ pub const COPIED_SHARE: f32 = 0.9;
 pub const ALWAYS_MOUNTED: &[&str] = &["global", "data", "ui", "shaders", "common"];
 
 /// Where a file a unit names comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "source", content = "file", rename_all = "lowercase")]
 pub enum Source {
     /// The archive ships it.
@@ -55,7 +56,7 @@ impl Source {
 }
 
 /// Whether a skin shows a submesh.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Visibility {
     /// Shown from the start.
@@ -78,7 +79,7 @@ impl Visibility {
 }
 
 /// A submesh of the mod's own mesh, against the game's meshes.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SubmeshFact {
     /// Its name.
     pub name: Spelled,
@@ -113,11 +114,20 @@ fn opt_hash_hex<S: serde::Serializer>(hash: &Option<WadHash>, s: S) -> Result<S:
     }
 }
 
+fn opt_hex_hash<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<WadHash>, D::Error> {
+    let Some(text) = Option::<String>::deserialize(d)? else {
+        return Ok(None);
+    };
+    let hash = wad_hash_of_hex(&text);
+    let hash = hash.ok_or_else(|| serde::de::Error::custom(format_args!("{text:?} is no path")));
+    hash.map(Some)
+}
+
 /// A file of the rig, as the unit names it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Named {
     /// The path the entry or the graph names.
-    #[serde(serialize_with = "opt_hash_hex")]
+    #[serde(serialize_with = "opt_hash_hex", deserialize_with = "opt_hex_hash")]
     pub reference: Option<WadHash>,
     /// Where the file comes from.
     #[serde(flatten)]
@@ -128,12 +138,12 @@ pub struct Named {
     pub own: bool,
     /// Where the game ships the file, when the reference is a path it shipped at earlier
     /// builds.
-    #[serde(serialize_with = "opt_hash_hex")]
+    #[serde(serialize_with = "opt_hash_hex", deserialize_with = "opt_hex_hash")]
     pub moved: Option<WadHash>,
 }
 
 /// The mesh of a unit.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeshFact {
     /// The file.
     #[serde(flatten)]
@@ -145,7 +155,7 @@ pub struct MeshFact {
 }
 
 /// The skeleton of a unit.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkeletonFact {
     /// The file.
     #[serde(flatten)]
@@ -157,7 +167,7 @@ pub struct SkeletonFact {
 }
 
 /// A clip a unit's graph plays.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipFact {
     /// The file. A clip's game slots are the skins whose graph plays it.
     #[serde(flatten)]
@@ -175,7 +185,7 @@ impl ClipFact {
 }
 
 /// Where the graph a unit's entry names was found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GraphFrom {
     /// Among the objects the client loads for the unit.
@@ -185,7 +195,7 @@ pub enum GraphFrom {
 }
 
 /// The rig of one unit.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UnitRig {
     /// The mesh.
     pub mesh: MeshFact,
@@ -227,13 +237,57 @@ impl UnitRig {
 }
 
 /// The rigs of the representative units, and the game skeletons they are compared with.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(from = "RigsRecord", into = "RigsRecord")]
 pub struct Rigs {
     units: SideTable<SkinUnit, UnitRig>,
     /// The joints of a game skin's skeleton, for the slots a unit of the character was
     /// compared with: its candidates and every skin a part of it matches. None for a skeleton
     /// that does not read.
     game: BTreeMap<(CharId, Slot), Option<Arc<Skeleton>>>,
+}
+
+/// The rigs as a snapshot keeps them: beside each unit's rig as the report writes it, the
+/// joints of each of its clips, which the report leaves out.
+#[derive(Serialize, Deserialize)]
+struct RigsRecord {
+    units: SideTable<SkinUnit, UnitRig>,
+    clip_joints: SideTable<SkinUnit, Vec<Option<Vec<u32>>>>,
+    #[serde(with = "crate::model::pairs")]
+    game: BTreeMap<(CharId, Slot), Option<Arc<Skeleton>>>,
+}
+
+impl From<Rigs> for RigsRecord {
+    fn from(rigs: Rigs) -> Self {
+        let mut clip_joints = SideTable::default();
+        for (unit, rig) in rigs.units.iter() {
+            let joints = rig.clips.iter().map(|clip| clip.joints.clone());
+            clip_joints.insert(unit, joints.collect());
+        }
+        Self {
+            units: rigs.units,
+            clip_joints,
+            game: rigs.game,
+        }
+    }
+}
+
+impl From<RigsRecord> for Rigs {
+    fn from(record: RigsRecord) -> Self {
+        let mut units = record.units;
+        for (unit, joints) in record.clip_joints.iter() {
+            let Some(rig) = units.get_mut(unit) else {
+                continue;
+            };
+            for (clip, joints) in rig.clips.iter_mut().zip(joints) {
+                clip.joints.clone_from(joints);
+            }
+        }
+        Self {
+            units,
+            game: record.game,
+        }
+    }
 }
 
 /// What the rigs are found from.

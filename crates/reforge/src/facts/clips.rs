@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::copies::Copies;
 use super::origin::Origins;
@@ -22,7 +22,7 @@ use crate::model::rig;
 use crate::model::{SideTable, Slot, WadHash};
 
 /// Clips of one skin that the slot judged does not play.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reused {
     /// The skin they are from, a chroma counted as its parent.
     pub from: Slot,
@@ -44,7 +44,7 @@ pub struct Reused {
 }
 
 /// A unit's clips judged against one slot.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipsAt {
     /// The clips the unit's graph plays.
     pub total: u32,
@@ -98,10 +98,11 @@ impl ClipsAt {
 }
 
 /// The clip facts of one unit.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitClips {
     /// The joints of every clip of the unit that some skin plays and that is not the mod's
     /// own, by the path the graph names. None for a clip that did not read.
+    #[serde(with = "crate::model::pairs")]
     joints: BTreeMap<WadHash, Option<Vec<u32>>>,
     /// The clips judged at each candidate slot.
     pub at: BTreeMap<Slot, ClipsAt>,
@@ -190,7 +191,7 @@ impl ClipJudge<'_> {
 }
 
 /// The clip facts of the representative units.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct Clips {
     units: SideTable<SkinUnit, UnitClips>,
 }

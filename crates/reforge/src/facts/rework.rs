@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::FactsError;
 use crate::fixups::FixedMod;
@@ -18,7 +18,7 @@ use crate::model::Mod;
 use crate::model::entity::{CharId, CharKind, FileId};
 
 /// When a mod was made, against a champion's rework.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Made {
     /// For the model before the rework.
@@ -44,7 +44,7 @@ impl Made {
 }
 
 /// One reworked champion of the mod, judged.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Judged {
     /// The champion.
     pub character: CharId,
@@ -61,7 +61,7 @@ pub struct Judged {
 }
 
 /// The mod's champions that have a rework within the history, each judged.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reworks {
     champions: BTreeMap<CharId, Judged>,
 }

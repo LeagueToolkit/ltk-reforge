@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{Catalogs, FactsError};
 use crate::env::Env;
@@ -21,7 +21,7 @@ use crate::model::{
 };
 
 /// Where a game object was found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "via", rename_all = "lowercase")]
 pub enum Via {
     /// The install holds it.
@@ -34,13 +34,16 @@ pub enum Via {
 }
 
 /// Whose an object of the mod is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "origin", rename_all = "kebab-case")]
 pub enum ObjectOrigin {
     /// The game's object byte for byte.
     GameExact {
         /// The game object's entry hash.
-        #[serde(serialize_with = "super::entry_hex")]
+        #[serde(
+            serialize_with = "super::entry_hex",
+            deserialize_with = "super::hex_entry"
+        )]
         entry: BinHash,
         /// The skin whose bins hold it, when it is one skin's.
         slot: Option<Slot>,
@@ -50,7 +53,10 @@ pub enum ObjectOrigin {
     /// A game object saved under another name.
     GameRenamed {
         /// The game object's entry hash.
-        #[serde(serialize_with = "super::entry_hex")]
+        #[serde(
+            serialize_with = "super::entry_hex",
+            deserialize_with = "super::hex_entry"
+        )]
         entry: BinHash,
         /// The skin whose bins hold it, when every copy is one skin's.
         slot: Option<Slot>,
@@ -207,7 +213,7 @@ impl Finder<'_> {
 }
 
 /// For each object of a loaded bin, whose it is.
-#[derive(Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub struct ObjectProvenance {
     origins: SideTable<ObjectNode, ObjectOrigin>,
 }

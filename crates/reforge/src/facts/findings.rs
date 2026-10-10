@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::copies::compact;
 use super::rig::Visibility;
@@ -225,7 +225,7 @@ impl Diag for SubmeshesCopied {
 }
 
 /// A file of a unit's rig.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RigPart {
     /// The mesh.

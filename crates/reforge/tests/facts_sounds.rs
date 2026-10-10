@@ -3,7 +3,7 @@
 //! `reforge_testkit::sounds`.
 
 use reforge::diag::Diag;
-use reforge::facts::{BankFile, BankUnreadable, ClipOrigin, UnitSounds};
+use reforge::facts::{BankFile, BankUnreadable, ClipOrigin, Facts, FactsFound, UnitSounds};
 use reforge::history::{NoHistory, Position};
 use reforge::model::{BankClip, BankRole};
 use reforge_testkit::bins::{bin, blob, entry, graph, resolver};
@@ -104,6 +104,18 @@ fn a_unit_whose_entry_holds_no_audio_block_has_no_sounds() {
     let run = FactRun::of(&env, &archive);
     assert!(run.facts.sounds.of(run.unit("test", 0)).is_none());
     assert_eq!(run.facts.sounds.iter().count(), 0);
+}
+
+#[test]
+fn the_sounds_a_snapshot_keeps_read_back_with_every_clip_the_report_only_counts() {
+    let env = env(audio_game(), NoHistory);
+    let run = FactRun::of(&env, &over_the_base());
+    let json = serde_json::to_string(&run.facts.found()).expect("the facts write");
+    let found: FactsFound = serde_json::from_str(&json).expect("the facts read");
+    let reopened = Facts::reopen(&run.fix.fixed, &env, found).expect("the game answers");
+    let unit = run.unit("test", 0);
+    assert_eq!(reopened.sounds.of(unit), Some(sounds(&run)));
+    assert_eq!(sounds(&run).units[0].files[0].clips.len(), 4);
 }
 
 #[test]

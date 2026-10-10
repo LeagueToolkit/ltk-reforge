@@ -219,6 +219,33 @@ impl<K, V> SideTable<K, V> {
     }
 }
 
+impl<K, V: Clone> Clone for SideTable<K, V> {
+    fn clone(&self) -> Self {
+        Self {
+            slots: self.slots.clone(),
+            _k: PhantomData,
+        }
+    }
+}
+
+/// A side table as a list of its ids with their values, in id order.
+impl<K: Sigil, V: serde::Serialize> serde::Serialize for SideTable<K, V> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_seq(self.iter())
+    }
+}
+
+impl<'de, K: Sigil, V: serde::Deserialize<'de>> serde::Deserialize<'de> for SideTable<K, V> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let pairs = <Vec<(Id<K>, V)> as serde::Deserialize>::deserialize(d)?;
+        let mut table = Self::default();
+        for (id, value) in pairs {
+            table.insert(id, value);
+        }
+        Ok(table)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
