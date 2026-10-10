@@ -1,6 +1,6 @@
 # ADR-0095: The raw snapshot is a cache the corpus reads
 
-- **Status:** Accepted (2026-10-10)
+- **Status:** Accepted (2026-10-10); the saving of time superseded by #ADR-0100
 - **Related:** #ADR-0044, #ADR-0093, #ADR-0094; `docs/design/RUNS.md`
 
 ## Context
