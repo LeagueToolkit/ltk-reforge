@@ -135,6 +135,9 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.STORE_FAILED.title"](),
       detail,
     }))
+    .with({ code: "NO_FILES_AT_STAGE" }, ({ stage }) => ({
+      title: m["error.NO_FILES_AT_STAGE.title"]({ stage: m[`stage.${stage}.label`]() }),
+    }))
     .with({ code: "NOT_REMOVED" }, ({ path, detail }) => ({
       title: m["error.NOT_REMOVED.title"]({ path }),
       description: m["error.NOT_REMOVED.description"](),

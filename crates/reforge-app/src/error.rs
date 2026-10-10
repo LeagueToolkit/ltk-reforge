@@ -6,6 +6,8 @@
 use serde::Serialize;
 use specta::datatype::{DataType, Enum, Field, Variant};
 
+use crate::run::StageName;
+
 /// What went wrong, as the fields the front end translates over.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type, thiserror::Error)]
 #[serde(
@@ -119,6 +121,10 @@ pub enum AppError {
     /// The app's store of runs did not open, read or write.
     #[error("the store of runs failed: {detail}")]
     StoreFailed { detail: String },
+    /// A kept run holds no files at the stage: its snapshot names none, or the run did not
+    /// reach it.
+    #[error("the run holds no files at {stage:?}")]
+    NoFilesAtStage { stage: StageName },
     /// A folder of the app's did not go when the user asked for it removed.
     #[error("{path} could not be removed: {detail}")]
     NotRemoved { path: String, detail: String },

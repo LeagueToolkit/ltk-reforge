@@ -36,6 +36,11 @@ export const commands = {
 	runReport: (id: number) => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_report", { id }),
 	/**  What the views drew of a kept run as it ended. None for a number no run has. */
 	runView: (id: number) => __TAURI_INVOKE<({ ok: true; value: RunView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_view", { id }),
+	/**
+	 *  The files of a kept run at a stage: `load`, `fix`, `plan` or `build`. None for a number no
+	 *  run has.
+	 */
+	runFiles: (id: number, stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_files", { id, stage }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */
@@ -230,6 +235,11 @@ export type AppError =
 { code: "RUN_BUSY" } | 
 /**  The app's store of runs did not open, read or write. */
 { code: "STORE_FAILED"; detail: string } | 
+/**
+ *  A kept run holds no files at the stage: its snapshot names none, or the run did not
+ *  reach it.
+ */
+{ code: "NO_FILES_AT_STAGE"; stage: StageName } | 
 /**  A folder of the app's did not go when the user asked for it removed. */
 { code: "NOT_REMOVED"; path: string; detail: string } | 
 /**  A folder did not open in the system's file manager. */
@@ -365,6 +375,25 @@ export type FieldRow = {
 	from: string,
 	/**  Its name in the layout the target build reads. */
 	to: string,
+};
+
+/**  One file of a stage. */
+export type FileRow = {
+	/**  Its path hash, as sixteen hex digits. */
+	hash: string,
+	/**  Its path. None when the stage names the file by its hash alone. */
+	path: string | null,
+	/**  The id of its bytes, as 64 hex digits. */
+	content: string,
+	/**  Its size in bytes. Zero when no tier holds its bytes. */
+	size: number,
+	/**
+	 *  Its kind, as `reforge-magic` names kinds: `unknown` when none matched, `missing` when
+	 *  no tier holds its bytes.
+	 */
+	kind: string,
+	/**  How it stands against the stage before. */
+	mark: Mark,
 };
 
 /**  One finding of a run. */
@@ -566,6 +595,17 @@ export type KeptIndex = {
 	/**  Its bytes on disk. */
 	bytes: number,
 };
+
+/**  How a file stands against the stage before. */
+export type Mark = 
+/**  The same bytes at the same place. */
+"same" | 
+/**  Other bytes at the same place. */
+"changed" | 
+/**  At a place the stage before had none at. */
+"added" | 
+/**  At a place the stage before had, and this stage has not. */
+"removed";
 
 /**  An archive read alone. */
 export type ModPeek = {
@@ -936,6 +976,14 @@ export type StageEvent =
 /**  The stage ended, after this many milliseconds. */
 { event: "ended"; millis: number };
 
+/**  The files of a kept run at a stage. */
+export type StageFiles = {
+	/**  The stage. */
+	stage: StageName,
+	/**  Its WADs, by name. */
+	wads: WadFiles[],
+};
+
 /**  A stage of a run, in the order they run. */
 export type StageName = 
 /**  The archive read under its caps. */
@@ -1064,6 +1112,17 @@ export type ValueView = {
 	kind: string,
 	/**  The value on one line. */
 	text: string,
+};
+
+/**  The files of one WAD at a stage. */
+export type WadFiles = {
+	/**
+	 *  The WAD's name. A layer other than the base one names its WADs under it:
+	 *  `hud/Ahri.wad.client`.
+	 */
+	name: string,
+	/**  Its files in path order, the ones named by their hash alone last. */
+	files: FileRow[],
 };
 
 /* Tauri Specta runtime */

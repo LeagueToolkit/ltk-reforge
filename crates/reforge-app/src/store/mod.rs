@@ -11,6 +11,7 @@
 //! A save, a removal and a change of a run's mark each cut the bound and sweep what no run
 //! names, in the transaction of the change.
 
+mod files;
 mod read;
 mod sweep;
 mod tier;
@@ -26,6 +27,7 @@ use reforge::report::Report;
 use reforge::snapshot::{self, LoadSnapshot, RawCache, Snapshots, StageSnapshot};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
+pub use self::files::{FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, WadFiles};
 pub use self::read::{RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
 use crate::error::AppError;

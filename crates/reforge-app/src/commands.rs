@@ -29,7 +29,7 @@ use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
 use crate::storage::StorageView;
-use crate::store::{AppStore, RunRow, StoreView};
+use crate::store::{AppStore, RunRow, StageFiles, StoreView};
 use crate::view::Finding;
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
@@ -180,6 +180,15 @@ pub async fn run_report(app: AppHandle, id: u64) -> IpcResult<Option<String>> {
 pub async fn run_view(app: AppHandle, id: u64) -> IpcResult<Option<RunView>> {
     let store = app.state::<RunStore>().get();
     off_thread(move || store?.run_view(id)).await
+}
+
+/// The files of a kept run at a stage: `load`, `fix`, `plan` or `build`. None for a number no
+/// run has.
+#[tauri::command]
+#[specta::specta]
+pub async fn run_files(app: AppHandle, id: u64, stage: StageName) -> IpcResult<Option<StageFiles>> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.stage_files(id, stage)).await
 }
 
 /// Marks a kept run so that the store's bound does not remove it, or unmarks it.
