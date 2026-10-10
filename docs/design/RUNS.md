@@ -1853,3 +1853,31 @@ none; the resumed run is the test's (`tests/porter.rs`).
 - **Time.** The times are within a few seconds of the raw snapshot's runs over the same mods;
   another session worked in the same tree during the runs, so the 4 s of the repair are not
   read as the snapshot's cost.
+
+## The snapshots through plan (2026-10-10)
+
+The branch `run-state-store` at `63fe167`: the run's memory layer, and a snapshot after
+`fix`, `facts`, `decide` and `plan` (#ADR-0094), with the report's `port` part typed. The
+same inputs as "The load snapshot", over the reduced corpus, compared with `baseline-port-6`
+and `baseline-repair-6`. Every run writes each snapshot at the end of its stage and resumes
+from none.
+
+| run | command | done | ended by a fatal diagnostic | time | the load snapshot's run |
+|---|---|---:|---|---|---|
+| `run-snapshots-port` | `port --no-write` | 63 | 5: one `archive.no-skin`, 3 `package.empty`, one `package.shader-missing` | 35 s | 35 s |
+| `run-snapshots-repair` | `repair --no-write --again` | 65 | 3: one `archive.no-skin`, 2 `package.shader-missing` | 48 s | 49 s |
+
+- **Against the baselines** (`run-snapshots-{port,repair}-vs-baseline-6`, expected as "The
+  load snapshot"): the 68 mods of each command differ in the report's two new inputs alone,
+  136 differences each, all expected. The typed `port` part writes what the JSON value
+  wrote, and the exits are the baselines', mod for mod.
+- **Resumed from each snapshot.** A program of the library's API, not kept, took each of the
+  68 archives through a port and a repair straight, and again from each snapshot the run
+  kept, each written as JSON and read back, its bytes flushed from the run's layer into a
+  store: a port from the raw snapshot and after `load`, `fix`, `facts`, `decide` and `plan`,
+  a repair from the raw snapshot and after `load` and `fix`. Every resumed run gives the
+  report of the straight run, which holds the digest of every chunk of the package, in all
+  68 mods. The mod `load` ends at `archive.no-skin` keeps the raw snapshot alone.
+- **Time.** The times are the load snapshot's runs' within a second: the bins `fix` writes
+  again, the facts and targets cloned, and the port's values written into the layer cost
+  nothing a run of the reduced corpus shows.
