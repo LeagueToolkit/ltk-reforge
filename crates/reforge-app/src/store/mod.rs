@@ -8,8 +8,11 @@
 //!
 //! The rows and the run tier are behind one lock, so a sweep never runs while a save flushes.
 //! A rows file of another format is moved aside and a new one made, never migrated in place.
+//! A save, a removal and a change of a run's mark each cut the bound and sweep what no run
+//! names, in the transaction of the change.
 
 mod read;
+mod sweep;
 mod tier;
 
 use std::collections::BTreeMap;
@@ -40,6 +43,11 @@ pub const INGEST_DIR: &str = "ingest";
 
 /// The run tier's folder, in the store's folder.
 pub const RUN_TIER_DIR: &str = "run-tier";
+
+/// How many runs not marked kept the store keeps: past it, the lowest numbers are removed
+/// (#ADR-0096). Generous and a power of two: a run is a few MB of the run tier, mostly shared
+/// between reruns of one mod. A setting of the person's takes its place later.
+pub const RUN_BOUND: usize = 256;
 
 /// The zstd level of the rows' JSON: the library's default, fast to write on every save.
 const ZSTD_LEVEL: i32 = 3;
@@ -96,6 +104,7 @@ pub struct AppStore {
     ingest: RawCache,
     tier: RunTier,
     rows: Mutex<Connection>,
+    bound: usize,
 }
 
 /// What a run that wrote its package leaves to keep (#ADR-0096).
@@ -123,18 +132,29 @@ pub struct Saved {
 impl AppStore {
     /// The store in `dir`, its folder and tables made when absent. A rows file of another
     /// format, or one whose format does not read, is moved aside and a new one made; the
-    /// tiers stay, and the first sweep removes the run tier's blobs no row names.
+    /// tiers stay. The run tier's blobs no row names are swept: a moved file's, and those of a
+    /// save a crash ended between its flush and its rows.
     pub fn open(dir: &Utf8Path) -> Result<Self, AppError> {
         fs::create_dir_all(dir).map_err(failed)?;
         let ingest = RawCache::new(dir.join(INGEST_DIR));
         let tier = RunTier::open(dir.join(RUN_TIER_DIR))?;
         let rows = open_rows(&dir.join(ROWS_FILE))?;
+        sweep::sweep_tier(&tier, &rows)?;
         Ok(Self {
             dir: dir.to_path_buf(),
             ingest,
             tier,
             rows: Mutex::new(rows),
+            bound: RUN_BOUND,
         })
+    }
+
+    /// The store keeping `bound` runs not marked kept in place of [`RUN_BOUND`]: what a
+    /// setting of the person's gives.
+    #[must_use]
+    pub fn with_bound(mut self, bound: usize) -> Self {
+        self.bound = bound;
+        self
     }
 
     /// The ingest tier: the raw snapshots of archives and their bytes (#ADR-0095).
@@ -150,14 +170,13 @@ impl AppStore {
     /// Keeps a run that wrote its package, and answers its number. The layer is flushed into
     /// the run tier first and the rows written after it in one transaction, so a row never
     /// names a byte the tier lacks: the raw row (its path the last one read), the load row,
-    /// shared by every run of its key, the run row and the ids of its layer.
+    /// shared by every run of its key, the run row and the ids of its layer. The bound is
+    /// cut after it.
     pub fn save(&self, saved: Saved) -> Result<u64, AppError> {
-        let mut rows = self.rows.lock();
-        self.tier.flush(&saved.layer)?;
-        let tx = rows.transaction()?;
-        let id = insert_run(&tx, &saved)?;
-        tx.commit()?;
-        Ok(id)
+        self.change(|tier, tx| {
+            tier.flush(&saved.layer)?;
+            Ok((insert_run(tx, &saved)?, 0))
+        })
     }
 }
 

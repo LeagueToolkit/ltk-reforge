@@ -301,6 +301,32 @@ impl Bench {
         }
     }
 
+    /// A bench whose store keeps `bound` runs not marked kept.
+    fn bounded(bound: usize) -> Self {
+        let bench = Self::new();
+        Self {
+            store: bench.store.with_bound(bound),
+            ..bench
+        }
+    }
+
+    /// A port of `archive` through write, written as `name`: a run that makes bytes, since a
+    /// port writes the bins it renames.
+    fn port(&self, archive: &ModArchive, name: &str) -> RunView {
+        let mut request = self.request(archive, name, StageName::Write);
+        request.kind = RunKind::Port;
+        self.run(&request)
+    }
+
+    fn ids(&self) -> Vec<u64> {
+        self.store
+            .list()
+            .unwrap()
+            .iter()
+            .map(|row| row.id)
+            .collect()
+    }
+
     /// A repair of `archive`, written as `name`, through `through`.
     fn request(&self, archive: &ModArchive, name: &str, through: StageName) -> RunRequest {
         let path = self.folder.root.join(name);
@@ -491,4 +517,87 @@ fn a_kept_runs_report_reads_back_as_the_run_wrote_it() {
     let report: serde_json::Value = serde_json::from_str(&report).unwrap();
     assert!(report.get("package").is_some(), "{report}");
     assert_eq!(bench.store.report(id + 1).unwrap(), None);
+}
+
+#[test]
+fn removing_the_only_run_empties_the_run_tier_and_the_rows() {
+    let bench = Bench::new();
+    let id = bench.port(&own_mod(), "mod.fantome").saved.unwrap();
+    assert!(!bench.store.tier().ids().unwrap().is_empty());
+
+    bench.store.remove_run(id).unwrap();
+
+    for table in ["raw", "load", "run", "run_blob"] {
+        assert_eq!(bench.count(table), 0, "{table}");
+    }
+    assert_eq!(bench.store.tier().ids().unwrap(), []);
+}
+
+#[test]
+fn two_runs_of_one_load_one_removed_keep_the_load_and_its_blobs() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+    bench.port(&own_mod(), "mod.fantome");
+    let before = bench.store.tier().ids().unwrap();
+
+    bench.store.remove_run(1).unwrap();
+
+    assert_eq!(bench.ids(), [2]);
+    assert_eq!((bench.count("raw"), bench.count("load")), (1, 1));
+    assert_eq!(bench.store.tier().ids().unwrap(), before);
+    assert_eq!(bench.named(), before);
+}
+
+#[test]
+fn removing_a_mods_runs_leaves_the_other_mods() {
+    let bench = Bench::new();
+    let other = own_mod().extra("README.txt", "another archive");
+    bench.port(&own_mod(), "mod.fantome");
+    bench.port(&other, "other.fantome");
+    let listed = bench.store.list().unwrap();
+    let sha256 = ContentId::parse(&listed[1].sha256).unwrap();
+
+    bench.store.remove_mod(sha256).unwrap();
+
+    let left = bench.store.list().unwrap();
+    assert_eq!(bench.ids(), [2]);
+    assert_eq!(left[0].file_name, "other.fantome");
+    assert_eq!(bench.count("raw"), 1);
+    assert_eq!(bench.store.tier().ids().unwrap(), bench.named());
+
+    bench.store.remove_all().unwrap();
+
+    assert_eq!(bench.count("run"), 0);
+    assert_eq!(bench.store.tier().ids().unwrap(), []);
+}
+
+#[test]
+fn the_bound_removes_the_lowest_numbers_first() {
+    let bench = Bench::bounded(2);
+    let request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+
+    for _ in 0..3 {
+        bench.run(&request);
+    }
+
+    assert_eq!(bench.ids(), [3, 2]);
+}
+
+#[test]
+fn a_run_marked_kept_outlives_the_bound() {
+    let bench = Bench::bounded(1);
+    let request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+    bench.run(&request);
+    bench.store.keep(1, true).unwrap();
+
+    bench.run(&request);
+    bench.run(&request);
+
+    assert_eq!(bench.ids(), [3, 1]);
+    let listed = bench.store.list().unwrap();
+    assert_eq!((listed[0].kept, listed[1].kept), (false, true));
+
+    bench.store.keep(1, false).unwrap();
+
+    assert_eq!(bench.ids(), [3], "unmarked, the oldest is past the bound");
 }
