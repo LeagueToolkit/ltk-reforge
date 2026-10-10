@@ -902,22 +902,19 @@ impl<'a> Run<'a> {
             self.inventory = Some(inventory);
             self.provenance = Some(provenance);
         }
+        self.loaded = Some(self.snapshot_of(&module, &found));
         match &self.known {
             Some(known) => {
                 self.dating = Some(known.dating.clone());
                 self.redated = Some(found);
             }
-            None => {
-                self.loaded = Some(self.snapshot_of(&module, &found));
-                self.dating = Some(found);
-            }
+            None => self.dating = Some(found),
         }
         self.module = Reached::Loaded(module);
         Ok(())
     }
 
-    /// The load snapshot of the mod `load` left. A run judged with an earlier run's evidence
-    /// keeps none: the evidence is no input a snapshot names.
+    /// The load snapshot of the mod `load` left, at the dating `load` found.
     fn snapshot_of(&self, module: &Mod, dating: &Dating) -> LoadSnapshot {
         let raw = self.raw.as_ref();
         let state = LoadState {
@@ -955,9 +952,10 @@ impl<'a> Run<'a> {
                 let set = &self.settings.fixups;
                 match set.apply_or_keep(module, &ObjectSet::every(), &mut inputs, &mut sink) {
                     Ok((fixed, changes)) => {
-                        self.fix_snapshot = self.fix_snapshot_of(&fixed, &changes);
+                        let snapshot = self.fix_snapshot_of(&fixed, &changes);
                         self.module = Reached::Fixed(fixed);
                         self.changes = Some(changes);
+                        self.fix_snapshot = Some(snapshot?);
                     }
                     // The report of a run ended here still holds what `load` gave.
                     Err(unfixed) => {
@@ -977,15 +975,18 @@ impl<'a> Run<'a> {
     }
 
     /// The fix snapshot of the mod `fix` left, the bins it wrote again put into the run's
-    /// store. A run with no load snapshot keeps none: a repair's second run, judged with the
-    /// first's evidence, keeps no snapshot after `load` as it keeps none of `load`.
-    fn fix_snapshot_of(&self, fixed: &FixedMod, changes: &Changes) -> Option<FixSnapshot> {
-        let load = self.loaded.as_ref()?;
+    /// store.
+    fn fix_snapshot_of(
+        &self,
+        fixed: &FixedMod,
+        changes: &Changes,
+    ) -> Result<FixSnapshot, RunError> {
+        let load = held(self.loaded.as_ref(), Stage::Fix, Stage::Load)?;
         let rewritten = fixed.rewritten(changes).into_iter();
         let rewritten = rewritten.map(|(file, bin)| (file, self.store.put(bin.bytes.into())));
         let declared = (snapshot::FixInputs::of(self.env), self.fix_settings());
         let findings = self.log.logged_from(self.first);
-        Some(FixSnapshot::of(
+        Ok(FixSnapshot::of(
             load,
             &rewritten.collect(),
             changes,
@@ -1007,7 +1008,7 @@ impl<'a> Run<'a> {
     pub fn gather(&mut self) -> Result<&Facts, RunError> {
         self.going()?;
         self.of_a_port(Stage::Facts)?;
-        if self.facts.is_none() {
+        if self.facts_snapshot.is_none() {
             let fixed = self.module.fixed(Stage::Facts)?;
             let speller = Speller::new(&self.book, self.env.names());
             let inputs = FactInputs {
@@ -1019,12 +1020,9 @@ impl<'a> Run<'a> {
             };
             let facts = Facts::gather(fixed, &inputs).map_err(RunError::Facts)?;
             facts.report(&mut self.log.at(Stage::Facts));
-            // A run keeps a snapshot after a stage only after the snapshots before it.
-            if self.fix_snapshot.is_some() {
-                let findings = self.log.logged_from(self.first);
-                let snapshot = FactsSnapshot::of(&facts, self.facts_settings(), findings);
-                self.facts_snapshot = Some(snapshot);
-            }
+            let findings = self.log.logged_from(self.first);
+            let snapshot = FactsSnapshot::of(&facts, self.facts_settings(), findings);
+            self.facts_snapshot = Some(snapshot);
             self.facts = Some(facts);
         }
         held(self.facts.as_ref(), Stage::Facts, Stage::Fix)
@@ -1035,16 +1033,14 @@ impl<'a> Run<'a> {
     pub fn decide(&mut self) -> Result<&Targets, RunError> {
         self.going()?;
         self.of_a_port(Stage::Decide)?;
-        if self.targets.is_none() {
+        if self.decide_snapshot.is_none() {
             let facts = held(self.facts.as_ref(), Stage::Decide, Stage::Facts)?;
             let targets = self.settings.policy.decide(facts);
             targets.report(&mut self.log.at(Stage::Decide));
             let targets = targets.compared(facts, &self.settings.compared);
-            if self.facts_snapshot.is_some() {
-                let findings = self.log.logged_from(self.first);
-                let snapshot = DecideSnapshot::of(&targets, self.decide_settings(), findings);
-                self.decide_snapshot = Some(snapshot);
-            }
+            let findings = self.log.logged_from(self.first);
+            let snapshot = DecideSnapshot::of(&targets, self.decide_settings(), findings);
+            self.decide_snapshot = Some(snapshot);
             self.targets = Some(targets);
         }
         held(self.targets.as_ref(), Stage::Decide, Stage::Facts)
@@ -1055,7 +1051,7 @@ impl<'a> Run<'a> {
     pub fn plan(&mut self) -> Result<&Port, RunError> {
         self.going()?;
         self.of_a_port(Stage::Plan)?;
-        if self.plan.is_none() {
+        if self.plan_snapshot.is_none() {
             let options = self.settings.port_options();
             let speller = Speller::new(&self.book, self.env.names());
             let inputs = PortInputs {
@@ -1076,13 +1072,11 @@ impl<'a> Run<'a> {
             for entry in entries {
                 self.book.learn_entry(entry);
             }
-            if self.decide_snapshot.is_some() {
-                let fixed = self.module.fixed(Stage::Plan)?;
-                let settings = PlanSettings::of(&self.settings.port_options());
-                let declared = (settings, self.log.logged_from(self.first));
-                let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
-                self.plan_snapshot = Some(snapshot);
-            }
+            let fixed = self.module.fixed(Stage::Plan)?;
+            let settings = PlanSettings::of(&self.settings.port_options());
+            let declared = (settings, self.log.logged_from(self.first));
+            let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
+            self.plan_snapshot = Some(snapshot);
             self.plan = Some(port);
         }
         held(self.plan.as_ref(), Stage::Plan, Stage::Decide)
@@ -1093,7 +1087,7 @@ impl<'a> Run<'a> {
     /// would hold nothing ends the run.
     pub fn build(&mut self) -> Result<&Package, RunError> {
         self.going()?;
-        if self.package.is_none() {
+        if self.build_snapshot.is_none() {
             let built = {
                 let fixed = self.module.fixed(Stage::Build)?;
                 let mut sink = self.log.at(Stage::Build);
@@ -1121,20 +1115,14 @@ impl<'a> Run<'a> {
             if let Some(image) = self.module.module().and_then(|m| m.image.as_ref()) {
                 package.carry_image(image, &mut self.log.at(Stage::Build));
             }
-            let before = match self.mode {
-                Mode::Port => self.plan_snapshot.is_some(),
-                Mode::InPlace => self.fix_snapshot.is_some(),
-            };
-            if before {
-                let part = PackageRow::of(&package);
-                let declared = (
-                    self.settings.build_settings(),
-                    self.log.logged_from(self.first),
-                );
-                let snapshot = BuildSnapshot::of(&package, &part, declared, &self.store);
-                self.build_snapshot = Some(snapshot);
-                self.package_part = Some(part);
-            }
+            let part = PackageRow::of(&package);
+            let declared = (
+                self.settings.build_settings(),
+                self.log.logged_from(self.first),
+            );
+            let snapshot = BuildSnapshot::of(&package, &part, declared, &self.store);
+            self.build_snapshot = Some(snapshot);
+            self.package_part = Some(part);
             self.package = Some(package);
         }
         held(self.package.as_ref(), Stage::Build, Stage::Fix)
@@ -1163,7 +1151,7 @@ impl<'a> Run<'a> {
     /// finds is a diagnostic and no error (#ADR-0003).
     pub fn check(&mut self) -> Result<(), RunError> {
         self.going()?;
-        if self.applied.is_some() {
+        if self.check_snapshot.is_some() {
             return Ok(());
         }
         let fixed = self.module.fixed(Stage::Check)?;
@@ -1194,36 +1182,43 @@ impl<'a> Run<'a> {
             .iter()
             .map(|patched| patched.map(|patched| AppliedRow::of(&patched.outcome)))
             .collect();
-        if self.build_snapshot.is_some() {
-            let declared = (CheckSettings::of(checks), self.log.logged_from(self.first));
-            let snapshot = CheckSnapshot::of(&applied, &patched, declared, &self.store);
-            self.check_snapshot = Some(snapshot);
-        }
+        let declared = (CheckSettings::of(checks), self.log.logged_from(self.first));
+        let snapshot = CheckSnapshot::of(&applied, &patched, declared, &self.store);
+        self.check_snapshot = Some(snapshot);
         self.applied = Some(applied);
         Ok(())
     }
 
-    /// Runs every stage the run has not run, in order, up to `last`. A fatal diagnostic ends
-    /// the run early and is no error. `read` and `write` are the caller's to call.
+    /// Folds the stages up to `last` over the run's snapshots, in order: each stage the run
+    /// holds no snapshot of runs from the one before it and ends by writing its own. A fatal
+    /// diagnostic ends the run early and is no error. `read` and `write` are the caller's to
+    /// call.
     pub fn through(&mut self, last: Stage) -> Result<(), RunError> {
-        for &stage in self.mode.stages().iter().filter(|&&stage| stage <= last) {
-            let ran = match stage {
-                Stage::Load => self.load().map(drop),
-                Stage::Fix => self.fix().map(drop),
-                Stage::Facts => self.gather().map(drop),
-                Stage::Decide => self.decide().map(drop),
-                Stage::Plan => self.plan().map(drop),
-                Stage::Build => self.build().map(drop),
-                Stage::Check => self.check(),
-                Stage::Read | Stage::Write => Ok(()),
-            };
-            match ran {
+        for &stage in self.mode.stages() {
+            if stage > last || self.ran(stage) {
+                continue;
+            }
+            match self.step(stage) {
                 Ok(()) => {}
                 Err(RunError::Halted(_)) => return Ok(()),
                 Err(error) => return Err(error),
             }
         }
         Ok(())
+    }
+
+    /// One stage of [`Run::through`].
+    fn step(&mut self, stage: Stage) -> Result<(), RunError> {
+        match stage {
+            Stage::Load => self.load().map(drop),
+            Stage::Fix => self.fix().map(drop),
+            Stage::Facts => self.gather().map(drop),
+            Stage::Decide => self.decide().map(drop),
+            Stage::Plan => self.plan().map(drop),
+            Stage::Build => self.build().map(drop),
+            Stage::Check => self.check(),
+            Stage::Read | Stage::Write => Ok(()),
+        }
     }
 
     /// Reads an archive's bytes and runs every stage but `write`.
@@ -1380,18 +1375,19 @@ impl<'a> Run<'a> {
         self.mode.stages()
     }
 
-    /// Whether a stage ran to its end. A stage a fatal diagnostic or a fault ended did not,
+    /// Whether a stage ran to its end: whether the run holds its snapshot, or for `write`
+    /// whether the package was written. A stage a fatal diagnostic or a fault ended did not,
     /// and neither did a write the caller's policy refused.
     pub fn ran(&self, stage: Stage) -> bool {
         match stage {
             Stage::Read => self.raw.is_some() || self.loaded.is_some(),
-            Stage::Load => matches!(self.module, Reached::Loaded(_) | Reached::Fixed(_)),
-            Stage::Fix => matches!(self.module, Reached::Fixed(_)),
-            Stage::Facts => self.facts.is_some(),
-            Stage::Decide => self.targets.is_some(),
-            Stage::Plan => self.plan.is_some(),
-            Stage::Build => self.package.is_some(),
-            Stage::Check => self.applied.is_some(),
+            Stage::Load => self.loaded.is_some(),
+            Stage::Fix => self.fix_snapshot.is_some(),
+            Stage::Facts => self.facts_snapshot.is_some(),
+            Stage::Decide => self.decide_snapshot.is_some(),
+            Stage::Plan => self.plan_snapshot.is_some(),
+            Stage::Build => self.build_snapshot.is_some(),
+            Stage::Check => self.check_snapshot.is_some(),
             Stage::Write => self.written,
         }
     }
@@ -1417,21 +1413,28 @@ impl<'a> Run<'a> {
         self.raw.as_ref()
     }
 
+    /// A snapshot the run gives a caller: none in a run judged with an earlier run's
+    /// evidence, which is no input a snapshot names, so a resume from one would not be judged
+    /// as it was.
+    fn given<'s, T>(&self, snapshot: &'s Option<T>) -> Option<&'s T> {
+        snapshot.as_ref().filter(|_| self.known.is_none())
+    }
+
     /// The load snapshot, once `load` ended or the run started from one (#ADR-0094).
     pub fn load_snapshot(&self) -> Option<&LoadSnapshot> {
-        self.loaded.as_ref()
+        self.given(&self.loaded)
     }
 
     /// The fix snapshot, once `fix` ended or the run started from one (#ADR-0094).
     pub fn fix_snapshot(&self) -> Option<&FixSnapshot> {
-        self.fix_snapshot.as_ref()
+        self.given(&self.fix_snapshot)
     }
 
     /// The run's snapshots from `load` on, as far as it went: what a caller keeps to resume
-    /// after any of its stages. None before `load` ends, and in a run that keeps no load
-    /// snapshot.
+    /// after any of its stages. None before `load` ends, and in a run judged with an earlier
+    /// run's evidence.
     pub fn snapshots(&self) -> Option<Snapshots> {
-        let mut snapshots = Snapshots::new(self.loaded.clone()?);
+        let mut snapshots = Snapshots::new(self.load_snapshot()?.clone());
         snapshots.fix = self.fix_snapshot.clone();
         snapshots.facts = self.facts_snapshot.clone();
         snapshots.decide = self.decide_snapshot.clone();
@@ -1443,27 +1446,27 @@ impl<'a> Run<'a> {
 
     /// The check snapshot, once `check` ended or the run started from one (#ADR-0094).
     pub fn check_snapshot(&self) -> Option<&CheckSnapshot> {
-        self.check_snapshot.as_ref()
+        self.given(&self.check_snapshot)
     }
 
     /// The build snapshot, once `build` ended or the run started from one (#ADR-0094).
     pub fn build_snapshot(&self) -> Option<&BuildSnapshot> {
-        self.build_snapshot.as_ref()
+        self.given(&self.build_snapshot)
     }
 
     /// The plan snapshot, once `plan` ended or the run started from one (#ADR-0094).
     pub fn plan_snapshot(&self) -> Option<&PlanSnapshot> {
-        self.plan_snapshot.as_ref()
+        self.given(&self.plan_snapshot)
     }
 
     /// The decide snapshot, once `decide` ended or the run started from one (#ADR-0094).
     pub fn decide_snapshot(&self) -> Option<&DecideSnapshot> {
-        self.decide_snapshot.as_ref()
+        self.given(&self.decide_snapshot)
     }
 
     /// The facts snapshot, once `facts` ended or the run started from one (#ADR-0094).
     pub fn facts_snapshot(&self) -> Option<&FactsSnapshot> {
-        self.facts_snapshot.as_ref()
+        self.given(&self.facts_snapshot)
     }
 
     /// The store the run's bytes are in: its memory layer over the caller's store.

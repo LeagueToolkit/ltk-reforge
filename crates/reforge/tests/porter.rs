@@ -980,6 +980,10 @@ fn a_run_judged_with_an_earlier_runs_evidence_embeds_none() {
         "the evidence is no input a snapshot names"
     );
     assert!(run.fix_snapshot().is_none() && run.snapshots().is_none());
+    assert!(run.build_snapshot().is_none() && run.check_snapshot().is_none());
+    // The run holds its stages as snapshots all the same, and gives none out.
+    let stages = run.stages().iter().filter(|&&stage| stage != Stage::Write);
+    assert!(stages.copied().all(|stage| run.ran(stage)));
 }
 
 /// A static mesh the game ships as `.scb`, at a stem the mod ships as `.sco`.

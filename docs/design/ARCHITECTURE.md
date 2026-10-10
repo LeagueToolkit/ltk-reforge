@@ -78,12 +78,14 @@ let report = run.report();
   goes into the layer and none into the store under it (#ADR-0093). `Run::into_layer` gives
   the layer's blobs, which the caller flushes into a store it keeps; a run dropped leaves
   nothing. `run.read_file` reads an archive file. `load` opens the mod from the
-  raw snapshot and the store. The run keeps the raw snapshot, and a snapshot at the end of
-  each stage from `load` on (#ADR-0094): `load_snapshot`, `fix_snapshot`, `facts_snapshot`,
-  `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.
-  A run keeps a snapshot after a stage only where it kept the ones before it.
-  `Run::snapshots` gives them together as `Snapshots`, what a caller keeps to resume after
-  any of them.
+  raw snapshot and the store. The run keeps the raw snapshot, and each stage from `load` on
+  ends by writing its snapshot (#ADR-0094): `load_snapshot`, `fix_snapshot`,
+  `facts_snapshot`, `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.
+  The snapshots are what the run holds of its stages, and the parsed objects beside them a
+  cache. `Run::snapshots` gives them together as `Snapshots`, what a caller keeps to resume
+  after any of them. A run judged with an earlier run's evidence (`Run::known`) gives none:
+  the evidence is no input a snapshot names, and a run resumed from one would not be judged
+  with it.
 - **A run starts from a snapshot in place of `read`** (#ADR-0094). `run.resume(from)`, or
   `Porter::resume(from, store)`, takes a `Start`: the raw snapshot, after which `load` runs;
   the load snapshot, after which `fix` does; or `Snapshots`, after the stage the variant
@@ -121,11 +123,14 @@ let report = run.report();
   | plan | `PlanSnapshot` | none of its own | `PlanSettings`: the stale keep, the game's events only, the other slots kept |
   | build | `BuildSnapshot` | none of its own: the install's shader bin and shader cache, the game's skin bins a port patches and a sub-character's skin0 bin it copies, the game's files and the history a repair's texture is judged stale against, the hash tables that spell a repair's paths and a patch's fields | `BuildSettings`: the DDS keep, the stale keep |
   | check | `CheckSnapshot` | none of its own: the install's bins the patches apply to, every bin a patched bin loads and the shader bin; the target build's types, from the schema and the install | `CheckSettings`: the checks |
-- **A stage runs once.** Its method asked again gives the result the run holds. The stage
-  types keep the order in their signatures. The run holds the results, so a method called
-  before the result it reads is held answers `RunError::NotReached` with both stages.
-- **Stopping early is calling fewer methods.** `run.through(stage)` runs every stage not run,
-  up to that one, and `Porter::port(bytes, file_name)` reads and runs them all but `write`.
+- **A stage runs once.** A stage ran when the run holds its snapshot (`Run::ran`), and its
+  method asked again gives the result the run holds. The stage types keep the order in
+  their signatures. A method called before the result it reads is held answers
+  `RunError::NotReached` with both stages.
+- **Stopping early is calling fewer methods.** `run.through(stage)` folds the stages up to
+  that one over the snapshots: each stage the run holds no snapshot of runs from the one
+  before it and ends by writing its own, so a run resumed after a stage and a run that ran
+  it go on alike. `Porter::port(bytes, file_name)` reads and runs them all but `write`.
   There is no pass registry, no `after` edge and no stub.
 - **`run.report()` is the report of the run as far as it went**: a part for each result the
   run holds, and every diagnostic, written with the names learnt up to then.
@@ -820,8 +825,8 @@ object takes a name of its own, which every link to it follows.
   every chunk's digest and, for a bin, the digest of each object as
   `ltk_meta` writes it, and every patch with the game bin it patches and the digest of each
   object of that bin after the patch, and as the part `evidence` the document the package
-  embeds ([Package](#package)), field for field. A run that keeps a build snapshot writes the
-  package part from the snapshot's, with each patch's outcome as `check` applied it
+  embeds ([Package](#package)), field for field. A run writes the package part from its
+  build snapshot's, with each patch's outcome as `check` applied it
   (`AppliedRow`, `PackageRow::apply`). `reforge repair --again` adds what repairing
   the package a second time, in memory, changed.
 - The rows `load` gives, the WADs, files, characters and units, the dating, and in a port the
@@ -836,7 +841,7 @@ object takes a name of its own, which every link to it follows.
   changed under the id of the bytes `FixedMod::rewrite` wrote, which a repair's package
   ships; what each fixup changed, a field path with the class of each struct on it, which
   the report's hash form leaves out; the names learnt; and the findings from `read` to the
-  end of `fix`. A repair's second run, judged with the first's evidence, keeps no snapshot.
+  end of `fix`.
 - The facts snapshot holds what the facts found (Facts, "What a snapshot keeps") and the
   findings to the end of `facts`. Its files are the fix snapshot's: `facts` changes none.
 - The decide snapshot holds the `Targets` with what the compared policies choose, and the
