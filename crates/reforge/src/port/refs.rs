@@ -7,9 +7,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::findings::{RefDangling, RefUnmounted};
+use super::findings::{RefDangling, RefUnmounted, path_of};
 use super::plan::{Objects, PlanError, PortInputs};
 use super::reach::{Fate, Reach};
 use crate::diag::Sink;
@@ -54,14 +54,14 @@ fn path_hex<S: Serializer>(hash: &WadHash, s: S) -> Result<S::Ok, S::Error> {
 }
 
 /// Where the client finds a file the port names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "verdict", rename_all = "kebab-case")]
 pub enum FileVerdict {
     /// The game holds the bytes at this path, in a WAD mounted when the champion plays: the
     /// reference names it and nothing ships.
     Game {
         /// The path the game holds them at.
-        #[serde(serialize_with = "path_hex")]
+        #[serde(serialize_with = "path_hex", deserialize_with = "hex_path")]
         path: WadHash,
     },
     /// The mod's own bytes, or bytes the game does not hold where the champion plays: shipped.
@@ -93,8 +93,24 @@ impl Serialize for UnitRefs {
     }
 }
 
+impl<'de> Deserialize<'de> for UnitRefs {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let rows = BTreeMap::<String, FileVerdict>::deserialize(d)?;
+        let refs = rows
+            .into_iter()
+            .map(|(path, verdict)| Ok((path_of(&path)?, verdict)));
+        Ok(Self {
+            refs: refs.collect::<Result<_, D::Error>>()?,
+        })
+    }
+}
+
+fn hex_path<'de, D: Deserializer<'de>>(d: D) -> Result<WadHash, D::Error> {
+    path_of(&String::deserialize(d)?)
+}
+
 /// Where each file a port names is found, unit by unit.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileRefs {
     /// By unit.
     pub units: BTreeMap<UnitId, UnitRefs>,

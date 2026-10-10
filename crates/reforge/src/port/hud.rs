@@ -10,9 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use ltk_meta::{BinObject, PropertyValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use super::findings::{HudCarried, entry_hex, hashes_hex_list};
+use super::findings::{HudCarried, entry_hex, hashes_hex_list, hex_entry, hex_hash_list};
 use super::layout::Layout;
 use super::plan::{PlanError, PortInputs};
 use crate::diag::Sink;
@@ -23,22 +23,27 @@ use crate::model::{
     BinHash, ChunkPath, Dump, DumpCx, Fields, Spell, WadHash, clean, path_hash, value,
 };
 
+/// The value of an edit read from a report, which holds none.
+fn no_value() -> PropertyValueEnum {
+    PropertyValueEnum::None(ltk_meta::property::values::None)
+}
+
 /// One field of a game object set to a value.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldEdit {
     /// The object's entry hash.
-    #[serde(serialize_with = "entry_hex")]
+    #[serde(serialize_with = "entry_hex", deserialize_with = "hex_entry")]
     pub entry: BinHash,
     /// The field, as the hashes of the fields on the way to it, through structs.
-    #[serde(serialize_with = "hashes_hex_list")]
+    #[serde(serialize_with = "hashes_hex_list", deserialize_with = "hex_hash_list")]
     pub fields: Vec<BinHash>,
-    /// The value.
-    #[serde(skip)]
+    /// The value. A snapshot keeps it in the store (#ADR-0094).
+    #[serde(skip, default = "no_value")]
     pub value: PropertyValueEnum,
 }
 
 /// The HUD edits of one champion.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HudEdits {
     /// The champion.
     pub character: CharId,
@@ -53,12 +58,12 @@ pub struct HudEdits {
     /// How many objects of the root bin name one of them.
     pub objects: usize,
     /// The objects left out: a field on the way to the file is one no table names (#ADR-0031).
-    #[serde(serialize_with = "hashes_hex_list")]
+    #[serde(serialize_with = "hashes_hex_list", deserialize_with = "hex_hash_list")]
     pub unspelled: Vec<BinHash>,
 }
 
 /// The HUD edits of a port, champion by champion.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HudPlan {
     /// By champion.
     pub champions: Vec<HudEdits>,

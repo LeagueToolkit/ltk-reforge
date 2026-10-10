@@ -11,7 +11,9 @@ use super::{Channel, Code, Diag, Filter, Record, Severity, Stage, Subject};
 
 /// A diagnostic's place in the run's log, from 0. A result that a diagnostic explains holds
 /// this.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct DiagId(pub u32);
 
 impl fmt::Display for DiagId {

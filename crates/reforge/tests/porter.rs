@@ -26,8 +26,8 @@ use reforge::package::{
 };
 use reforge::port::{AnimReuse, PlanError, Policy, TargetPolicy};
 use reforge::snapshot::{
-    DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, ResumeError, SNAPSHOT_FORMAT,
-    Setting, Snapshots,
+    DecideSnapshot, FactsSnapshot, FixSnapshot, LoadSnapshot, PlanSnapshot, ResumeError,
+    SNAPSHOT_FORMAT, Setting, Snapshots,
 };
 use reforge::store::{BlobStore, MemoryStore};
 use reforge::{Evidence, Porter, Repairer, Run, RunError, Start};
@@ -1200,6 +1200,12 @@ fn through_json(snapshots: &Snapshots) -> Snapshots {
         assert_eq!(decide.to_json(), json, "the decide snapshot reads back");
         back.decide = Some(decide);
     }
+    if let Some(plan) = &snapshots.plan {
+        let json = plan.to_json();
+        let plan = PlanSnapshot::from_json(&json).expect("the plan snapshot reads");
+        assert_eq!(plan.to_json(), json, "the plan snapshot reads back");
+        back.plan = Some(plan);
+    }
     back
 }
 
@@ -1319,6 +1325,36 @@ fn a_port_resumed_after_facts_writes_the_report_and_package_of_the_straight_run(
 #[test]
 fn a_port_resumed_after_decide_writes_the_report_and_package_of_the_straight_run() {
     every_run_resumed_after(Stage::Decide, |s| Start::Decide(Box::new(s)));
+}
+
+#[test]
+fn a_port_resumed_after_plan_writes_the_report_and_package_of_the_straight_run() {
+    every_run_resumed_after(Stage::Plan, |s| Start::Plan(Box::new(s)));
+}
+
+#[test]
+fn a_plan_snapshot_is_refused_when_a_setting_plan_reads_is_not_the_runs() {
+    let env = legacy_env();
+    let (snapshots, store) = legacy_snapshots(&Porter::new(&env), Stage::Plan);
+    let resume = |porter: Porter<'_>, snapshots: Snapshots| {
+        let start = Start::Plan(Box::new(snapshots));
+        porter.resume(start, Arc::clone(&store)).map(drop)
+    };
+    assert!(resume(Porter::new(&env), snapshots.clone()).is_ok());
+    let refused = resume(Porter::new(&env).game_events_only(true), snapshots.clone());
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::GameEventsOnly))
+    ));
+    let refused = resume(Porter::new(&env).keep_other_slots(true), snapshots.clone());
+    assert!(matches!(
+        refused,
+        Err(ResumeError::Setting(Setting::KeepOtherSlots))
+    ));
+    let mut none = snapshots;
+    none.plan = None;
+    let refused = resume(Porter::new(&env), none);
+    assert!(matches!(refused, Err(ResumeError::Missing(Stage::Plan))));
 }
 
 #[test]

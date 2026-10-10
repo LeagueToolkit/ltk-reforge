@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::decide::Reason;
 use super::shipping::Left;
@@ -298,6 +298,36 @@ pub(super) fn entry_hex<S: Serializer>(hash: &BinHash, s: S) -> Result<S::Ok, S:
     s.collect_str(&format_args!("{:08x}", hash.0))
 }
 
+/// A hash of eight hex digits read back, as a field of `what` names it.
+pub(super) fn hash_of<E: serde::de::Error>(text: &str) -> Result<BinHash, E> {
+    let hash = u32::from_str_radix(text, 16);
+    hash.map(BinHash)
+        .map_err(|_| E::custom(format_args!("{text:?} is no hash")))
+}
+
+/// An entry hash read back from its eight hex digits.
+pub(super) fn hex_entry<'de, D: Deserializer<'de>>(d: D) -> Result<BinHash, D::Error> {
+    hash_of(&String::deserialize(d)?)
+}
+
+/// Entry hashes read back from their hex digits.
+pub(super) fn hex_hashes<'de, D: Deserializer<'de>>(d: D) -> Result<BTreeSet<BinHash>, D::Error> {
+    let texts = Vec::<String>::deserialize(d)?;
+    texts.iter().map(|text| hash_of(text)).collect()
+}
+
+/// Entry or field hashes read back from their hex digits, in the order written.
+pub(super) fn hex_hash_list<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<BinHash>, D::Error> {
+    let texts = Vec::<String>::deserialize(d)?;
+    texts.iter().map(|text| hash_of(text)).collect()
+}
+
+/// A path hash read back from its sixteen hex digits.
+pub(super) fn path_of<E: serde::de::Error>(text: &str) -> Result<WadHash, E> {
+    let hash = crate::model::hash::wad_hash_of_hex(text);
+    hash.ok_or_else(|| E::custom(format_args!("{text:?} is no path hash")))
+}
+
 /// Entry hashes as eight hex digits each.
 pub(super) fn hashes_hex<S: Serializer>(
     hashes: &BTreeSet<BinHash>,
@@ -521,13 +551,13 @@ impl Diag for LinkDangling {
 
 /// A name of a game object a port copies from the bins of another skin, and whence
 /// (#ADR-0083).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CopiedName {
     /// The name the game holds it under.
-    #[serde(serialize_with = "entry_hex")]
+    #[serde(serialize_with = "entry_hex", deserialize_with = "hex_entry")]
     pub name: BinHash,
     /// Its class.
-    #[serde(serialize_with = "entry_hex")]
+    #[serde(serialize_with = "entry_hex", deserialize_with = "hex_entry")]
     pub class: BinHash,
     /// The slot whose bins it is copied from.
     pub from: Slot,

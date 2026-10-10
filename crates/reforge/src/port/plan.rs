@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 
 use ltk_meta::{BinObject, PropertyValueEnum};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::audio::{AudioPlan, OwnClips};
 use super::base::Base;
@@ -44,7 +44,7 @@ use crate::model::{
 };
 
 /// What `plan` is configured with.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortOptions {
     /// Stale copies were loaded as the mod's own files, and a port ships them.
     pub keep_stale: bool,
@@ -137,7 +137,7 @@ impl<'a> Objects<'a> {
 }
 
 /// One unit of a port.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PortUnit {
     /// The unit.
     pub unit: UnitId,
@@ -166,7 +166,7 @@ pub struct PortUnit {
 }
 
 /// The stage `plan`'s result: the units that ship, renamed and placed.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Port {
     /// The options it was planned under.
     pub options: PortOptions,

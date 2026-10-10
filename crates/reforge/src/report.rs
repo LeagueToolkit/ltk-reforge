@@ -927,9 +927,10 @@ pub struct Report {
     /// The decisions, when targets were chosen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub targets: Option<TargetsRow>,
-    /// The plan of a port, when one was made: `Port` as serde writes it.
+    /// The plan of a port, when one was made, without the values the report leaves out
+    /// (`PortValues`).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<serde_json::Value>,
+    pub port: Option<Port>,
     /// The package, when one was built.
     pub package: Option<PackageRow>,
     /// The evidence the package embeds (#ADR-0041), when the run that built it gave it one.
@@ -1065,15 +1066,9 @@ impl ReportBuilder {
 
     /// The plan of a port: the units that ship and why the others left, what each entry
     /// reaches, where each file is found, the renames, and each unit's and file's place.
-    ///
-    /// # Panics
-    ///
-    /// When serde fails to write a plan into memory, which no value of one makes it do.
     #[must_use]
     pub fn port(mut self, port: &Port) -> Self {
-        let row = serde_json::to_value(port);
-        let row = row.unwrap_or_else(|error| panic!("a plan does not write: {error}"));
-        self.report.port = Some(row);
+        self.report.port = Some(port.part());
         self
     }
 

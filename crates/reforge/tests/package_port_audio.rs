@@ -13,7 +13,10 @@ use reforge::model::{AudioBlock, ChunkPath, Layer, SkinEntry, name_hash, path_ha
 use reforge::package::{
     Coverage, Done, MANIFEST_FILE, Origin, Package, PackageWriter, PortBuilder, Ported, ProjectDir,
 };
-use reforge::port::{AudioNotCarried, AudioUnitsLeftOut, BankUnit, NotCarried, Port, UnitAudio};
+use reforge::port::{
+    AudioNotCarried, AudioUnitsLeftOut, BankUnit, NotCarried, Port, PortValues, UnitAudio,
+};
+use reforge::store::MemoryStore;
 use reforge_testkit::bins::{Skin, bin, entry, graph, resolver};
 use reforge_testkit::facts::{archive, env, mod_skin, own_files};
 use reforge_testkit::skins::{self, BASE_CLIPS, WAD, skin_bin};
@@ -88,6 +91,32 @@ fn the_banks_ship_and_the_patch_adds_their_unit_after_the_games() {
         .into_iter()
         .any(|done| matches!(done.0, Coverage::RoundTrip { banks: 2, .. }));
     assert!(read_back, "{:#?}", run.messages());
+}
+
+#[test]
+fn the_banks_a_plan_snapshot_keeps_read_back_as_the_port_made_them() {
+    let env = env(audio_game(), NoHistory);
+    let clips = vec![clip(1, 1), clip(2, 7), clip(9, 9)];
+    let media = media_bank("test_base_sfx_audio", 134, clips);
+    let run = PortRun::of(&env, &mod_of(&[BASE_SFX], &[(SFX_AUDIO, media)]));
+    assert!(!run.port.audio.banks.is_empty());
+    let store = MemoryStore::new();
+    let values = PortValues::of(&run.port, &store);
+    let json = serde_json::to_string(&run.port.part()).expect("the port writes");
+    let part: Port = serde_json::from_str(&json).expect("the port reads");
+    let reopened = values.reopen(part, &store).expect("the values read back");
+    assert_eq!(reopened.audio.units, run.port.audio.units);
+    // A bank is kept as its bytes: an empty part it was made with reads back as none, and
+    // writes the same bytes.
+    let written = |port: &Port| -> Vec<Vec<u8>> {
+        port.audio
+            .banks
+            .iter()
+            .map(|made| made.bank.write())
+            .collect()
+    };
+    assert_eq!(written(&reopened), written(&run.port));
+    assert_eq!(reopened.objects, run.port.objects);
 }
 
 /// #MOD-ARTIFACT-0028: a unit of the game's name on banks of the mod's own stands in for

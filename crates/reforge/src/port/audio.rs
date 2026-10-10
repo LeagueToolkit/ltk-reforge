@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use reforge_wwise::{Bank, CLIENT_VERSION, Cut, Object, Wem, id_of};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::findings::{
     AudioCarried, AudioNotCarried, AudioUnitsLeftOut, CarriedBank, CarriedOnce, Carry,
@@ -50,7 +50,7 @@ pub type ClipRef = (String, u32);
 /// The clips of each unit's banks that are the mod's own. `Shipping` reads it: a unit that
 /// names an own clip no other unit carries is not the game's own skin (#ADR-0020), and a
 /// chroma with an own clip of its own does not fold (#ADR-0018).
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnClips {
     units: BTreeMap<UnitId, BTreeSet<ClipRef>>,
 }
@@ -85,7 +85,7 @@ impl OwnClips {
 }
 
 /// A bank unit the port adds to a skin entry's audio.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BankUnit {
     /// The unit's name.
     pub name: String,
@@ -104,7 +104,7 @@ pub struct BankUnit {
 }
 
 /// The audio one skin unit's port adds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UnitAudio {
     /// The skin unit.
     pub unit: UnitId,
@@ -117,12 +117,17 @@ pub struct UnitAudio {
     pub renamed: BTreeMap<String, String>,
     /// The game's units at the target that the block leaves out, as the mod's own block does
     /// (#ADR-0063).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub left_out: Vec<String>,
 }
 
+/// The bank of a made bank read from a report, which holds none.
+fn no_bank() -> Bank {
+    Bank::new_wpk(Vec::new())
+}
+
 /// A bank the port makes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MadeBank {
     /// Where it ships.
     pub path: ChunkPath,
@@ -140,13 +145,13 @@ pub struct MadeBank {
     pub clips: usize,
     /// How many objects it holds.
     pub objects: usize,
-    /// The bank, as the build writes it.
-    #[serde(skip)]
+    /// The bank, as the build writes it. A snapshot keeps it in the store (#ADR-0094).
+    #[serde(skip, default = "no_bank")]
     pub bank: Bank,
 }
 
 /// The audio of a port: the bank units and tags each skin unit adds, and the banks made.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AudioPlan {
     /// What each skin unit adds.
     pub units: Vec<UnitAudio>,

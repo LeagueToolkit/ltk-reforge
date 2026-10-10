@@ -19,7 +19,8 @@ use reforge::package::{
     Modpkg, NewBin, NewBinFailed, NotWritten, Origin, PackageWriter, PatchOf, PortBuilder, Ported,
     ProjectConfig, ProjectDir, ResolverFrozen, UnitPorted,
 };
-use reforge::port::{HudCarried, Policy, PortOptions};
+use reforge::port::{HudCarried, Policy, Port, PortOptions, PortValues};
+use reforge::store::MemoryStore;
 use reforge_testkit::bins::{
     Skin, bin, blob, entry, graph, particle, resolver, resolver_with, text, with_link,
 };
@@ -387,6 +388,27 @@ fn hud_port<'a>(env: &'a reforge::env::Env, icon: Vec<u8>) -> PortRun<'a> {
         facts.fix.names.learn_field(name);
     }
     PortRun::from_facts(env, facts, Policy::default(), PortOptions::default())
+}
+
+#[test]
+fn the_hud_edits_a_plan_snapshot_keeps_read_back_as_the_port_made_them() {
+    let env = env(hud_game(), NoHistory);
+    let run = hud_port(&env, b"the mod's own icon".to_vec());
+    assert!(
+        run.port
+            .hud
+            .champions
+            .iter()
+            .any(|hud| !hud.edits.is_empty())
+    );
+    let store = MemoryStore::new();
+    let values = PortValues::of(&run.port, &store);
+    let json = serde_json::to_string(&run.port.part()).expect("the port writes");
+    let part: Port = serde_json::from_str(&json).expect("the port reads");
+    let reopened = values.reopen(part, &store).expect("the values read back");
+    assert_eq!(reopened.hud, run.port.hud);
+    assert_eq!(reopened.objects, run.port.objects);
+    assert_eq!(reopened.units, run.port.units);
 }
 
 /// #GAME-BEHAVIOR-0004: the icon is named by a record on the champion's root bin.

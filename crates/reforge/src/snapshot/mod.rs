@@ -15,6 +15,7 @@
 mod decide;
 mod facts;
 mod fix;
+mod plan;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -24,6 +25,7 @@ use serde::{Deserialize, Serialize};
 pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
+pub use self::plan::{PlanSettings, PlanSnapshot};
 use crate::archive::{RawExtra, RawImage};
 use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
@@ -70,6 +72,8 @@ pub struct Snapshots {
     pub facts: Option<FactsSnapshot>,
     /// The snapshot after `decide`.
     pub decide: Option<DecideSnapshot>,
+    /// The snapshot after `plan`.
+    pub plan: Option<PlanSnapshot>,
 }
 
 impl Snapshots {
@@ -80,6 +84,7 @@ impl Snapshots {
             fix: None,
             facts: None,
             decide: None,
+            plan: None,
         }
     }
 }
@@ -202,6 +207,10 @@ pub enum Setting {
     Policy,
     /// The policies compared with it.
     Compared,
+    /// Whether a bank's events are cut from the game's events bank only.
+    GameEventsOnly,
+    /// Whether the units at slots other than their champion's target ship.
+    KeepOtherSlots,
 }
 
 /// The settings `load` reads (#ADR-0094).

@@ -14,6 +14,7 @@ mod reach;
 mod refs;
 mod renames;
 mod shipping;
+mod values;
 
 use std::fmt;
 
@@ -40,6 +41,7 @@ pub use self::refs::{
 };
 pub use self::renames::{Group, Renames, Retarget};
 pub use self::shipping::{Left, LeftUnit, Shipping};
+pub use self::values::{PortValues, ValuesError};
 use crate::model::Slot;
 
 /// A word that names no policy.

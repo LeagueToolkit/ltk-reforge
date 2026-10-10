@@ -8,9 +8,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::findings::Retargeted;
+use super::findings::{Retargeted, hash_of};
 use super::plan::{Objects, PortInputs};
 use super::shipping::Shipping;
 use crate::diag::Sink;
@@ -28,7 +28,7 @@ fn pairs_hex<S: Serializer>(pairs: &[(BinHash, BinHash)], s: S) -> Result<S::Ok,
 }
 
 /// A unit whose names moved from its slot to its target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Retarget {
     /// The unit.
     pub unit: UnitId,
@@ -39,18 +39,18 @@ pub struct Retarget {
 }
 
 /// Every rename of a port.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Renames {
     /// The units retargeted.
     pub retargeted: Vec<Retarget>,
     /// Source to target names every object takes: a skin entry, a resolver, and a graph the
     /// mod defines.
-    #[serde(serialize_with = "pairs_hex")]
+    #[serde(serialize_with = "pairs_hex", deserialize_with = "hex_pairs")]
     pub to_target: Vec<(BinHash, BinHash)>,
     /// Source to target names that swap one game object for another: the graph of the source
     /// slot for the target's. The objects of a unit whose rig does not fit its target do not
     /// take them.
-    #[serde(serialize_with = "pairs_hex")]
+    #[serde(serialize_with = "pairs_hex", deserialize_with = "hex_pairs")]
     pub game_swaps: Vec<(BinHash, BinHash)>,
     /// How many objects kept their links to the source slot's game objects.
     pub links_kept: usize,
@@ -59,7 +59,7 @@ pub struct Renames {
     pub namespaced: BTreeMap<Group, Vec<(BinHash, BinHash)>>,
     /// The one new name of each carried object, whichever unit carries it first. A report
     /// holds them in object order.
-    #[serde(serialize_with = "names_in_order")]
+    #[serde(serialize_with = "names_in_order", deserialize_with = "hex_names")]
     pub names: HashMap<ObjectId, BinHash>,
 }
 
@@ -72,6 +72,22 @@ fn names_in_order<S: Serializer>(
         .map(|(object, name)| (*object, format!("{:08x}", name.0)))
         .collect();
     s.collect_map(ordered)
+}
+
+fn hex_pairs<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<(BinHash, BinHash)>, D::Error> {
+    let rows = Vec::<(String, String)>::deserialize(d)?;
+    let pairs = rows
+        .iter()
+        .map(|(from, to)| Ok((hash_of(from)?, hash_of(to)?)));
+    pairs.collect()
+}
+
+fn hex_names<'de, D: Deserializer<'de>>(d: D) -> Result<HashMap<ObjectId, BinHash>, D::Error> {
+    let rows = BTreeMap::<ObjectId, String>::deserialize(d)?;
+    let names = rows
+        .into_iter()
+        .map(|(object, name)| Ok((object, hash_of(&name)?)));
+    names.collect()
 }
 
 impl Renames {

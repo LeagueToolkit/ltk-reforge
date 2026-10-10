@@ -34,7 +34,8 @@ use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets};
 use crate::report::{AgainRow, Report};
 use crate::snapshot::{
     self, DecideSettings, DecideSnapshot, FactsSettings, FactsSnapshot, FixSettings, FixSnapshot,
-    LoadSettings, LoadSnapshot, LoadState, ResumeError, Setting, Snapshots,
+    LoadSettings, LoadSnapshot, LoadState, PlanSettings, PlanSnapshot, ResumeError, Setting,
+    Snapshots,
 };
 use crate::store::{BlobStore, Layered, MemoryStore};
 
@@ -175,6 +176,8 @@ pub enum Start {
     Facts(Box<Snapshots>),
     /// The snapshots through `decide`: the run starts at `plan`. A port's alone.
     Decide(Box<Snapshots>),
+    /// The snapshots through `plan`: the run starts at `build`. A port's alone.
+    Plan(Box<Snapshots>),
 }
 
 impl From<RawSnapshot> for Start {
@@ -518,6 +521,7 @@ pub struct Run<'a> {
     fix_snapshot: Option<FixSnapshot>,
     facts_snapshot: Option<FactsSnapshot>,
     decide_snapshot: Option<DecideSnapshot>,
+    plan_snapshot: Option<PlanSnapshot>,
     module: Reached,
     dating: Option<Dating>,
     redated: Option<Dating>,
@@ -550,6 +554,7 @@ impl<'a> Run<'a> {
             fix_snapshot: None,
             facts_snapshot: None,
             decide_snapshot: None,
+            plan_snapshot: None,
             module: Reached::Nothing,
             dating: None,
             redated: None,
@@ -663,6 +668,7 @@ impl<'a> Run<'a> {
             Start::Fix(snapshots) => self.reopen_run(*snapshots, Stage::Fix, &codes)?,
             Start::Facts(snapshots) => self.reopen_run(*snapshots, Stage::Facts, &codes)?,
             Start::Decide(snapshots) => self.reopen_run(*snapshots, Stage::Decide, &codes)?,
+            Start::Plan(snapshots) => self.reopen_run(*snapshots, Stage::Plan, &codes)?,
         }
         Ok(self)
     }
@@ -683,10 +689,12 @@ impl<'a> Run<'a> {
             fix,
             facts,
             decide,
+            plan,
         } = snapshots;
         let fix = snapshot::after(fix, Stage::Fix)?;
         let facts = snapshot::through(facts, Stage::Facts, last)?;
         let decide = snapshot::through(decide, Stage::Decide, last)?;
+        let plan = snapshot::through(plan, Stage::Plan, last)?;
         let module = self.reopen_load(&load)?;
         let fixed = self.reopen_fix(module, &load, &fix)?;
         let mut findings = fix.findings();
@@ -702,12 +710,19 @@ impl<'a> Run<'a> {
             self.targets = Some(decide.targets().clone());
             findings = decide.findings();
         }
+        if let Some(plan) = &plan {
+            plan.holds(&PlanSettings::of(&self.settings.port_options()))?;
+            self.plan = Some(plan.port(&self.store)?);
+            self.book = plan.names().clone();
+            findings = plan.findings();
+        }
         self.log.restore(findings, codes)?;
         self.module = Reached::Fixed(fixed);
         self.loaded = Some(load);
         self.fix_snapshot = Some(fix);
         self.facts_snapshot = facts;
         self.decide_snapshot = decide;
+        self.plan_snapshot = plan;
         Ok(())
     }
 
@@ -1014,6 +1029,13 @@ impl<'a> Run<'a> {
             }
             for entry in entries {
                 self.book.learn_entry(entry);
+            }
+            if self.decide_snapshot.is_some() {
+                let fixed = self.module.fixed(Stage::Plan)?;
+                let settings = PlanSettings::of(&self.settings.port_options());
+                let declared = (settings, self.log.logged_from(self.first));
+                let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
+                self.plan_snapshot = Some(snapshot);
             }
             self.plan = Some(port);
         }
@@ -1334,7 +1356,13 @@ impl<'a> Run<'a> {
         snapshots.fix = self.fix_snapshot.clone();
         snapshots.facts = self.facts_snapshot.clone();
         snapshots.decide = self.decide_snapshot.clone();
+        snapshots.plan = self.plan_snapshot.clone();
         Some(snapshots)
+    }
+
+    /// The plan snapshot, once `plan` ended or the run started from one (#ADR-0094).
+    pub fn plan_snapshot(&self) -> Option<&PlanSnapshot> {
+        self.plan_snapshot.as_ref()
     }
 
     /// The decide snapshot, once `decide` ended or the run started from one (#ADR-0094).

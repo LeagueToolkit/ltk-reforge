@@ -11,11 +11,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Write as _;
 
 use ltk_meta::BinObject;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::base::{Base, BaseObjects};
 use super::findings::{
-    CopiedName, GameCarried, LinkDangling, ObjectsCopied, Unreached, hashes_hex,
+    CopiedName, GameCarried, LinkDangling, ObjectsCopied, Unreached, hashes_hex, hex_hashes,
 };
 use super::plan::{Objects, PlanError, PortInputs};
 use crate::diag::Sink;
@@ -31,7 +31,7 @@ use crate::model::{
 use crate::game::SHADERS_BIN;
 
 /// What becomes of an object the entry reaches.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Fate {
     /// The unit's skin entry: its carried fields patch the game's entry at the target.
@@ -62,7 +62,7 @@ impl Fate {
 
 /// The game's object under a name only the bins of another skin hold, which a port copies
 /// under the target's names (#ADR-0083).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Copied {
     /// The name, and whence.
     #[serde(flatten)]
@@ -73,25 +73,25 @@ pub struct Copied {
 }
 
 /// What one unit's entry reaches at its target.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct UnitReach {
     /// The target.
     pub target: Slot,
     /// The mod's objects the entry reaches, breadth first, each with its fate.
     pub objects: Vec<(ObjectId, Fate)>,
     /// Names reached that resolve to the game's objects at the target.
-    #[serde(serialize_with = "hashes_hex")]
+    #[serde(serialize_with = "hashes_hex", deserialize_with = "hex_hashes")]
     pub game: BTreeSet<BinHash>,
     /// A sub-character's names that resolve to its champion's objects, which the champion's
     /// unit carries.
-    #[serde(serialize_with = "hashes_hex")]
+    #[serde(serialize_with = "hashes_hex", deserialize_with = "hex_hashes")]
     pub champion: BTreeSet<BinHash>,
     /// Names reached that nothing loaded at the target holds, nor the game's bins of another
     /// skin.
-    #[serde(serialize_with = "hashes_hex")]
+    #[serde(serialize_with = "hashes_hex", deserialize_with = "hex_hashes")]
     pub dangling: BTreeSet<BinHash>,
     /// Names only the game's bins of another skin hold, copied, in the order reached.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub copies: Vec<Copied>,
     /// The game bins the port keeps as links: the ones the mod's load links, and a bin of the
     /// source slot that holds a name the target's bins lack.
@@ -123,7 +123,7 @@ impl UnitReach {
 }
 
 /// What each unit with a target and an entry reaches.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Reach {
     /// By unit.
     pub units: BTreeMap<UnitId, UnitReach>,

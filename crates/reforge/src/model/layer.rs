@@ -1,9 +1,9 @@
 //! The layers of a package: the parts a player turns on and off.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// A part of a package a player turns on or off.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Layer {
     /// What is always on.

@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write as _;
 
 use ltk_meta::BinObject;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::entity::{FileKind, FileNode, Mod, ModMeta};
 use crate::model::{
@@ -14,7 +14,7 @@ use crate::model::{
 };
 
 /// The names a port makes for the hashes it writes: what its hash tables list.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MadeNames {
     /// Chunk paths.
     pub paths: BTreeSet<String>,
@@ -24,7 +24,7 @@ pub struct MadeNames {
 
 /// The owner of a port's names and paths. It keeps which are taken, so no two files and no
 /// two objects get one.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Layout {
     /// `<name>.<author>` from the archive's metadata, the mod id for a part that is missing.
     pub namespace: String,

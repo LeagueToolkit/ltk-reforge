@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::audio::{ClipRef, OwnClips};
 use super::decide::Reason;
@@ -32,7 +32,7 @@ use crate::model::entity::{CharId, CharKind, FileId, FileKind, Mod, ObjectId, Un
 use crate::model::{ContentId, Dump, DumpCx, Slot, clean};
 
 /// Why a unit leaves the port.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "why", rename_all = "kebab-case")]
 pub enum Left {
     /// A copy of another unit, which is ported in its place.
@@ -89,7 +89,7 @@ impl Left {
 }
 
 /// A unit that leaves the port.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LeftUnit {
     /// Why.
     #[serde(flatten)]
@@ -99,7 +99,7 @@ pub struct LeftUnit {
 }
 
 /// The units that ship, and the ones that leave.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Shipping {
     /// The units that ship, in unit order.
     pub ships: Vec<UnitId>,
