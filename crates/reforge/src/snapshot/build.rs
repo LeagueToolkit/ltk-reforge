@@ -13,7 +13,9 @@ use crate::diag::{Logged, Stage};
 use crate::load::KeptFile;
 use crate::model::entity::{CharId, FileId, UnitId};
 use crate::model::hash::bin_hex;
-use crate::model::{BinHash, ByteView, ChunkPath, ContentId, Layer, WadName, bin};
+use crate::model::{
+    BinHash, BlobAccess, Blobs, ByteView, ChunkPath, ContentId, Layer, WadName, bin,
+};
 use crate::package::{
     BinWrite, Chunk, ChunkKey, EvidenceDoc, Origin, Package, Patch, PatchOf, ProjectConfig,
     Thumbnail, WrittenBin,
@@ -77,9 +79,9 @@ impl WrittenRecord {
         }
     }
 
-    fn written(&self, store: &dyn BlobStore) -> Result<WrittenBin, ResumeError> {
+    fn written(&self, store: &dyn BlobAccess) -> Result<WrittenBin, ResumeError> {
         let edited = self.edited.iter().map(|&id| {
-            let bytes = store.get(id).ok_or(ResumeError::Store(id))?;
+            let bytes = bytes(store, id)?;
             let object = bin::read_one(&bytes);
             object.map_err(|why| ResumeError::Malformed(format!("{id:?}: {why}")))
         });
@@ -129,7 +131,7 @@ impl OriginRecord {
         }
     }
 
-    fn origin(&self, store: &dyn BlobStore) -> Result<Origin, ResumeError> {
+    fn origin(&self, store: &dyn BlobAccess) -> Result<Origin, ResumeError> {
         Ok(match self {
             OriginRecord::Kept { file } => Origin::Kept(*file),
             OriginRecord::Rewritten { file, written } => Origin::Rewritten {
@@ -149,6 +151,7 @@ struct ChunkRecord {
     wad: WadName,
     path: ChunkPath,
     content: ContentId,
+    size: u64,
     origin: OriginRecord,
 }
 
@@ -192,7 +195,7 @@ impl PatchRecord {
         }
     }
 
-    fn patch(&self, store: &dyn BlobStore) -> Result<Patch, ResumeError> {
+    fn patch(&self, store: &dyn BlobAccess) -> Result<Patch, ResumeError> {
         Ok(Patch {
             target: self.target.clone(),
             path: self.path.clone(),
@@ -235,7 +238,11 @@ impl PackageRecord {
                 .map(|(key, chunk)| ChunkRecord {
                     wad: key.wad.clone(),
                     path: key.path.clone(),
-                    content: store.put(chunk.bytes.clone()),
+                    // A chunk that holds no bytes names the store's.
+                    content: chunk
+                        .held()
+                        .map_or(chunk.content, |bytes| store.put(bytes.clone())),
+                    size: chunk.size,
                     origin: OriginRecord::of(&chunk.origin, store),
                 })
                 .collect(),
@@ -256,8 +263,9 @@ impl PackageRecord {
         }
     }
 
-    fn package(&self, store: &dyn BlobStore) -> Result<Package, ResumeError> {
-        let mut package = Package::new(self.config.clone());
+    fn package(&self, blobs: &Blobs) -> Result<Package, ResumeError> {
+        let store: &dyn BlobAccess = blobs;
+        let mut package = Package::new(self.config.clone()).in_store(blobs.clone());
         for path in &self.paths {
             package.tables.add_path(path);
         }
@@ -271,11 +279,12 @@ impl PackageRecord {
         for layer in &self.layers {
             for chunk in &layer.chunks {
                 let key = ChunkKey::new(chunk.wad.clone(), chunk.path.clone());
-                let held = Chunk {
-                    bytes: bytes(store, chunk.content)?,
-                    origin: chunk.origin.origin(store)?,
-                };
-                if package.insert(layer.layer.clone(), key, held).is_some() {
+                if !store.holds(chunk.content) {
+                    return Err(ResumeError::Store(chunk.content));
+                }
+                let origin = chunk.origin.origin(store)?;
+                let stored = Chunk::stored(chunk.content, chunk.size, origin);
+                if package.insert(layer.layer.clone(), key, stored).is_some() {
                     let at = format!("{}/{}", chunk.wad, chunk.path);
                     return Err(ResumeError::Malformed(format!("two chunks at {at}")));
                 }
@@ -288,8 +297,8 @@ impl PackageRecord {
     }
 }
 
-fn bytes(store: &dyn BlobStore, id: ContentId) -> Result<ByteView, ResumeError> {
-    store.get(id).ok_or(ResumeError::Store(id))
+fn bytes(store: &dyn BlobAccess, id: ContentId) -> Result<ByteView, ResumeError> {
+    store.fetch(id).ok_or(ResumeError::Store(id))
 }
 
 /// The snapshot after `build` (#ADR-0094). It names bytes by content id and holds none.
@@ -361,9 +370,10 @@ impl BuildSnapshot {
         &self.findings
     }
 
-    /// The package `build` gave, its bytes read back from `store`.
-    pub fn package(&self, store: &dyn BlobStore) -> Result<Package, ResumeError> {
-        self.package.package(store)
+    /// The package `build` gave, reading its chunks' bytes from the run's store `blobs`
+    /// where it uses them.
+    pub fn package(&self, blobs: &Blobs) -> Result<Package, ResumeError> {
+        self.package.package(blobs)
     }
 
     /// Refuses a run whose program or `build` settings are not the snapshot's.

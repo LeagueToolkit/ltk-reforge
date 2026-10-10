@@ -132,7 +132,7 @@ fn a_bin_the_client_loads_and_a_file_it_names_ship() {
     let env = env();
     let run = repair(&env, vec![particle("P", OWN_TEX)], OWN_TEX, &blob(OWN_TEX));
     assert!(matches!(run.chunk(SKIN0_BIN).origin, Origin::Kept(_)));
-    assert_eq!(&*run.chunk(OWN_TEX).bytes, blob(OWN_TEX).as_slice());
+    assert_eq!(&*run.chunk_bytes(OWN_TEX), blob(OWN_TEX).as_slice());
     let found = run.only::<InPlace>();
     assert_eq!((found.kept, found.left), (2, left(&[])));
 }
@@ -143,7 +143,7 @@ fn a_file_at_a_path_the_game_ships_ships_though_no_bin_of_the_mod_names_it() {
     // Skin 3's texture: the game's own bins read the path, and the mod's bin does not.
     let run = repair(&env, vec![], S3_TEX, b"the mod's own texture for skin 3");
     assert_eq!(
-        &*run.chunk(S3_TEX).bytes,
+        &*run.chunk_bytes(S3_TEX),
         b"the mod's own texture for skin 3"
     );
     assert_eq!(run.only::<InPlace>().left, left(&[]));
@@ -164,7 +164,7 @@ fn a_file_a_file_fixup_made_ships_beside_the_file_it_was_made_from() {
         )
         .file(WAD, &old, texture.clone());
     let run = PackRun::of(&env, &FixupSet::standard(), &archive);
-    assert_eq!(&*run.chunk(BASE_PARTICLE_TEX).bytes, texture.as_slice());
+    assert_eq!(&*run.chunk_bytes(BASE_PARTICLE_TEX), texture.as_slice());
     assert!(run.ships(&old));
     let found = run.only::<InPlace>();
     assert_eq!(

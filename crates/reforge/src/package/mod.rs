@@ -62,8 +62,10 @@ pub use self::write::{
 use crate::diag::{Code, Diag};
 pub use crate::fixups::BinWrite;
 pub use crate::model::Layer;
-use crate::model::entity::{CharId, FileId, UnitId};
-use crate::model::{BinHash, ByteView, ChunkPath, Dump, DumpCx, WadHash, WadName};
+use crate::model::entity::{CharId, FileId, FileNode, UnitId};
+use crate::model::{
+    BinHash, Blobs, ByteView, ChunkPath, ContentId, Dump, DumpCx, WadHash, WadName,
+};
 
 /// Every diagnostic code this module raises.
 pub const CODES: &[Code] = &[
@@ -231,22 +233,58 @@ pub struct Patch {
     pub records: usize,
 }
 
-/// One chunk of a package.
-#[derive(Debug, Clone, PartialEq)]
+/// One chunk of a package: its bytes by content id, held when the run made them. A file of
+/// the mod kept as it is is never read to be carried: a writer fetches it from the run's store
+/// (#ADR-0100).
+#[derive(Debug, Clone)]
 pub struct Chunk {
-    /// Its bytes, as a writer writes them.
-    pub bytes: ByteView,
+    /// The digest of its bytes, and the id the run's store holds them under when the chunk
+    /// holds none.
+    pub content: ContentId,
+    /// Its size in bytes.
+    pub size: u64,
     /// Where they come from.
     pub origin: Origin,
+    held: Option<ByteView>,
 }
 
 impl Chunk {
-    /// A file of the mod with the bytes it has.
-    pub fn kept(file: FileId, bytes: ByteView) -> Self {
+    /// A chunk of bytes a stage made, which it holds.
+    pub fn new(bytes: ByteView, origin: Origin) -> Self {
         Self {
-            bytes,
-            origin: Origin::Kept(file),
+            content: ContentId::of(&bytes),
+            size: bytes.len() as u64,
+            origin,
+            held: Some(bytes),
         }
+    }
+
+    /// A chunk whose bytes are in the run's store under `content`.
+    pub fn stored(content: ContentId, size: u64, origin: Origin) -> Self {
+        Self {
+            content,
+            size,
+            origin,
+            held: None,
+        }
+    }
+
+    /// A file of the mod with the bytes it has, which stay in the store.
+    pub fn kept(id: FileId, file: &FileNode) -> Self {
+        Self::stored(file.content, file.size, Origin::Kept(id))
+    }
+
+    /// The bytes it holds: none for a chunk whose bytes are in the store.
+    pub fn held(&self) -> Option<&ByteView> {
+        self.held.as_ref()
+    }
+}
+
+/// Two chunks are one when their bytes and their origin are: whether a chunk holds its bytes
+/// or the store does is no part of it.
+impl PartialEq for Chunk {
+    fn eq(&self, other: &Self) -> bool {
+        (self.content, self.size, &self.origin) == (other.content, other.size, &other.origin)
     }
 }
 
@@ -290,7 +328,11 @@ impl HashTables {
 
 /// What a run writes: layers of chunks, the hash tables, the project's config, the evidence
 /// of the run and the thumbnail. Only checked paths are in it.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// A package built by a run reads the chunks it does not hold from the run's store
+/// ([`Package::bytes`]). Which store it reads is no part of it, and two packages are compared
+/// without it.
+#[derive(Debug, Clone)]
 pub struct Package {
     /// The project's config.
     pub config: ProjectConfig,
@@ -304,10 +346,22 @@ pub struct Package {
     pub thumbnail: Option<Thumbnail>,
     layers: BTreeMap<Layer, BTreeMap<ChunkKey, Chunk>>,
     patches: BTreeMap<Layer, Vec<Patch>>,
+    blobs: Option<Blobs>,
+}
+
+impl PartialEq for Package {
+    fn eq(&self, other: &Self) -> bool {
+        self.config == other.config
+            && self.tables == other.tables
+            && self.evidence == other.evidence
+            && self.thumbnail == other.thumbnail
+            && self.layers == other.layers
+            && self.patches == other.patches
+    }
 }
 
 impl Package {
-    /// A package with its base layer, no chunk and no evidence.
+    /// A package with its base layer, no chunk and no evidence, whose chunks hold their bytes.
     pub fn new(config: ProjectConfig) -> Self {
         Self {
             config,
@@ -316,6 +370,33 @@ impl Package {
             thumbnail: None,
             layers: BTreeMap::from([(Layer::Base, BTreeMap::new())]),
             patches: BTreeMap::new(),
+            blobs: None,
+        }
+    }
+
+    /// Reads the chunks that hold no bytes from the run's store.
+    #[must_use]
+    pub fn in_store(mut self, blobs: Blobs) -> Self {
+        self.blobs = Some(blobs);
+        self
+    }
+
+    /// A chunk's bytes: the ones it holds, else the ones the run's store holds under its id.
+    /// Nothing keeps them but the caller.
+    ///
+    /// # Panics
+    ///
+    /// For a chunk that holds no bytes, of a package that reads no store: no run built it.
+    pub fn bytes(&self, chunk: &Chunk) -> ByteView {
+        if let Some(bytes) = &chunk.held {
+            return bytes.clone();
+        }
+        match &self.blobs {
+            Some(blobs) => blobs.fetch(chunk.content),
+            None => panic!(
+                "a package that reads no store holds no bytes of the chunk {:?}",
+                chunk.content
+            ),
         }
     }
 
@@ -444,7 +525,7 @@ impl Dump for Package {
                 layer.name(),
                 key.wad,
                 key.path,
-                chunk.bytes.len(),
+                chunk.size,
                 chunk.origin.name(),
             );
         }

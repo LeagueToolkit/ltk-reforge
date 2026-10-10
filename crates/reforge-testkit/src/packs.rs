@@ -5,7 +5,7 @@ use reforge::diag::{Diag, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, ObjectSet, TargetTypes};
 use reforge::load::LoadOptions;
-use reforge::model::path_hash;
+use reforge::model::{ByteView, path_hash};
 use reforge::package::{BuildError, CheckCx, CheckSet, Chunk, InPlaceBuilder, Package};
 
 use crate::fixes::FixRun;
@@ -86,6 +86,15 @@ impl<'a> PackRun<'a> {
         chunk
     }
 
+    /// The bytes of the chunk of the base layer at a path, in any WAD.
+    ///
+    /// # Panics
+    ///
+    /// When the package holds none there.
+    pub fn chunk_bytes(&self, path: &str) -> ByteView {
+        self.package().bytes(self.chunk(path))
+    }
+
     /// Whether the package holds a chunk at a path.
     pub fn ships(&self, path: &str) -> bool {
         let hash = path_hash(path);
@@ -98,7 +107,8 @@ impl<'a> PackRun<'a> {
     pub fn archive(&self) -> ModArchive {
         let chunks = self.package().chunks();
         chunks.fold(ModArchive::new(), |archive, (_, key, chunk)| {
-            archive.file(key.wad.as_str(), key.path.as_str(), chunk.bytes.to_vec())
+            let bytes = self.package().bytes(chunk).to_vec();
+            archive.file(key.wad.as_str(), key.path.as_str(), bytes)
         })
     }
 

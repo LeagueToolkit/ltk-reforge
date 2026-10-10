@@ -12,6 +12,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Cursor, Write as _};
+use std::sync::Arc;
 
 use camino::Utf8Path;
 use zip::CompressionMethod;
@@ -31,7 +32,7 @@ use crate::load::{
     Dating, Fault, FileProvenance, Inventory, KeptFile, LOAD_PARTS, LoadError, LoadOptions, Loader,
     ReworkTable, against,
 };
-use crate::model::{ByteView, ContentId, Mod, Spelled};
+use crate::model::{Blobs, ByteView, ContentId, Mod, Spelled};
 use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
     PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
@@ -131,6 +132,15 @@ pub enum RunError {
     /// The package of a repair did not pack as an archive in memory, for its second run.
     #[error("the package did not pack as an archive in memory")]
     Again(#[source] ZipError),
+    /// A stage asked the run's store for a file's bytes it does not hold (#ADR-0100): the
+    /// stage's result is not kept.
+    #[error("the run's store holds no bytes under {id:?}, which {stage} read")]
+    Store {
+        /// The stage that asked.
+        stage: Stage,
+        /// The id the store lacks.
+        id: ContentId,
+    },
 }
 
 impl RunError {
@@ -684,6 +694,12 @@ fn held<T>(result: Option<&T>, stage: Stage, needs: Stage) -> Result<&T, RunErro
 /// store, each an empty memory store unless given.
 type Under = Layered<Box<dyn BlobStore>, Box<dyn BlobStore>>;
 
+/// A run's store before any is given: its memory layer over two empty stores.
+fn empty_store() -> Layered<MemoryStore, Under> {
+    let under: Under = Layered::new(Box::new(MemoryStore::new()), Box::new(MemoryStore::new()));
+    Layered::new(MemoryStore::new(), under)
+}
+
 /// One archive taken through the stages, with everything the stages gave.
 ///
 /// A stage runs once: asked again, its method gives the result the run holds. After a fatal
@@ -698,7 +714,9 @@ pub struct Run<'a> {
     book: NameBook,
     /// The run's memory layer over the caller's store, over the cache's ingest store
     /// (#ADR-0093): every byte a stage makes goes into the layer, and the caller flushes it.
-    store: Layered<MemoryStore, Under>,
+    store: Arc<Layered<MemoryStore, Under>>,
+    /// The run's store as the mod and its package read it (#ADR-0100).
+    blobs: Blobs,
     /// The raw snapshots `read` takes in place of reading an archive, and leaves (#ADR-0095).
     cache: Option<RawCache>,
     /// Where the findings of `read` begin in the log.
@@ -729,6 +747,7 @@ impl<'a> Run<'a> {
         if let Some(cancel) = cancel {
             log.cancel_on(cancel.clone());
         }
+        let store = Arc::new(empty_store());
         Self {
             env,
             settings,
@@ -736,10 +755,8 @@ impl<'a> Run<'a> {
             known: None,
             log,
             book: NameBook::new(),
-            store: Layered::new(
-                MemoryStore::new(),
-                Layered::new(Box::new(MemoryStore::new()), Box::new(MemoryStore::new())),
-            ),
+            blobs: Blobs::new(store.clone()),
+            store,
             cache: None,
             first: 0,
             raw: None,
@@ -795,11 +812,12 @@ impl<'a> Run<'a> {
     /// (#ADR-0093). Nothing is written into it: the caller flushes the layer
     /// ([`Run::into_layer`]).
     #[must_use]
-    pub fn in_store(mut self, store: impl BlobStore + 'static) -> Self {
-        let (layer, under) = self.store.into_parts();
-        let (_, ingest) = under.into_parts();
-        self.store = Layered::new(layer, Layered::new(Box::new(store), ingest));
-        self
+    pub fn in_store(self, store: impl BlobStore + 'static) -> Self {
+        self.restored(|run| {
+            let (layer, under) = run.into_parts();
+            let (_, ingest) = under.into_parts();
+            Layered::new(layer, Layered::new(Box::new(store), ingest))
+        })
     }
 
     /// Reads archives through this cache (#ADR-0095): `read` takes the raw snapshot it holds of
@@ -807,13 +825,37 @@ impl<'a> Run<'a> {
     /// ingest store with the snapshot beside it. The run reads through to the ingest store
     /// under the caller's store, and writes nothing else into it.
     #[must_use]
-    pub fn in_cache(mut self, cache: RawCache) -> Self {
-        let (layer, under) = self.store.into_parts();
-        let (store, _) = under.into_parts();
+    pub fn in_cache(self, cache: RawCache) -> Self {
         let ingest: Box<dyn BlobStore> = Box::new(cache.store().clone());
-        self.store = Layered::new(layer, Layered::new(store, ingest));
-        self.cache = Some(cache);
+        let mut run = self.restored(|run| {
+            let (layer, under) = run.into_parts();
+            let (store, _) = under.into_parts();
+            Layered::new(layer, Layered::new(store, ingest))
+        });
+        run.cache = Some(cache);
+        run
+    }
+
+    /// The run with its store changed, before any stage holds it.
+    fn restored(
+        mut self,
+        change: impl FnOnce(Layered<MemoryStore, Under>) -> Layered<MemoryStore, Under>,
+    ) -> Self {
+        self.blobs = Blobs::new(Arc::new(MemoryStore::new()));
+        let store = std::mem::replace(&mut self.store, Arc::new(empty_store()));
+        let store = Arc::into_inner(store)
+            .unwrap_or_else(|| panic!("a run's store is changed after a stage holds it"));
+        self.store = Arc::new(change(store));
+        self.blobs = Blobs::new(self.store.clone());
         self
+    }
+
+    /// Ends a stage whose fetch the run's store did not answer (#ADR-0100).
+    fn fetched(&self, stage: Stage) -> Result<(), RunError> {
+        match self.blobs.missing() {
+            Some(id) => Err(RunError::Store { stage, id }),
+            None => Ok(()),
+        }
     }
 
     /// Ends a stage's method where a fatal diagnostic or a cancel ended the run.
@@ -981,7 +1023,7 @@ impl<'a> Run<'a> {
         }
         if let Some(build) = &build {
             build.holds(&self.settings.build_settings())?;
-            self.package = Some(build.package(&self.store)?);
+            self.package = Some(build.package(&self.blobs)?);
             findings = build.findings();
             if let Some(check) = &check {
                 check.holds(&self.settings.check_settings())?;
@@ -1011,7 +1053,7 @@ impl<'a> Run<'a> {
     fn reopen_load(&mut self, load: &LoadSnapshot) -> Result<Mod, ResumeError> {
         let inputs = snapshot::LoadInputs::of(self.env);
         load.holds(&inputs, &self.settings.load_settings())?;
-        let reopened = load.reopen(&self.store)?;
+        let reopened = load.reopen(&self.blobs)?;
         self.book = reopened.names;
         self.dating = Some(reopened.dating);
         self.provenance = reopened.provenance;
@@ -1073,7 +1115,7 @@ impl<'a> Run<'a> {
             Mode::InPlace => &LOAD_PARTS[..LOAD_PARTS.len() - 2],
         });
         let opened = parts.begin(&mut sink).map_err(LoadError::from);
-        let mut module = match opened.and_then(|()| loader.open(raw, &self.store)) {
+        let mut module = match opened.and_then(|()| loader.open(raw, &self.blobs)) {
             Ok(module) => module,
             Err(error) => {
                 self.book = loader.into_names();
@@ -1120,6 +1162,7 @@ impl<'a> Run<'a> {
                 return Err(error);
             }
         };
+        self.fetched(Stage::Load)?;
         self.loaded = Some(self.snapshot_of(&module, &found, taken.as_ref()));
         match &self.known {
             Some(known) => {
@@ -1178,13 +1221,7 @@ impl<'a> Run<'a> {
             image: raw.and_then(|raw| raw.image),
         };
         let findings = self.log.logged_from(self.first);
-        LoadSnapshot::of(
-            &state,
-            self.env,
-            self.settings.load_settings(),
-            findings,
-            &self.store,
-        )
+        LoadSnapshot::of(&state, self.env, self.settings.load_settings(), findings)
     }
 
     /// The stage `fix`: the fixups on the bins applied to every loaded object (#ADR-0002).
@@ -1206,6 +1243,7 @@ impl<'a> Run<'a> {
                         let snapshot = self.fix_snapshot_of(&fixed, &changes);
                         self.module = Reached::Fixed(fixed);
                         self.changes = Some(changes);
+                        self.fetched(Stage::Fix)?;
                         self.fix_snapshot = Some(snapshot?);
                     }
                     // The report of a run ended here still holds what `load` gave.
@@ -1277,6 +1315,7 @@ impl<'a> Run<'a> {
             facts.report(&mut sink);
             let findings = self.log.logged_from(self.first);
             let snapshot = FactsSnapshot::of(&facts, self.settings.facts_settings(), findings);
+            self.fetched(Stage::Facts)?;
             self.facts_snapshot = Some(snapshot);
             self.facts = Some(facts);
         }
@@ -1345,6 +1384,7 @@ impl<'a> Run<'a> {
             let settings = self.settings.plan_settings();
             let declared = (settings, self.log.logged_from(self.first));
             let snapshot = PlanSnapshot::of(&port, fixed, &self.book, declared, &self.store);
+            self.fetched(Stage::Plan)?;
             self.plan_snapshot = Some(snapshot);
             self.plan = Some(port);
         }
@@ -1390,6 +1430,7 @@ impl<'a> Run<'a> {
                 self.log.logged_from(self.first),
             );
             let snapshot = BuildSnapshot::of(&package, part, declared, &self.store);
+            self.fetched(Stage::Build)?;
             self.build_snapshot = Some(snapshot);
             self.package = Some(package);
         }
@@ -1459,6 +1500,7 @@ impl<'a> Run<'a> {
             self.log.logged_from(self.first),
         );
         let snapshot = CheckSnapshot::of(applied, &patched, declared, &self.store);
+        self.fetched(Stage::Check)?;
         self.check_snapshot = Some(snapshot);
         Ok(())
     }
@@ -1581,6 +1623,7 @@ impl<'a> Run<'a> {
                 source,
             })?;
         }
+        self.fetched(Stage::Write)?;
         self.written = true;
         Ok(())
     }
@@ -1757,14 +1800,22 @@ impl<'a> Run<'a> {
 
     /// The store the run's bytes are in: its memory layer over the caller's store.
     pub fn store(&self) -> &dyn BlobStore {
-        &self.store
+        &*self.store
+    }
+
+    /// The run's store as its mod and its package read it (#ADR-0100).
+    pub fn blobs(&self) -> &Blobs {
+        &self.blobs
     }
 
     /// The blobs of the run's memory layer, every byte its stages made, for the caller to
     /// flush into a store of its own (#ADR-0093).
     pub fn into_layer(self) -> BTreeMap<ContentId, ByteView> {
-        let (layer, _) = self.store.into_parts();
-        layer.into_blobs()
+        // A package a caller cloned still reads the store, so the layer's views are copied.
+        let layer = self.store.top();
+        let ids = layer.ids().into_iter();
+        ids.filter_map(|id| layer.get(id).map(|bytes| (id, bytes)))
+            .collect()
     }
 
     /// The mod as far as the run took it: fixed, else as `load` left it, else as far as a
@@ -1845,9 +1896,9 @@ fn archive_of(package: &Package) -> Result<Vec<u8>, ZipError> {
     for (_, key, chunk) in package.chunks() {
         let options = SimpleFileOptions::default()
             .compression_method(CompressionMethod::Stored)
-            .large_file(chunk.bytes.len() >= u32::MAX as usize);
+            .large_file(chunk.size >= u64::from(u32::MAX));
         zip.start_file(format!("WAD/{}/{}", key.wad, key.path), options)?;
-        zip.write_all(&chunk.bytes)?;
+        zip.write_all(&package.bytes(chunk))?;
     }
     Ok(zip.finish()?.into_inner())
 }

@@ -14,7 +14,7 @@ use reforge::load::{
     self, CODES, FileFixCx, FileFixup, LoadError, LoadOptions, Loader, NewFile, against,
 };
 use reforge::model::entity::{FileKind, FileSource, FileUse, MadeBy, WadRole};
-use reforge::model::{ChunkPath, Dump, DumpCx, FixupInfo, NoNames, Phase, Spell, name_hash};
+use reforge::model::{Blobs, ChunkPath, Dump, DumpCx, FixupInfo, NoNames, Phase, Spell, name_hash};
 use reforge::store::MemoryStore;
 use reforge_testkit::bins::{Skin, bin, blob, entry, linked_bin};
 use reforge_testkit::mods::FILE_NAME;
@@ -51,12 +51,12 @@ fn small_mod() -> ModArchive {
 }
 
 /// An archive read into a store of its own.
-fn read(built: &ModArchive, log: &mut Diagnostics) -> (RawSnapshot, MemoryStore) {
+fn read(built: &ModArchive, log: &mut Diagnostics) -> (RawSnapshot, Blobs) {
     let bytes = built.build();
-    let store = MemoryStore::new();
+    let store = Arc::new(MemoryStore::new());
     let caps = Caps::default();
-    let raw = archive::read(&bytes, FILE_NAME, &caps, &store, &mut log.at(Stage::Read));
-    (raw.expect("it reads"), store)
+    let raw = archive::read(&bytes, FILE_NAME, &caps, &*store, &mut log.at(Stage::Read));
+    (raw.expect("it reads"), Blobs::new(store))
 }
 
 #[test]
@@ -175,12 +175,16 @@ fn text_a_mod_spells_is_cleaned_in_the_dump() {
     let mut log = Diagnostics::new();
     let bytes = archive.build();
     let name = "evil\u{202e}emotnaf.zip";
-    let store = MemoryStore::new();
+    let store = Arc::new(MemoryStore::new());
     let caps = Caps::default();
-    let raw = archive::read(&bytes, name, &caps, &store, &mut log.at(Stage::Read));
+    let raw = archive::read(&bytes, name, &caps, &*store, &mut log.at(Stage::Read));
     let mut loader = Loader::new(&env);
     let m = loader
-        .load(&raw.expect("it reads"), &store, &mut log.at(Stage::Load))
+        .load(
+            &raw.expect("it reads"),
+            &Blobs::new(store),
+            &mut log.at(Stage::Load),
+        )
         .expect("a mod");
     let dump = m.dump(&DumpCx::new(&NoNames).every_file());
     assert!(
@@ -235,7 +239,8 @@ fn a_snapshot_naming_bytes_the_store_lacks_is_a_fault_of_the_store() {
     let mut log = Diagnostics::new();
     let (raw, _store) = read(&small_mod(), &mut log);
     let mut loader = Loader::new(&env);
-    let Err(LoadError::Store(id)) = loader.open(&raw, &MemoryStore::new()) else {
+    let empty = Blobs::new(Arc::new(MemoryStore::new()));
+    let Err(LoadError::Store(id)) = loader.open(&raw, &empty) else {
         panic!("an empty store is a fault");
     };
     let named: Vec<_> = raw
@@ -327,7 +332,7 @@ impl FileFixup for Copies {
             .iter()
             .find(|(_, f)| f.path.as_ref().is_some_and(|p| p.as_str() == BASE_TEX));
         let (from, node) = from.expect("the base texture");
-        let bytes = node.bytes.clone();
+        let bytes = node.bytes(cx.module.blobs());
         let to = ChunkPath::parse(self.to).expect("a path");
         let made = cx
             .add(NewFile {

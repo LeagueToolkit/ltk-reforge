@@ -91,6 +91,24 @@ fn a_blob_that_fails_its_hash_answers_nothing_and_is_written_again() {
     );
 }
 
+#[test]
+fn a_get_unchecked_of_the_ingest_store_reads_the_blobs_file_as_it_is() {
+    // #ADR-0100: a run reads what it put or found whole without hashing it again.
+    let (_scratch, dir) = scratch();
+    let store = IngestStore::new(&dir);
+    let id = store.put(ByteView::from(b"bytes a run reads back unchecked"));
+    assert_eq!(
+        store.get_unchecked(id).as_deref(),
+        Some(&b"bytes a run reads back unchecked"[..])
+    );
+    assert!(BlobStore::contains(&store, id));
+    let held = files(&dir);
+    fs_err::write(&held[0], b"spoilt").expect("the blob's file writes");
+    assert_eq!(store.get_unchecked(id).as_deref(), Some(&b"spoilt"[..]));
+    assert_eq!(store.get(id), None, "a checked get refuses it");
+    assert_eq!(store.get_unchecked(ContentId::of(b"never put")), None);
+}
+
 /// Writes bytes into a store's spool in two parts and reads them back from the second byte,
 /// with what the store's directory holds while the reader is open.
 fn spooled(store: &dyn BlobStore, dir: &camino::Utf8Path, bytes: &[u8]) -> (Vec<u8>, usize) {

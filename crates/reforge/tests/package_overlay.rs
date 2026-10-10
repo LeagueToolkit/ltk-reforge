@@ -12,7 +12,7 @@ use reforge::model::{
     BinHash, ByteView, ChunkPath, NoNames, SkinEntry, Spelled, WadName, name_hash, path_hash,
 };
 use reforge::package::{
-    Chunk, ChunkKey, Held, Layer, Outcome, Overlay, Package, Patch, PatchOf, ProjectConfig,
+    Chunk, ChunkKey, Held, Layer, Origin, Outcome, Overlay, Package, Patch, PatchOf, ProjectConfig,
     PtchBuilder, Unnamed,
 };
 use reforge_testkit::MemoryGame;
@@ -108,9 +108,9 @@ fn a_patch_applies_to_the_games_bin_which_loads_the_packages_bins_and_the_games(
     let env = game_env();
     let mut package = package();
     let wad = WadName::parse(WAD).expect("a WAD name");
-    let own = Chunk::kept(
-        FileId::new(0),
+    let own = Chunk::new(
         ByteView::from(bin(vec![particle("Own", OWN_TEX)])),
+        Origin::Kept(FileId::new(0)),
     );
     package.insert(Layer::Base, ChunkKey::new(wad, path(OWN_BIN)), own);
     package.patch(Layer::Base, skin0_patch(retexture(SKIN0), &[OWN_BIN]));

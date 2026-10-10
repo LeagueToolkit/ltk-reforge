@@ -16,9 +16,9 @@ use ltk_texture::tex::{Format, ResourceType, TextureFlags};
 use serde::Serialize;
 
 use super::findings::TextureContained;
-use super::{Origin, Package};
+use super::{Chunk, Origin, Package};
 use crate::diag::Sink;
-use crate::model::ChunkPath;
+use crate::model::{ByteView, ChunkPath};
 
 /// Why a DDS does not go into TEX's container as it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -211,15 +211,24 @@ impl TexContainer {
     }
 
     /// The bytes of a DDS at a `.tex` path in TEX's container. None for any other chunk, and
-    /// for a DDS TEX's container does not hold as it is, which is counted by the reason.
-    pub fn contain(&mut self, path: &ChunkPath, bytes: &[u8]) -> Option<Vec<u8>> {
-        if path.extension() != Some("tex") || !bytes.starts_with(b"DDS ") {
+    /// for a DDS TEX's container does not hold as it is, which is counted by the reason. The
+    /// bytes are asked for only at a `.tex` path.
+    pub fn contain(
+        &mut self,
+        path: &ChunkPath,
+        bytes: impl FnOnce() -> ByteView,
+    ) -> Option<Vec<u8>> {
+        if path.extension() != Some("tex") {
+            return None;
+        }
+        let bytes = bytes();
+        if !bytes.starts_with(b"DDS ") {
             return None;
         }
         let contained = if self.keep_dds {
             Err(TexRefusal::Asked)
         } else {
-            dds_to_tex(bytes)
+            dds_to_tex(&bytes)
         };
         match contained {
             Ok(tex) => Some(tex),
@@ -238,15 +247,19 @@ impl TexContainer {
     /// Replaces the bytes of each DDS at a `.tex` path of a package that TEX's container
     /// holds as it is.
     pub fn apply(&mut self, package: &mut Package) {
-        for (_, key, chunk) in package.chunks_mut() {
+        let mut contained = Vec::new();
+        for (layer, key, chunk) in package.chunks() {
             let Some(file) = chunk.origin.file() else {
                 continue;
             };
-            if let Some(tex) = self.contain(&key.path, &chunk.bytes) {
-                chunk.bytes = tex.into();
-                chunk.origin = Origin::Contained(file);
+            if let Some(tex) = self.contain(&key.path, || package.bytes(chunk)) {
+                let chunk = Chunk::new(tex.into(), Origin::Contained(file));
+                contained.push((layer.clone(), key.clone(), chunk));
                 self.shipped();
             }
+        }
+        for (layer, key, chunk) in contained {
+            package.insert(layer, key, chunk);
         }
     }
 

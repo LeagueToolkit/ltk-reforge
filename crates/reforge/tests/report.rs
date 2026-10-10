@@ -241,12 +241,18 @@ fn a_halted_run_reports_the_mod_as_far_as_it_was_loaded() {
     let archive = ModArchive::new().file("Map11.wad.client", "data/maps/x.bin", bin(vec![]));
     let mut log = Diagnostics::new();
     let bytes = archive.build();
-    let store = MemoryStore::new();
+    let store = std::sync::Arc::new(MemoryStore::new());
     let caps = Caps::default();
-    let read = archive::read(&bytes, "m.fantome", &caps, &store, &mut log.at(Stage::Read));
+    let read = archive::read(
+        &bytes,
+        "m.fantome",
+        &caps,
+        &*store,
+        &mut log.at(Stage::Read),
+    );
     let mut loader = Loader::new(&env);
     let mut m = loader
-        .open(&read.expect("it reads"), &store)
+        .open(&read.expect("it reads"), &reforge::model::Blobs::new(store))
         .expect("the store answers");
     let mut sink = log.at(Stage::Load);
     loader.fix_files(&mut m, &mut sink).expect("it answers");
@@ -369,7 +375,7 @@ fn a_report_holds_the_package_with_the_digest_of_each_object_of_its_bins() {
     assert_eq!(mesh.get("edited"), None);
 
     let skin = &chunks[1];
-    let bytes = &run.chunk(&skin_bin("test", 0)).bytes;
+    let bytes = &run.chunk_bytes(&skin_bin("test", 0));
     assert_eq!(skin["layer"], "base");
     assert_eq!(skin["wad"], WAD);
     assert_eq!(skin["path"], skin_bin("test", 0));
@@ -448,8 +454,8 @@ fn a_report_says_what_repairing_the_repaired_mod_again_changed() {
     assert_eq!(row["fixups"], json!([{ "fixup": "no-junk", "values": 1 }]));
     assert_eq!(row["chunks_differing"], 1);
     assert_eq!(row["chunks"][0]["wad"], WAD);
-    let shipped = &unrepaired.chunk(&skin_bin("test", 0)).bytes;
-    let repaired = &first.chunk(&skin_bin("test", 0)).bytes;
+    let shipped = &unrepaired.chunk_bytes(&skin_bin("test", 0));
+    let repaired = &first.chunk_bytes(&skin_bin("test", 0));
     assert_eq!(row["chunks"][0]["first"], ContentId::of(shipped).hex());
     assert_eq!(row["chunks"][0]["second"], ContentId::of(repaired).hex());
 

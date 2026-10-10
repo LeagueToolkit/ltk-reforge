@@ -186,9 +186,10 @@ impl Tree<'_> {
                 let place = place(key);
                 let mut parts = vec!["content", &layer_name, key.wad.as_str()];
                 parts.extend(place.iter().map(String::as_str));
-                self.file(&parts, &chunk.bytes)?;
+                // A kept file is fetched from the store here, one chunk at a time.
+                self.file(&parts, &self.package.bytes(chunk))?;
                 tally.chunks += 1;
-                tally.bytes += chunk.bytes.len() as u64;
+                tally.bytes += chunk.size;
                 if too_long(&key.path) {
                     tally.hash_named += 1;
                     // The name the chunk lost on disk, for whoever reads the package.

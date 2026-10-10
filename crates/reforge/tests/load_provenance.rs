@@ -104,7 +104,7 @@ impl World {
 }
 
 fn empty_mod() -> Mod {
-    Mod::new(ModMeta {
+    let meta = ModMeta {
         file_name: Spelled::new("synthetic.fantome"),
         sha256: ContentId::of(b"synthetic"),
         mod_id: "000000000000".into(),
@@ -112,7 +112,9 @@ fn empty_mod() -> Mod {
         author: None,
         version: None,
         description: None,
-    })
+    };
+    let store = std::sync::Arc::new(reforge::store::MemoryStore::new());
+    Mod::new(meta, reforge::model::Blobs::new(store))
 }
 
 fn wad(m: &mut Mod, name: &str, role: WadRole) -> WadId {
@@ -139,14 +141,14 @@ fn test_mod() -> (Mod, WadId) {
 }
 
 fn file_used(m: &mut Mod, wad: WadId, path: &str, bytes: &[u8], used: FileUse) -> FileId {
+    let content = m.blobs().keep(ByteView::from(bytes));
     m.push_file(FileNode {
         wad,
         hash: path_hash(path),
         path: Some(ChunkPath::parse(path).expect("a chunk path")),
         size: bytes.len() as u64,
-        content: ContentId::of(bytes),
+        content,
         kind: file_kind(bytes),
-        bytes: ByteView::from(bytes),
         used,
         source: FileSource::Archive,
     })

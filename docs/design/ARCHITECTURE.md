@@ -106,7 +106,20 @@ let report = run.report();
   one report. `reforge port`, `repair`, `load` and `inspect` take the cache's directory as
   `--store`, and the corpus scripts as `--store` or `REFORGE_STORE`; without it a run holds
   the archive in memory alone. `load` opens the mod from the
-  raw snapshot and the store. The run keeps the raw snapshot, and each stage from `load` on
+  raw snapshot and the store.
+- **A stage reads a mod's bytes from the store on use** (#ADR-0100). The mod and its package
+  hold the run's store as `Blobs` (`Run::blobs`), and a file node holds the content id of its
+  bytes and their size, not the bytes. A stage fetches a file's bytes where it reads them
+  (`Mod::bytes`, `FileNode::bytes`) and drops them, or holds them for its own duration in a
+  local: `load` each file once for its kind and the bins it parses, the file fixups what they
+  make files from, `facts` the meshes, skeletons, clips and banks it judges, `fix` a bin it
+  writes again, `plan` the banks it cuts, `build` the textures it puts in TEX's container and
+  the bins it writes again or reports, `check` the bins and banks it reads back. The parsed
+  bins stay on the bin nodes: they are the working set. A read of the ingest store under the
+  run is not checked against the id (`BlobStore::get_unchecked`): the store holds only what
+  a run put there or `read` found whole. A file the run makes, a file fixup's or a game bin
+  taken as the mod's, goes into the run's layer when it is made. An id the store does not
+  answer ends the stage with `RunError::Store`, and the stage keeps no snapshot. The run keeps the raw snapshot, and each stage from `load` on
   ends by writing its snapshot (#ADR-0094): `load_snapshot`, `fix_snapshot`,
   `facts_snapshot`, `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.
   The snapshots are what the run holds of its stages, and the parsed objects beside them a
@@ -125,8 +138,9 @@ let report = run.report();
   bytes (`FixedMod::reopen`) and its changes from the snapshot; the facts snapshot gives
   what the facts found, and the game the catalogs again (`Facts::reopen`); the decide
   snapshot gives the targets; the plan snapshot gives the port, its values read back from
-  the store (`PortValues`); the build snapshot gives the package, its chunks, patches and
-  thumbnail read back from the store; the check snapshot gives what each patch came to. The
+  the store (`PortValues`); the build snapshot gives the package, its chunks named by id and
+  read from the store where they are used, its patches and thumbnail read back from it; the
+  check snapshot gives what each patch came to. The
   parsed
   objects are a cache of the snapshots. A run resumed from any of them writes the report
   and the package of the run that wrote them.
@@ -258,9 +272,9 @@ The modules of `reforge`, each using only the ones above it:
 
 | module | holds |
 |---|---|
-| `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
+| `model` | ids and arenas, hashes and keys, checked paths, the `Mod` and `Blobs`, the run's store its files' bytes are fetched from, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); a stage's steps: the run's `Cancel`, which the log carries to the stages, and the `Progress` it tells a listener |
-| `store` | `BlobStore`: bytes by content id (#ADR-0093), and a spool for bytes too large to hold, read in part (#ADR-0100); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share |
+| `store` | `BlobStore`: bytes by content id (#ADR-0093), read checked or unchecked, and a spool for bytes too large to hold, read in part (#ADR-0100); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share |
 | `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store, and what the read raised |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |
@@ -305,9 +319,15 @@ tables (`history`) and the bin value helpers (`model`).
 - **Closed sets are enums.** A layer is `Layer::Base`, `Voice` with its locale when it is one
   locale's, or `Hud`. A unit that leaves the port has a `Left` reason. A rig check has an
   `Aspect`.
-- **Bytes are views.** A file's bytes, the image's and a package chunk's are a `ByteView`
-  (`model::ByteView`): the type the blob store hands out (#ADR-0093), shared on clone and
-  sliced without a copy, so a file read from the store and a chunk kept from it are one blob.
+- **A file holds an id, not bytes** (#ADR-0100). A file node holds the content id of its
+  bytes and their size, and gives the bytes from the run's store when a stage asks
+  (`FileNode::bytes`, `Mod::bytes`), through `Blobs`, the run's store as the model names it:
+  `BlobAccess`, which every store answers, a fetch and a keep by id. Nothing on the node keeps
+  them. A fetch the store does not answer gives no bytes and is remembered (`Blobs::missing`),
+  and the run ends the stage with a fault.
+- **Bytes are views.** Fetched bytes, the image's and a chunk's a stage made are a
+  `ByteView` (`model::ByteView`): the type the blob store hands out (#ADR-0093), shared on
+  clone and sliced without a copy.
 - **Paths are checked types.** `ChunkPath` is a path inside a WAD, lowercased, with no `..`, no
   root and no drive. `WadName` is one file name with its stem and locale parsed. Only these
   reach a writer. A name spelled by a mod is `Spelled` and is cleaned when printed.
@@ -735,7 +755,10 @@ object takes a name of its own, which every link to it follows.
 
 - **`Package`** is layers of chunks and patches, the hash tables, the project's config and the
   evidence of the run that built it. A
-  chunk is keyed by `(WadName, ChunkPath)` and says where its bytes come from (`Origin`): a file
+  chunk is keyed by `(WadName, ChunkPath)`, names its bytes by content id and size, and says
+  where they come from (`Origin`). A chunk a stage made holds its bytes; a file of the mod kept
+  as it is holds none and is never read to be carried: the package reads it from the run's
+  store (`Package::bytes`) where a check, the report or a writer uses it (#ADR-0100). Origin: a file
   of the mod kept as it is, a bin written again with what it was built to hold, a texture put
   in TEX's container, a bin a port made, a bank a port made. A `Patch` is a typed manifest entry and its PTCH: the
   game bin it patches, the PTCH's place in its layer, the links to add, and what it is of (a
@@ -914,7 +937,7 @@ object takes a name of its own, which every link to it follows.
   links lead and why a bin did not read, the groups, the files a table named, the names
   learnt, and the findings of `read` and `load` as `Logged` ([DIAGNOSTICS.md](DIAGNOSTICS.md),
   "Through the run"). `wads()` gives each WAD's files by path hash with the id of their
-  bytes. Its format is `SNAPSHOT_FORMAT`, 1, the format of every snapshot.
+  bytes. Its format is `SNAPSHOT_FORMAT`, 2, the format of every snapshot.
 - Every snapshot is JSON, the raw snapshot among them. `snapshot::to_json` writes one,
   cleaned as the report is, and `snapshot::from_json` reads one back as the stage asked for:
   they are the one place a snapshot meets its format. A snapshot type (`StageSnapshot`) holds
@@ -942,7 +965,7 @@ object takes a name of its own, which every link to it follows.
   applied (`PackageRow`), and the package by the content id of its bytes: each layer's chunks
   by WAD and path, each patch's PTCH, the thumbnail. Beside each id is what a check and a
   writer read that the bytes do not say: the project's config, the hash tables, the
-  evidence, where each chunk's bytes come from, a patch's links and the skin entry it
+  evidence, each chunk's size and where its bytes come from, a patch's links and the skin entry it
   patches, and for a bin the run wrote, the entries it was built with and each object
   written as a bin of that object alone (`model::bin::write_one`); and the findings to the
   end of `build`.

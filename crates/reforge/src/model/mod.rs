@@ -6,6 +6,7 @@
 
 pub mod bank;
 pub mod bin;
+pub mod blobs;
 pub mod dump;
 pub mod entity;
 pub mod fixup;
@@ -26,6 +27,7 @@ pub mod view;
 pub mod walk;
 
 pub use bank::{BankClip, BankRole, EventsBank, INIT_BANK, game_bank_path};
+pub use blobs::{BlobAccess, Blobs};
 pub use byteview::ByteView;
 pub use dump::{Dump, DumpCx};
 pub use entity::Mod;

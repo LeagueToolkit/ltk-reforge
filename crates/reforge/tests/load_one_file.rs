@@ -12,7 +12,10 @@ use reforge::load::{FileFixCx, LoadOptions, NewFile, TakenFromGame, TakenSkin};
 use reforge::model::entity::{
     FileNode, FileSource, FileUse, MadeBy, ModMeta, ModWad, Occupied, WadLayout, WadRole,
 };
-use reforge::model::{ChunkPath, ContentId, Mod, Slot, Spelled, WadName, path_hash};
+use std::sync::Arc;
+
+use reforge::model::{Blobs, ChunkPath, ContentId, Mod, Slot, Spelled, WadName, path_hash};
+use reforge::store::MemoryStore;
 use reforge_testkit::archive::{STORED, zip};
 use reforge_testkit::bins::{bin, blob, entry, linked_bin, particle};
 use reforge_testkit::skins::{self, BASE_MESH, BASE_TEX, PET_MESH, WAD, pet_skin, skin_bin};
@@ -25,31 +28,33 @@ fn count(run: &LoadRun<'_>, path: &str) -> usize {
     files.filter(|file| file.hash == hash).count()
 }
 
-fn node(wad: reforge::model::entity::WadId, path: &str, bytes: &[u8]) -> FileNode {
+fn node(m: &Mod, wad: reforge::model::entity::WadId, path: &str, bytes: &[u8]) -> FileNode {
     let path = ChunkPath::parse(path).expect("a path");
     FileNode {
         wad,
         hash: path.hash(),
         path: Some(path),
         size: bytes.len() as u64,
-        content: ContentId::of(bytes),
+        content: m.blobs().keep(bytes.into()),
         kind: file_kind(bytes),
-        bytes: bytes.into(),
         used: FileUse::Unused,
         source: FileSource::Archive,
     }
 }
 
 fn two_wads() -> (Mod, [reforge::model::entity::WadId; 2]) {
-    let mut m = Mod::new(ModMeta {
-        file_name: Spelled::new("synthetic.fantome"),
-        sha256: ContentId::of(b"synthetic"),
-        mod_id: "000000000000".into(),
-        name: None,
-        author: None,
-        version: None,
-        description: None,
-    });
+    let mut m = Mod::new(
+        ModMeta {
+            file_name: Spelled::new("synthetic.fantome"),
+            sha256: ContentId::of(b"synthetic"),
+            mod_id: "000000000000".into(),
+            name: None,
+            author: None,
+            version: None,
+            description: None,
+        },
+        Blobs::new(Arc::new(MemoryStore::new())),
+    );
     let mut wad = |name: &str| {
         m.wads.push(ModWad {
             name: WadName::parse(name).expect("a WAD name"),
@@ -67,16 +72,16 @@ fn two_wads() -> (Mod, [reforge::model::entity::WadId; 2]) {
 fn a_second_file_at_a_path_of_a_wad_is_not_added() {
     let (mut m, [test, other]) = two_wads();
     let first = m
-        .push_file(node(test, BASE_TEX, b"first"))
+        .push_file(node(&m, test, BASE_TEX, b"first"))
         .expect("the path is free");
-    let second = m.push_file(node(test, BASE_TEX, b"second"));
+    let second = m.push_file(node(&m, test, BASE_TEX, b"second"));
     assert_eq!(second, Err(Occupied(first)));
     assert_eq!((m.files.len(), m.wads[test].files.len()), (1, 1));
     assert_eq!(m.file_at(test, path_hash(BASE_TEX)), Some(first));
-    assert_eq!(&*m.files[first].bytes, b"first");
+    assert_eq!(&*m.bytes(first), b"first");
     // The path in another WAD is another chunk.
     let elsewhere = m
-        .push_file(node(other, BASE_TEX, b"second"))
+        .push_file(node(&m, other, BASE_TEX, b"second"))
         .expect("free there");
     assert_ne!(elsewhere, first);
     assert_eq!(m.files.len(), 2);
@@ -86,10 +91,10 @@ fn a_second_file_at_a_path_of_a_wad_is_not_added() {
 fn a_file_fixup_adds_nothing_where_the_wad_holds_a_file() {
     let (mut m, [test, _]) = two_wads();
     let from = m
-        .push_file(node(test, "assets/x/old.dds", b"old"))
+        .push_file(node(&m, test, "assets/x/old.dds", b"old"))
         .expect("free");
     let there = m
-        .push_file(node(test, BASE_TEX, b"the mod's own"))
+        .push_file(node(&m, test, BASE_TEX, b"the mod's own"))
         .expect("free");
     let game = GameView::new(Box::new(skins::game()));
     let (mut book, mut log) = (NameBook::new(), Diagnostics::new());
@@ -119,7 +124,7 @@ fn a_file_fixup_adds_nothing_where_the_wad_holds_a_file() {
             by: MadeBy::MovedAsset
         }
     );
-    assert_eq!(&*m.files[there].bytes, b"the mod's own");
+    assert_eq!(&*m.bytes(there), b"the mod's own");
 }
 
 #[test]
@@ -162,7 +167,7 @@ fn an_archive_listing_a_path_twice_gives_one_file() {
         .expect("an environment");
     let run = LoadRun::of_bytes(&env, LoadOptions::new(), &zip(&entries));
     assert_eq!(count(&run, "assets/a.tex"), 1);
-    assert_eq!(&*run.file("assets/a.tex").1.bytes, b"first");
+    assert_eq!(&*run.module().bytes(run.file("assets/a.tex").0), b"first");
     assert!(run.codes().contains(&"archive.chunk-duplicate"));
 }
 
@@ -204,7 +209,7 @@ fn a_mod_with_no_champion_skin_bin_keeps_its_own_bin_of_a_sub_character() {
     assert_eq!(count(&run, &skin_bin("testpet", 0)), 1);
     let (pet_bin, node) = run.file(&skin_bin("testpet", 0));
     assert_eq!(node.source, FileSource::Archive);
-    assert_eq!(&*node.bytes, own.as_slice());
+    assert_eq!(&*m.bytes(pet_bin), own.as_slice());
     assert_eq!(m.units[run.unit("testpet", 0)].file, pet_bin);
     assert_eq!(m.units[run.unit("testpet", 0)].loads.len(), 1);
 

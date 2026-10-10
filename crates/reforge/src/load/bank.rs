@@ -158,7 +158,7 @@ impl FileFixup for BankId {
                 continue;
             }
             let wad = node.wad;
-            let bytes = node.bytes.clone();
+            let bytes = cx.module.bytes(file);
             let Some(bank) = ZeroId::read(&bytes) else {
                 continue;
             };

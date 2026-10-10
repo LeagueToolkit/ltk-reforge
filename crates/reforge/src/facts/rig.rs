@@ -554,7 +554,7 @@ impl RigInputs<'_> {
             },
         };
         if let Source::Mod(file) = mesh.file.source {
-            match MeshShape::parse(&m.files[file].bytes) {
+            match MeshShape::parse(&m.bytes(file)) {
                 Some(shape) => {
                     mesh.max_blend = shape.max_blend;
                     if mesh.file.own {
@@ -578,7 +578,7 @@ impl RigInputs<'_> {
             None => Located::missing(),
         };
         let parsed = match located.source {
-            Source::Mod(file) => Skeleton::parse(&m.files[file].bytes).map(Arc::new),
+            Source::Mod(file) => Skeleton::parse(&m.bytes(file)).map(Arc::new),
             Source::Game => match located.paths.first() {
                 Some(&path) => self.env.game().skeleton(path)?,
                 None => None,
@@ -620,7 +620,7 @@ impl RigInputs<'_> {
                 .map(|skin| skin.slot)
                 .collect();
             let joints = match located.source {
-                Source::Mod(file) if located.own => rig::clip_joints(&m.files[file].bytes),
+                Source::Mod(file) if located.own => rig::clip_joints(&m.bytes(file)),
                 _ => None,
             };
             clips.push(ClipFact {

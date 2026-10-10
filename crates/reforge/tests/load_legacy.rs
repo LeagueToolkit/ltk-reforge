@@ -56,7 +56,7 @@ struct Fixture {
 impl Fixture {
     /// A mod of one empty champion WAD, and a game shipping the texture and the mesh.
     fn new() -> Self {
-        let mut module = Mod::new(ModMeta {
+        let meta = ModMeta {
             file_name: Spelled::new("legacy.fantome"),
             sha256: ContentId::of(b"legacy"),
             mod_id: "000000000000".into(),
@@ -64,7 +64,9 @@ impl Fixture {
             author: None,
             version: None,
             description: None,
-        });
+        };
+        let store = std::sync::Arc::new(reforge::store::MemoryStore::new());
+        let mut module = Mod::new(meta, reforge::model::Blobs::new(store));
         let wad = module.wads.push(wad("Test.wad.client"));
         let mut game = MemoryGame::new("Test.wad.client", "16.19.1");
         game.insert(&format!("{IDLE}.tex"), b"the game's idle".to_vec());
@@ -92,9 +94,8 @@ impl Fixture {
                 hash: path.hash(),
                 path: Some(path),
                 size: bytes.len() as u64,
-                content: ContentId::of(bytes),
+                content: self.module.blobs().keep(bytes.into()),
                 kind: file_kind(bytes),
-                bytes: bytes.into(),
                 used: FileUse::Unused,
                 source: FileSource::Archive,
             })
@@ -265,13 +266,13 @@ fn legacy_files_are_made_the_twins_the_game_reads() {
     let (scb_id, scb) = f.at(&format!("{BOMB}.scb")).expect("the mesh is made");
     // #GAME-BEHAVIOR-0003: the texture's bytes as they are, a DDS at a `.tex` path.
     assert_eq!((tex.kind, scb.kind), (FileKind::Dds, FileKind::Scb));
-    assert_eq!(&*tex.bytes, dds().as_slice());
+    assert_eq!(&*tex.bytes(f.module.blobs()), dds().as_slice());
     assert_eq!(tex.content, ContentId::of(&dds()));
     assert_eq!(tex.size, dds().len() as u64);
-    let read = ltk_mesh::StaticMesh::from_reader(&mut &*scb.bytes).unwrap();
+    let read = ltk_mesh::StaticMesh::from_reader(&mut &*scb.bytes(f.module.blobs())).unwrap();
     assert_eq!((read.vertices().len(), read.faces().len()), (3, 1));
-    assert_eq!(scb.content, ContentId::of(&scb.bytes));
-    assert_eq!(scb.size, scb.bytes.len() as u64);
+    assert_eq!(scb.content, ContentId::of(&scb.bytes(f.module.blobs())));
+    assert_eq!(scb.size, scb.bytes(f.module.blobs()).len() as u64);
     let made = |from| FileSource::Made {
         from,
         by: MadeBy::LegacyFormat,
@@ -398,7 +399,10 @@ fn a_file_already_in_the_format_the_game_reads_is_copied() {
     let (_, tex) = f.at(&format!("{IDLE}.tex")).expect("the texture is made");
     let (_, scb) = f.at(&format!("{BOMB}.scb")).expect("the mesh is made");
     assert_eq!((tex.kind, scb.kind), (FileKind::Tex, FileKind::Scb));
-    assert_eq!((&*tex.bytes, &*scb.bytes), (&tex_bytes[..], &scb_bytes[..]));
+    assert_eq!(
+        (&*tex.bytes(f.module.blobs()), &*scb.bytes(f.module.blobs())),
+        (&tex_bytes[..], &scb_bytes[..])
+    );
     let found = one::<FormatsConverted>(&f.log);
     let how: Vec<Conversion> = found.files.iter().map(|c| c.how).collect();
     assert_eq!(how, [Conversion::AsIs, Conversion::AsIs]);

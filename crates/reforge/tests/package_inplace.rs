@@ -182,10 +182,10 @@ fn a_bin_with_a_changed_object_is_written_again_and_its_other_objects_keep_their
     assert_eq!(written.how, BinWrite::Delta);
     assert_eq!(written.entries.len(), 3);
     assert_eq!(written.edited.len(), 1);
-    assert_ne!(&*chunk.bytes, skin_bytes().as_slice());
+    assert_ne!(&*run.package().bytes(chunk), skin_bytes().as_slice());
 
     let before = bin::parse(&skin_bytes()).expect("the archive's bin reads");
-    let after = bin::parse(&chunk.bytes).expect("the bin written again reads");
+    let after = bin::parse(&run.package().bytes(chunk)).expect("the bin written again reads");
     assert_eq!(after.dependencies, [SHARED]);
     let raw = |parsed: &bin::ParsedBin, name: &str| {
         let mut objects = parsed.objects.iter();
@@ -211,9 +211,9 @@ fn a_bin_none_of_whose_objects_changed_keeps_its_bytes() {
         "{:?}",
         chunk.origin
     );
-    assert_eq!(&*chunk.bytes, shared_bytes().as_slice());
+    assert_eq!(&*run.package().bytes(chunk), shared_bytes().as_slice());
     // Every other file too.
-    assert_eq!(&*run.chunk(MESH).bytes, blob(MESH).as_slice());
+    assert_eq!(&*run.chunk_bytes(MESH), blob(MESH).as_slice());
 }
 
 #[test]
@@ -225,7 +225,7 @@ fn a_repaired_mod_repaired_again_changes_nothing() {
     let chunks = |run: &PackRun<'_>| -> Vec<(String, ContentId)> {
         let chunks = run.package().chunks();
         chunks
-            .map(|(_, key, chunk)| (key.path.to_string(), ContentId::of(&chunk.bytes)))
+            .map(|(_, key, chunk)| (key.path.to_string(), chunk.content))
             .collect()
     };
     assert_eq!(chunks(&second), chunks(&first));
@@ -255,7 +255,10 @@ fn a_file_no_table_names_goes_under_its_hash() {
     // The extension is the kind the bytes are of, and these are of none.
     assert_eq!(key.path.as_str(), format!("{:016x}.dat", hash.0));
     assert_ne!(key.path.hash(), hash);
-    assert_eq!(&*chunk.bytes, blob("a texture under its hash").as_slice());
+    assert_eq!(
+        &*run.package().bytes(chunk),
+        blob("a texture under its hash").as_slice()
+    );
     assert_eq!(run.only::<InPlace>().unnamed, 1);
 }
 
@@ -285,12 +288,15 @@ fn a_dds_at_a_tex_path_goes_into_texs_container_with_its_blocks() {
 
     let contained = run.chunk(BASE_TEX);
     assert!(matches!(contained.origin, Origin::Contained(_)));
-    assert_eq!(&contained.bytes[..4], b"TEX\0");
-    assert_eq!(contained.bytes.len(), 12 + (whole.len() - 128));
+    assert_eq!(&run.package().bytes(contained)[..4], b"TEX\0");
+    assert_eq!(
+        run.package().bytes(contained).len(),
+        12 + (whole.len() - 128)
+    );
     // A format TEX does not hold stays the DDS it is, and so does a DDS at a `.dds` path.
-    assert_eq!(&*run.chunk(S3_TEX).bytes, refused.as_slice());
+    assert_eq!(&*run.chunk_bytes(S3_TEX), refused.as_slice());
     assert!(matches!(run.chunk(S3_TEX).origin, Origin::Kept(_)));
-    assert_eq!(&*run.chunk(S3_PARTICLE_TEX).bytes, at_dds.as_slice());
+    assert_eq!(&*run.chunk_bytes(S3_PARTICLE_TEX), at_dds.as_slice());
     let found = run.only::<TextureContained>();
     assert_eq!(found.contained, 1);
     assert_eq!(
@@ -323,7 +329,8 @@ fn a_package_that_would_hold_nothing_ends_the_run() {
     };
     let mut log = Diagnostics::new();
     let mut names = NameBook::new();
-    let empty = Mod::new(meta);
+    let store = std::sync::Arc::new(reforge::store::MemoryStore::new());
+    let empty = Mod::new(meta, reforge::model::Blobs::new(store));
     let dating = Dating::find(&empty, env.history()).expect("no history answers");
     let mut inputs = FixInputs {
         env: &env,
@@ -375,9 +382,10 @@ fn a_bin_of_the_old_numbering_is_written_whole() {
     let found = run.only::<InPlace>();
     assert_eq!((found.rewritten, found.whole), (1, 1));
     // The bin written reads in the numbering of the target build, as the fixup left it.
-    let mut windows = chunk.bytes.windows(field.len());
+    let written = run.package().bytes(chunk);
+    let mut windows = written.windows(field.len());
     assert!(windows.any(|bytes| bytes == field), "the pointer's kind");
-    let after = bin::parse(&chunk.bytes).expect("the bin written again reads");
+    let after = bin::parse(&run.package().bytes(chunk)).expect("the bin written again reads");
     assert_eq!(&after.objects[0].value, run.fix.object("M"));
     assert!(
         !after.objects[0]
@@ -481,14 +489,14 @@ fn a_mod_in_a_packed_wad_repaired_again_changes_nothing() {
     let first = PackRun::of(&env, &set, &archive);
     // The file the game reads is made on the first repair.
     assert!(first.ships(&old) && first.ships(BASE_PARTICLE_TEX));
-    assert_eq!(&*first.chunk(BASE_PARTICLE_TEX).bytes, texture.as_slice());
+    assert_eq!(&*first.chunk_bytes(BASE_PARTICLE_TEX), texture.as_slice());
 
     let second = PackRun::of(&env, &set, &first.archive());
     assert_eq!(second.fix.changes.counts().edits(), 0);
     let chunks = |run: &PackRun<'_>| -> Vec<(u64, String)> {
         let chunks = run.package().chunks();
         let mut chunks: Vec<(u64, String)> = chunks
-            .map(|(_, key, chunk)| (key.hash().0, ContentId::of(&chunk.bytes).hex()))
+            .map(|(_, key, chunk)| (key.hash().0, chunk.content.hex()))
             .collect();
         chunks.sort();
         chunks
@@ -583,7 +591,7 @@ fn a_file_a_loaded_bin_names_at_a_former_path_is_kept() {
     let env = env_with_a_past();
     let run = PackRun::of(&env, &set(), &the_mod_with_leftovers());
     assert_eq!(
-        &*run.chunk(FORMER_NAMED).bytes,
+        &*run.chunk_bytes(FORMER_NAMED),
         blob(FORMER_NAMED).as_slice()
     );
 }
@@ -593,7 +601,7 @@ fn a_stale_copy_is_kept_where_the_caller_keeps_stale_copies() {
     let env = env_with_a_past();
     let options = LoadOptions::new().keep_stale(true);
     let run = PackRun::under(&env, &set(), &the_mod_with_leftovers(), options);
-    assert_eq!(&*run.chunk(BASE_TEX).bytes, STALE_BYTES);
+    assert_eq!(&*run.chunk_bytes(BASE_TEX), STALE_BYTES);
     assert_eq!(run.only::<InPlace>().left.stale, 0);
 }
 
@@ -633,6 +641,6 @@ fn a_texture_that_is_a_stale_copy_once_in_texs_container_is_left_out() {
     // A caller that keeps stale copies gets it, in TEX's container.
     let options = LoadOptions::new().keep_stale(true);
     let kept = PackRun::under(&env, &set(), &archive, options);
-    assert_eq!(&*kept.chunk(BASE_TEX).bytes, as_tex.as_slice());
+    assert_eq!(&*kept.chunk_bytes(BASE_TEX), as_tex.as_slice());
     assert_eq!(kept.only::<TextureContained>().contained, 1);
 }

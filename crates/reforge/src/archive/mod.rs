@@ -42,7 +42,7 @@ use self::reader::{Parts, Reader};
 use self::source::Source;
 use crate::diag::{Halted, Logged, Sink};
 use crate::model::entity::{Extra, ModImage, ModMeta, WadLayout};
-use crate::model::{ByteView, ChunkPath, ContentId, Spelled, WadHash, WadName};
+use crate::model::{BlobAccess, ByteView, ChunkPath, ContentId, Spelled, WadHash, WadName};
 use crate::store::BlobStore;
 
 /// The raw reading's version (#ADR-0095): one number, raised when the zip or WAD reading, the
@@ -166,9 +166,9 @@ pub enum RawImage {
 impl RawImage {
     /// The image as the mod holds it, with its bytes from the store, or the id the store
     /// lacks.
-    pub fn open(self, store: &dyn BlobStore) -> Result<ModImage, ContentId> {
+    pub fn open(self, store: &dyn BlobAccess) -> Result<ModImage, ContentId> {
         Ok(match self {
-            RawImage::Held(id) => ModImage::Held(store.get(id).ok_or(id)?),
+            RawImage::Held(id) => ModImage::Held(store.fetch(id).ok_or(id)?),
             RawImage::TooLarge(bytes) => ModImage::TooLarge(bytes),
             RawImage::Unreadable => ModImage::Unreadable,
         })
@@ -203,11 +203,11 @@ pub struct RawSnapshot {
 impl RawExtra {
     /// The extra as the mod holds it, with its first bytes from the store, or the id the store
     /// lacks.
-    pub fn open(&self, store: &dyn BlobStore) -> Result<Extra, ContentId> {
+    pub fn open(&self, store: &dyn BlobAccess) -> Result<Extra, ContentId> {
         Ok(Extra {
             name: self.name.clone(),
             size: self.size,
-            head: store.get(self.head).ok_or(self.head)?.to_vec(),
+            head: store.fetch(self.head).ok_or(self.head)?.to_vec(),
         })
     }
 }
@@ -215,7 +215,7 @@ impl RawExtra {
 impl RawSnapshot {
     /// The extras as the mod holds them, with each one's first bytes from the store, or the
     /// first id the store lacks.
-    pub fn open_extras(&self, store: &dyn BlobStore) -> Result<Vec<Extra>, ContentId> {
+    pub fn open_extras(&self, store: &dyn BlobAccess) -> Result<Vec<Extra>, ContentId> {
         self.extras.iter().map(|extra| extra.open(store)).collect()
     }
 

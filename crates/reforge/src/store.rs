@@ -14,12 +14,23 @@ use std::io::{self, Cursor, Read, Seek, Write};
 use std::sync::{Arc, PoisonError, RwLock};
 
 pub use self::ingest::IngestStore;
-use crate::model::{ByteView, ContentId};
+use crate::model::{BlobAccess, ByteView, ContentId};
 
 /// Bytes by content id.
 pub trait BlobStore: Send + Sync {
     /// The bytes under an id, or nothing.
     fn get(&self, id: ContentId) -> Option<ByteView>;
+
+    /// The bytes under an id, or nothing, not checked against the id where the store would
+    /// check them: a run's reads of what it put or found whole (#ADR-0100).
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        self.get(id)
+    }
+
+    /// Whether it holds bytes under an id. A store that can tell without reading them does.
+    fn contains(&self, id: ContentId) -> bool {
+        self.get(id).is_some()
+    }
 
     /// Keeps bytes under their id, which it gives. Bytes already held are not written twice.
     fn put(&self, bytes: ByteView) -> ContentId;
@@ -66,9 +77,32 @@ impl Spool for MemorySpool {
     }
 }
 
+/// A store as the model reads a run's files from it: unchecked.
+impl<S: BlobStore + ?Sized> BlobAccess for S {
+    fn fetch(&self, id: ContentId) -> Option<ByteView> {
+        self.get_unchecked(id)
+    }
+
+    fn holds(&self, id: ContentId) -> bool {
+        self.contains(id)
+    }
+
+    fn keep(&self, bytes: ByteView) -> ContentId {
+        self.put(bytes)
+    }
+}
+
 impl<S: BlobStore + ?Sized> BlobStore for &S {
     fn get(&self, id: ContentId) -> Option<ByteView> {
         (**self).get(id)
+    }
+
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        (**self).get_unchecked(id)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        (**self).contains(id)
     }
 
     fn put(&self, bytes: ByteView) -> ContentId {
@@ -85,6 +119,14 @@ impl<S: BlobStore + ?Sized> BlobStore for Arc<S> {
         (**self).get(id)
     }
 
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        (**self).get_unchecked(id)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        (**self).contains(id)
+    }
+
     fn put(&self, bytes: ByteView) -> ContentId {
         (**self).put(bytes)
     }
@@ -97,6 +139,14 @@ impl<S: BlobStore + ?Sized> BlobStore for Arc<S> {
 impl<S: BlobStore + ?Sized> BlobStore for Box<S> {
     fn get(&self, id: ContentId) -> Option<ByteView> {
         (**self).get(id)
+    }
+
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        (**self).get_unchecked(id)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        (**self).contains(id)
     }
 
     fn put(&self, bytes: ByteView) -> ContentId {
@@ -160,6 +210,13 @@ impl BlobStore for MemoryStore {
             .cloned()
     }
 
+    fn contains(&self, id: ContentId) -> bool {
+        self.blobs
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains_key(&id)
+    }
+
     fn put(&self, bytes: ByteView) -> ContentId {
         let id = ContentId::of(&bytes);
         self.blobs
@@ -205,6 +262,15 @@ impl<T: BlobStore, U: BlobStore> Layered<T, U> {
 impl<T: BlobStore, U: BlobStore> BlobStore for Layered<T, U> {
     fn get(&self, id: ContentId) -> Option<ByteView> {
         self.top.get(id).or_else(|| self.under.get(id))
+    }
+
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        let top = self.top.get_unchecked(id);
+        top.or_else(|| self.under.get_unchecked(id))
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        self.top.contains(id) || self.under.contains(id)
     }
 
     fn put(&self, bytes: ByteView) -> ContentId {

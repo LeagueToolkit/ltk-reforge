@@ -659,11 +659,11 @@ impl Check for RoundTrip {
                 (_, Some(written)) => {
                     bins += 1;
                     objects += written.edited.len();
-                    Self::problems(&chunk.bytes, written)
+                    Self::problems(&cx.package.bytes(chunk), written)
                 }
                 (Origin::Bank(_), None) => {
                     banks += 1;
-                    Self::bank_problems(&chunk.bytes)
+                    Self::bank_problems(&cx.package.bytes(chunk))
                 }
                 _ => continue,
             };
@@ -844,7 +844,7 @@ impl Check for Types {
         let mut bins = 0;
         for (_, key, chunk) in cx.package.bins() {
             // A bin that does not read is `load`'s finding, and the client reads none of it.
-            let Ok(parsed) = bin::parse(&chunk.bytes) else {
+            let Ok(parsed) = bin::parse(&cx.package.bytes(chunk)) else {
                 continue;
             };
             bins += 1;

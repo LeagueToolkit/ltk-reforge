@@ -246,7 +246,7 @@ impl Clips {
                 .filter(|clip| !clip.file.own && !clip.file.game_slots.is_empty());
             for clip in played {
                 let joints = match clip.file.source {
-                    Source::Mod(file) => rig::clip_joints(&m.files[file].bytes),
+                    Source::Mod(file) => rig::clip_joints(&m.bytes(file)),
                     Source::Game => {
                         let path = clip.file.moved.unwrap_or(clip.reference());
                         env.game().clip_joints(path)?.map(|joints| joints.to_vec())

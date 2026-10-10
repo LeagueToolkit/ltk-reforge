@@ -58,7 +58,7 @@ impl FixedMod {
             .filter(|&&object| changes.edits(object))
             .map(|&object| m.objects[object].value.clone())
             .collect();
-        let (bytes, how) = match patched(&m.files[node.file].bytes, &edited) {
+        let (bytes, how) = match patched(&m.bytes(node.file), &edited) {
             Some(bytes) => (bytes, BinWrite::Delta),
             None => {
                 let links = node.links.iter().map(|link| link.path.raw().to_string());

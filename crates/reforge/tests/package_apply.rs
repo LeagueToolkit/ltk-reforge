@@ -240,10 +240,7 @@ fn a_name_the_patched_entry_reaches_that_no_loaded_bin_holds_is_unresolved() {
     // particle, and nothing the patched bin loads holds it.
     let vfx = format!("{DIR}/vfx.bin");
     let mut package = run.package().clone();
-    let emptied = Chunk {
-        bytes: ByteView::from(bin(vec![])),
-        origin: run.chunk(&vfx).origin.clone(),
-    };
+    let emptied = Chunk::new(ByteView::from(bin(vec![])), run.chunk(&vfx).origin.clone());
     let key = package.chunks().map(|(_, key, _)| key.clone());
     let key = key.into_iter().find(|key| key.path.as_str() == vfx);
     package.insert(Layer::Base, key.expect("the unit's bin"), emptied);

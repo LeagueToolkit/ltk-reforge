@@ -13,10 +13,13 @@ use reforge::model::entity::{
     Extra, FileId, FileNode, FileSource, FileUse, MadeBy, ModMeta, ModWad, WadId, WadLayout,
     WadRole,
 };
+use std::sync::Arc;
+
 use reforge::model::{
-    BinHash, ByteView, ChunkPath, ContentId, Mod, NoNames, Spell, Spelled, WadHash, WadName,
+    BinHash, Blobs, ByteView, ChunkPath, ContentId, Mod, NoNames, Spell, Spelled, WadHash, WadName,
     path_hash,
 };
+use reforge::store::MemoryStore;
 use reforge_magic::{Confidence, Kind};
 
 const WAD: &str = "Test.wad.client";
@@ -44,15 +47,18 @@ fn pe() -> Vec<u8> {
 
 /// A mod of one champion WAD with no file in it.
 fn empty_mod() -> (Mod, WadId) {
-    let mut m = Mod::new(ModMeta {
-        file_name: Spelled::new("synthetic.fantome"),
-        sha256: ContentId::of(b"synthetic"),
-        mod_id: "000000000000".into(),
-        name: None,
-        author: None,
-        version: None,
-        description: None,
-    });
+    let mut m = Mod::new(
+        ModMeta {
+            file_name: Spelled::new("synthetic.fantome"),
+            sha256: ContentId::of(b"synthetic"),
+            mod_id: "000000000000".into(),
+            name: None,
+            author: None,
+            version: None,
+            description: None,
+        },
+        Blobs::new(Arc::new(MemoryStore::new())),
+    );
     let wad = m.wads.push(ModWad {
         name: WadName::parse(WAD).expect("a WAD name"),
         role: WadRole::Champion {
@@ -65,15 +71,14 @@ fn empty_mod() -> (Mod, WadId) {
     (m, wad)
 }
 
-fn node(wad: WadId, hash: WadHash, path: Option<&str>, bytes: &[u8]) -> FileNode {
+fn node(m: &Mod, wad: WadId, hash: WadHash, path: Option<&str>, bytes: &[u8]) -> FileNode {
     FileNode {
         wad,
         hash,
         path: path.map(|p| ChunkPath::parse(p).expect("a chunk path")),
         size: bytes.len() as u64,
-        content: ContentId::of(bytes),
+        content: m.blobs().keep(ByteView::from(bytes)),
         kind: file_kind(bytes),
-        bytes: ByteView::from(bytes),
         used: FileUse::Unused,
         source: FileSource::Archive,
     }
@@ -81,13 +86,13 @@ fn node(wad: WadId, hash: WadHash, path: Option<&str>, bytes: &[u8]) -> FileNode
 
 /// A file the archive spells the path of.
 fn file(m: &mut Mod, wad: WadId, path: &str, bytes: &[u8]) -> FileId {
-    m.push_file(node(wad, path_hash(path), Some(path), bytes))
-        .expect("the path is free")
+    let node = node(m, wad, path_hash(path), Some(path), bytes);
+    m.push_file(node).expect("the path is free")
 }
 
 /// A chunk the archive names by its hash.
 fn hashed(m: &mut Mod, wad: WadId, path: &str, bytes: &[u8], used: FileUse) -> FileId {
-    let mut file = node(wad, path_hash(path), None, bytes);
+    let mut file = node(m, wad, path_hash(path), None, bytes);
     file.used = used;
     m.push_file(file).expect("the path is free")
 }
@@ -387,6 +392,7 @@ fn a_file_a_fixup_made_is_not_counted_and_a_bin_taken_from_the_game_is() {
     let (mut m, wad) = empty_mod();
     let from = file(&mut m, wad, "tools/fix.exe", &pe());
     let mut made = node(
+        &m,
         wad,
         path_hash("tools/moved.exe"),
         Some("tools/moved.exe"),
@@ -397,7 +403,7 @@ fn a_file_a_fixup_made_is_not_counted_and_a_bin_taken_from_the_game_is() {
         by: MadeBy::MovedAsset,
     };
     m.push_file(made).expect("the path is free");
-    let mut taken = node(wad, path_hash(SKIN_BIN), Some(SKIN_BIN), BIN);
+    let mut taken = node(&m, wad, path_hash(SKIN_BIN), Some(SKIN_BIN), BIN);
     taken.source = FileSource::Game;
     m.push_file(taken).expect("the path is free");
 

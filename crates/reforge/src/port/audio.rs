@@ -250,7 +250,7 @@ impl Planning<'_> {
             .files
             .iter()
             .filter(|file| file.role == BankRole::Events && file.version == CLIENT_VERSION);
-        let banks = events.filter_map(|file| Bank::read(&m.files[file.file].bytes).ok());
+        let banks = events.filter_map(|file| Bank::read(&m.bytes(file.file)).ok());
         let mut banks: Vec<Bank> = banks.collect();
         let playing = banks
             .iter()
@@ -456,7 +456,7 @@ impl Planning<'_> {
             }
         }
         let overlay = self.loaded.contains(&game_bank_path(&file.path));
-        let Ok(read) = Bank::read(&m.files[file.file].bytes) else {
+        let Ok(read) = Bank::read(&m.bytes(file.file)) else {
             return Ok(());
         };
         let buses = self.own_buses(&read.objects);

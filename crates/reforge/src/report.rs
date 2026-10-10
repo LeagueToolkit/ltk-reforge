@@ -524,7 +524,7 @@ impl AgainRow {
         let keyed = |package: &Package| -> BTreeMap<(WadName, String), ContentId> {
             let chunks = package.chunks().map(|(_, key, chunk)| {
                 let hash = format!("{:016x}", key.hash().0);
-                ((key.wad.clone(), hash), ContentId::of(&chunk.bytes))
+                ((key.wad.clone(), hash), chunk.content)
             });
             chunks.collect()
         };
@@ -1170,7 +1170,9 @@ impl PackageRow {
     pub fn of(package: &Package) -> Self {
         let chunks = package.chunks().map(|(layer, key, chunk)| {
             let is_bin = key.path.extension() == Some("bin");
-            let parsed = is_bin.then(|| bin::parse(&chunk.bytes).ok()).flatten();
+            let parsed = is_bin
+                .then(|| bin::parse(&package.bytes(chunk)).ok())
+                .flatten();
             let objects = parsed.map(|parsed| {
                 let digests = parsed.objects.iter().map(|object| {
                     let entry = format!("{:08x}", object.value.path_hash.0);
@@ -1203,8 +1205,8 @@ impl PackageRow {
                 hash: format!("{:016x}", key.hash().0),
                 file: chunk.origin.file(),
                 origin: chunk.origin.name().to_string(),
-                size: chunk.bytes.len() as u64,
-                content: ContentId::of(&chunk.bytes),
+                size: chunk.size,
+                content: chunk.content,
                 objects,
                 edited: edited.collect(),
                 values,

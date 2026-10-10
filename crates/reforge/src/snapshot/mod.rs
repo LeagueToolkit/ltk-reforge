@@ -43,16 +43,15 @@ use crate::facts::FactsError;
 use crate::game::{Build, NameBook, NamesStamp};
 use crate::load::{Dating, FileProvenance, Inventory, KeptFile, LoadOptions, ReworkTable};
 use crate::model::entity::{
-    BinNode, Character, FileId, FileNode, FileSource, Group, Link, ModMeta, ModWad, SkinUnit, WadId,
+    BinNode, Character, FileId, FileNode, Group, Link, ModMeta, ModWad, SkinUnit, WadId,
 };
 use crate::model::hash::wad_hash_of_hex;
-use crate::model::{ChunkPath, ContentId, Mod, WadHash, bin, clean_json};
+use crate::model::{Blobs, ChunkPath, ContentId, Mod, WadHash, bin, clean_json};
 use crate::report::{HistoryInput, LoadPart};
-use crate::store::BlobStore;
 
 /// The format of every snapshot: one number for their shape, raised when it changes. A
 /// snapshot of another format is not read.
-pub const SNAPSHOT_FORMAT: u32 = 1;
+pub const SNAPSHOT_FORMAT: u32 = 2;
 
 /// The snapshot of a stage, as the JSON edge writes and reads it. A snapshot type holds its
 /// fields and nothing of the format: [`to_json`] and [`from_json`] are the one place a
@@ -458,31 +457,16 @@ impl StageSnapshot for LoadSnapshot {
 
 impl LoadSnapshot {
     /// The snapshot of a loaded mod, judged against `env` under `settings`, with the findings
-    /// raised from the start of `read` to the end of `load`. The bytes a file fixup made or
-    /// rewrote and the game's bins taken as the mod's go into `store`; the archive's own are
-    /// there from `read`.
-    ///
-    /// # Panics
-    ///
-    /// When the store keeps a file's bytes under another id than the file names: a store that
-    /// does not hash as `ContentId::of` does.
+    /// raised from the start of `read` to the end of `load`. Every file's bytes are in the
+    /// run's store: the archive's from `read`, and the ones a file fixup made or rewrote and
+    /// the game's bins taken as the mod's from `load`.
     pub fn of(
         state: &LoadState<'_>,
         env: &Env,
         settings: LoadSettings,
         findings: Vec<Logged>,
-        store: &dyn BlobStore,
     ) -> Self {
         let m = state.module;
-        for file in m.files.values() {
-            if file.source != FileSource::Archive {
-                let id = store.put(file.bytes.clone());
-                assert_eq!(
-                    id, file.content,
-                    "the store keeps a file's bytes under {id:?}"
-                );
-            }
-        }
         let bins = m.bins.values().map(|bin| LoadBin {
             file: bin.file,
             links: bin.links.clone(),
@@ -593,17 +577,17 @@ impl LoadSnapshot {
         Ok(())
     }
 
-    /// The state a run holds once `load` ends, its bytes from `store` and its bins parsed
-    /// again.
-    pub fn reopen(&self, store: &dyn BlobStore) -> Result<Reopened, ResumeError> {
-        let mut m = Mod::new(self.meta.clone());
-        let extras = self.extras.iter().map(|extra| extra.open(store));
+    /// The state a run holds once `load` ends, its bytes in the run's store `blobs` and its
+    /// bins parsed again.
+    pub fn reopen(&self, blobs: &Blobs) -> Result<Reopened, ResumeError> {
+        let mut m = Mod::new(self.meta.clone(), blobs.clone());
+        let extras = self.extras.iter().map(|extra| extra.open(blobs));
         m.extras = extras
             .collect::<Result<_, _>>()
             .map_err(ResumeError::Store)?;
-        let image = self.image.map(|image| image.open(store)).transpose();
+        let image = self.image.map(|image| image.open(blobs)).transpose();
         m.image = image.map_err(ResumeError::Store)?;
-        self.reopen_files(&mut m, store)?;
+        self.reopen_files(&mut m, blobs)?;
         self.reopen_bins(&mut m)?;
         self.reopen_characters(&mut m)?;
         m.groups = self.groups.clone();
@@ -627,7 +611,7 @@ impl LoadSnapshot {
         })
     }
 
-    fn reopen_files(&self, m: &mut Mod, store: &dyn BlobStore) -> Result<(), ResumeError> {
+    fn reopen_files(&self, m: &mut Mod, blobs: &Blobs) -> Result<(), ResumeError> {
         for row in &self.part.wads {
             let id = m.wads.push(ModWad {
                 name: row.name.clone(),
@@ -650,9 +634,9 @@ impl LoadSnapshot {
                     row.id
                 )));
             }
-            let bytes = store
-                .get(row.content)
-                .ok_or(ResumeError::Store(row.content))?;
+            if !blobs.holds(row.content) {
+                return Err(ResumeError::Store(row.content));
+            }
             let pushed = m.push_file(FileNode {
                 wad: row.wad,
                 hash,
@@ -660,7 +644,6 @@ impl LoadSnapshot {
                 size: row.size,
                 content: row.content,
                 kind: row.kind,
-                bytes,
                 used: row.used,
                 source: row.source,
             });
@@ -682,7 +665,7 @@ impl LoadSnapshot {
                 error: row.error.clone(),
             });
             if row.error.is_none() {
-                let parsed = bin::parse(&m.files[row.file].bytes);
+                let parsed = bin::parse(&m.bytes(row.file));
                 let parsed =
                     parsed.map_err(|why| malformed(format!("{bin} reads no more: {why}")))?;
                 m.push_objects(bin, parsed.objects);

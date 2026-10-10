@@ -102,7 +102,8 @@ impl<'a> InPlaceBuilder<'a> {
                 return Err(sink.halt(missing).into());
             }
         }
-        let mut package = Package::new(ProjectConfig::of(m, Made::Repaired));
+        let config = ProjectConfig::of(m, Made::Repaired);
+        let mut package = Package::new(config).in_store(m.blobs().clone());
         let wired = Wired::by(m.objects.values().map(|object| &object.value));
         let mut found = InPlace {
             kept: 0,
@@ -131,7 +132,7 @@ impl<'a> InPlaceBuilder<'a> {
             }
             let named = self.path_of(file);
             let path = named.clone().unwrap_or_else(|| hash_path(file));
-            let contained = container.contain(&path, &file.bytes);
+            let contained = container.contain(&path, || m.bytes(id));
             if let Some(tex) = &contained
                 && let Some(stale) = &self.stale
                 && stale.of_bytes(m, id, tex)?
@@ -145,20 +146,14 @@ impl<'a> InPlaceBuilder<'a> {
                     let (bytes, written) = self.rewrite(bin);
                     found.rewritten += 1;
                     found.whole += usize::from(written.how == BinWrite::Whole);
-                    Chunk {
-                        bytes: bytes.into(),
-                        origin: Origin::Rewritten { file: id, written },
-                    }
+                    Chunk::new(bytes.into(), Origin::Rewritten { file: id, written })
                 }
                 None => match contained {
                     Some(tex) => {
                         container.shipped();
-                        Chunk {
-                            bytes: tex.into(),
-                            origin: Origin::Contained(id),
-                        }
+                        Chunk::new(tex.into(), Origin::Contained(id))
                     }
-                    None => Chunk::kept(id, file.bytes.clone()),
+                    None => Chunk::kept(id, file),
                 },
             };
             found.kept += 1;

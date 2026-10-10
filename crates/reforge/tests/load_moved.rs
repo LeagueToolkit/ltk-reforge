@@ -69,7 +69,7 @@ impl Fixture {
     /// A mod of one empty champion WAD, and a game shipping the base's mesh, skeleton and
     /// texture.
     fn new() -> Self {
-        let mut module = Mod::new(ModMeta {
+        let meta = ModMeta {
             file_name: Spelled::new("moved.fantome"),
             sha256: ContentId::of(b"moved"),
             mod_id: "000000000000".into(),
@@ -77,7 +77,9 @@ impl Fixture {
             author: None,
             version: None,
             description: None,
-        });
+        };
+        let store = std::sync::Arc::new(reforge::store::MemoryStore::new());
+        let mut module = Mod::new(meta, reforge::model::Blobs::new(store));
         let name = WadName::parse("Test.wad.client").unwrap();
         let wad = module.wads.push(ModWad {
             role: WadRole::Champion {
@@ -121,9 +123,8 @@ impl Fixture {
                 hash: path.hash(),
                 path: Some(path),
                 size: bytes.len() as u64,
-                content: ContentId::of(bytes),
+                content: self.module.blobs().keep(bytes.into()),
                 kind: file_kind(bytes),
-                bytes: bytes.into(),
                 used: FileUse::Unused,
                 source: FileSource::Archive,
             })
@@ -399,7 +400,7 @@ fn a_variant_tag_riot_dropped_is_followed() {
         FileKind::Other,
         "the bytes as they were, of the kind they are"
     );
-    assert_eq!(&*mesh.bytes, b"the mod's own mesh");
+    assert_eq!(&*mesh.bytes(f.module.blobs()), b"the mod's own mesh");
     assert_eq!(mesh.content, ContentId::of(b"the mod's own mesh"));
     assert_eq!(mesh.used, FileUse::Unused);
     assert_eq!(mesh.path.as_ref().unwrap().as_str(), BASE_MESH);
@@ -435,7 +436,7 @@ fn a_resolution_prefix_is_dropped_and_the_texture_renamed() {
     let f = Fixture::moved(&[(&old, &dds())], &[&old]);
     let (tex, _) = f.made(BASE_TEX).expect("the texture is made");
     assert_eq!(tex.kind, FileKind::Dds);
-    assert_eq!(&*tex.bytes, dds().as_slice());
+    assert_eq!(&*tex.bytes(f.module.blobs()), dds().as_slice());
     let moved = &one::<FilesMoved>(&f.log).files[0];
     assert_eq!(
         (moved.rename.name, moved.how),
@@ -478,7 +479,7 @@ fn of_two_files_with_one_rename_the_first_is_made() {
     let f = Fixture::moved(&files, &[&one_tag, &other_tag]);
     let (mesh, from) = f.made(BASE_MESH).expect("made");
     assert_eq!(
-        (from, &*mesh.bytes),
+        (from, &*mesh.bytes(f.module.blobs())),
         (f.id_of(&other_tag), &b"the b mesh"[..])
     );
     assert_eq!(one::<FilesMoved>(&f.log).passed_over, [f.id_of(&one_tag)]);
@@ -498,7 +499,10 @@ fn a_file_that_is_the_games_own_at_its_path_gives_way_to_the_mods_own_bytes() {
     let history = history.with_content(&one_tag, b"the game's a mesh", 0..=0);
     f.run(&MovedAssets, &history);
     let (mesh, from) = f.made(BASE_MESH).expect("made");
-    assert_eq!((from, &*mesh.bytes), (f.id_of(&other_tag), &b"own"[..]));
+    assert_eq!(
+        (from, &*mesh.bytes(f.module.blobs())),
+        (f.id_of(&other_tag), &b"own"[..])
+    );
     assert_eq!(one::<FilesMoved>(&f.log).passed_over, [f.id_of(&one_tag)]);
 
     // Alone, the game's own file at the former path is still made the asset's.

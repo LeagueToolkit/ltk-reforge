@@ -367,7 +367,7 @@ impl Sounds {
                 clips: Vec::new(),
                 unreadable: None,
             };
-            match Bank::read(&m.files[file].bytes) {
+            match Bank::read(&m.bytes(file)) {
                 Ok(read) => {
                     bank.role = BankRole::of(&read);
                     bank.version = read.version;

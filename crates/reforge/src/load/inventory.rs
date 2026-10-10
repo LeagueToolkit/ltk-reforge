@@ -154,7 +154,7 @@ impl Inventory {
             }
             let path = file.path.as_ref().map(ToString::to_string);
             let path = path.or_else(|| names.path(file.hash));
-            let identity = identify(head(&file.bytes), path.as_deref());
+            let identity = identify(head(&m.bytes(id)), path.as_deref());
             out.by_kind.entry(identity.kind).or_default().add(file.size);
             let named_bin = path
                 .as_deref()

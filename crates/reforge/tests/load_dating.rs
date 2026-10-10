@@ -13,9 +13,13 @@ use reforge::model::entity::{
     BinNode, FileId, FileNode, FileSource, FileUse, MadeBy, ModMeta, ModWad, ObjectId, ObjectNode,
     WadId, WadLayout, WadRole,
 };
+use std::sync::Arc;
+
 use reforge::model::{
-    ByteView, ChunkPath, ContentId, Mod, NormKey, ObjectKey, Spelled, WadName, name_hash, path_hash,
+    Blobs, ByteView, ChunkPath, ContentId, Mod, NormKey, ObjectKey, Spelled, WadName, name_hash,
+    path_hash,
 };
+use reforge::store::MemoryStore;
 use reforge_testkit::MemoryHistory;
 
 /// Game bytes the history dates, large enough to count.
@@ -34,15 +38,18 @@ fn builds() -> MemoryHistory {
 
 /// A mod of one champion WAD with no file in it.
 fn empty_mod() -> (Mod, WadId) {
-    let mut m = Mod::new(ModMeta {
-        file_name: Spelled::new("synthetic.fantome"),
-        sha256: ContentId::of(b"synthetic"),
-        mod_id: "000000000000".into(),
-        name: None,
-        author: None,
-        version: None,
-        description: None,
-    });
+    let mut m = Mod::new(
+        ModMeta {
+            file_name: Spelled::new("synthetic.fantome"),
+            sha256: ContentId::of(b"synthetic"),
+            mod_id: "000000000000".into(),
+            name: None,
+            author: None,
+            version: None,
+            description: None,
+        },
+        Blobs::new(Arc::new(MemoryStore::new())),
+    );
     let wad = m.wads.push(ModWad {
         name: WadName::parse("Test.wad.client").expect("a WAD name"),
         role: WadRole::Champion {
@@ -56,14 +63,14 @@ fn empty_mod() -> (Mod, WadId) {
 }
 
 fn file(m: &mut Mod, wad: WadId, path: &str, bytes: &[u8], source: FileSource) -> FileId {
+    let content = m.blobs().keep(ByteView::from(bytes));
     m.push_file(FileNode {
         wad,
         hash: path_hash(path),
         path: Some(ChunkPath::parse(path).expect("a chunk path")),
         size: bytes.len() as u64,
-        content: ContentId::of(bytes),
+        content,
         kind: file_kind(bytes),
-        bytes: ByteView::from(bytes),
         used: FileUse::Referenced,
         source,
     })

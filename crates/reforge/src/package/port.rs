@@ -200,7 +200,8 @@ impl<'a> PortBuilder<'a> {
         if let Some(missing) = variants.map_err(Fault::from)? {
             return Err(sink.halt(missing).into());
         }
-        let mut package = Package::new(ProjectConfig::of(m, Made::Ported));
+        let config = ProjectConfig::of(m, Made::Ported);
+        let mut package = Package::new(config).in_store(m.blobs().clone());
         let mut found = Ported {
             files: 0,
             bins: 0,
@@ -249,10 +250,7 @@ impl<'a> PortBuilder<'a> {
             }
             found.banks += 1;
             recut.insert(bank.from);
-            let chunk = Chunk {
-                bytes: bank.bank.write().into(),
-                origin: Origin::Bank(bank.from),
-            };
+            let chunk = Chunk::new(bank.bank.write().into(), Origin::Bank(bank.from));
             let key = ChunkKey::new(bank.wad.clone(), bank.path.clone());
             package.insert(bank.layer.clone(), key, chunk);
         }
@@ -260,15 +258,12 @@ impl<'a> PortBuilder<'a> {
         let mut container = TexContainer::new().keep_dds(self.keep_dds);
         let mut ship = |package: &mut Package, layer: Layer, file: FileId, place: &ChunkPath| {
             let node = &m.files[file];
-            let chunk = match container.contain(place, &node.bytes) {
+            let chunk = match container.contain(place, || m.bytes(file)) {
                 Some(tex) => {
                     container.shipped();
-                    Chunk {
-                        bytes: tex.into(),
-                        origin: Origin::Contained(file),
-                    }
+                    Chunk::new(tex.into(), Origin::Contained(file))
                 }
-                None => Chunk::kept(file, node.bytes.clone()),
+                None => Chunk::kept(file, node),
             };
             let key = ChunkKey::new(m.wads[node.wad].name.clone(), place.clone());
             package.insert(layer, key, chunk);
@@ -715,12 +710,10 @@ fn names_shipped(value: &PropertyValueEnum, shipped: &BTreeSet<WadHash>) -> bool
 fn made_bin(objects: Vec<BinObject>, links: Vec<String>) -> Chunk {
     let entries = objects.iter().map(|object| object.path_hash).collect();
     let bytes = bin::write(&Bin::new(objects.iter().cloned(), links));
-    Chunk {
-        bytes: bytes.into(),
-        origin: Origin::Made(WrittenBin {
-            how: BinWrite::Whole,
-            entries,
-            edited: objects,
-        }),
-    }
+    let written = WrittenBin {
+        how: BinWrite::Whole,
+        entries,
+        edited: objects,
+    };
+    Chunk::new(bytes.into(), Origin::Made(written))
 }

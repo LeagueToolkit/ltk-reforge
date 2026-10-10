@@ -82,13 +82,14 @@ fn a_bank_with_header_id_zero_gets_the_id_of_its_file_name() {
     let (file, node) = run.file(BANK);
     let id = id_of("test_base_sfx_audio");
     assert_eq!(node.used, FileUse::Referenced);
-    assert_eq!(header_id(&node.bytes), id);
+    let bytes = run.bytes(BANK);
+    assert_eq!(header_id(&bytes), id);
 
     // The file is the archive's, at its path, with the bytes the fixup wrote.
     let shipped = bank_bytes(0);
-    assert_eq!(node.bytes[..], bank_bytes(id)[..]);
+    assert_eq!(bytes[..], bank_bytes(id)[..]);
     assert_eq!(node.size, shipped.len() as u64);
-    assert_eq!(node.content, ContentId::of(&node.bytes));
+    assert_eq!(node.content, ContentId::of(&bytes));
     assert_eq!(node.kind, FileKind::Bnk);
     assert_eq!(
         node.source,
@@ -122,7 +123,7 @@ fn a_bank_with_an_id_and_a_bank_nothing_loads_are_left() {
     let env = env();
     let run = LoadRun::of(&env, LoadOptions::new(), &mod_with(7));
     let (_, node) = run.file(BANK);
-    assert_eq!(node.bytes[..], bank_bytes(7)[..]);
+    assert_eq!(node.bytes(run.module().blobs())[..], bank_bytes(7)[..]);
     assert_eq!(node.source, FileSource::Archive);
     assert_eq!(run.log.of::<BankIdSet>().count(), 0);
 
@@ -131,7 +132,7 @@ fn a_bank_with_an_id_and_a_bank_nothing_loads_are_left() {
     let run = LoadRun::of(&env, LoadOptions::new(), &unused);
     let (_, node) = run.file(LOOSE);
     assert_eq!(node.used, FileUse::Unused);
-    assert_eq!(header_id(&node.bytes), 0);
+    assert_eq!(header_id(&node.bytes(run.module().blobs())), 0);
     assert_eq!(node.source, FileSource::Archive);
     assert_eq!(run.log.of::<BankIdSet>().count(), 0);
     assert_eq!(run.log.of::<BankUnnamed>().count(), 0);
@@ -149,7 +150,10 @@ fn a_bank_at_a_path_the_game_ships_is_one_the_client_loads() {
     let run = LoadRun::of(&env, LoadOptions::new(), &archive);
     let (_, node) = run.file(BANK);
     assert_eq!(node.used, FileUse::Override);
-    assert_eq!(header_id(&node.bytes), id_of("test_base_sfx_audio"));
+    assert_eq!(
+        header_id(&node.bytes(run.module().blobs())),
+        id_of("test_base_sfx_audio")
+    );
 }
 
 #[test]
@@ -166,7 +170,7 @@ fn a_bank_named_by_its_hash_takes_the_path_a_bin_of_the_mod_spells() {
     let run = LoadRun::of(&env, LoadOptions::new(), &unnamed);
     let (file, node) = run.file(BANK);
     assert_eq!((node.used, node.path.as_ref()), (FileUse::Override, None));
-    assert_eq!(header_id(&node.bytes), 0);
+    assert_eq!(header_id(&node.bytes(run.module().blobs())), 0);
     assert_eq!(node.source, FileSource::Archive);
     let finding: &BankUnnamed = run.only();
     assert_eq!((finding.wad, &finding.banks[..]), (node.wad, &[file][..]));
@@ -179,7 +183,10 @@ fn a_bank_named_by_its_hash_takes_the_path_a_bin_of_the_mod_spells() {
         .file(WAD, &hashed, bank_bytes(0));
     let run = LoadRun::of(&env, LoadOptions::new(), &named);
     let (_, node) = run.file(BANK);
-    assert_eq!(header_id(&node.bytes), id_of("test_base_sfx_audio"));
+    assert_eq!(
+        header_id(&node.bytes(run.module().blobs())),
+        id_of("test_base_sfx_audio")
+    );
     assert_eq!(run.log.of::<BankUnnamed>().count(), 0);
 }
 
@@ -205,10 +212,10 @@ fn only_the_id_changes_in_a_bank_a_tool_laid_out() {
     let run = LoadRun::of(&env, LoadOptions::new(), &archive);
     let (_, node) = run.file(BANK);
     let id = id_of("test_base_sfx_audio");
-    assert_eq!(header_id(&node.bytes), id);
+    assert_eq!(header_id(&node.bytes(run.module().blobs())), id);
     let mut expected = shipped;
     expected[12..16].copy_from_slice(&id.to_le_bytes());
-    assert_eq!(node.bytes[..], expected[..]);
+    assert_eq!(node.bytes(run.module().blobs())[..], expected[..]);
 }
 
 #[test]
@@ -239,7 +246,7 @@ fn what_is_no_readable_sound_bank_is_left() {
     for (path, shipped) in paths.iter().zip([cut, short, package]) {
         let (_, node) = run.file(path);
         assert_eq!(node.used, FileUse::Referenced, "{path}");
-        assert_eq!(node.bytes[..], shipped[..], "{path}");
+        assert_eq!(node.bytes(run.module().blobs())[..], shipped[..], "{path}");
         assert_eq!(node.source, FileSource::Archive, "{path}");
     }
     let of_banks = run.log.iter().filter(|d| d.code.area() == "audio");
@@ -303,7 +310,10 @@ fn the_fixup_applied_twice_changes_nothing_the_second_time() {
 
     run_again(&env, &mut module, &mut names, &mut log);
     let again = &module.files[file];
-    assert_eq!(again.bytes[..], after.bytes[..]);
+    assert_eq!(
+        again.bytes(module.blobs())[..],
+        after.bytes(module.blobs())[..]
+    );
     assert_eq!(
         (again.content, again.size, again.source),
         (after.content, after.size, after.source)
@@ -324,7 +334,7 @@ fn a_rewrite_keeps_what_the_archive_shipped_and_a_made_file_stays_made() {
     let wad = module.wads.ids().next().unwrap();
     let bank = module.file_at(wad, path_hash(BANK)).expect("the bank");
     let shipped = module.files[bank].content;
-    assert_eq!(header_id(&module.files[bank].bytes), 0, "no fixup ran");
+    assert_eq!(header_id(&module.bytes(bank)), 0, "no fixup ran");
 
     let mut stage = log.at(Stage::Load);
     let mut sink = stage.by("test", None);
@@ -360,7 +370,7 @@ fn a_rewrite_keeps_what_the_archive_shipped_and_a_made_file_stays_made() {
     for (file, source) in [(bank, rewritten), (copy, made)] {
         let node = &module.files[file];
         assert_eq!(node.source, source);
-        assert_eq!(node.bytes[..], bank_bytes(2)[..]);
+        assert_eq!(module.bytes(file)[..], bank_bytes(2)[..]);
         assert_eq!(node.content, ContentId::of(&bank_bytes(2)));
         assert_eq!(node.size, bank_bytes(2).len() as u64);
     }
@@ -410,18 +420,19 @@ fn the_fixup_is_a_standard_file_fixup_that_runs_once_each_file_has_its_use() {
     let mut log = Diagnostics::new();
     let bytes = mod_with(0).build();
     let caps = reforge::archive::Caps::default();
-    let store = reforge::store::MemoryStore::new();
+    let store = std::sync::Arc::new(reforge::store::MemoryStore::new());
     let raw = reforge::archive::read(
         &bytes,
         reforge_testkit::mods::FILE_NAME,
         &caps,
-        &store,
+        &*store,
         &mut log.at(Stage::Read),
     )
     .expect("it reads");
     let mut loader = Loader::new(&env);
     let mut sink = log.at(Stage::Load);
-    let mut m = loader.open(&raw, &store).expect("the store answers");
+    let blobs = reforge::model::Blobs::new(store);
+    let mut m = loader.open(&raw, &blobs).expect("the store answers");
     let bank = m
         .file_at(m.wads.ids().next().unwrap(), path_hash(BANK))
         .unwrap();
@@ -432,14 +443,11 @@ fn the_fixup_is_a_standard_file_fixup_that_runs_once_each_file_has_its_use() {
         .take_game_bins(&mut m, &mut sink)
         .expect("no history is asked");
     loader.survey(&mut m, &mut sink).expect("a skin mod");
-    assert_eq!(header_id(&m.files[bank].bytes), 0);
+    assert_eq!(header_id(&m.bytes(bank)), 0);
     loader
         .resolve(&mut m, &mut sink)
         .expect("no history is asked");
-    assert_eq!(
-        header_id(&m.files[bank].bytes),
-        id_of("test_base_sfx_audio")
-    );
+    assert_eq!(header_id(&m.bytes(bank)), id_of("test_base_sfx_audio"));
 }
 
 #[test]
@@ -447,7 +455,7 @@ fn the_fixup_is_turned_off_by_its_id() {
     let env = env();
     let options = LoadOptions::new().without_fixup("bank-id");
     let run = LoadRun::of(&env, options, &mod_with(0));
-    assert_eq!(header_id(&run.file(BANK).1.bytes), 0);
+    assert_eq!(header_id(&run.bytes(BANK)), 0);
     assert_eq!(run.log.of::<BankIdSet>().count(), 0);
 
     // A chosen set of fixups holds it, or leaves it out.
@@ -460,7 +468,7 @@ fn the_fixup_is_turned_off_by_its_id() {
     assert!(!ids(&without).contains(&"bank-id".to_string()));
     let options = LoadOptions::new().file_fixups(without.file_fixups());
     let run = LoadRun::of(&env, options, &mod_with(0));
-    assert_eq!(header_id(&run.file(BANK).1.bytes), 0);
+    assert_eq!(header_id(&run.bytes(BANK)), 0);
 }
 
 #[test]

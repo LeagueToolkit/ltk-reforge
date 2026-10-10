@@ -6,7 +6,7 @@ use reforge::env::Env;
 use reforge::game::{NameBook, Speller};
 use reforge::load::{LoadError, LoadOptions, Loader};
 use reforge::model::entity::{FileId, FileNode, UnitId};
-use reforge::model::{Dump, DumpCx, Mod, path_hash};
+use reforge::model::{Blobs, ByteView, Dump, DumpCx, Mod, path_hash};
 use reforge::store::MemoryStore;
 
 use crate::archive::{STORED, packed_wad, zip};
@@ -107,12 +107,12 @@ impl<'a> LoadRun<'a> {
     /// When the archive does not read.
     pub fn of_bytes(env: &'a Env, options: LoadOptions, bytes: &[u8]) -> Self {
         let mut log = Diagnostics::new();
-        let store = MemoryStore::new();
+        let store = std::sync::Arc::new(MemoryStore::new());
         let caps = Caps::default();
-        let read = archive::read(bytes, FILE_NAME, &caps, &store, &mut log.at(Stage::Read));
+        let read = archive::read(bytes, FILE_NAME, &caps, &*store, &mut log.at(Stage::Read));
         let raw = read.unwrap_or_else(|halted| panic!("the archive reads: {halted}"));
         let mut loader = Loader::new(env).options(options);
-        let result = loader.load(&raw, &store, &mut log.at(Stage::Load));
+        let result = loader.load(&raw, &Blobs::new(store), &mut log.at(Stage::Load));
         Self {
             env,
             result,
@@ -180,6 +180,15 @@ impl<'a> LoadRun<'a> {
         files
             .find(|(_, file)| file.hash == hash)
             .unwrap_or_else(|| panic!("no file at {path}\n{}", self.dump()))
+    }
+
+    /// The bytes of the file at a path, in any WAD, fetched from the run's store.
+    ///
+    /// # Panics
+    ///
+    /// When the mod has no file there.
+    pub fn bytes(&self, path: &str) -> ByteView {
+        self.module().bytes(self.file(path).0)
     }
 
     /// The unit of a character at a slot.

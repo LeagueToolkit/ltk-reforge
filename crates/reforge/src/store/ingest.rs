@@ -2,7 +2,8 @@
 //! processes read and write at once.
 //!
 //! `cacache` keeps the files. A put writes a temporary file and renames it to the blob's hash,
-//! so a blob is whole or absent; a get checks the bytes against the hash before it answers.
+//! so a blob is whole or absent; a get checks the bytes against the hash before it answers,
+//! and a get unchecked, a run's read of what it put or found whole, reads the blob's file.
 //! The store uses it by hash alone, with SHA-256 as the algorithm, so a blob's address is its
 //! content id. `cacache`'s index, a key to a hash, is never written.
 //!
@@ -70,6 +71,18 @@ impl IngestStore {
     /// Whether it holds a blob under an id. The bytes are not read, so not checked.
     pub fn contains(&self, id: ContentId) -> bool {
         cacache::exists_sync(&self.dir, &integrity(id))
+    }
+
+    /// The file `cacache` 13.0 keeps a blob in: `content-v2/sha256/` and the id's hex digits,
+    /// split after the second and the fourth. `cacache` reads a blob only through a check of
+    /// its hash, so an unchecked read names the file itself.
+    fn blob_file(&self, id: ContentId) -> Utf8PathBuf {
+        let hex = id.hex();
+        let mut path = self.dir.join("content-v2").join("sha256");
+        path.push(&hex[..2]);
+        path.push(&hex[2..4]);
+        path.push(&hex[4..]);
+        path
     }
 }
 
@@ -182,6 +195,14 @@ impl BlobStore for IngestStore {
             }
             Err(_) => None,
         }
+    }
+
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        fs::read(self.blob_file(id)).ok().map(ByteView::from)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        IngestStore::contains(self, id)
     }
 
     fn put(&self, bytes: ByteView) -> ContentId {

@@ -76,21 +76,19 @@ fn other() -> BinObject {
 
 /// A bin written again, built to hold `A` as fixed and `B`, with these bytes.
 fn rewritten(bytes: Vec<u8>) -> Chunk {
-    Chunk {
-        bytes: bytes.into(),
-        origin: Origin::Rewritten {
-            file: file(),
-            written: WrittenBin {
-                how: BinWrite::Delta,
-                entries: BTreeSet::from([name_hash("A"), name_hash("B")]),
-                edited: vec![fixed()],
-            },
+    let origin = Origin::Rewritten {
+        file: file(),
+        written: WrittenBin {
+            how: BinWrite::Delta,
+            entries: BTreeSet::from([name_hash("A"), name_hash("B")]),
+            edited: vec![fixed()],
         },
-    }
+    };
+    Chunk::new(bytes.into(), origin)
 }
 
 fn kept(objects: Vec<BinObject>) -> Chunk {
-    Chunk::kept(file(), ByteView::from(bin(objects)))
+    Chunk::new(ByteView::from(bin(objects)), Origin::Kept(file()))
 }
 
 /// A target whose `Material` holds a count, a texture name, and a child, a list of children
@@ -202,10 +200,7 @@ fn the_round_trip_finds_a_bin_that_does_not_read() {
 /// holds no version.
 #[test]
 fn the_round_trip_finds_a_bank_made_that_the_client_does_not_load() {
-    let made = |bytes: Vec<u8>| Chunk {
-        bytes: bytes.into(),
-        origin: Origin::Bank(file()),
-    };
+    let made = |bytes: Vec<u8>| Chunk::new(bytes.into(), Origin::Bank(file()));
     let media = |version: u32| media_bank("made_sfx_audio", version, vec![clip(1, 1)]);
     let mut package = Package::new(config());
     let banks = [
@@ -247,7 +242,10 @@ fn the_round_trip_finds_a_bank_made_that_the_client_does_not_load() {
 fn a_file_kept_as_it_is_is_not_read_back() {
     let schema = schema();
     let set = CheckSet::from(&CheckSelection::standard().without("types"));
-    let package = package_of(Chunk::kept(file(), ByteView::from(b"no bin at all")));
+    let package = package_of(Chunk::new(
+        ByteView::from(b"no bin at all"),
+        Origin::Kept(file()),
+    ));
     let log = checked(&package, Some(&schema), &set);
     let covered = Coverage::RoundTrip {
         bins: 0,

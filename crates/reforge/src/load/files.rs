@@ -112,41 +112,41 @@ impl FileFixCx<'_, '_> {
     pub fn add(&mut self, file: NewFile) -> Result<FileId, Occupied> {
         let source = &self.module.files[file.from];
         let wad = source.wad;
-        let same_view =
-            file.bytes.as_ptr() == source.bytes.as_ptr() && file.bytes.len() == source.bytes.len();
-        let content = if same_view {
-            source.content
-        } else {
-            ContentId::of(&file.bytes)
-        };
+        let content = ContentId::of(&file.bytes);
+        // The source's own bytes are in the store already, maybe in a tier under the run's.
+        let new = content != source.content;
         let hash = self.book.learn_path(file.to.as_str());
-        self.module.push_file(FileNode {
+        let added = self.module.push_file(FileNode {
             wad,
             hash,
             path: Some(file.to),
             size: file.bytes.len() as u64,
             content,
             kind: file.kind,
-            bytes: file.bytes,
             used: FileUse::Unused,
             source: FileSource::Made {
                 from: file.from,
                 by: file.by,
             },
-        })
+        })?;
+        if new {
+            self.module.blobs().keep(file.bytes);
+        }
+        Ok(added)
     }
 
     /// Replaces the bytes of a file with the ones a fixup wrote, where the file is. The file
     /// keeps its id, its path, its kind and its use, and its size and content follow the new
     /// bytes. A file the archive ships keeps the digest of the bytes it shipped in its source.
     pub fn rewrite(&mut self, file: FileId, bytes: ByteView, by: MadeBy) {
+        let size = bytes.len() as u64;
+        let content = self.module.blobs().keep(bytes);
         let node = &mut self.module.files[file];
         if node.source == FileSource::Archive {
             let shipped = node.content;
             node.source = FileSource::Rewritten { by, shipped };
         }
-        node.size = bytes.len() as u64;
-        node.content = ContentId::of(&bytes);
-        node.bytes = bytes;
+        node.size = size;
+        node.content = content;
     }
 }

@@ -93,7 +93,8 @@ fn a_port_is_linked_applied_and_written() {
     // ships it.
     let vfx = run.chunk(&format!("{dir}/vfx.bin"));
     assert!(matches!(vfx.origin, Origin::Made(_)));
-    let made = Bin::from_reader(&mut Cursor::new(&vfx.bytes[..])).expect("a bin");
+    let vfx = run.package().bytes(vfx);
+    let made = Bin::from_reader(&mut Cursor::new(&vfx[..])).expect("a bin");
     let carried = format!("Mods/{NS}/Characters/Test/Skins/Skin0/Particles/Test_Own");
     let particle = made
         .objects
@@ -105,7 +106,7 @@ fn a_port_is_linked_applied_and_written() {
         .map(value::FileRef::hash)
         .collect();
     assert_eq!(named, [path_hash(&texture)], "{}", run.dump());
-    assert_eq!(&run.chunk(&texture).bytes[..], blob(OWN_TEX));
+    assert_eq!(&run.chunk_bytes(&texture)[..], blob(OWN_TEX));
     assert!(package.tables.paths().any(|path| path == texture));
     assert!(
         package
@@ -178,10 +179,7 @@ fn two_runs_of_one_mod_give_the_same_package_and_report() {
     assert_eq!(first.package(), second.package());
     assert_eq!(first.report(), second.report());
     let digests = |run: &PortRun<'_>| -> Vec<ContentId> {
-        let chunks = run
-            .package()
-            .chunks()
-            .map(|(_, _, chunk)| ContentId::of(&chunk.bytes));
+        let chunks = run.package().chunks().map(|(_, _, chunk)| chunk.content);
         let patches = run.package().all_patches();
         chunks
             .chain(patches.map(|(_, patch)| ContentId::of(&patch.bytes)))
@@ -280,7 +278,8 @@ fn a_sub_character_at_a_slot_the_game_lacks_gets_a_new_bin() {
     assert!(matches!(chunk.origin, Origin::Made(_)), "{}", run.dump());
     let patches = run.package().patches(&Layer::Base);
     assert!(patches.iter().all(|patch| patch.target.as_str() != target));
-    let written = Bin::from_reader(&mut Cursor::new(&chunk.bytes[..])).expect("a bin");
+    let bytes = run.package().bytes(chunk);
+    let written = Bin::from_reader(&mut Cursor::new(&bytes[..])).expect("a bin");
     let entry = written
         .objects
         .get(&name_hash("Characters/TestPet/Skins/Skin3"));

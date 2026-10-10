@@ -146,7 +146,7 @@ fn chunks_starting(run: &Run<'_>, magic: &[u8]) -> usize {
     let package = run.package().expect("a package");
     let chunks = package
         .chunks()
-        .filter(|(_, _, chunk)| chunk.bytes.starts_with(magic));
+        .filter(|(_, _, chunk)| package.bytes(chunk).starts_with(magic));
     chunks.count()
 }
 
@@ -180,7 +180,7 @@ fn a_run_that_keeps_dds_ships_a_dds_at_a_tex_path_as_it_is() {
         let package = run.package().expect("a package");
         let shipped = package
             .chunks()
-            .filter(|(_, _, chunk)| *chunk.bytes == *texture);
+            .filter(|(_, _, chunk)| *package.bytes(chunk) == *texture);
         assert_eq!(shipped.count(), 1);
         assert_eq!(chunks_starting(run, b"TEX\0"), 0);
         let found: Vec<_> = run.log().of::<TextureContained>().collect();

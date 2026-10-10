@@ -62,8 +62,7 @@ use crate::game::{GameError, NameBook, Speller};
 use crate::history::HistoryError;
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, ModWad, WadRole};
 use crate::model::known::{class, field};
-use crate::model::{ChunkPath, ContentId, Mod, Spell, WadHash, WadName, bin, value};
-use crate::store::BlobStore;
+use crate::model::{Blobs, ChunkPath, ContentId, Mod, Spell, WadHash, WadName, bin, value};
 
 /// How many bins one root's load follows, the root included.
 // #ADR-0070, measured 2026-10-06: the most bins one root of the datasets reaches is 89, and the
@@ -356,8 +355,12 @@ impl<'a> Loader<'a> {
             return Vec::new();
         }
         let mut spelled: BTreeMap<WadHash, ChunkPath> = BTreeMap::new();
-        for file in m.files.values().filter(|file| file.kind == FileKind::Bin) {
-            let Ok(parsed) = bin::parse(&file.bytes) else {
+        let bins = m
+            .files
+            .iter()
+            .filter(|(_, file)| file.kind == FileKind::Bin);
+        for (id, _) in bins {
+            let Ok(parsed) = bin::parse(&m.bytes(id)) else {
                 continue;
             };
             let objects = parsed.objects.iter();
@@ -386,9 +389,10 @@ impl<'a> Loader<'a> {
     }
 
     /// Step 1: the mod's WADs and files as the archive ships them, from its raw snapshot and
-    /// the store its bytes are in. No WAD has a role and no file a use yet. A store that
-    /// holds nothing under an id the snapshot names is a fault, `LoadError::Store`.
-    pub fn open(&mut self, raw: &RawSnapshot, store: &dyn BlobStore) -> Result<Mod, LoadError> {
+    /// the run's store `blobs`, which its bytes are in. No WAD has a role and no file a use
+    /// yet. Each file's bytes are fetched once, for its kind, and not kept. A store that holds
+    /// nothing under an id the snapshot names is a fault, `LoadError::Store`.
+    pub fn open(&mut self, raw: &RawSnapshot, blobs: &Blobs) -> Result<Mod, LoadError> {
         // The names a run reads by are spelled whatever tables are installed.
         for name in field::ALL {
             self.book.learn_field(name);
@@ -396,9 +400,9 @@ impl<'a> Loader<'a> {
         for name in class::ALL {
             self.book.learn_class(name);
         }
-        let mut m = Mod::new(raw.meta.clone());
-        m.extras = raw.open_extras(store).map_err(LoadError::Store)?;
-        let image = raw.image.map(|image| image.open(store)).transpose();
+        let mut m = Mod::new(raw.meta.clone(), blobs.clone());
+        m.extras = raw.open_extras(blobs).map_err(LoadError::Store)?;
+        let image = raw.image.map(|image| image.open(blobs)).transpose();
         m.image = image.map_err(LoadError::Store)?;
         for wad in &raw.wads {
             let id = m.wads.push(ModWad {
@@ -412,7 +416,7 @@ impl<'a> Loader<'a> {
                 if let Some(path) = &file.path {
                     self.book.learn_path(path.as_str());
                 }
-                let bytes = store
+                let bytes = blobs
                     .get(file.content)
                     .ok_or(LoadError::Store(file.content))?;
                 // The archive gives one chunk per path of a WAD: a second one was skipped and
@@ -424,7 +428,6 @@ impl<'a> Loader<'a> {
                     size: bytes.len() as u64,
                     content: file.content,
                     kind: file_kind(&bytes),
-                    bytes,
                     used: FileUse::Unused,
                     source: FileSource::Archive,
                 });
@@ -502,13 +505,13 @@ impl<'a> Loader<'a> {
     pub fn load(
         &mut self,
         raw: &RawSnapshot,
-        store: &dyn BlobStore,
+        blobs: &Blobs,
         sink: &mut Sink<'_>,
     ) -> Result<Mod, LoadError> {
         let _span = tracing::info_span!("load", archive = %raw.meta.file_name).entered();
         let mut parts = Parts::new(&LOAD_PARTS[..5]);
         parts.begin(sink)?;
-        let mut m = self.open(raw, store)?;
+        let mut m = self.open(raw, blobs)?;
         parts.begin(sink)?;
         self.fix_files(&mut m, sink)?;
         parts.begin(sink)?;

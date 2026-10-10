@@ -5,7 +5,7 @@ use reforge::diag::{Diag, Diagnostics, Render, Stage};
 use reforge::env::Env;
 use reforge::fixups::TargetTypes;
 use reforge::model::entity::{ObjectId, UnitId};
-use reforge::model::{Dump, DumpCx, name_hash, path_hash};
+use reforge::model::{ByteView, Dump, DumpCx, name_hash, path_hash};
 use reforge::package::{
     AppliedBin, BuildError, CheckCx, CheckSet, Chunk, Layer, Outcome, Overlay, Package, Patch,
     PortBuilder,
@@ -154,6 +154,15 @@ impl<'a> PortRun<'a> {
     pub fn chunk(&self, path: &str) -> &Chunk {
         let chunk = self.package().by_hash(path_hash(path));
         chunk.unwrap_or_else(|| panic!("no chunk at {path}\n{}", self.dump()))
+    }
+
+    /// The bytes of the chunk at a path, in any layer and WAD.
+    ///
+    /// # Panics
+    ///
+    /// When the package holds none there.
+    pub fn chunk_bytes(&self, path: &str) -> ByteView {
+        self.package().bytes(self.chunk(path))
     }
 
     /// Whether the package holds a chunk at a path.

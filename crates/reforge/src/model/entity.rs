@@ -8,6 +8,7 @@ use ltk_meta::BinObject;
 use serde::{Deserialize, Serialize};
 
 use super::bin::ParsedObject;
+use super::blobs::Blobs;
 use super::hash::{BinHash, ContentId, MAX_SLOT, Slot, WadHash, path_hash, skin_paths};
 use super::id::{Arena, Id, Sigil};
 use super::path::{ChunkPath, WadName};
@@ -276,7 +277,8 @@ impl FileUse {
     }
 }
 
-/// A file of the mod: a chunk of one of its WADs.
+/// A file of the mod: a chunk of one of its WADs. Its bytes are in the run's store under its
+/// content id, and a stage fetches them where it reads them (#ADR-0100).
 #[derive(Debug, Clone)]
 pub struct FileNode {
     /// The WAD it is in.
@@ -287,16 +289,21 @@ pub struct FileNode {
     pub path: Option<ChunkPath>,
     /// Its size in bytes.
     pub size: u64,
-    /// The digest of its bytes.
+    /// The digest of its bytes, and the id the run's store holds them under.
     pub content: ContentId,
     /// What it is, by its first bytes.
     pub kind: FileKind,
-    /// Its bytes.
-    pub bytes: ByteView,
     /// How the client comes to use it.
     pub used: FileUse,
     /// Where it comes from.
     pub source: FileSource,
+}
+
+impl FileNode {
+    /// Its bytes, fetched from the run's store. Nothing keeps them but the caller.
+    pub fn bytes(&self, blobs: &Blobs) -> ByteView {
+        blobs.fetch(self.content)
+    }
 }
 
 /// Where a bin's linked path leads when the client loads it: the mod's file wins over the
@@ -453,12 +460,14 @@ pub struct Mod {
     pub named_by_table: BTreeSet<FileId>,
     file_at: BTreeMap<(WadId, WadHash), FileId>,
     bin_of: BTreeMap<FileId, BinId>,
+    blobs: Blobs,
 }
 
 impl Mod {
-    /// A mod with nothing in it yet.
-    pub fn new(meta: ModMeta) -> Self {
+    /// A mod with nothing in it yet, whose files' bytes are in the run's store `blobs`.
+    pub fn new(meta: ModMeta, blobs: Blobs) -> Self {
         Self {
+            blobs,
             meta,
             wads: Arena::default(),
             files: Arena::default(),
@@ -475,6 +484,16 @@ impl Mod {
             file_at: BTreeMap::new(),
             bin_of: BTreeMap::new(),
         }
+    }
+
+    /// The run's store, which the files' bytes are in.
+    pub fn blobs(&self) -> &Blobs {
+        &self.blobs
+    }
+
+    /// A file's bytes, fetched from the run's store. Nothing keeps them but the caller.
+    pub fn bytes(&self, file: FileId) -> ByteView {
+        self.files[file].bytes(&self.blobs)
     }
 
     /// Adds a file to its WAD. Every file is added through this: a WAD holds one file per path

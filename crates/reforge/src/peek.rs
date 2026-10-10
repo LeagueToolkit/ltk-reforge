@@ -104,7 +104,7 @@ fn finish(
         Ok(raw) => raw,
         Err(halted) => return Err(NotRead { halted, log }),
     };
-    let image = raw.image.and_then(|image| image.open(store).ok());
+    let image = raw.image.and_then(|image| image.open(&store).ok());
     let (thumbnail, image_refused) = match image.as_ref().map(Thumbnail::of) {
         Some(Ok(thumbnail)) => (Some(thumbnail), None),
         Some(Err(why)) => (None, Some(why)),

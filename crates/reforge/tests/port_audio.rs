@@ -65,7 +65,7 @@ fn port<'a>(env: &'a Env, archive: &ModArchive) -> PortRun<'a> {
 }
 
 fn read(run: &PortRun<'_>, path: &str) -> Bank {
-    Bank::read(&run.chunk(path).bytes).unwrap_or_else(|error| panic!("{path}: {error}"))
+    Bank::read(&run.chunk_bytes(path)).unwrap_or_else(|error| panic!("{path}: {error}"))
 }
 
 fn clip_ids(bank: &Bank) -> Vec<u32> {

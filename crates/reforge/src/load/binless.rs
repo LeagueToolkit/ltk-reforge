@@ -25,7 +25,7 @@ use crate::diag::Sink;
 use crate::game::GameSkin;
 use crate::model::entity::{FileId, FileKind, FileNode, FileSource, FileUse, WadId};
 use crate::model::hash::skin_paths;
-use crate::model::{ByteView, ContentId, MAX_SLOT, Slot, Spell, WadHash, path_hash};
+use crate::model::{ByteView, MAX_SLOT, Slot, Spell, WadHash, path_hash};
 
 /// The files of one WAD against the game's files at their paths.
 #[derive(Default)]
@@ -268,14 +268,14 @@ impl<'a> Binless<'a> {
                 continue;
             }
             self.run.book.learn_path(path.as_str());
+            let content = self.run.module.blobs().keep(ByteView::from(&*bin.bytes));
             let added = self.run.module.push_file(FileNode {
                 wad,
                 hash: path.hash(),
                 path: Some(path.clone()),
                 size: bin.bytes.len() as u64,
-                content: ContentId::of(&bin.bytes),
+                content,
                 kind: FileKind::Bin,
-                bytes: ByteView::from(&*bin.bytes),
                 used: FileUse::Unused,
                 source: FileSource::Game,
             });

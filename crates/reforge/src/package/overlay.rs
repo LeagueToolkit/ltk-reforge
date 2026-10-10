@@ -260,7 +260,7 @@ impl Overlay {
             }
             visited.insert(hash);
             if let Some(chunk) = package.by_hash(hash) {
-                let Some((objects, links)) = objects_of(&chunk.bytes) else {
+                let Some((objects, links)) = objects_of(&package.bytes(chunk)) else {
                     continue;
                 };
                 for object in objects {

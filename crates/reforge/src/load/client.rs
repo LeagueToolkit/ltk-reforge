@@ -55,7 +55,7 @@ impl<'a> ClientLoad<'a> {
         if let Some(bin) = module.bin_of(file) {
             return bin;
         }
-        let parsed = bin::parse(&module.files[file].bytes);
+        let parsed = bin::parse(&module.bytes(file));
         let bin = module.push_bin(BinNode {
             file,
             links: Vec::new(),
