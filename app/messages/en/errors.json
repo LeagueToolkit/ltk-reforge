@@ -4,6 +4,8 @@
   "error.BAD_POLICY.title": "The policy is none the library has",
   "error.ARCHIVE_UNREADABLE.title": "The census history's archive does not read",
   "error.BAD_RULE.title": "The rule {id} does not read",
+  "error.BLOB_MISSING.description": "The mod's bytes were cleared from the store. Run the mod again to have them back.",
+  "error.BLOB_MISSING.title": "The store no longer holds this file",
   "error.CANCELLED.title": "Stopped",
   "error.CENSUS_DOWNLOAD.description": "Downloading it again goes on from where it stopped.",
   "error.CENSUS_DOWNLOAD.title": "The census history did not download",

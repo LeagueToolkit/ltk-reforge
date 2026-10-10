@@ -41,6 +41,11 @@ export const commands = {
 	 *  run has.
 	 */
 	runFiles: (id: number, stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_files", { id, stage }),
+	/**
+	 *  One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A
+	 *  bin's names are spelled through the run's names and the inputs' tables, when they open.
+	 */
+	runFile: (id: number, content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_file", { id, content }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */
@@ -240,6 +245,11 @@ export type AppError =
  *  reach it.
  */
 { code: "NO_FILES_AT_STAGE"; stage: StageName } | 
+/**
+ *  Neither the run tier nor the ingest tier holds the bytes under an id: the mod was
+ *  cleared from the ingest tier.
+ */
+{ code: "BLOB_MISSING"; id: string } | 
 /**  A folder of the app's did not go when the user asked for it removed. */
 { code: "NOT_REMOVED"; path: string; detail: string } | 
 /**  A folder did not open in the system's file manager. */
@@ -395,6 +405,37 @@ export type FileRow = {
 	/**  How it stands against the stage before. */
 	mark: Mark,
 };
+
+/**  One file's bytes as the window shows them. */
+export type FileView = 
+/**  A bin's objects as text, names spelled where the run or the tables spell them. */
+{ as: "bin"; 
+/**  The objects, whole, up to [`MAX_BIN_TEXT`]. */
+text: string; 
+/**  How many objects follow the ones shown. */
+more: number } | 
+/**  A texture's largest mip, decoded by the app. */
+{ as: "image"; 
+/**  A PNG as a `data:` URL, its longest side at most 1024 pixels. */
+png: string; 
+/**  The texture's width. */
+width: number; 
+/**  The texture's height. */
+height: number; 
+/**  Its pixel format, as its container names it. */
+format: string } | 
+/**  Text, up to [`MAX_TEXT`]. */
+{ as: "text"; 
+/**  The text. */
+text: string; 
+/**  Whether the file holds more than is shown. */
+cut: boolean } | 
+/**  The first bytes, as hex. */
+{ as: "hex"; 
+/**  The first [`HEX_BYTES`] bytes, as pairs of hex digits, sixteen to a line. */
+head: string; 
+/**  The file's size. */
+size: number };
 
 /**  One finding of a run. */
 export type Finding = {

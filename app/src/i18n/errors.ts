@@ -138,6 +138,11 @@ export function describeError(error: AppError): ErrorCopy {
     .with({ code: "NO_FILES_AT_STAGE" }, ({ stage }) => ({
       title: m["error.NO_FILES_AT_STAGE.title"]({ stage: m[`stage.${stage}.label`]() }),
     }))
+    .with({ code: "BLOB_MISSING" }, ({ id }) => ({
+      title: m["error.BLOB_MISSING.title"](),
+      description: m["error.BLOB_MISSING.description"](),
+      detail: id,
+    }))
     .with({ code: "NOT_REMOVED" }, ({ path, detail }) => ({
       title: m["error.NOT_REMOVED.title"]({ path }),
       description: m["error.NOT_REMOVED.description"](),

@@ -125,6 +125,10 @@ pub enum AppError {
     /// reach it.
     #[error("the run holds no files at {stage:?}")]
     NoFilesAtStage { stage: StageName },
+    /// Neither the run tier nor the ingest tier holds the bytes under an id: the mod was
+    /// cleared from the ingest tier.
+    #[error("no tier holds the bytes under {id}")]
+    BlobMissing { id: String },
     /// A folder of the app's did not go when the user asked for it removed.
     #[error("{path} could not be removed: {detail}")]
     NotRemoved { path: String, detail: String },

@@ -4926,6 +4926,7 @@ version = "0.1.4"
 dependencies = [
  "base64 0.22.1",
  "camino",
+ "ddsfile",
  "fjall",
  "fs-err",
  "gix",
@@ -4934,6 +4935,7 @@ dependencies = [
  "ltk_meta",
  "ltk_mimir_cache",
  "ltk_mod_core",
+ "ltk_texture",
  "parking_lot",
  "reforge",
  "reforge-census",

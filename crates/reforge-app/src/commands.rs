@@ -29,7 +29,7 @@ use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
 use crate::storage::StorageView;
-use crate::store::{AppStore, RunRow, StageFiles, StoreView};
+use crate::store::{AppStore, FileView, RunRow, StageFiles, StoreView};
 use crate::view::Finding;
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
@@ -189,6 +189,27 @@ pub async fn run_view(app: AppHandle, id: u64) -> IpcResult<Option<RunView>> {
 pub async fn run_files(app: AppHandle, id: u64, stage: StageName) -> IpcResult<Option<StageFiles>> {
     let store = app.state::<RunStore>().get();
     off_thread(move || store?.stage_files(id, stage)).await
+}
+
+/// One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A
+/// bin's names are spelled through the run's names and the inputs' tables, when they open.
+#[tauri::command]
+#[specta::specta]
+pub async fn run_file(app: AppHandle, id: u64, content: String) -> IpcResult<FileView> {
+    let store = app.state::<RunStore>().get();
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let store = store?;
+        let content = ContentId::parse(&content).ok_or_else(|| AppError::Internal {
+            detail: format!("{content:?} is no content id"),
+        })?;
+        // Inputs that do not open leave the run's own names.
+        let inputs = open.get(&choice).ok();
+        let names = inputs.as_deref().map(|inputs| inputs.env().names());
+        store.file_view(id, content, names)
+    })
+    .await
 }
 
 /// Marks a kept run so that the store's bound does not remove it, or unmarks it.

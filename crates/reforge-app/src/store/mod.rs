@@ -15,6 +15,7 @@ mod files;
 mod read;
 mod sweep;
 mod tier;
+mod viewer;
 
 use std::collections::BTreeMap;
 
@@ -30,6 +31,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 pub use self::files::{FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, WadFiles};
 pub use self::read::{RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
+pub use self::viewer::{FileView, HEX_BYTES, MAX_BIN_TEXT, MAX_DECODED, MAX_TEXT};
 use crate::error::AppError;
 use crate::run::{RunKind, RunSettings, RunView};
 

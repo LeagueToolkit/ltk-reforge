@@ -1,18 +1,20 @@
 //! A kept run as the Runs page reads it: the files at each stage with their marks, sizes and
-//! kinds. The game is `reforge_testkit::skins`.
+//! kinds, and one file opened by its kind. The game is `reforge_testkit::skins`.
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
 use ltk_meta::BinObject;
 use reforge::history::NoHistory;
-use reforge::model::{BinHash, name_hash};
+use reforge::model::{BinHash, ByteView, ContentId, name_hash};
+use reforge::store::BlobStore;
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{self, RunKind, RunRequest, RunSettings, RunView, StageName, Unwatched};
-use reforge_app::store::{AppStore, FileRow, Mark, StageFiles};
+use reforge_app::store::{AppStore, FileRow, FileView, HEX_BYTES, Mark, StageFiles};
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry, float};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
+use reforge_testkit::packs::{DdsPixels, dds};
 use reforge_testkit::skins::{self, WAD, skin_bin};
 use tempfile::TempDir;
 
@@ -37,6 +39,23 @@ fn artifact_mod() -> ModArchive {
         tool_artifact(),
     ];
     let mut files = own_files("a");
+    files.push((skin_bin("test", 0), bin(objects)));
+    archive(&files)
+}
+
+/// [`artifact_mod`] with its texture a DDS, which a build puts in TEX's container.
+fn textured_mod() -> ModArchive {
+    let objects = vec![
+        entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0)),
+        own_graph("a", GRAPH0),
+        tool_artifact(),
+    ];
+    let mut files = own_files("a");
+    for (path, bytes) in &mut files {
+        if path.ends_with(".tex") {
+            *bytes = dds(DdsPixels::Dxt1, (8, 4), 1);
+        }
+    }
     files.push((skin_bin("test", 0), bin(objects)));
     archive(&files)
 }
@@ -179,4 +198,97 @@ fn a_ports_files_at_plan_are_marked_against_fix() {
             .all(|row| row.kind != "missing"),
         "{plan:?}"
     );
+}
+
+/// The one file of a stage whose path ends so.
+fn ending<'a>(files: &'a StageFiles, end: &str) -> &'a FileRow {
+    let rows = files.wads.iter().flat_map(|wad| &wad.files);
+    let mut found = rows.filter(|row| row.path.as_deref().is_some_and(|p| p.ends_with(end)));
+    let first = found
+        .next()
+        .unwrap_or_else(|| panic!("no file ends {end}: {files:?}"));
+    assert!(found.next().is_none(), "two files end {end}");
+    first
+}
+
+fn content(row: &FileRow) -> ContentId {
+    ContentId::parse(&row.content).unwrap()
+}
+
+#[test]
+fn a_bin_opens_as_its_objects_with_their_names() {
+    let bench = Bench::new();
+    let (id, _) = bench.kept(&artifact_mod(), RunKind::Repair);
+    let fix = bench.files(id, StageName::Fix);
+    let skin = file(&fix, WAD, &skin_bin("test", 0));
+    let names = bench.inputs.env().names();
+
+    let view = bench
+        .store
+        .file_view(id, content(skin), Some(names))
+        .unwrap();
+
+    let FileView::Bin { text, more } = view else {
+        panic!("not a bin: {view:?}");
+    };
+    assert_eq!(more, 0);
+    // The entry is spelled as the run learnt it, the class as the tables do.
+    let head = format!("{} = SkinCharacterDataProperties {{", SKIN0.to_lowercase());
+    assert!(text.to_lowercase().contains(&head.to_lowercase()), "{text}");
+}
+
+#[test]
+fn a_texture_opens_as_a_picture_the_app_decoded() {
+    let bench = Bench::new();
+    let (id, _) = bench.kept(&textured_mod(), RunKind::Repair);
+    let load = bench.files(id, StageName::Load);
+    let build = bench.files(id, StageName::Build);
+
+    for (row, format) in [
+        (ending(&load, ".tex"), "DXT1"),
+        (ending(&build, ".tex"), "Bc1"),
+    ] {
+        let view = bench.store.file_view(id, content(row), None).unwrap();
+
+        let FileView::Image {
+            png,
+            width,
+            height,
+            format: shown,
+        } = view
+        else {
+            panic!("not a picture: {view:?}");
+        };
+        assert!(png.starts_with("data:image/png;base64,"), "{png}");
+        assert_eq!((width, height), (8, 4));
+        assert_eq!(shown, format);
+    }
+}
+
+#[test]
+fn bytes_of_no_kind_open_as_their_first_bytes_in_hex() {
+    let bench = Bench::new();
+    let bytes: Vec<u8> = (0..300u32).map(|i| (i * 7 % 251) as u8 | 0x80).collect();
+    let id = bench.store.tier().put(ByteView::from(bytes.clone()));
+
+    let view = bench.store.file_view(1, id, None).unwrap();
+
+    let FileView::Hex { head, size } = view else {
+        panic!("not hex: {view:?}");
+    };
+    assert_eq!(size, 300);
+    let lines: Vec<&str> = head.lines().collect();
+    assert_eq!(lines.len(), HEX_BYTES / 16);
+    assert_eq!(lines[0].split(' ').count(), 16);
+    assert!(lines[0].starts_with(&format!("{:02x} {:02x}", bytes[0], bytes[1])));
+}
+
+#[test]
+fn bytes_no_tier_holds_are_refused() {
+    let bench = Bench::new();
+    let id = ContentId::of(b"never kept");
+
+    let refused = bench.store.file_view(1, id, None);
+
+    assert_eq!(refused, Err(AppError::BlobMissing { id: id.hex() }));
 }
