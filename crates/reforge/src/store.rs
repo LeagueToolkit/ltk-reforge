@@ -16,6 +16,12 @@ use std::sync::{Arc, PoisonError, RwLock};
 pub use self::ingest::IngestStore;
 use crate::model::{BlobAccess, ByteView, ContentId};
 
+/// The bytes of the empty blob, for its id: every store answers it without holding it, so no
+/// store writes or reads a file of no bytes, which `cacache` on Linux reads back as absent.
+fn empty_blob(id: ContentId) -> Option<ByteView> {
+    (id == ContentId::EMPTY).then(|| ByteView::from(&b""[..]))
+}
+
 /// Bytes by content id.
 pub trait BlobStore: Send + Sync {
     /// The bytes under an id, or nothing.
@@ -203,21 +209,23 @@ impl MemoryStore {
 
 impl BlobStore for MemoryStore {
     fn get(&self, id: ContentId) -> Option<ByteView> {
-        self.blobs
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(&id)
-            .cloned()
+        let blobs = self.blobs.read().unwrap_or_else(PoisonError::into_inner);
+        blobs.get(&id).cloned().or_else(|| empty_blob(id))
     }
 
     fn contains(&self, id: ContentId) -> bool {
-        self.blobs
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .contains_key(&id)
+        id == ContentId::EMPTY
+            || self
+                .blobs
+                .read()
+                .unwrap_or_else(PoisonError::into_inner)
+                .contains_key(&id)
     }
 
     fn put(&self, bytes: ByteView) -> ContentId {
+        if bytes.is_empty() {
+            return ContentId::EMPTY;
+        }
         let id = ContentId::of(&bytes);
         self.blobs
             .write()

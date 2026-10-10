@@ -20,7 +20,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use tempfile::NamedTempFile;
 
-use super::{BlobStore, ReadSeek, Spool};
+use super::{BlobStore, ReadSeek, Spool, empty_blob};
 use crate::model::{ByteView, ContentId};
 
 /// The directory of the spools' scratch files, beside the blobs.
@@ -70,7 +70,7 @@ impl IngestStore {
 
     /// Whether it holds a blob under an id. The bytes are not read, so not checked.
     pub fn contains(&self, id: ContentId) -> bool {
-        cacache::exists_sync(&self.dir, &integrity(id))
+        id == ContentId::EMPTY || cacache::exists_sync(&self.dir, &integrity(id))
     }
 
     /// The file `cacache` 13.0 keeps a blob in: `content-v2/sha256/` and the id's hex digits,
@@ -184,6 +184,9 @@ impl Spool for DiskSpool {
 
 impl BlobStore for IngestStore {
     fn get(&self, id: ContentId) -> Option<ByteView> {
+        if let Some(empty) = empty_blob(id) {
+            return Some(empty);
+        }
         let address = integrity(id);
         match cacache::read_hash_sync(&self.dir, &address) {
             Ok(bytes) => Some(ByteView::from(bytes)),
@@ -198,7 +201,8 @@ impl BlobStore for IngestStore {
     }
 
     fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
-        fs::read(self.blob_file(id)).ok().map(ByteView::from)
+        let read = || fs::read(self.blob_file(id)).ok().map(ByteView::from);
+        empty_blob(id).or_else(read)
     }
 
     fn contains(&self, id: ContentId) -> bool {
@@ -206,6 +210,9 @@ impl BlobStore for IngestStore {
     }
 
     fn put(&self, bytes: ByteView) -> ContentId {
+        if bytes.is_empty() {
+            return ContentId::EMPTY;
+        }
         let id = ContentId::of(&bytes);
         if self.contains(id) {
             return id;

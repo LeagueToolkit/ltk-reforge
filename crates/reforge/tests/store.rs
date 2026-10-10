@@ -65,6 +65,36 @@ fn the_ingest_store_writes_the_same_bytes_once() {
 }
 
 #[test]
+fn the_empty_blobs_id_is_the_sha256_of_no_bytes() {
+    assert_eq!(ContentId::of(&[]), ContentId::EMPTY);
+    assert_eq!(
+        ContentId::EMPTY.hex(),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+}
+
+#[test]
+fn every_store_answers_the_empty_blob_without_holding_it() {
+    let (_scratch, dir) = scratch();
+    let ingest = IngestStore::new(&dir);
+    let memory = MemoryStore::new();
+    let layered = Layered::new(MemoryStore::new(), MemoryStore::new());
+    let stores: [&dyn BlobStore; 3] = [&ingest, &memory, &layered];
+    for store in stores {
+        assert!(store.contains(ContentId::EMPTY), "before any put");
+        assert_eq!(store.get(ContentId::EMPTY).as_deref(), Some(&b""[..]));
+        assert_eq!(
+            store.get_unchecked(ContentId::EMPTY).as_deref(),
+            Some(&b""[..])
+        );
+        assert_eq!(store.put(ByteView::from(&b""[..])), ContentId::EMPTY);
+    }
+    assert!(!dir.exists(), "no file is written for it");
+    assert!(memory.is_empty());
+    assert!(layered.top().is_empty());
+}
+
+#[test]
 fn the_ingest_store_answers_nothing_for_an_id_it_lacks() {
     let (_scratch, dir) = scratch();
     let store = IngestStore::new(&dir);
