@@ -3,12 +3,16 @@
 //! the run's, never a location in a store.
 //!
 //! The bytes a store hands out are a [`ByteView`]: a get is a clone of a view, and a slice of
-//! one is a view of the same blob. The library ships the trait, the memory store and the
-//! layered store; a store on disk is its owner's.
+//! one is a view of the same blob. The library ships the trait, the memory store, the layered
+//! store and the ingest store, the tier on disk that holds what `read` makes of an archive;
+//! the store of what runs make is the app's.
+
+mod ingest;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, PoisonError, RwLock};
 
+pub use self::ingest::IngestStore;
 use crate::model::{ByteView, ContentId};
 
 /// Bytes by content id.

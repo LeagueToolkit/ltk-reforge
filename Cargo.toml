@@ -47,6 +47,11 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 sha2 = "0.10"
 # The bytes a blob store hands out (#ADR-0093): shared on clone, sliced without a copy.
 byteview = "0.10"
+# The blob store's ingest tier (#ADR-0093): one file per blob under its SHA-256, written by a
+# rename. The sync API alone, so no async runtime comes in, and memory-mapped writes. 13.1.0
+# does not build without an async runtime: a function of its writer names a type only one
+# declares.
+cacache = { version = "=13.0.0", default-features = false, features = ["mmap"] }
 # A shader variant's key, which keeps the defines' case: ltk_hash's xxh64 lowercases.
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 rusqlite = { version = "0.40", features = ["bundled"] }

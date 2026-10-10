@@ -240,7 +240,7 @@ The modules of `reforge`, each using only the ones above it:
 |---|---|
 | `model` | ids and arenas, hashes and keys, checked paths, the `Mod`, bin value access and the walk over it, the view types of a skin's objects, text cleaning, `Dump`, the readers of a rig's files, an events bank's header and objects, the layers, a record's code, what a fixup says of itself (`FixupInfo`) |
 | `diag` | diagnostics: the log, the sinks, filters and levels ([DIAGNOSTICS.md](DIAGNOSTICS.md)); a stage's steps: the run's `Cancel`, which the log carries to the stages, and the `Progress` it tells a listener |
-| `store` | `BlobStore`: bytes by content id (#ADR-0093); `MemoryStore`, and `Layered`, a store over another |
+| `store` | `BlobStore`: bytes by content id (#ADR-0093); `MemoryStore`, `Layered`, a store over another, and `IngestStore`, the ingest tier: a directory of one file per blob, which processes share |
 | `archive` | the only reader of untrusted zips; `RawSnapshot`, what `read` gives (#ADR-0094): the archive's WADs, files, extras and image named by content id, its bytes in the store, and what the read raised |
 | `game` | the target side: `GameSource` and `GameView`, which answers it, `Game` and `Install`, `SkinCatalog`, `Names`, `NameBook` and `Speller`, `Schema` |
 | `history` | `History`: the questions the stages ask, and the definition of the SQLite index ([HISTORY.md](HISTORY.md)) |

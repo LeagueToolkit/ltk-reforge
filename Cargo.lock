@@ -394,6 +394,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d74937895e761d5984206f82ca8ff7725d0fd8021921011921894b41ab1b9f7"
 
 [[package]]
+name = "cacache"
+version = "13.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a61ff12b19d89c752c213316b87fdb4a587f073d219b893cc56974b8c9f39bf7"
+dependencies = [
+ "digest",
+ "either",
+ "hex",
+ "libc",
+ "memmap2 0.5.10",
+ "miette 5.10.0",
+ "reflink-copy",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "ssri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "walkdir",
+]
+
+[[package]]
 name = "cairo-rs"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1770,7 +1794,7 @@ dependencies = [
  "gix-chunk",
  "gix-error",
  "gix-hash",
- "memmap2",
+ "memmap2 0.9.11",
  "nonempty",
 ]
 
@@ -1998,7 +2022,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "itoa",
  "libc",
- "memmap2",
+ "memmap2 0.9.11",
  "rustix",
  "smallvec",
 ]
@@ -2090,7 +2114,7 @@ dependencies = [
  "gix-path",
  "gix-quote",
  "gix-zlib",
- "memmap2",
+ "memmap2 0.9.11",
  "parking_lot",
  "tempfile",
 ]
@@ -2112,7 +2136,7 @@ dependencies = [
  "gix-path",
  "gix-tempfile",
  "gix-zlib",
- "memmap2",
+ "memmap2 0.9.11",
  "parking_lot",
  "smallvec",
  "uluru",
@@ -2224,7 +2248,7 @@ dependencies = [
  "gix-tempfile",
  "gix-utils",
  "gix-validate",
- "memmap2",
+ "memmap2 0.9.11",
 ]
 
 [[package]]
@@ -3455,7 +3479,7 @@ name = "ltk_hashdb"
 version = "0.1.0"
 source = "git+https://github.com/LeagueToolkit/mimir?rev=670196996ae219cbae5e64d40667363ff19a028f#670196996ae219cbae5e64d40667363ff19a028f"
 dependencies = [
- "memmap2",
+ "memmap2 0.9.11",
  "thiserror 2.0.21",
  "xxhash-rust",
  "zeekstd",
@@ -3513,7 +3537,7 @@ dependencies = [
  "ltk_hash",
  "ltk_io_ext",
  "ltk_primitives",
- "miette",
+ "miette 7.6.0",
  "num_enum",
  "paste",
  "thiserror 1.0.69",
@@ -3607,7 +3631,7 @@ dependencies = [
  "ltk_hash",
  "ltk_meta",
  "ltk_primitives",
- "miette",
+ "miette 7.6.0",
  "nom",
  "nom_locate",
  "ryu",
@@ -3701,6 +3725,15 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "memmap2"
+version = "0.5.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "memmap2"
 version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
@@ -3719,13 +3752,36 @@ dependencies = [
 
 [[package]]
 name = "miette"
+version = "5.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59bb584eaeeab6bd0226ccf3509a69d7936d148cf3d036ad350abe35e8c6856e"
+dependencies = [
+ "miette-derive 5.10.0",
+ "once_cell",
+ "thiserror 1.0.69",
+ "unicode-width 0.1.14",
+]
+
+[[package]]
+name = "miette"
 version = "7.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f98efec8807c63c752b5bd61f862c165c115b0a35685bdcfd9238c7aeb592b7"
 dependencies = [
  "cfg-if",
- "miette-derive",
+ "miette-derive 7.6.0",
  "unicode-width 0.1.14",
+]
+
+[[package]]
+name = "miette-derive"
+version = "5.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49e7bc1560b95a3c4a25d03de42fe76ca718ab92d1a22a55b9b4cf67b3ae635c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -4717,10 +4773,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "reflink-copy"
+version = "0.1.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9dd7ab4af0363d5ccfd2838d782a28196cf32a5cc2e4fe3c5dc83f2be588b8b"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "rustix",
+ "windows 0.61.3",
+]
+
+[[package]]
 name = "reforge"
 version = "0.1.4"
 dependencies = [
  "byteview",
+ "cacache",
  "camino",
  "ddsfile",
  "fs-err",
@@ -5470,6 +5539,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha-1"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
+name = "sha1"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a978451301f4db1d02937a4ab3ccce137717b81826e79b7d49ffe3244a13c3b8"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
 name = "sha1dc"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5670,6 +5761,23 @@ dependencies = [
  "js-sys",
  "rsqlite-vfs",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "ssri"
+version = "9.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da7a2b3c2bc9693bcb40870c4e9b5bf0d79f9cb46273321bf855ec513e919082"
+dependencies = [
+ "base64 0.21.7",
+ "digest",
+ "hex",
+ "miette 5.10.0",
+ "serde",
+ "sha-1",
+ "sha2",
+ "thiserror 1.0.69",
+ "xxhash-rust",
 ]
 
 [[package]]
