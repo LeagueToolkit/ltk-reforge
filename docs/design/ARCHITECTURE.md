@@ -251,7 +251,9 @@ immutable and built once by `Env::builder()`.
 - **`Names`** holds the tables (Mimir, text tables) and does not change. Names a run learns
   (paths the archive spells, names the port makes) are in a `NameBook` the run owns. A `Speller`
   reads both in one order for every kind of hash: the run's names, Mimir, the text tables. A
-  name a table gives is checked against its hash on load, so a wrong line names nothing.
+  name a table gives is checked against its hash on load, so a wrong line names nothing. Its
+  `NamesStamp` identifies what loaded (#ADR-0094): the manifest's version and SHA-256 of each
+  table of the hash cache that opened, and the SHA-256 of each text table file read.
 - **`Schema`** answers the target build's type of a class's field: the meta database, else the
   install's bins. A revision the reader does not understand refuses the whole database: a
   skipped revision would read as a field no build declares.
@@ -748,7 +750,8 @@ object takes a name of its own, which every link to it follows.
   package.
 - `Report` is a serialisable struct with a schema version (`reforge.report/1`). It is built from
   parts, each optional, so a run that stops early reports what it has. `Run::report` builds it
-  from what the run holds ([Shape](#shape)). The parts: the mod, the inputs, the
+  from what the run holds ([Shape](#shape)). The parts: the mod, the inputs (the install
+  and its build, the history's head, the schema's newest build, the hash tables' stamp), the
   WADs, files, characters and units, the dating, the inventory, the file provenance, and every
   diagnostic with its data. A later stage adds its part: `fix` what each fixup changed, `facts`
   the copies, the objects that are the game's, the origins with their evidence, the rigs, the

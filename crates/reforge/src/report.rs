@@ -19,7 +19,7 @@ use crate::facts::{
     Verdict, Via, Weight,
 };
 use crate::fixups::{After, Change, Changes, Counts, ObjectSet, Snapshot};
-use crate::game::Build;
+use crate::game::{Build, NamesStamp};
 use crate::load::dating::{Bound, Piece};
 use crate::load::inventory::Inventory;
 use crate::load::provenance::FileFact;
@@ -52,6 +52,13 @@ pub struct HistoryInput {
     pub builds: usize,
 }
 
+/// The schema a run was judged against.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SchemaInput {
+    /// The newest build it describes.
+    pub latest: u64,
+}
+
 /// What a run was judged against.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Inputs {
@@ -61,6 +68,10 @@ pub struct Inputs {
     pub build: Option<Build>,
     /// The history. None when the run was judged against the install alone.
     pub history: Option<HistoryInput>,
+    /// The schema. None when the run had no database.
+    pub schema: Option<SchemaInput>,
+    /// The name tables that loaded.
+    pub names: NamesStamp,
 }
 
 impl Inputs {
@@ -74,6 +85,10 @@ impl Inputs {
                 newest_build: stamp.newest_build.clone(),
                 builds: stamp.builds,
             }),
+            schema: env.schema().map(|schema| SchemaInput {
+                latest: schema.latest(),
+            }),
+            names: env.names().stamp().clone(),
         }
     }
 }

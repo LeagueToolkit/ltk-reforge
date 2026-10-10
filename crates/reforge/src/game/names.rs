@@ -21,7 +21,7 @@ use serde::Serialize;
 
 use super::namehash::{NameHashError, NameHashIndex, NameHashSlot};
 use crate::diag::{Channel, Code, Diag, Input, Message, Severity, Sink, Subject};
-use crate::model::{BinHash, WadHash, name_hash, path_hash};
+use crate::model::{BinHash, ContentId, WadHash, name_hash, path_hash};
 
 /// A kind of hash, and the table that spells it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -131,6 +131,38 @@ pub enum NameSource {
         /// How many table files were read from it.
         files: usize,
     },
+}
+
+/// What identifies the name tables a run spells with (#ADR-0094): the manifest's entry for
+/// each table of the hash cache that opened, and the digest of each text table file read.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct NamesStamp {
+    /// The tables of the hash cache that opened, in the order of [`NameTable::ALL`].
+    pub cache: Vec<CachedTable>,
+    /// The text table files read, directory by directory, each in file name order.
+    pub text: Vec<TextTableFile>,
+}
+
+/// A table of the hash cache, as its manifest names it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CachedTable {
+    /// The table.
+    pub table: NameTable,
+    /// The version label it was published under.
+    pub version: String,
+    /// The SHA-256 of its file, as the manifest writes it.
+    pub sha256: String,
+}
+
+/// A text table file read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TextTableFile {
+    /// The table it holds.
+    pub table: NameTable,
+    /// Its file name.
+    pub file: String,
+    /// The SHA-256 of its bytes.
+    pub sha256: ContentId,
 }
 
 /// A table of the hash cache that did not open.
@@ -271,6 +303,7 @@ pub struct Names {
     /// the first time a path is asked for by name hash.
     by_name_hash: OnceLock<HashMap<BinHash, NameHashSlot>>,
     sources: Vec<NameSource>,
+    stamp: NamesStamp,
     absent: Vec<AbsentTable>,
 }
 
@@ -308,6 +341,18 @@ impl Names {
                 .and_then(|file| Some(file.file_name()?.to_str()?.to_string()));
         }
         tracing::debug!(%dir, opened = opened.len(), "hash cache");
+        // A table that opened is in the manifest each open reads.
+        if let Ok(manifest) = store.manifest() {
+            let entries = opened.iter().filter_map(|&table| {
+                let entry = manifest.entry(table.mimir())?;
+                Some(CachedTable {
+                    table,
+                    version: entry.version.clone(),
+                    sha256: entry.sha256.clone(),
+                })
+            });
+            self.stamp.cache.extend(entries);
+        }
         if !opened.is_empty() {
             self.sources.push(NameSource::Mimir {
                 dir: dir.to_owned(),
@@ -324,12 +369,18 @@ impl Names {
         files.sort();
         let mut read = 0;
         for file in files {
-            let table = file
-                .file_name()
-                .and_then(|name| name.to_str())
-                .and_then(|name| NameTable::of_text_file(&name.to_ascii_lowercase()));
-            let Some(table) = table else { continue };
+            let Some(name) = file.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Some(table) = NameTable::of_text_file(&name.to_ascii_lowercase()) else {
+                continue;
+            };
             let bytes = fs::read(&file)?;
+            self.stamp.text.push(TextTableFile {
+                table,
+                file: name.to_string(),
+                sha256: ContentId::of(&bytes),
+            });
             let names = &mut self.text[table.slot()];
             for line in String::from_utf8_lossy(&bytes).lines() {
                 let Some((hex, name)) = line.split_once(' ') else {
@@ -475,6 +526,11 @@ impl Names {
     /// The sources that loaded, in the order they are asked.
     pub fn sources(&self) -> &[NameSource] {
         &self.sources
+    }
+
+    /// What identifies the tables that loaded.
+    pub fn stamp(&self) -> &NamesStamp {
+        &self.stamp
     }
 
     /// Raises what building the tables found: the tables of the hash cache that did not open at

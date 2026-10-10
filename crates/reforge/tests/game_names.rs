@@ -8,9 +8,10 @@ use ltk_meta::path::{FieldNames, ValuePath, ValueSegment};
 use ltk_mimir_cache::{CommitItem, HashStore, Table};
 use reforge::diag::{Channel, Diagnostics, Input, Render, Severity, Stage, Subject};
 use reforge::game::{
-    MimirAbsent, NameBook, NameHashSlot, NameSource, NameTable, Names, NamesError, Speller,
+    CachedTable, MimirAbsent, NameBook, NameHashSlot, NameSource, NameTable, Names, NamesError,
+    NamesStamp, Speller,
 };
-use reforge::model::{BinHash, Spell, WadHash, name_hash, path_hash};
+use reforge::model::{BinHash, ContentId, Spell, WadHash, name_hash, path_hash};
 use tempfile::TempDir;
 
 /// Two paths that share one name hash, `9ce00afc`.
@@ -374,6 +375,52 @@ fn every_kind_of_hash_is_spelled_from_the_run_then_the_cache_then_the_text_table
     );
     assert!(both.has_mimir() && !text_only.has_mimir());
     assert!(raised(&both).is_empty() && raised(&text_only).is_empty());
+}
+
+#[test]
+fn the_stamp_names_each_cache_table_by_its_manifest_entry_and_each_text_file_by_its_digest() {
+    let sources = ThreeSources::new();
+    let both = sources.both();
+    let manifest = HashStore::at(&sources.cache).manifest().unwrap();
+    let cache: Vec<CachedTable> = NameTable::ALL
+        .iter()
+        .zip([
+            Table::Game,
+            Table::BinEntries,
+            Table::BinFields,
+            Table::BinTypes,
+            Table::BinHashes,
+        ])
+        .map(|(&table, mimir)| {
+            let entry = manifest.entry(mimir).unwrap();
+            assert_eq!(entry.version, "1");
+            CachedTable {
+                table,
+                version: entry.version.clone(),
+                sha256: entry.sha256.clone(),
+            }
+        })
+        .collect();
+    assert_eq!(both.stamp().cache, cache);
+
+    let text = both.stamp().text.iter();
+    let files: Vec<(NameTable, &str)> = text.map(|f| (f.table, f.file.as_str())).collect();
+    assert_eq!(
+        files,
+        [
+            (NameTable::Entries, "hashes.binentries.txt"),
+            (NameTable::Fields, "hashes.binfields.txt"),
+            (NameTable::Hashes, "hashes.binhashes.txt"),
+            (NameTable::Classes, "hashes.bintypes.txt"),
+            (NameTable::Paths, "hashes.game.txt"),
+        ]
+    );
+    for file in &both.stamp().text {
+        let bytes = fs::read(sources.text.join(&file.file)).unwrap();
+        assert_eq!(file.sha256, ContentId::of(&bytes), "{}", file.file);
+    }
+    assert!(sources.text_only().stamp().cache.is_empty());
+    assert_eq!(Names::default().stamp(), &NamesStamp::default());
 }
 
 #[test]

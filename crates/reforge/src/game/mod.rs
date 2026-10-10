@@ -27,8 +27,8 @@ pub use self::install::{
 };
 pub use self::namehash::{NameHashError, NameHashIndex, NameHashSlot};
 pub use self::names::{
-    AbsentTable, MimirAbsent, NameSource, NameTable, Names, NamesBuilder, NamesError,
-    mimir_cache_dir,
+    AbsentTable, CachedTable, MimirAbsent, NameSource, NameTable, Names, NamesBuilder, NamesError,
+    NamesStamp, TextTableFile, mimir_cache_dir,
 };
 pub use self::schema::{
     FieldType, SCHEMA_FILE, Schema, SchemaAbsent, SchemaError, SchemaInstallNewer,

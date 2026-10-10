@@ -4,7 +4,7 @@ use reforge::archive::{self, Caps};
 use reforge::diag::{Diagnostics, Render, Stage};
 use reforge::env::Env;
 use reforge::fixups::{FixupSet, Rule};
-use reforge::game::Build;
+use reforge::game::{Build, Names};
 use reforge::history::Position;
 use reforge::load::dating::Bound;
 use reforge::load::{Dating, FileProvenance, Inventory, LoadError, LoadOptions, Loader, against};
@@ -13,6 +13,7 @@ use reforge::model::{ContentId, hash, value};
 use reforge::report::{AgainRow, Report, SCHEMA};
 use reforge::store::MemoryStore;
 use reforge_testkit::bins::{Skin, bin, blob, entry, float, linked_bin, object};
+use reforge_testkit::schema::SchemaRows;
 use reforge_testkit::skins::{self, BASE_TEX, WAD, base_skin, skin_bin};
 use reforge_testkit::{LoadRun, MemoryHistory, ModArchive, PackRun};
 use serde_json::{Value, json};
@@ -306,6 +307,39 @@ fn a_run_with_no_history_says_it_was_judged_against_the_install_alone() {
     let report = parsed(&Report::builder().env(&env).build());
     assert_eq!(report["inputs"]["build"], "16.19.1");
     assert_eq!(report["inputs"]["history"], Value::Null);
+    assert_eq!(report["inputs"]["schema"], Value::Null);
+    assert_eq!(
+        report["inputs"]["names"],
+        json!({ "cache": [], "text": [] })
+    );
+}
+
+#[test]
+fn a_report_names_the_schemas_build_and_each_text_table_read_by_its_digest() {
+    let dir = tempfile::tempdir().expect("a directory");
+    let table = b"1234 skeleton\n";
+    fs_err::write(dir.path().join("hashes.binfields.txt"), table).expect("written");
+    let text = camino::Utf8Path::from_path(dir.path()).expect("UTF-8");
+    let names = Names::builder()
+        .text_tables(text)
+        .build()
+        .expect("the tables read");
+    let env = Env::builder()
+        .game(skins::game())
+        .names(names)
+        .schema(SchemaRows::new(8_217_343).build())
+        .build()
+        .expect("an environment");
+    let report = parsed(&Report::builder().env(&env).build());
+    assert_eq!(report["inputs"]["schema"], json!({ "latest": 8_217_343 }));
+    let file = json!({
+        "table": "fields", "file": "hashes.binfields.txt",
+        "sha256": ContentId::of(table).hex(),
+    });
+    assert_eq!(
+        report["inputs"]["names"],
+        json!({ "cache": [], "text": [file] })
+    );
 }
 
 #[test]
