@@ -94,7 +94,9 @@ let report = run.report();
   under the caller's store, so the stages after `read` find the archive's bytes through the
   layer. The run takes the cache, not the porter: it is a store the run reads through, as
   `in_store`'s is, and no setting a snapshot names. A run with a cache and one without give
-  one report. `load` opens the mod from the
+  one report. `reforge port`, `repair`, `load` and `inspect` take the cache's directory as
+  `--store`, and the corpus scripts as `--store` or `REFORGE_STORE`; without it a run holds
+  the archive in memory alone. `load` opens the mod from the
   raw snapshot and the store. The run keeps the raw snapshot, and each stage from `load` on
   ends by writing its snapshot (#ADR-0094): `load_snapshot`, `fix_snapshot`,
   `facts_snapshot`, `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.

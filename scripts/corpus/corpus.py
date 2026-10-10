@@ -11,6 +11,10 @@ Inputs, each an argument, else an environment variable:
   --index     REFORGE_INDEX         the history index
   --mimir     REFORGE_MIMIR         the hash cache's directory (default: the program's own)
   --schema    REFORGE_SCHEMA        the meta schema database (default: the program's own)
+  --store     REFORGE_STORE         a directory the program keeps each archive's raw snapshot
+                                    and files in, and reads them from in the runs after
+                                    (#ADR-0095); a directory under data/corpus/. None by default:
+                                    each run reads every archive in memory
 
 mod_classes.tsv holds one mod per line: SHA-256, dataset, class, how many characters, the
 characters separated by commas. dedup_map.tsv holds one byte-identical archive per line: its
@@ -74,6 +78,11 @@ def add_program(parser):
     parser.add_argument("--mimir", default=env("REFORGE_MIMIR"))
     parser.add_argument("--schema", default=env("REFORGE_SCHEMA"))
     add_jobs(parser)
+
+
+def add_store(parser):
+    """The argument that names the directory the program keeps archives' raw snapshots in."""
+    parser.add_argument("--store", default=env("REFORGE_STORE"), help="the raw snapshots' directory (#ADR-0095)")
 
 
 def add_jobs(parser):

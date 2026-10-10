@@ -95,3 +95,48 @@ fn main() -> ExitCode {
         ExitCode::FAILURE
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use camino::Utf8PathBuf;
+    use clap::CommandFactory;
+
+    use super::*;
+
+    #[test]
+    fn every_command_that_reads_an_archive_takes_a_store_and_says_what_it_is() {
+        for (command, extra) in [
+            ("port", Some("--no-write")),
+            ("repair", Some("--no-write")),
+            ("load", None),
+            ("inspect", None),
+        ] {
+            let mut line = vec!["reforge", command, "mod.fantome", "--game", "game"];
+            line.extend(extra);
+            line.extend(["--store", "data/store"]);
+            let matches = Cli::command().try_get_matches_from(&line);
+            let matches = matches.unwrap_or_else(|error| panic!("{line:?} parses: {error}"));
+            let (name, sub) = matches.subcommand().expect("a command");
+            assert_eq!(name, command);
+            let store = sub.get_one::<Utf8PathBuf>("store");
+            assert_eq!(
+                store.map(|dir| dir.as_str()),
+                Some("data/store"),
+                "{command}"
+            );
+
+            let mut line = vec!["reforge", command, "mod.fantome", "--game", "game"];
+            line.extend(extra);
+            let matches = Cli::command().try_get_matches_from(&line);
+            let matches = matches.unwrap_or_else(|error| panic!("{line:?} parses: {error}"));
+            let (_, sub) = matches.subcommand().expect("a command");
+            assert_eq!(sub.get_one::<Utf8PathBuf>("store"), None, "{command}");
+
+            let cli = Cli::command();
+            let sub = cli.find_subcommand(command).expect("the command");
+            let arg = sub.get_arguments().find(|arg| arg.get_id() == "store");
+            let help = arg.and_then(|arg| arg.get_help()).map(ToString::to_string);
+            assert!(help.is_some_and(|help| !help.is_empty()), "{command}");
+        }
+    }
+}

@@ -12,6 +12,7 @@ use reforge::env::Env;
 use reforge::game::{Game, Install, MimirAbsent, Names, Schema, mimir_cache_dir};
 use reforge::history;
 use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter, ProjectDir};
+use reforge::snapshot::RawCache;
 use reforge::{Run, RunError};
 use reforge_census::GitRepo;
 
@@ -65,6 +66,27 @@ pub struct Inputs {
     /// Where the name-hash index of the hash cache's paths is kept. Built there when absent.
     #[arg(long)]
     names_index: Option<Utf8PathBuf>,
+}
+
+/// Where a run keeps what it reads of an archive, as a command line names it (#ADR-0095).
+#[derive(Args)]
+pub struct Cache {
+    /// A directory to keep each archive's files in, by their content, with what the read of
+    /// the archive found: a later run of the same archive reads them from there and inflates
+    /// nothing. Made when absent; any number of runs share one. Without it, a run holds the
+    /// files in memory alone.
+    #[arg(long)]
+    store: Option<Utf8PathBuf>,
+}
+
+impl Cache {
+    /// The run, reading its archive through the cache when the command line names one.
+    pub fn over<'a>(&self, run: Run<'a>) -> Run<'a> {
+        match &self.store {
+            Some(dir) => run.in_cache(RawCache::new(dir.clone())),
+            None => run,
+        }
+    }
 }
 
 /// Which meta schema database a run reads.

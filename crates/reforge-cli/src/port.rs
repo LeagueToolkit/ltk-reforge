@@ -16,7 +16,7 @@ use reforge::model::{Dump, DumpCx};
 use reforge::port::{AnimReuse, Policy, PolicyError, TargetPolicy, UnitTarget};
 
 use crate::fixups::Choice;
-use crate::run::{self, Inputs, SchemaInput};
+use crate::run::{self, Cache, Inputs, SchemaInput};
 
 #[derive(Args)]
 pub struct PortCommand {
@@ -24,6 +24,8 @@ pub struct PortCommand {
     archive: Utf8PathBuf,
     #[command(flatten)]
     inputs: Inputs,
+    #[command(flatten)]
+    cache: Cache,
     /// The directory the port is written in: a mod project, `<out>/<project>`.
     #[arg(long, required_unless_present = "no_write")]
     out: Option<Utf8PathBuf>,
@@ -95,7 +97,7 @@ impl PortCommand {
 
         let porter = self.porter(&env)?.fixups(set).checks(checks);
         let porter = porter.cancel(run::interrupt()?);
-        let mut run = porter.run().log_from(log);
+        let mut run = self.cache.over(porter.run().log_from(log));
         run::through(&mut run, &self.archive, Stage::Check)?;
 
         let out = self.out.as_ref().filter(|_| !self.no_write);

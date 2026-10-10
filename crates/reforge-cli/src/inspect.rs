@@ -14,7 +14,7 @@ use reforge::model::{Dump, DumpCx};
 use reforge::port::{AnimReuse, Policy, TargetPolicy};
 
 use crate::fixups::Choice;
-use crate::run::{self, Inputs, SchemaInput};
+use crate::run::{self, Cache, Inputs, SchemaInput};
 
 #[derive(Args)]
 pub struct Inspect {
@@ -22,6 +22,8 @@ pub struct Inspect {
     archive: Utf8PathBuf,
     #[command(flatten)]
     inputs: Inputs,
+    #[command(flatten)]
+    cache: Cache,
     /// How the target slot is chosen: `auto`, `base`, `origin`, `slot` or a skin number.
     #[arg(long, default_value = "auto", value_parser = TargetPolicy::parse)]
     target: TargetPolicy,
@@ -63,7 +65,7 @@ impl Inspect {
             .compare(policy.other_levels())
             .fixups(set)
             .keep_stale(self.keep_stale);
-        let mut run = porter.run().log_from(log);
+        let mut run = self.cache.over(porter.run().log_from(log));
         run::through(&mut run, &self.archive, Stage::Decide)?;
 
         run::print(&run, &DiagnosticPolicy::default());

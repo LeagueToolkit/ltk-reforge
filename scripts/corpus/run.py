@@ -14,6 +14,8 @@ line, or a reduced corpus as `reduce.py` writes it), or the reduced corpus (`--r
 What follows `--` is passed to the command.
 
 Inputs: `corpus.py` lists them. `--datasets`, `--meta`, `--game` and `--index` are required.
+`--store` is passed to the command: the first run over a mod keeps its raw snapshot there, and
+every run after reads it in place of the archive (#ADR-0095). The reports are the same.
 
 Outputs, in DIR:
 
@@ -47,6 +49,7 @@ def main():
     ap.add_argument("--reduced", action="store_true", help="the reduced corpus beside this script")
     corpus.add_datasets(ap)
     corpus.add_program(ap)
+    corpus.add_store(ap)
     ap.add_argument("extra", nargs="*", help="after `--`: arguments passed to the command")
     args = ap.parse_args()
     corpus.require(ap, args, "datasets", "meta", "game", "index")
@@ -58,6 +61,7 @@ def main():
     inputs = ["--game", args.game, "--index", args.index]
     inputs += ["--mimir", args.mimir] if args.mimir else []
     inputs += ["--schema", args.schema] if args.schema else []
+    inputs += ["--store", args.store] if args.store else []
     options = inputs + COMMANDS[args.command] + args.extra
 
     def command(sha, report):

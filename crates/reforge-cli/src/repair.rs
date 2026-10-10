@@ -15,7 +15,7 @@ use reforge::model::{Dump, DumpCx};
 use reforge::report::AgainRow;
 
 use crate::fixups::Choice;
-use crate::run::{self, Inputs, SchemaInput};
+use crate::run::{self, Cache, Inputs, SchemaInput};
 
 #[derive(Args)]
 pub struct Repair {
@@ -23,6 +23,8 @@ pub struct Repair {
     archive: Utf8PathBuf,
     #[command(flatten)]
     inputs: Inputs,
+    #[command(flatten)]
+    cache: Cache,
     /// The directory the repaired mod is written in: a mod project, `<out>/<project>`.
     #[arg(long, required_unless_present = "no_write")]
     out: Option<Utf8PathBuf>,
@@ -84,7 +86,7 @@ impl Repair {
             .keep_files(self.keep_file.clone())
             .keep_dds(self.keep_dds)
             .cancel(run::interrupt()?);
-        let mut run = repairer.run().log_from(log);
+        let mut run = self.cache.over(repairer.run().log_from(log));
         run::through(&mut run, &self.archive, Stage::Check)?;
         // Before the write: the report beside the package holds the second run.
         if self.again && run.package().is_some() && run.cancelled_at().is_none() {

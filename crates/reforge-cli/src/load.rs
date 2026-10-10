@@ -13,7 +13,7 @@ use reforge::fixups::FixupSet;
 use reforge::model::{Dump, DumpCx};
 
 use crate::fixups::Choice;
-use crate::run::{self, Inputs, SchemaInput};
+use crate::run::{self, Cache, Inputs, SchemaInput};
 
 #[derive(Args)]
 pub struct Load {
@@ -21,6 +21,8 @@ pub struct Load {
     archive: Utf8PathBuf,
     #[command(flatten)]
     inputs: Inputs,
+    #[command(flatten)]
+    cache: Cache,
     /// Write the report, as JSON, to this file.
     #[arg(long)]
     report: Option<Utf8PathBuf>,
@@ -56,7 +58,7 @@ impl Load {
         let env = self.inputs.env(schema, &mut log.at(Stage::Read))?;
 
         let porter = Porter::new(&env).fixups(set).keep_stale(self.keep_stale);
-        let mut run = porter.run().log_from(log);
+        let mut run = self.cache.over(porter.run().log_from(log));
         run::through(&mut run, &self.archive, last)?;
 
         run::print(&run, &DiagnosticPolicy::default());
