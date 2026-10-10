@@ -1,6 +1,7 @@
 # ADR-0098: A target per unit and a keep per file are settings
 
-- **Status:** Accepted (2026-10-10)
+- **Status:** Accepted (2026-10-10); the keep read by `decide` and `plan` superseded by
+  #ADR-0099
 - **Related:** #ADR-0023, #ADR-0046, #ADR-0076, #ADR-0082, #ADR-0090, #ADR-0094
 
 ## Context

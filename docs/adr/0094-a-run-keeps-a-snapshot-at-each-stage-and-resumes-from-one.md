@@ -1,6 +1,7 @@
 # ADR-0094: A run keeps a snapshot at each stage and resumes from one
 
-- **Status:** Accepted (2026-10-10)
+- **Status:** Accepted (2026-10-10); nothing the guided view asks read by `load` superseded
+  by #ADR-0099
 - **Related:** #ADR-0003, #ADR-0045, #ADR-0090, #ADR-0091, #ADR-0093, #ADR-0095, #ADR-0096,
   #ADR-0097, #ADR-0098;
   `docs/design/ARCHITECTURE.md`, "Shape" and "Report and dump"
