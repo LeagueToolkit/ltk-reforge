@@ -145,6 +145,28 @@ fn every_prefix_of_a_bin_reads_or_is_refused_and_never_panics() {
     assert!(bin::parse(&bytes).is_ok());
 }
 
+#[test]
+fn an_object_reads_back_from_the_bytes_the_history_stores_and_a_cut_one_is_refused() {
+    let class = name_hash("SkinCharacterDataProperties");
+    let written = object("Characters/Lux/Skins/Skin0", "Lux");
+    let bytes = bytes(vec![written.clone()], &[]);
+    let entry = name_hash("Characters/Lux/Skins/Skin0").0.to_le_bytes();
+    let at = bytes
+        .windows(4)
+        .rposition(|w| w == entry)
+        .expect("the entry hash is in the bytes");
+    let stored = &bytes[at..];
+
+    assert_eq!(bin::read_stored(class, stored).unwrap(), written);
+    for end in 0..stored.len() {
+        assert!(
+            bin::read_stored(class, &stored[..end]).is_err(),
+            "an object cut at {end} of {} read",
+            stored.len()
+        );
+    }
+}
+
 /// Spells the hashes of these names, every kind alike.
 struct Known(Vec<&'static str>);
 

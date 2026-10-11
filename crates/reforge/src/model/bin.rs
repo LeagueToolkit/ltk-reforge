@@ -174,3 +174,20 @@ pub fn read_one(bytes: &[u8]) -> Result<BinObject, BinError> {
         _ => Err(BinError::NotOne(count)),
     }
 }
+
+/// An object as the history stores it (#ADR-0078): its bytes from its entry hash on, with no
+/// size before them, and its class apart. The reader runs where its panic is caught.
+pub fn read_stored(class: BinHash, bytes: &[u8]) -> Result<BinObject, BinError> {
+    let size = u32::try_from(bytes.len())
+        .map_err(|_| BinError::Read(format!("an object of {} bytes", bytes.len())))?;
+    let mut sized = Vec::with_capacity(bytes.len() + 4);
+    sized.extend_from_slice(&size.to_le_bytes());
+    sized.extend_from_slice(bytes);
+    let read = || {
+        // #ADR-0078: an object is stored in the current numbering of property kinds.
+        BinObject::from_reader(&mut Cursor::new(&sized), class, false)
+            .map_err(|e| BinError::Read(e.to_string()))
+    };
+    catch_unwind(AssertUnwindSafe(read))
+        .unwrap_or_else(|payload| Err(BinError::Panicked(panic_text(&*payload))))
+}

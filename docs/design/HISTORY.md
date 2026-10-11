@@ -370,6 +370,7 @@ short for an id) is not in the index.
 
 `object_bytes` is what a run reads of an object at a build: its bytes from the index, decoded from
 two frames at most, with its class and its WAD. A run links no ritobin parser (#ADR-0005).
+`model::bin::read_stored` reads the bytes and the class back into an object, through `ltk_meta`.
 `GitRepo::entry_text_at`, in `reforge-census`, reads the object's text instead, by the blob
 `text_blob` names, one object of a clone that holds it: what the writer reads, and the CLI's
 `show-entry`. An index without the objects family names no blob, and `GitRepo::entry_text` finds
