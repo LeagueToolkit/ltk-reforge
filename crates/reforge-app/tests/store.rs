@@ -21,8 +21,10 @@ use reforge_app::run::{
     self, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent, StageName, StageState,
     Unwatched, Watch,
 };
+use reforge_app::state::RunStore;
 use reforge_app::store::{
     AppStore, FORMAT, FileView, KEYSPACE, Origin, Outdated, ROWS_FILE, RunTier, StoreOpen,
+    StoreState,
 };
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry};
@@ -994,6 +996,40 @@ fn removing_the_only_run_empties_the_run_tier_and_the_rows() {
         assert_eq!(bench.count(table), 0, "{table}");
     }
     assert_eq!(bench.store.tier().ids().unwrap(), []);
+}
+
+#[test]
+fn an_outdated_store_reset_is_open_and_empty_with_its_ingest_tier_kept() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+    let ingested = |store: &AppStore| -> Vec<ContentId> {
+        let entries = store.ingest().entries().into_iter();
+        entries.map(|entry| entry.sha256).collect()
+    };
+    let entries = ingested(&bench.store);
+    assert!(!entries.is_empty());
+    assert!(!bench.store.tier().ids().unwrap().is_empty());
+    let Bench { folder, store, .. } = bench;
+    drop(store);
+    let dir = folder.root.join("store");
+    let rows = Connection::open(dir.join(ROWS_FILE)).unwrap();
+    rows.execute("UPDATE meta SET value = '1' WHERE key = 'format'", [])
+        .unwrap();
+    drop(rows);
+    let runs = RunStore::open(&dir);
+    let StoreState::Outdated(outdated) = runs.state() else {
+        panic!("the store is {:?}", runs.state());
+    };
+    assert_eq!((outdated.format, outdated.runs), (1, 1));
+    assert_eq!(runs.get().err(), Some(AppError::StoreOutdated));
+
+    let state = runs.reset();
+
+    assert_eq!(state, StoreState::Open);
+    let store = runs.get().unwrap();
+    assert_eq!(store.list().unwrap(), []);
+    assert_eq!(store.tier().ids().unwrap(), []);
+    assert_eq!(ingested(&store), entries);
 }
 
 /// The names of a zip's entries, in order, each with whether it is deflated.

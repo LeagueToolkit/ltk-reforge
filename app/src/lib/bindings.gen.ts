@@ -166,8 +166,17 @@ export const commands = {
 	clearUnusedIngest: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("clear_unused_ingest"),
 	/**  What the app's store holds and its bytes on disk, for the settings page. */
 	storeView: () => __TAURI_INVOKE<({ ok: true; value: StoreView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("store_view"),
-	/**  Whether the app's store is open, and what a reset loses when another build made it. */
+	/**
+	 *  Whether the app's store is open, and what a reset loses when another build made it. Off the
+	 *  window's thread, since a reset under way holds the store.
+	 */
 	storeState: () => __TAURI_INVOKE<({ ok: true; value: StoreState }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("store_state"),
+	/**
+	 *  Removes the store's rows and opens it anew, and answers its state (#ADR-0096: a store of
+	 *  another format is rebuilt, never migrated). The run tier is emptied and the ingest tier
+	 *  stays. Refused while a run is under way, and no run starts while it resets.
+	 */
+	resetStore: () => __TAURI_INVOKE<({ ok: true; value: StoreState }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("reset_store"),
 	/**  Saves a choice of fixups as a selection file the command reads with `--fixups`. */
 	saveSelection: (path: string, choice: FixupChoice) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("save_selection", { path, choice }),
 	/**  The choice of fixups a selection file holds. */

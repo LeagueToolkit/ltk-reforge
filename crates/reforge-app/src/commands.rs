@@ -459,11 +459,30 @@ pub async fn store_view(app: AppHandle) -> IpcResult<StoreView> {
     off_thread(move || store?.view()).await
 }
 
-/// Whether the app's store is open, and what a reset loses when another build made it.
+/// Whether the app's store is open, and what a reset loses when another build made it. Off the
+/// window's thread, since a reset under way holds the store.
 #[tauri::command]
 #[specta::specta]
-pub fn store_state(store: State<'_, RunStore>) -> IpcResult<StoreState> {
-    IpcResult::ok(store.state())
+pub async fn store_state(app: AppHandle) -> IpcResult<StoreState> {
+    off_thread(move || Ok(app.state::<RunStore>().state())).await
+}
+
+/// Removes the store's rows and opens it anew, and answers its state (#ADR-0096: a store of
+/// another format is rebuilt, never migrated). The run tier is emptied and the ingest tier
+/// stays. Refused while a run is under way, and no run starts while it resets.
+#[tauri::command]
+#[specta::specta]
+pub async fn reset_store(app: AppHandle) -> IpcResult<StoreState> {
+    off_thread(move || {
+        let job = Arc::clone(&app.state::<Arc<RunJob>>());
+        if !job.run.start() {
+            return Err(AppError::RunBusy);
+        }
+        let state = app.state::<RunStore>().reset();
+        job.run.end();
+        Ok(state)
+    })
+    .await
 }
 
 /// A mod archive read alone: what it says of itself, its characters and its thumbnail, for

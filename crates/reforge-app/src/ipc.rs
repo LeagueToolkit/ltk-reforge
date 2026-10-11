@@ -70,6 +70,7 @@ pub fn builder() -> Builder<Wry> {
             commands::clear_unused_ingest,
             commands::store_view,
             commands::store_state,
+            commands::reset_store,
             commands::save_selection,
             commands::load_selection,
             commands::index_release,

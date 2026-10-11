@@ -4,13 +4,17 @@
 //! order: a file an earlier build made under the same number fails on a missing column
 //! otherwise. Any other file is left as it is, and the store stays closed until a reset.
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
+use fs_err as fs;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::Serialize;
 
-use super::{FORMAT, SCHEMA};
+use super::{FORMAT, ROWS_FILE, SCHEMA, failed};
 use crate::error::AppError;
 use crate::storage::bytes_of;
+
+/// The files SQLite keeps beside a database, which go where it goes.
+const SIDE_FILES: [&str; 3] = ["-journal", "-wal", "-shm"];
 
 /// A store whose rows' file another build made, and what a reset of it loses, read from the
 /// file with queries both shapes answer.
@@ -159,4 +163,20 @@ fn outdated(path: &Utf8Path, tier: &Utf8Path) -> Outdated {
         rows_bytes: bytes_of(path),
         tier_bytes: bytes_of(tier),
     }
+}
+
+/// Removes the rows' file in the store's folder `dir`, and the files SQLite keeps beside it: a
+/// reset. Removed, not moved aside: copies kept beside it would pile up. The tiers stay, and the
+/// next open sweeps every blob of the run tier, which no row names then.
+pub fn remove_rows(dir: &Utf8Path) -> Result<(), AppError> {
+    let path = dir.join(ROWS_FILE);
+    let sides = SIDE_FILES.map(|side| Utf8PathBuf::from(format!("{path}{side}")));
+    for file in std::iter::once(path).chain(sides) {
+        match fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(failed(error)),
+        }
+    }
+    Ok(())
 }

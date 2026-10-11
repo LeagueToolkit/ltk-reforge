@@ -43,7 +43,7 @@ pub use self::files::{
     FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, Tiers, WadFiles, load_files,
 };
 pub use self::kept::KeptRun;
-pub use self::open::{Outdated, StoreOpen, StoreState};
+pub use self::open::{Outdated, StoreOpen, StoreState, remove_rows};
 pub use self::package::EVIDENCE_ONLY_SCHEMA;
 pub use self::project::{PROJECT_EXTENSION, PROJECT_FORMAT};
 pub use self::read::{Origin, RunAgain, RunRow, StoreView};

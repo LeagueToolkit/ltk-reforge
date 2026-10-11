@@ -13,7 +13,7 @@ use crate::error::AppError;
 use crate::explore::ExploredMod;
 use crate::inputs::{Choice, Inputs};
 use crate::storage::Storage;
-use crate::store::{AppStore, StoreOpen, StoreState};
+use crate::store::{AppStore, StoreOpen, StoreState, remove_rows};
 
 /// Work the window starts, one at a time, and can stop.
 pub struct Job {
@@ -166,6 +166,8 @@ impl Explored {
 /// does not open, such as one another instance of the app holds or one another build made,
 /// leaves the runs unkept and the app running.
 pub struct RunStore {
+    dir: Utf8PathBuf,
+    /// Held through a reset, so no caller sees the store half made.
     held: Mutex<Result<Arc<AppStore>, StoreOpen>>,
 }
 
@@ -173,8 +175,23 @@ impl RunStore {
     /// The store in `dir`.
     pub fn open(dir: &Utf8Path) -> Self {
         Self {
+            dir: dir.to_path_buf(),
             held: Mutex::new(opened(dir)),
         }
+    }
+
+    /// Removes the rows' file and opens the store anew, whatever its state: outdated, open or
+    /// failed. The open sweeps every blob of the run tier, which no row names then; the ingest
+    /// tier stays, since an archive's data is still good. Answers the state after.
+    pub fn reset(&self) -> StoreState {
+        let mut held = self.held.lock();
+        // The store held is let go first: its rows' file and its tier close with the last
+        // handle, and a file held open is not removed. No caller sees the stand-in, since the
+        // lock is held until the store is open again.
+        *held = Err(StoreOpen::Failed(AppError::StoreOutdated));
+        let reset = remove_rows(&self.dir).map_err(StoreOpen::Failed);
+        *held = reset.and_then(|()| opened(&self.dir));
+        state_of(&held)
     }
 
     /// The store, or why it did not open.
@@ -188,10 +205,14 @@ impl RunStore {
 
     /// Whether the store is open, and what a reset loses when it is not.
     pub fn state(&self) -> StoreState {
-        match &*self.held.lock() {
-            Ok(_) => StoreState::Open,
-            Err(error) => StoreState::of(error),
-        }
+        state_of(&self.held.lock())
+    }
+}
+
+fn state_of(held: &Result<Arc<AppStore>, StoreOpen>) -> StoreState {
+    match held {
+        Ok(_) => StoreState::Open,
+        Err(error) => StoreState::of(error),
     }
 }
 
