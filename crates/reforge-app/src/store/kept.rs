@@ -1,11 +1,12 @@
-//! The kept runs a rerun resumes from (#ADR-0094, #ADR-0096): the runs of one load, by its
-//! key, each with the snapshots its row holds.
+//! The kept run a rerun resumes from (#ADR-0094, #ADR-0096): the newest run of one load and
+//! kind, with the snapshots its row holds.
 
 use reforge::snapshot::Snapshots;
+use rusqlite::OptionalExtension;
 
 use super::files::read_snapshot;
 use super::read::kind_of;
-use super::{AppStore, number};
+use super::{AppStore, kind_text, number};
 use crate::error::AppError;
 use crate::run::RunKind;
 
@@ -24,29 +25,35 @@ pub struct KeptRun {
 type Columns = (i64, String, Vec<u8>, [Option<Vec<u8>>; 6]);
 
 impl AppStore {
-    /// The runs of the load with this key ([`super::load_key`]), newest first, each with its
-    /// snapshots unpacked.
-    pub fn kept_runs_of(&self, key: &str) -> Result<Vec<KeptRun>, AppError> {
+    /// The newest run of `kind` of the load with this key ([`super::load_key`]), its
+    /// snapshots unpacked. None when the store keeps none: a repair's snapshots do not resume
+    /// a port.
+    pub fn newest_kept_run_of(
+        &self,
+        key: &str,
+        kind: RunKind,
+    ) -> Result<Option<KeptRun>, AppError> {
         let query = "SELECT run.id, run.kind, load.json, run.fix, run.facts, run.decide,
                run.plan, run.build, run.\"check\"
-             FROM run JOIN load ON load.id = run.load_id WHERE load.key = ?1
-             ORDER BY run.id DESC";
-        let columns: Vec<Columns> = {
+             FROM run JOIN load ON load.id = run.load_id WHERE load.key = ?1 AND run.kind = ?2
+             ORDER BY run.id DESC LIMIT 1";
+        let columns: Option<Columns> = {
             let rows = self.rows.lock();
             let mut statement = rows.prepare(query)?;
-            let found = statement.query_map([key], |row| {
-                let later = [3, 4, 5, 6, 7, 8].map(|at| row.get(at));
-                let [fix, facts, decide, plan, build, check] = later;
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    [fix?, facts?, decide?, plan?, build?, check?],
-                ))
-            })?;
-            found.collect::<Result<_, _>>()?
+            statement
+                .query_row([key, kind_text(kind)], |row| {
+                    let later = [3, 4, 5, 6, 7, 8].map(|at| row.get(at));
+                    let [fix, facts, decide, plan, build, check] = later;
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        [fix?, facts?, decide?, plan?, build?, check?],
+                    ))
+                })
+                .optional()?
         };
-        columns.into_iter().map(kept_run).collect()
+        columns.map(kept_run).transpose()
     }
 }
 

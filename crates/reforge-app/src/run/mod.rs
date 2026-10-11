@@ -529,12 +529,10 @@ fn from_kept<'m>(
     };
     let load_inputs = LoadInputs::of(inputs.env());
     let key = load_key(raw, &Program::this(), &load_inputs, load_settings);
-    let kept = store.kept_runs_of(&key);
-    let kept = kept
+    let newest = store.newest_kept_run_of(&key, request.kind);
+    let newest = newest
         .inspect_err(|error| tracing::warn!(%error, "the kept runs of a load do not read"))
-        .ok()?;
-    // A repair's snapshots do not resume a port.
-    let newest = kept.into_iter().find(|kept| kept.kind == request.kind)?;
+        .ok()??;
     let run = maker.start(inputs, Some(store), watch);
     let stage = kept_start(&run, &newest, request.through)?;
     let id = newest.id;

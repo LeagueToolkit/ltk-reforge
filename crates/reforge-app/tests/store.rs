@@ -568,7 +568,8 @@ fn a_rerun_with_a_fixup_off_reads_no_blob_before_it_resumes_from_the_load() {
         .rows()
         .query_row("SELECT key FROM load", [], |row| row.get(0))
         .unwrap();
-    let kept = bench.store.kept_runs_of(&key).unwrap().remove(0);
+    let kept = bench.store.newest_kept_run_of(&key, RunKind::Port);
+    let kept = kept.unwrap().expect("the kept port");
     let selection = FixupSelection::standard().without(a_bin_fixup().as_str());
     let porter = Porter::new(bench.inputs.env()).fixups(FixupSet::from(&selection));
     let reads = Arc::new(AtomicUsize::new(0));
@@ -595,6 +596,37 @@ fn a_rerun_with_a_fixup_off_reads_no_blob_before_it_resumes_from_the_load() {
         reads.load(Ordering::Relaxed) > 0,
         "the resume reads the bins"
     );
+}
+
+#[test]
+fn the_newest_kept_run_of_a_load_is_read_by_its_kind() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+    bench.port(&own_mod(), "mod.fantome");
+    bench.run(&bench.request(&own_mod(), "mod.fantome", StageName::Write));
+    // A repair's load is of its own settings: its run is put under the ports' load.
+    let rows = bench.rows();
+    let query = "SELECT load.id, load.key FROM load JOIN run ON run.load_id = load.id
+         WHERE run.id = 1";
+    let (load, key): (i64, String) = rows
+        .query_row(query, [], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap();
+    rows.execute("UPDATE run SET load_id = ?1 WHERE id = 3", [load])
+        .unwrap();
+
+    let port = bench.store.newest_kept_run_of(&key, RunKind::Port).unwrap();
+    let repair = bench.store.newest_kept_run_of(&key, RunKind::Repair);
+
+    let port = port.expect("the newest port");
+    assert_eq!((port.id, port.kind), (2, RunKind::Port));
+    assert!(port.snapshots.facts.is_some());
+    let repair = repair.unwrap().expect("the newest repair");
+    assert_eq!((repair.id, repair.kind), (3, RunKind::Repair));
+    assert!(repair.snapshots.facts.is_none());
+    let other = bench
+        .store
+        .newest_kept_run_of("another load", RunKind::Port);
+    assert!(other.unwrap().is_none());
 }
 
 /// What a watch heard of a run: each stage's events, and how many parts.
