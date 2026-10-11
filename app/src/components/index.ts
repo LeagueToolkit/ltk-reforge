@@ -4,6 +4,7 @@ export * from "./Checkbox";
 export * from "./Dialog";
 export * from "./Disclosure";
 export * from "./FailureNote";
+export * from "./Menu";
 export * from "./SectionCard";
 export * from "./SegmentedControl";
 export * from "./Spinner";
