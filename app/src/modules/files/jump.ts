@@ -8,6 +8,8 @@ export interface Picked {
   row: FileRow;
   /** The object's entry hash, eight hex digits. */
   entry: string | null;
+  /** The entry's name, where the page that asked for it spelled one. */
+  entryName?: string;
 }
 
 /** The read of a run's files at one stage. */
@@ -21,7 +23,7 @@ export interface FileJump {
   /** The run's files at `build`, the package's, where a value's bin is found. */
   build: FilesQuery;
   /** Opens the files at `build` at a file, the object of `entry` shown first. */
-  open: (row: FileRow, entry: string) => void;
+  open: (row: FileRow, entry: string, entryName?: string) => void;
 }
 
 /** The jump of the page around, when it browses the files of the run whose findings it shows. */
@@ -64,8 +66,8 @@ export function useFilesAt(build: FilesQuery | null, showFiles: () => void) {
   );
   const jump: FileJump | null = build && {
     build,
-    open: (row, entry) => {
-      setAt({ stage: "build", picked: { row, entry } });
+    open: (row, entry, entryName) => {
+      setAt({ stage: "build", picked: { row, entry, entryName } });
       showFiles();
     },
   };

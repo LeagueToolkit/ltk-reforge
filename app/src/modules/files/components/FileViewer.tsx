@@ -96,13 +96,15 @@ interface FileViewerProps {
   query: FileQuery;
   /** The entry of a bin's object asked for first, eight hex digits. */
   entry?: string | null;
+  /** The entry's name, shown in place of its hash, which shows on hover. */
+  entryName?: string;
 }
 
 /**
  * One file, read-only: what it is, and its bytes as the app shows them. A bin's object asked
  * for comes first, marked, and the viewer scrolls to it.
  */
-export function FileViewer({ row, query, entry = null }: FileViewerProps) {
+export function FileViewer({ row, query, entry = null, entryName }: FileViewerProps) {
   // A file's bytes under their id never change, and one no tier holds is not asked again.
   const view = useQuery({ ...query, staleTime: Infinity, retry: false });
   return (
@@ -114,8 +116,8 @@ export function FileViewer({ row, query, entry = null }: FileViewerProps) {
         </span>
         <span className="min-w-0 font-mono break-all text-surface-100">{row.path ?? row.hash}</span>
         {entry && (
-          <span className="text-surface-300">
-            {m.runs_file_entry_label()} <span className="font-mono">{entry}</span>
+          <span className="min-w-0 break-words text-surface-300" title={entryName && entry}>
+            {m.runs_file_entry_label()} <span className="font-mono">{entryName ?? entry}</span>
           </span>
         )}
         <Tooltip content={<span className="font-mono text-xs">{row.kind}</span>}>

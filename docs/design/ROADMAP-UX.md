@@ -512,7 +512,8 @@ A bin asked for at an object's entry (`run_file`, `last_file` and `explore_file`
 separator alone (`ENTRY_FENCE`): a control the dump escapes, so no object's text holds it.
 The other objects follow in the bin's order under the same cap, and `entry_found` says
 whether the bin holds the entry. The viewer marks the object, scrolls to it and names the
-entry in its badge row; a bin without the entry says so above its objects. Bytes no tier
+entry in its badge row, by the name the finding's detail spelled, the hash on hover; a bin
+without the entry says so above its objects. Bytes no tier
 holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSING`.
 
 **The settings page** has a storage group with a row for the store: its runs, kept runs and

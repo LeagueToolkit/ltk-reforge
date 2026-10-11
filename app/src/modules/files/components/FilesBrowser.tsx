@@ -146,6 +146,7 @@ export function FilesBrowser({
           row={current.row}
           query={fileQuery(current.row, current.entry)}
           entry={current.entry}
+          entryName={current.entryName}
         />
       ) : (
         roots.length > 0 && (

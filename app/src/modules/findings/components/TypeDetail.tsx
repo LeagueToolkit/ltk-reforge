@@ -90,10 +90,11 @@ type ShowInBin = (place: FirstPlace) => (() => void) | null;
 const NO_FILES: FilesQuery = { queryKey: ["no-files"], queryFn: () => Promise.resolve(null) };
 
 /**
- * The jump to a place's object in its bin, through the page's files at `build`. None on a page
- * with no jump, and for a place in no file of the package, such as a game bin a patch changes.
+ * The jump to a place's object in its bin, through the page's files at `build`, the entry by
+ * its name. None on a page with no jump, and for a place in no file of the package, such as a
+ * game bin a patch changes.
  */
-function useShowInBin(): ShowInBin {
+function useShowInBin(name: Namer): ShowInBin {
   const jump = useContext(FileJumpContext);
   const build = useQuery({
     ...(jump?.build ?? NO_FILES),
@@ -102,7 +103,7 @@ function useShowInBin(): ShowInBin {
   });
   return (place) => {
     const row = jump && build.data ? placeRow(build.data, place.wad, place.path) : null;
-    return jump && row ? () => jump.open(row, place.entry) : null;
+    return jump && row ? () => jump.open(row, place.entry, name(place.entry)) : null;
   };
 }
 
@@ -159,7 +160,7 @@ function PlaceList({
     [page],
   );
   const name = namer(useSpelled(run, hashes));
-  const show = useShowInBin();
+  const show = useShowInBin(name);
   const left = places.length - shown;
   return (
     <div className="flex flex-col gap-1">
@@ -204,7 +205,7 @@ interface RowPlacesProps {
  */
 function RowPlaces({ run, list, index, rows, row, name }: RowPlacesProps) {
   const places = useTypePlaces(run);
-  const show = useShowInBin();
+  const show = useShowInBin(name);
   if (places.isPending) {
     return (
       <p className="flex items-center gap-2 font-sans text-surface-400 select-none">
