@@ -37,7 +37,8 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   here too.
 - The pages share one column, centred, at the width the default window draws them at. A wider
   window buys margins, as LTK Manager's pages do (its `docs/ux/HOME.md`, "Layout"). A page of
-  panes side by side, the Runs page and the Records page, takes the whole width.
+  panes side by side, the Runs page and the Records page, and the Batch page with its table,
+  take the whole width.
 - The crate's modules: `inputs` opens the inputs once and raises what they found into every
   run's log, as the command raises it when it opens them; `state` holds them open for the
   settings as they stand; `run` takes a request (the kind, the archive, the last stage, the
@@ -93,8 +94,10 @@ page").
   package is the app's, and draws a view; it starts no run.
 - **A summary for a person.** The report is JSON. What a person reads of a run is the app's to
   render.
-- **A run over several mods.** A `Run` takes one archive. The caches of an `Env` grow with
-  every mod, so a caller that runs many builds an `Env` for each or for a few.
+- **A run over several mods.** A `Run` takes one archive. A caller that runs many loops over
+  them against one `Env`, as the app's batch does ("The Batch page"). The caches of an `Env`
+  grow with every mod, by an amount not measured, so the batch opens its inputs again after a
+  fixed number of mods.
 - **A reader of the embedded evidence.** No run takes a package as its input
   ([ROADMAP.md](ROADMAP.md), "The fixer: left before a first release").
 
@@ -321,7 +324,8 @@ the author, the kind (Repair or Port), when the store wrote it as a relative tim
 ago", "yesterday", the date beyond a week) with the full time on hover, a pin when a person
 marked it kept and a package when it wrote one. A run whose archive data the ingest tier
 lacks has a badge "archive data cleared" (`RunRow::archive_ingested`); a package opened,
-which never had any, has none. A box above it filters by name and author. With no run kept,
+which never had any, has none. A box above it filters by name and author. The run picked is
+the route's (`/runs?run=<number>`), so a link elsewhere opens the page at a run. With no run kept,
 the page says none has written a package and links to the run page.
 
 **Open…**, a menu beside the box (and under the empty page's line), opens a file as a kept
@@ -465,6 +469,49 @@ the codes as links. With no record picked, the pane says to pick one.
 **The links.** The page is routed by the code without its `#` (`/records/GAME-CHANGE-0005`),
 so a link anywhere opens it at that record and the list marks it. A fixup's records in the
 list of fixups and a finding's record are such links.
+
+## The Batch page
+
+#ADR-0091. A folder of mods, or files dropped, run as one job with one set of settings: a
+table of outcomes, each row its own run. The page takes the window's whole width. It adds no
+rule about a mod (#ADR-0046): each row is one run's answer, and a mod's name and file name
+reach the table through `clean`.
+
+**The loop.** A `Run` takes one archive, so a batch is a loop in the app (`reforge_app::batch`,
+the command `run_batch`). It takes the run job as `run_mod` does, so a run and a batch never
+run at once (`RUN_BUSY`), and settings the library does not take refuse it before it starts.
+It opens the inputs once and runs each archive in order through `write`, as a request of the
+run page's would: the output folder is the one chosen under Settings, else each archive's own
+folder. A run that wrote its package is kept in the store as any run is. The window hears a
+batch through `BatchProgress`, sent as each archive starts and as it ends with its row, and
+none of a run's events: each run's watch counts its findings by severity and forwards nothing.
+A run that does not start, or an input that does not answer, is that row's fault, and the
+batch goes on.
+
+**The bound on the environment.** The caches of an environment grow with every mod. After
+every 16 archives (`batch::REOPEN_EVERY`) the batch lets go of the open inputs
+(`OpenInputs::forget`) and opens them again for the next: the plain bound until the growth is
+measured. Inputs that do not open again fault that archive alone, and the next tries again.
+
+**The cancel.** Stop sets the run job's cancel (`cancel_run`, "Two views of one run"): the
+archive under way ends after its step, as a row stopped in its stage, and the batch ends after
+it with the rows so far (`BatchView::stopped`).
+
+**The page.** A card "Mods" lists the archives, each once, with a remove icon per line, their
+count and Clear: "Choose folder" adds a folder's `.fantome` and `.zip` files, not its
+subfolders', sorted by name (`list_archives`); "Add files" adds the files picked; every
+archive dropped on the window is added. A card "Settings" picks the kind (Repair, Port), says
+where the packages go with a link to Settings, and says the standard settings are used, with a
+switch that takes the run page's advanced settings in their place. Start is off with no
+archives and while a run or a batch is under way, and is Stop while the batch runs, over a line
+"3 of 12 · <archive>" and a bar. The table fills in as the archives end: the file name, the
+mod's name, the outcome as a badge (written in the success tone; refused and halted, with the
+halting code, in warning; a fault, with its detail on hover, and an archive that does not read
+in danger; stopped muted), the run's errors, warnings and notes in their severities' colours,
+the time, and "Open" to the run on the Runs page (`/runs?run=<number>`) when it was kept. When
+the batch ends, a line counts the rows ("9 written, 2 refused, 1 failed", refused counting the
+halted and failed the archives that do not read) with its time. The table stays until the next
+Start or Clear.
 
 ## The history index
 
@@ -669,7 +716,10 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    cleared by mod and of what no run names, two runs compared, the project file exported and
    imported, and a package's evidence opened as a kept run with no snapshots; the Records
    page, the records bundled and opened from a fixup or a finding.
-5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
+5. **Batch** (#ADR-0091). Built: the Batch page, a loop of runs in the app ("The Batch
+   page"), and the cancel of a run under way. The library gained nothing for it: a `Run`
+   takes one archive, the app holds one environment across runs (`OpenInputs`), and the
+   cancel was the library's (#ADR-0097).
 
 A review of the pages step 4 added (2026-10-11, screenshots of every state over runs of two
 mods, a run resumed from another, a project imported and a package opened) found and fixed:
