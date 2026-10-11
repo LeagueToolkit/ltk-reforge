@@ -64,8 +64,8 @@ run and writes the report, in some two hundred lines.
 | a way to stop a run | `Run::cancel(Cancel)`: a flag set from any thread ends the stage under way after the step it is on (#ADR-0097). `Run::cancelled_at()` names the stage, and the snapshots of the stages before it stand |
 | progress inside a stage | `Diagnostics::listen_progress`: each step of a stage as it begins, a `Progress` with the stage, the step's kind and name, its number and the count (#ADR-0097) |
 | a mod's bytes | `BlobStore` (#ADR-0093): bytes by content id, a memory store, a layered store, an LRU and the ingest store on disk (`cacache`). A run writes into a memory layer of its own (`Run::in_store`, `Run::into_layer`), reads a file's bytes on use (#ADR-0100) and never holds the mod whole; `read` streams the archive from its file |
-| a run's state | a snapshot after every stage (#ADR-0094), `Run::snapshots()`, JSON at one edge. `Run::resume(Start)` starts after any stage from them, refusing with a `ResumeError` that names the input, setting or program that differs. `Settings::declared(stage)` and `earliest_changed` say which stage a changed setting resumes from |
-| a mod ingested once | `RawCache` (#ADR-0095, #ADR-0100): the raw snapshot kept per archive beside the ingest store, a run started from it by the archive's SHA-256, and the kind of each blob kept by the matcher's generation |
+| a run's state | a snapshot after every stage (#ADR-0094), `Run::snapshots()`, JSON at one edge. `Run::resume(Start)` starts after any stage from them, refusing with a `ResumeError` that names the input, setting or program that differs, or the id a store lacks. `Snapshots::ids()` lists every content id they name. `Settings::declared(stage)` and `earliest_changed` say which stage a changed setting resumes from |
+| a mod ingested once | `RawCache` (#ADR-0095, #ADR-0100): the raw snapshot kept per archive beside the ingest store, a run started from it by the archive's SHA-256, and the kind of each blob kept by the matcher's generation. `entries()` lists the archives it holds with their bytes; `clear(sha256)` and `clear_unnamed(keep)` remove archives with the blobs no other names |
 | the guided view's answers | a unit's own target and a file kept (#ADR-0098, #ADR-0099), settings the run declares and the command takes |
 | the result as data | `Run::report()`: a `Report` (`reforge.report/1`) with a part per stage reached, each serialisable |
 | the fixups as a list | `FixupSet::catalog()`: each `FixupInfo` has an id, a title, the records it implements, its phase and its default |
@@ -85,8 +85,9 @@ show it where it shows the fixup.
 - **The report's types as TypeScript.** The parts of a `Report` are Rust types with `Serialize`
   only; the app's bindings are generated from its own views of them.
 - **The app's store, its pages and its project.** The app keeps runs ("The app's store") and
-  shows them ("The Runs page"); a run reopened and resumed from its snapshots, two runs
-  compared, the project file of #ADR-0096 and the ingest tier cleared by mod are left.
+  shows them ("The Runs page"), a rerun resumes from a kept run's snapshots and the ingest
+  tier is cleared by mod; two runs compared, a package's evidence read and the project file
+  of #ADR-0096 are left.
 - **A summary for a person.** The report is JSON. What a person reads of a run is the app's to
   render.
 - **A run over several mods.** A `Run` takes one archive. The caches of an `Env` grow with
@@ -178,13 +179,39 @@ format, or one whose format does not read, is moved aside under its format's nam
 one made, never migrated.
 
 **The save.** A run is kept when it writes its package. With the store, a run reads through
-both tiers, and starts from the raw snapshot the ingest tier holds of its archive's SHA-256
-when there is one, `read` then shown as ran. Once the write succeeds, its memory layer is
-flushed into the run tier and synced, then the rows are written in one transaction: the raw
-row, the load row unless one of its key is there, the run row and its `run_blob` rows. A run
-through `check` and no further, a write the settings refuse and a run with no snapshots keep
-nothing. The view of the run names its number (`RunView::saved`). A save that fails leaves
-the run as it ran, unkept, and logs why.
+both tiers, and starts from a kept run ("The rerun") or from the raw snapshot the ingest
+tier holds of its archive's SHA-256 when there is one, `read` then shown as ran. Once the
+write succeeds, its memory layer is flushed into the run tier and synced, then the rows are
+written in one transaction: the raw row, the load row unless one of its key is there, the run
+row and its `run_blob` rows. A run through `check` and no further, a write the settings
+refuse and a run with no snapshots keep nothing. The view of the run names its number
+(`RunView::saved`). A save that fails leaves the run as it ran, unkept, and logs why.
+
+**The rerun.** A run whose archive the ingest tier holds resumes from a kept run where one
+holds (#ADR-0094). Its load key is computed before it runs, by the function that keys a
+saved load (`store::load_key`), from the raw snapshot, this program, the load inputs open and
+the load settings its settings declare. The runs of that load are read newest first
+(`AppStore::kept_runs_of`), and the newest of the request's kind is the one resumed from: a
+repair's snapshots do not resume a port. The start is the latest stage the snapshots hold
+that is at or before the request's `through`, so a resume never runs past the request; the
+run tries it, then each earlier stage down to `load`, each try a fresh run, and the first the
+library does not refuse is the run. A refusal (a setting, an input or the program that
+differs, or a store that lacks an id) is logged at debug; when every try is refused, the run
+starts from the raw snapshot. The stages taken from the snapshots are not run: the watch
+hears each as `StageEvent::Resumed` with what it gave the views, and its `StageView` says
+`resumed`, which the stage strip shows as "from store" in place of a time. A resumed run's
+report is the report of the same run from the archive. Its layer holds only what its own
+stages made, so its `run_blob` rows list every id its snapshots name too: the bytes the older
+run made stay while the newer names them, and an id the ingest tier holds is absent from the
+run tier, which the sweep ignores.
+
+**The ingest tier.** The ingest tier is cleared by mod, as its own action (#ADR-0093,
+#ADR-0096). `RawCache::entries` lists its entries, each an archive's SHA-256, reading and
+caps with the bytes of the blobs it names; clearing a mod removes every entry of its archive
+and the blobs no other entry names, with their facts. "Clear unused" clears every archive no
+`raw` row names. A run whose entry is gone keeps its rows and opens read-only
+(`RunRow::archive_ingested`): its files no tier holds answer `BLOB_MISSING`, and a run of
+its archive reads the archive again, which ingests it again.
 
 **The bound.** The store keeps 256 runs not marked kept (`RUN_BOUND`); past it, the lowest
 numbers go first. A run marked kept is not counted.
@@ -198,9 +225,11 @@ moved aside or a save a crash ended between its flush and its rows. The rows and
 are behind one lock, so a sweep never runs while a save flushes. The ingest tier is not swept.
 
 The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
-`run_view` (the view the run ended with, its number set), `run_files` and `run_file` ("The
-Runs page"), `keep_run`, `remove_run`, `remove_mod_runs`, `remove_all_runs` and `store_view`
-(each tier's bytes, for the settings page). A removal while a run is under way is refused. A
+`run_view` (the view the run ended with, its number set), `run_files`, `run_file` and
+`run_settings` ("The Runs page"), `keep_run`, `remove_run`, `remove_mod_runs`,
+`remove_all_runs`, `mod_ingest_bytes`, `clear_mod_ingest`, `clear_unused_ingest` and
+`store_view` (each tier's bytes, and the ingest bytes no run's archive names, for the
+settings page). A removal or a clear while a run is under way is refused. A
 store that does not open at start, such as one another instance of the app holds, leaves the
 runs unkept, and its commands answer why.
 
@@ -214,14 +243,27 @@ right. It takes the window's whole width, which the route asks of the shell (`st
 **The list** has a row per run, newest first: the mod's name, else the archive's file name,
 the author, the kind (Repair or Port), when the store wrote it as a relative time ("3 min
 ago", "yesterday", the date beyond a week) with the full time on hover, a pin when a person
-marked it kept and a package when it wrote one. A box above it filters by name and author. With
-no run kept, the page says none has written a package and links to the run page.
+marked it kept and a package when it wrote one. A run whose archive data the ingest tier
+lacks has a badge "archive data cleared" (`RunRow::archive_ingested`). A box above it
+filters by name and author. With no run kept, the page says none has written a package and
+links to the run page.
 
 **The detail** has a header with the package's thumbnail (the first letter of the name when
-there is none), the name, the version, the author and the file name, and three actions: Keep
-(`keep_run`), Show package (`reveal_place` with the place `run`, which names the run and never
-a path, off when the run wrote none) and Remove (`remove_run`, asked about first). Under them
-are three tabs:
+there is none), the name, the version, the author and the file name, and four actions:
+
+- **Keep** (`keep_run`).
+- **Show package** (`reveal_place` with the place `run`, which names the run and never a path),
+  off when the run wrote none.
+- **Run again**: the run's kind, archive path and settings (`run_settings`) set in the run
+  page's store as if picked and typed, the advanced view shown and the page opened; nothing
+  runs until the person presses Run. Off, with a note saying so, when no file is at the
+  archive's path. A run whose archive data was cleared runs again from the archive.
+- **Remove**, a menu of three, each asked about first with what it frees: this run
+  (`remove_run`), every run of this mod (`remove_mod_runs`, with how many), and this mod's
+  archive data (`clear_mod_ingest`, with the bytes `mod_ingest_bytes` gives, at most what it
+  frees, since a blob another archive names stays).
+
+Under them are three tabs:
 
 - **Result**: the run page's result over the view the run ended with (`run_view`): the stage
   strip and the findings, the decisions and what the fixups changed. Picking a stage that holds
@@ -262,10 +304,11 @@ window only as text through `clean` or as a PNG the app encoded (#ADR-0093). Byt
 holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSING`.
 
 **The settings page** has a storage group with a row for the store: its runs, kept runs and
-mods, the bytes of the rows, the run tier and the ingest tier, and Remove all
-(`remove_all_runs`, asked about first). The run tier reserves 64 MB for its journal, which the
-row says. A keep, a removal and a run kept ask the list, the views and the store's counts
-again.
+mods, the bytes of the rows, the run tier and the ingest tier, the ingest bytes no run's
+archive names (`StoreView::ingest_unused_bytes`), and two actions, each asked about first:
+Clear unused archive data (`clear_unused_ingest`, off when there is none) and Remove all
+(`remove_all_runs`). The run tier reserves 64 MB for its journal, which the row says. A keep,
+a removal, a clear and a run kept ask the list, the views and the store's counts again.
 
 ## The history index
 
@@ -459,9 +502,10 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    snapshots and bytes (#ADR-0096), reopened and resumed, a package's evidence read, two runs
    compared, a run removed and the store swept; the records bundled and opened from a fixup
    or a finding. Built: the store, its sweep and the Runs page, with a run's result, its files
-   at each stage and one file opened, and the store's row in the settings. Left: a run resumed
-   from its snapshots, two runs compared, a package's evidence read, the project file, the
-   ingest tier cleared by mod, and the records.
+   at each stage and one file opened, and the store's row in the settings; a rerun resumed
+   from a kept run's snapshots, a kept run run again from the Runs page, and the ingest tier
+   cleared by mod and of what no run names. Left: two runs compared, a package's evidence
+   read, the project file, and the records.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
 
 Each library change is one rule with its test (#ADR-0045), made before the page that needs it.

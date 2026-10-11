@@ -110,7 +110,10 @@ let report = run.report();
   (`Start::Raw`), its file name the one it was read under, and a store that holds none is
   refused. The corpus scripts' `--from-store` gives each mod by its SHA-256, so a corpus run
   reads no archive. `load` opens the mod from the
-  raw snapshot and the store.
+  raw snapshot and the store. The cache evicts nothing: `RawCache::entries` lists its
+  entries, each with the bytes of the blobs it names, and `clear(sha256)` and
+  `clear_unnamed(keep)` remove an archive's entries with the blobs no other entry names and
+  their facts (#ADR-0093).
 - **A stage reads a mod's bytes from the store on use** (#ADR-0100). The mod and its package
   hold the run's store as `Blobs` (`Run::blobs`), and a file node holds the content id of its
   bytes and their size, not the bytes. A stage fetches a file's bytes where it reads them
@@ -139,7 +142,9 @@ let report = run.report();
   `facts_snapshot`, `decide_snapshot`, `plan_snapshot`, `build_snapshot`, `check_snapshot`.
   The snapshots are what the run holds of its stages, and the parsed objects beside them a
   cache. `Run::snapshots` gives them together as `Snapshots`, what a caller keeps to resume
-  after any of them. A run judged with an earlier run's evidence (`Run::known`) gives none:
+  after any of them, and `Snapshots::ids` every content id they name, each once, in order:
+  what a store must hold for that resume, and what a caller that sweeps its store marks. A
+  run judged with an earlier run's evidence (`Run::known`) gives none:
   the evidence is no input a snapshot names, and a run resumed from one would not be judged
   with it.
 - **A run starts from a snapshot in place of `read`** (#ADR-0094). `run.resume(from)`, or
@@ -163,7 +168,9 @@ let report = run.report();
   reading, or read under other caps, which it records (#ADR-0095); a later one of another
   format or program (version and commit), or one whose stage read an input or a setting
   that is not the run's, which it names (`Input`, `Setting`); a resume after a stage whose
-  snapshot the `Snapshots` lack (`Missing`), or that a repair has not (`NotInARepair`). The
+  snapshot the `Snapshots` lack (`Missing`), or that a repair has not (`NotInARepair`); a
+  store that lacks bytes a snapshot names (`Store`), the check snapshot's patched bins among
+  them, which no stage reads again and the store is asked for at the resume. The
   caller then starts from an earlier
   snapshot. The commit is the one the build script reads from git. A build outside a
   checkout has none, and a snapshot it wrote is refused (`Uncommitted`): its version alone
