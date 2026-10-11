@@ -475,7 +475,7 @@ fn the_other_questions_map_to_their_switches_and_targets() {
     assert!(
         other
             .facts
-            .contains(&"test skin3: own 2 models, 1 textures".to_string()),
+            .contains(&"test skin3: own 2 models, 1 texture".to_string()),
         "{:?}",
         other.facts
     );

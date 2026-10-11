@@ -678,16 +678,16 @@ fn given(decision: &DecisionView, target: Option<u16>) -> UnitTargetView {
 /// What a unit that leaves holds of its own, its counts that are not zero.
 fn work_fact(work: &UnitWork) -> String {
     let counts = [
-        (work.models, "models"),
-        (work.skeletons, "skeletons"),
-        (work.textures, "textures"),
-        (work.files, "other files"),
-        (work.objects, "objects"),
-        (work.clips, "clips"),
+        (work.models, "model", "models"),
+        (work.skeletons, "skeleton", "skeletons"),
+        (work.textures, "texture", "textures"),
+        (work.files, "other file", "other files"),
+        (work.objects, "object", "objects"),
+        (work.clips, "clip", "clips"),
     ];
     let held: Vec<String> = (counts.iter())
-        .filter(|(count, _)| *count > 0)
-        .map(|(count, what)| format!("{count} {what}"))
+        .filter(|(count, ..)| *count > 0)
+        .map(|&(count, one, many)| format!("{count} {}", if count == 1 { one } else { many }))
         .collect();
     format!("own {}", held.join(", "))
 }
