@@ -83,6 +83,11 @@ export const commands = {
 	exploreRun: () => __TAURI_INVOKE<({ ok: true; value: RunAgain | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_run"),
 	/**  The stages of a run of the kind, in order, as the library names them. */
 	runStages: (kind: RunKind) => __TAURI_INVOKE<({ ok: true; value: StageName[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_stages", { kind }),
+	/**
+	 *  The guided view's questions about a run, from the view the window holds of it (#ADR-0090).
+	 *  The window passes the view back, so the app keeps no state of the guided view.
+	 */
+	guidedQuestions: (view: RunView) => __TAURI_INVOKE<({ ok: true; value: Question[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("guided_questions", { view }),
 	/**  The runs the app's store keeps, newest first (#ADR-0096). */
 	listRuns: () => __TAURI_INVOKE<({ ok: true; value: RunRow[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("list_runs"),
 	/**  The report of a kept run, as JSON. None for a number no run has. */
@@ -256,6 +261,26 @@ export type AlternativeView = {
 	chosen: number | null,
 	/**  Its reason. */
 	reason: string,
+};
+
+/**
+ *  The settings a choice gives, as a patch of the run's settings: the fields it sets, none for
+ *  the rest. The front end merges the patches in question order, a list appended to, a switch
+ *  set.
+ */
+export type Answer = {
+	/**  Files kept where the run drops them as stale copies. */
+	kept_files: KeptFileView[] | null,
+	/**  Carry every stale copy. */
+	keep_stale: boolean | null,
+	/**  Targets given to units alone. */
+	unit_targets: UnitTargetView[] | null,
+	/**  Ship the units at slots other than the target too. */
+	keep_other_slots: boolean | null,
+	/**  Cut events from the game's bank only. */
+	game_events_only: boolean | null,
+	/**  Filters of the findings that refuse the write. */
+	block: string[] | null,
 };
 
 /**  What went wrong, as the fields the front end translates over. */
@@ -539,6 +564,66 @@ export type ChildSpec = {
 	/**  The child's class. */
 	class: string,
 };
+
+/**  One choice of a question. */
+export type Choice = {
+	/**  Its id within the question, the same across runs of the mod. */
+	id: string,
+	/**  What it says. */
+	label: ChoiceLabel,
+	/**  The settings it gives. */
+	answer: Answer,
+};
+
+/**  What a choice says, as the front end words it. */
+export type ChoiceLabel = 
+/**  The stale copies are not carried. */
+{ kind: "drop-stale" } | 
+/**  Every stale copy is carried. */
+{ kind: "keep-all-stale" } | 
+/**  These stale copies are carried. */
+{ kind: "keep-these"; 
+/**  The files. */
+files: KeptFileView[] } | 
+/**  The unit ships to this slot. */
+{ kind: "target"; 
+/**  The slot. */
+slot: number } | 
+/**  The unit is left to the game. */
+{ kind: "leave-to-game" } | 
+/**  The unit stays at its own slot. */
+{ kind: "keep-at-slot"; 
+/**  The slot. */
+slot: number } | 
+/**  This unit takes the slot, and the others of the conflict leave it. */
+{ kind: "takes-slot"; 
+/**  The unit, as the view's names spell it. */
+unit: string; 
+/**  The slot. */
+slot: number } | 
+/**  The units at other slots ship too, each at its own slot. */
+{ kind: "keep-other-slots" } | 
+/**  The port changes its target slot only. */
+{ kind: "change-target-only" } | 
+/**
+ *  The events come from the game's bank only, and clips no event of it plays are not
+ *  carried.
+ */
+{ kind: "cut-from-game-bank" } | 
+/**  The events come from the mod's own events bank. */
+{ kind: "keep-mod-bank" } | 
+/**  The mod ships as the several skins it is made for. */
+{ kind: "as-several-skins" } | 
+/**  The mod ships one skin: every other unit of the champion is left to the game. */
+{ kind: "one-skin" } | 
+/**  The write goes on with the error in the package. */
+{ kind: "allow-error"; 
+/**  The finding's code. */
+code: string } | 
+/**  The error refuses the write. */
+{ kind: "block-error"; 
+/**  The finding's code. */
+code: string };
 
 /**  The app's clone of the census history, as the inputs page shows it. */
 export type CloneView = 
@@ -1183,6 +1268,44 @@ export type PolicyView = {
 	/**  `block`, `same-joints`, `own-rig` or `allow`. */
 	anim_reuse: string,
 };
+
+/**  One question of the guided view. */
+export type Question = {
+	/**
+	 *  Its id, the same across runs of the mod: its kind and its subject, so that an answer
+	 *  is kept when a rerun asks again.
+	 */
+	id: string,
+	/**  What it is about. */
+	kind: QuestionKind,
+	/**  The finding it is asked from, by its id. */
+	finding: number,
+	/**  The unit, character or WAD, as the view's names spell it. */
+	subject: string,
+	/**  The choices. */
+	choices: Choice[],
+	/**  The default's index among the choices: what the run did. */
+	chosen: number,
+	/**  The mod's own facts the question names, the finding's message first. */
+	facts: string[],
+};
+
+/**  What a question is about, which gives its title. */
+export type QuestionKind = 
+/**  Files that are the game's older bytes (`file.stale`). */
+"stale-files" | 
+/**  A unit the policy's default placed or left (`target.*`). */
+"unit-target" | 
+/**  Units of one rank on one slot, each leaving it (`target.conflict`). */
+"slot-conflict" | 
+/**  Units at slots the port does not change (`unit.left`). */
+"other-slots" | 
+/**  Clips whose events are cut from the mod's own events bank (`audio.carried`). */
+"events-bank" | 
+/**  A mod made for several skins on purpose (`rework.restoration`). */
+"several-skins" | 
+/**  An error that refuses the write. */
+"blocking-error";
 
 /**  A record as the list shows it. */
 export type RecordHead = {

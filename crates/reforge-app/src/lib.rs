@@ -10,6 +10,7 @@ pub mod commands;
 pub mod download;
 pub mod error;
 pub mod explore;
+pub mod guided;
 pub mod hashes;
 pub mod index;
 pub mod inputs;

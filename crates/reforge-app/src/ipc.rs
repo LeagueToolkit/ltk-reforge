@@ -45,6 +45,7 @@ pub fn builder() -> Builder<Wry> {
             commands::explore_file,
             commands::explore_run,
             commands::run_stages,
+            commands::guided_questions,
             commands::list_runs,
             commands::run_report,
             commands::run_view,

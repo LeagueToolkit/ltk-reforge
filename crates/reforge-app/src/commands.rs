@@ -19,6 +19,7 @@ use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
 use crate::explore::{self, ExploreView, ExploredMod};
+use crate::guided::{self, Question};
 use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{Choice, InputsView};
@@ -93,6 +94,14 @@ pub fn records() -> IpcResult<Vec<RecordHead>> {
 #[specta::specta]
 pub fn record(code: String) -> IpcResult<Option<RecordView>> {
     IpcResult::ok(records::record(&code))
+}
+
+/// The guided view's questions about a run, from the view the window holds of it (#ADR-0090).
+/// The window passes the view back, so the app keeps no state of the guided view.
+#[tauri::command]
+#[specta::specta]
+pub fn guided_questions(view: RunView) -> IpcResult<Vec<Question>> {
+    IpcResult::ok(guided::questions(&view))
 }
 
 /// The game installs detected on this machine and the ones added, the chosen one first
