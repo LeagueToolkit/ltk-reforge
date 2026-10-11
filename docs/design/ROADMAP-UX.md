@@ -299,8 +299,12 @@ one is there (its version 0, caps `{}`, path empty, file name the package's, sin
 evidence names the archive by its SHA-256 alone; `archive_ingested` is false) and the run
 with the origin `package`, the package's path as where it was opened from and as its package,
 the mark kept, the kind and the program from the evidence, no schema build, since the build the
-evidence's inputs name is the game's and not the schema database's, and the default settings,
-since an opened package was asked for by no request.
+evidence's inputs name is the game's and not the schema database's, and the default settings
+with the fixups the evidence names, since an opened package was asked for by no request and
+the evidence holds no other setting. The fixups are the choice that gives the evidence's ids:
+the standard set's ids it lacks are off, the catalog's others it names are on, and an id the
+catalog lacks, such as a rule's, is left out (`FixupChoice::of_ids`). A comparison with the run
+that wrote the package then shows the same fixups turned off and on.
 
 The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
 `run_view` (the view the run ended with, its number set), `run_files`, `run_file`,
@@ -347,7 +351,7 @@ actions follow:
 - **Run again**: the run's kind, archive path and settings (`run_settings`) set in the run
   page's store as if picked and typed, the advanced view shown and the page opened; nothing
   runs until the person presses Run. Off, with a note saying so, when no file is at the
-  archive's path, and for a package opened, which has no settings. A run whose archive data
+  archive's path, and for a package opened, which no request made. A run whose archive data
   was cleared runs again from the archive.
 - **Export project…**: a path picked in a save dialog that starts at the mod's file stem with
   the extension `.reforge-project`, then `export_project` ("The project file"). Off, with a

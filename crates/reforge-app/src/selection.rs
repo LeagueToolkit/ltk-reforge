@@ -3,7 +3,8 @@
 //! its JSON, typed for the front end, and read through the library's own parser.
 
 use camino::Utf8Path;
-use reforge::fixups::{FixupSelection, Rule};
+use reforge::fixups::{FixupSelection, FixupSet, Rule};
+use reforge::model::clean;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -181,6 +182,30 @@ impl FixupChoice {
                 .map(RuleSpec::of)
                 .collect::<Result<_, _>>()?,
         })
+    }
+
+    /// The choice whose fixups are `ids`, as a package's evidence names them (#ADR-0041): the
+    /// standard set's fixups `ids` lacks are off, the catalog's others it holds are on.
+    ///
+    /// An id the catalog lacks, such as a rule's, is left out: the evidence names a rule by
+    /// its id alone, not what it does.
+    pub fn of_ids(ids: &[String]) -> Self {
+        let catalog = FixupSet::catalog();
+        let mut choice = Self::default();
+        for info in &catalog {
+            let id = info.id.as_str();
+            match (info.default, ids.iter().any(|held| held == id)) {
+                (true, false) => choice.off.push(id.to_string()),
+                (false, true) => choice.on.push(id.to_string()),
+                _ => {}
+            }
+        }
+        for id in ids {
+            if !catalog.iter().any(|info| info.id.as_str() == id) {
+                tracing::debug!(id = %clean(id), "a fixup the catalog lacks is left out");
+            }
+        }
+        choice
     }
 
     /// Saves the choice as a selection file the command reads with `--fixups`.

@@ -566,6 +566,28 @@ fn a_package_opened_has_no_schema_build_where_its_run_has_the_schemas() {
 }
 
 #[test]
+fn a_package_opened_carries_the_fixups_its_run_turned_off() {
+    let bench = Bench::new();
+    let mut settings = RunSettings::default();
+    settings.fixups.off.push(ARTIFACT_FIXUP.to_string());
+    let (run, view) = bench.kept_with(&artifact_mod(), RunKind::Port, settings);
+    let package = Utf8PathBuf::from(view.written.clone().expect("the package"));
+
+    let opened = bench.store.open_package(&package).unwrap();
+
+    let again = bench.store.run_again(opened).unwrap().expect("the row");
+    assert_eq!(again.settings.fixups.off, [ARTIFACT_FIXUP]);
+    assert_eq!(again.settings.fixups.on, Vec::<String>::new());
+    let compared = bench
+        .store
+        .compare(run, opened)
+        .unwrap()
+        .expect("both are kept");
+    let keys: Vec<&str> = compared.settings.iter().map(|d| d.key.as_str()).collect();
+    assert!(!keys.contains(&"fixups_off"), "{:?}", compared.settings);
+}
+
+#[test]
 fn a_package_opened_with_no_report_beside_it_reads_from_its_evidence() {
     let bench = Bench::new();
     let (view, fresh) = ported_and_fresh(&bench);

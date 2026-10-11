@@ -168,7 +168,7 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
   const [against, setAgainst] = useState<number | null>(null);
   const exportProject = useExportProject();
   const name = runName(row);
-  // A package opened has no snapshots, no settings and no bytes (#ADR-0096).
+  // A package opened has no snapshots, no request and no bytes (#ADR-0096).
   const opened = row.origin === "package";
   const held = view.data ? heldStages(view.data) : [];
   const tabs = [

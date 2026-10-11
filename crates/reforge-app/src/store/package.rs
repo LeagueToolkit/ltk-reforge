@@ -23,6 +23,7 @@ use super::read::Origin;
 use super::{AppStore, json_of, kind_text, number, pack};
 use crate::error::AppError;
 use crate::run::{self, ModView, RunKind, RunSettings, RunView};
+use crate::selection::FixupChoice;
 
 /// The schema of the report an opened package with no report beside it is given: its
 /// evidence, wrapped.
@@ -197,10 +198,11 @@ impl AppStore {
     ///
     /// The run has no load and no snapshots: its report is the one beside the package when it
     /// reads, else the evidence wrapped as `reforge.evidence-only/1`, and its view what that
-    /// gives. Its settings are the default: the row's settings are a request's, and a package
-    /// opened was asked for by no request here. It has no schema build: the evidence names the
-    /// game's build, not the schema database's. Refused for a package that does not read and
-    /// for one with no evidence.
+    /// gives. Its settings are the default but for the fixups, which are the ones the evidence
+    /// names: the evidence holds no other setting, and a package opened was asked for by no
+    /// request here. It has no schema build: the evidence names the game's build, not the
+    /// schema database's. Refused for a package that does not read and for one with no
+    /// evidence.
     pub fn open_package(&self, path: &Utf8Path) -> Result<u64, AppError> {
         let caps = Caps::default();
         let packaged = packaged(path, &caps)?;
@@ -210,6 +212,10 @@ impl AppStore {
         let kind = match evidence.run {
             Made::Repaired => RunKind::Repair,
             Made::Ported => RunKind::Port,
+        };
+        let settings = RunSettings {
+            fixups: FixupChoice::of_ids(&evidence.fixups),
+            ..RunSettings::default()
         };
         let file_name = path.file_name().unwrap_or(path.as_str()).to_string();
         let (report, view) = match report_beside(path, kind, &evidence.archive.sha256, &caps) {
@@ -252,7 +258,7 @@ impl AppStore {
                     Origin::Package.as_str(),
                     path.as_str(),
                     kind_text(kind),
-                    json_of(&RunSettings::default()),
+                    json_of(&settings),
                     evidence.program.version,
                     pack(&report)?,
                     pack(&json_of(&view))?,
