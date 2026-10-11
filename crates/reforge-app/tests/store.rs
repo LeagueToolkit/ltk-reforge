@@ -7,6 +7,7 @@ use fs_err as fs;
 use reforge::archive::Caps;
 use reforge::history::NoHistory;
 use reforge::model::{ByteView, ContentId};
+use reforge::snapshot::{self, BuildSnapshot, CheckSnapshot, LoadSnapshot, StageSnapshot};
 use reforge::store::BlobStore;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
@@ -367,6 +368,23 @@ impl Bench {
         ids.map(|id| ContentId(id.unwrap().try_into().unwrap()))
             .collect()
     }
+
+    /// The ids `run_blob` lists that are the run tier's: an id the ingest tier holds is
+    /// absent from it.
+    fn named_in_tier(&self) -> Vec<ContentId> {
+        let tier = self.store.tier();
+        self.named()
+            .into_iter()
+            .filter(|&id| tier.contains(id))
+            .collect()
+    }
+
+    /// The snapshot in a packed column of a row, read back.
+    fn snapshot<S: StageSnapshot>(&self, query: &str) -> S {
+        let packed: Vec<u8> = self.rows().query_row(query, [], |row| row.get(0)).unwrap();
+        let json = String::from_utf8(zstd::decode_all(&packed[..]).unwrap()).unwrap();
+        snapshot::from_json(&json).unwrap()
+    }
 }
 
 #[test]
@@ -383,11 +401,28 @@ fn a_port_through_write_keeps_a_row_of_each_kind_and_its_layer_in_the_run_tier()
     for table in ["raw", "load", "run"] {
         assert_eq!(bench.count(table), 1, "{table}");
     }
-    let named = bench.named();
+    let named = bench.named_in_tier();
     assert!(!named.is_empty(), "the run made no bytes");
     assert_eq!(bench.store.tier().ids().unwrap(), named);
     for id in named {
         assert!(bench.store.tier().get(id).is_some(), "{id:?}");
+    }
+}
+
+#[test]
+fn a_kept_run_names_every_id_its_snapshots_name() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+
+    let load: LoadSnapshot = bench.snapshot("SELECT json FROM load");
+    let build: BuildSnapshot = bench.snapshot("SELECT build FROM run");
+    let check: CheckSnapshot = bench.snapshot("SELECT \"check\" FROM run");
+
+    let named = bench.named();
+    let ids: Vec<ContentId> = load.ids().chain(build.ids()).chain(check.ids()).collect();
+    assert!(build.ids().count() > 0 && check.ids().count() > 0);
+    for id in ids {
+        assert!(named.contains(&id), "{id:?} is not named");
     }
 }
 
@@ -568,7 +603,7 @@ fn two_runs_of_one_load_one_removed_keep_the_load_and_its_blobs() {
     assert_eq!(bench.ids(), [2]);
     assert_eq!((bench.count("raw"), bench.count("load")), (1, 1));
     assert_eq!(bench.store.tier().ids().unwrap(), before);
-    assert_eq!(bench.named(), before);
+    assert_eq!(bench.named_in_tier(), before);
 }
 
 #[test]
@@ -586,7 +621,7 @@ fn removing_a_mods_runs_leaves_the_other_mods() {
     assert_eq!(bench.ids(), [2]);
     assert_eq!(left[0].file_name, "other.fantome");
     assert_eq!(bench.count("raw"), 1);
-    assert_eq!(bench.store.tier().ids().unwrap(), bench.named());
+    assert_eq!(bench.store.tier().ids().unwrap(), bench.named_in_tier());
 
     bench.store.remove_all().unwrap();
 

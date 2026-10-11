@@ -17,7 +17,7 @@ mod sweep;
 mod tier;
 mod viewer;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
@@ -177,8 +177,8 @@ impl AppStore {
     /// Keeps a run that wrote its package, and answers its number. The layer is flushed into
     /// the run tier first and the rows written after it in one transaction, so a row never
     /// names a byte the tier lacks: the raw row (its path the last one read), the load row,
-    /// shared by every run of its key, the run row and the ids of its layer. The bound is
-    /// cut after it.
+    /// shared by every run of its key, the run row, and the ids of its layer and of its
+    /// snapshots. The bound is cut after it.
     pub fn save(&self, saved: Saved) -> Result<u64, AppError> {
         self.change(|tier, tx| {
             tier.flush(&saved.layer)?;
@@ -243,7 +243,10 @@ fn insert_run(tx: &Transaction<'_>, saved: &Saved) -> Result<u64, AppError> {
     )?;
     let run_id = tx.last_insert_rowid();
     let mut blob = tx.prepare("INSERT INTO run_blob (run_id, id) VALUES (?1, ?2)")?;
-    for id in saved.layer.keys() {
+    // A run resumed from a kept run's snapshots made only the bytes of the stages it ran, and
+    // reads the older run's: its snapshots' ids keep those from the sweep of the older run.
+    let named: BTreeSet<ContentId> = saved.layer.keys().copied().chain(s.ids()).collect();
+    for id in named {
         blob.execute(params![run_id, id.0.as_slice()])?;
     }
     Ok(number(run_id))
