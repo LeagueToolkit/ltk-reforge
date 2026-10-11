@@ -11,6 +11,7 @@
 //! A save, a removal and a change of a run's mark each cut the bound and sweep what no run
 //! names, in the transaction of the change.
 
+mod compare;
 mod files;
 mod kept;
 mod read;
@@ -31,6 +32,9 @@ use reforge::snapshot::{
 };
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
+pub use self::compare::{
+    ChangeDiff, CompareView, Counts, Diff, FindingsDiff, PackageDiff, RunHead, TargetDiff,
+};
 pub use self::files::{FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, WadFiles};
 pub use self::kept::KeptRun;
 pub use self::read::{RunAgain, RunRow, StoreView};

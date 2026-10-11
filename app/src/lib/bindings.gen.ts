@@ -65,6 +65,8 @@ export const commands = {
 	 *  no run has.
 	 */
 	runSettings: (id: number) => __TAURI_INVOKE<({ ok: true; value: RunAgain | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_settings", { id }),
+	/**  Two kept runs compared, `a` against `b` (#ADR-0091). None when either number names no run. */
+	compareRuns: (a: number, b: number) => __TAURI_INVOKE<({ ok: true; value: CompareView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("compare_runs", { a, b }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */
@@ -315,6 +317,18 @@ export type CandidateView = {
 	feasible: boolean,
 };
 
+/**  What one fixup did in either run. */
+export type ChangeDiff = {
+	/**  The fixup's id. */
+	fixup: string,
+	/**  Its counts in the first run, zero when it changed nothing there. */
+	a: Counts,
+	/**  Its counts in the second run. */
+	b: Counts,
+	/**  Whether the counts differ. */
+	differs: boolean,
+};
+
 /**  What a fixup did at one place. */
 export type ChangeView = {
 	/**  The object the value is in, by its id in the report: `%o14`. */
@@ -388,6 +402,40 @@ export type CloneView =
 /**  The release the archive was of. */
 tag: string };
 
+/**  Two kept runs compared: the first, `a`, against the second, `b`. */
+export type CompareView = {
+	/**  The first run. */
+	a: RunHead,
+	/**  The second run. */
+	b: RunHead,
+	/**  Whether both runs are of the same archive, by its SHA-256. */
+	same_mod: boolean,
+	/**  The request's settings that differ. */
+	settings: Diff[],
+	/**  What the runs were judged under that differs: the program and the inputs. */
+	inputs: Diff[],
+	/**  The findings. */
+	findings: FindingsDiff,
+	/**  Every unit of either port, the first run's first. Empty unless both runs are ports. */
+	targets: TargetDiff[],
+	/**  Every fixup that changed something in either run, the first run's first. */
+	changes: ChangeDiff[],
+	/**  The packages. */
+	package: PackageDiff,
+};
+
+/**  How many values a fixup changed in one run, by outcome. */
+export type Counts = {
+	/**  Values converted to the form the target build reads. */
+	changed: number,
+	/**  Values removed with nothing lost. */
+	removed: number,
+	/**  Values removed that the mod's own build read. */
+	lost: number,
+	/**  Values with no conversion, left as they are. */
+	unconvertible: number,
+};
+
 /**  The target chosen for one unit. */
 export type DecisionView = {
 	/**  The unit, by its id in the report: `%u0`. */
@@ -408,6 +456,24 @@ export type DecisionView = {
 	candidates: CandidateView[],
 	/**  What the compared policies choose. */
 	alternatives: AlternativeView[],
+};
+
+/**  One value that differs between the two runs. */
+export type Diff = {
+	/**
+	 *  What differs, as a stable id the window translates. A setting: `kind`, `target`,
+	 *  `anim_reuse`, `keep_stale`, `keep_dds`, `game_events_only`, `block`, `checks_off`,
+	 *  `fixups_off`, `fixups_on`, `rules`. An input: `program`, `install_build`,
+	 *  `history_head`, `names`, `schema_build`.
+	 */
+	key: string,
+	/**
+	 *  The value in the first run, as text: a list joined with `, `, a switch `true` or
+	 *  `false`, none empty.
+	 */
+	a: string,
+	/**  The value in the second run. */
+	b: string,
 };
 
 /**  A field a rule renames or moves: its name before, and its name after. */
@@ -493,6 +559,16 @@ export type Finding = {
 	 *  them is written as hex, unspelled.
 	 */
 	data?: unknown,
+};
+
+/**  The findings of the two runs, matched by code, subject and message. */
+export type FindingsDiff = {
+	/**  The second run's findings the first has not, in the second's order. */
+	added: Finding[],
+	/**  The first run's findings the second has not, in the first's order. */
+	gone: Finding[],
+	/**  How many are in both. */
+	same: number,
 };
 
 /**  What one fixup did. */
@@ -764,6 +840,14 @@ export type OutcomeView =
 /**  A value with no conversion, left as it is. */
 "unconvertible";
 
+/**  The packages the two runs built. */
+export type PackageDiff = {
+	/**  The first run's. */
+	a: PackageView | null,
+	/**  The second run's. */
+	b: PackageView | null,
+};
+
 /**  The package a run built. */
 export type PackageView = {
 	/**  The project's name. */
@@ -900,6 +984,24 @@ export type RunAgain = {
 export type RunFinding = {
 	/**  The finding, its text as a run without names writes it. */
 	finding: Finding,
+};
+
+/**  One run of a comparison, as its header shows it. */
+export type RunHead = {
+	/**  Its number. */
+	id: number,
+	/**  When the store wrote it, by the store's clock. */
+	made_at: string,
+	/**  A repair or a port. */
+	kind: RunKind,
+	/**  The mod's name, as its archive says. */
+	name: string | null,
+	/**  The mod's version, as its archive says. */
+	version: string | null,
+	/**  The archive's file name. */
+	file_name: string,
+	/**  The file name of the `.modpkg` written. */
+	package: string | null,
 };
 
 /**  What a run makes of a mod. A port unless the request says otherwise (#ADR-0052). */
@@ -1212,6 +1314,24 @@ export type Subject = {
 	id: string,
 	/**  The name for a person. */
 	name: string,
+};
+
+/**  One unit's target in either run of a port. */
+export type TargetDiff = {
+	/**  The unit, as its character and slot name it: `Ahri skin3`. */
+	unit: string,
+	/**  The character's name. */
+	character_name: string,
+	/**  The first run's target. None: the unit left to the game, or absent from the run. */
+	a: number | null,
+	/**  The second run's target. */
+	b: number | null,
+	/**  Why the first run chose it, as the library names it. Empty for a unit it lacks. */
+	a_reason: string,
+	/**  Why the second run chose it. */
+	b_reason: string,
+	/**  Whether the target or the reason differs. */
+	differs: boolean,
 };
 
 /**  The decisions of a port. */

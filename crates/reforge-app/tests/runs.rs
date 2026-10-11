@@ -1,5 +1,6 @@
 //! A kept run as the Runs page reads it: the files at each stage with their marks, sizes and
-//! kinds, and one file opened by its kind. The game is `reforge_testkit::skins`.
+//! kinds, one file opened by its kind, and two runs compared. The game is
+//! `reforge_testkit::skins`.
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
@@ -10,7 +11,7 @@ use reforge::store::BlobStore;
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{self, RunKind, RunRequest, RunSettings, RunView, StageName, Unwatched};
-use reforge_app::store::{AppStore, FileRow, FileView, HEX_BYTES, Mark, StageFiles};
+use reforge_app::store::{AppStore, Counts, FileRow, FileView, HEX_BYTES, Mark, StageFiles};
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry, float};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -84,6 +85,16 @@ impl Bench {
 
     /// A run of `archive` through write, kept in the store.
     fn kept(&self, archive: &ModArchive, kind: RunKind) -> (u64, RunView) {
+        self.kept_with(archive, kind, RunSettings::default())
+    }
+
+    /// A run of `archive` through write with `settings`, kept in the store.
+    fn kept_with(
+        &self,
+        archive: &ModArchive,
+        kind: RunKind,
+        settings: RunSettings,
+    ) -> (u64, RunView) {
         let root = Self::root_of(&self.dir);
         let path = root.join("mod.fantome");
         fs::write(&path, archive.build()).unwrap();
@@ -91,7 +102,7 @@ impl Bench {
             kind,
             archive: path.to_string(),
             through: StageName::Write,
-            settings: RunSettings::default(),
+            settings,
             out: Some(root.join("out").to_string()),
         };
         let view = run::run(&self.inputs, &request, Some(&self.store), &mut Unwatched).unwrap();
@@ -198,6 +209,79 @@ fn a_ports_files_at_plan_are_marked_against_fix() {
             .all(|row| row.kind != "missing"),
         "{plan:?}"
     );
+}
+
+/// The fixup that removes [`tool_artifact`]'s field.
+const ARTIFACT_FIXUP: &str = "known-artifacts-value-color";
+
+/// [`artifact_mod`] ported twice, the second run with [`ARTIFACT_FIXUP`] off.
+fn port_pair(bench: &Bench) -> (u64, u64) {
+    let (a, _) = bench.kept(&artifact_mod(), RunKind::Port);
+    let mut settings = RunSettings::default();
+    settings.fixups.off.push(ARTIFACT_FIXUP.to_string());
+    let (b, _) = bench.kept_with(&artifact_mod(), RunKind::Port, settings);
+    (a, b)
+}
+
+#[test]
+fn a_fixup_turned_off_shows_in_the_settings_the_findings_and_the_changes() {
+    let bench = Bench::new();
+    let (a, b) = port_pair(&bench);
+
+    let compared = bench
+        .store
+        .compare(a, b)
+        .unwrap()
+        .expect("both runs are kept");
+
+    assert!(compared.same_mod);
+    assert_eq!((compared.a.id, compared.b.id), (a, b));
+    let keys: Vec<&str> = compared.settings.iter().map(|d| d.key.as_str()).collect();
+    assert_eq!(keys, ["fixups_off"]);
+    assert_eq!(compared.settings[0].a, "");
+    assert_eq!(compared.settings[0].b, ARTIFACT_FIXUP);
+    assert_eq!(compared.inputs, []);
+    let gone = &compared.findings.gone;
+    assert!(
+        !gone.is_empty() && gone.iter().all(|f| f.by.as_deref() == Some(ARTIFACT_FIXUP)),
+        "{gone:?}"
+    );
+    assert!(compared.findings.same > 0);
+    let change = compared.changes.iter().find(|c| c.fixup == ARTIFACT_FIXUP);
+    let change = change.unwrap_or_else(|| panic!("{:?}", compared.changes));
+    assert!(change.differs);
+    assert!(change.a.removed > 0);
+    assert_eq!(change.b, Counts::default());
+    assert!(!compared.targets.is_empty());
+    assert!(compared.targets.iter().all(|target| !target.differs));
+}
+
+#[test]
+fn a_repair_against_a_port_differs_in_its_kind_and_has_no_targets() {
+    let bench = Bench::new();
+    let (a, _) = bench.kept(&artifact_mod(), RunKind::Repair);
+    let (b, _) = bench.kept(&artifact_mod(), RunKind::Port);
+
+    let compared = bench
+        .store
+        .compare(a, b)
+        .unwrap()
+        .expect("both runs are kept");
+
+    let kind = compared.settings.iter().find(|d| d.key == "kind");
+    let kind = kind.unwrap_or_else(|| panic!("{:?}", compared.settings));
+    assert_eq!((kind.a.as_str(), kind.b.as_str()), ("repair", "port"));
+    assert_eq!(compared.targets, []);
+    assert!(compared.package.a.is_some() && compared.package.b.is_some());
+}
+
+#[test]
+fn a_comparison_with_a_run_not_kept_is_none() {
+    let bench = Bench::new();
+    let (a, _) = bench.kept(&artifact_mod(), RunKind::Repair);
+
+    assert_eq!(bench.store.compare(a, a + 1), Ok(None));
+    assert_eq!(bench.store.compare(a + 1, a), Ok(None));
 }
 
 /// The one file of a stage whose path ends so.

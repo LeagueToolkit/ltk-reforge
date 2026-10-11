@@ -93,18 +93,22 @@ pub struct StoreView {
 impl AppStore {
     /// Every run kept, newest first.
     pub fn list(&self) -> Result<Vec<RunRow>, AppError> {
-        let reached = REACHED.map(|(_, column)| format!("run.{column} IS NOT NULL"));
-        let query = format!(
-            "SELECT run.id, run.made_at, run.kind, run.kept, raw.sha256, raw.file_name,
-               raw.name, raw.author, raw.mod_version, run.package, raw.version, raw.caps, {}
-             FROM run JOIN load ON load.id = run.load_id JOIN raw ON raw.sha256 = load.sha256
-             ORDER BY run.id DESC",
-            reached.join(", ")
-        );
+        let query = listing("ORDER BY run.id DESC");
         let rows = self.rows.lock();
         let mut statement = rows.prepare(&query)?;
         let listed = statement.query_map([], |row| Ok(run_row(row, &self.ingest)))?;
         listed.map(|row| row?).collect()
+    }
+
+    /// One kept run as the list shows it. None for a number no run has.
+    pub fn row(&self, id: u64) -> Result<Option<RunRow>, AppError> {
+        let Ok(id) = i64::try_from(id) else {
+            return Ok(None);
+        };
+        let query = listing("WHERE run.id = ?1");
+        let rows = self.rows.lock();
+        let found = rows.query_row(&query, [id], |row| Ok(run_row(row, &self.ingest)));
+        found.optional()?.transpose()
     }
 
     /// The report of a kept run, as JSON. None for a number no run has.
@@ -225,6 +229,18 @@ pub(super) fn kind_of(text: &str) -> Result<RunKind, AppError> {
         "port" => Ok(RunKind::Port),
         other => Err(failed(format!("a run of the kind {other:?}"))),
     }
+}
+
+/// The listing's query, ending in `tail`: its filter or its order.
+fn listing(tail: &str) -> String {
+    let reached = REACHED.map(|(_, column)| format!("run.{column} IS NOT NULL"));
+    format!(
+        "SELECT run.id, run.made_at, run.kind, run.kept, raw.sha256, raw.file_name,
+           raw.name, raw.author, raw.mod_version, run.package, raw.version, raw.caps, {}
+         FROM run JOIN load ON load.id = run.load_id JOIN raw ON raw.sha256 = load.sha256
+         {tail}",
+        reached.join(", ")
+    )
 }
 
 /// A row of the listing's query.
