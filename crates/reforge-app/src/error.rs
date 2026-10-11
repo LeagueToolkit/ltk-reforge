@@ -142,6 +142,16 @@ pub enum AppError {
     /// cleared from the ingest tier.
     #[error("no tier holds the bytes under {id}")]
     BlobMissing { id: String },
+    /// A file shown as a bin does not read as one: the halting error of the reader, its text
+    /// cleaned.
+    #[error("the bin does not read: {detail}")]
+    BinUnreadable { detail: String },
+    /// No node of a bin sits at the address asked, written `entry:path`.
+    #[error("no node of the bin at {address}")]
+    BinNodeNotFound { address: String },
+    /// One read of a bin's rows reaches more rows than a call answers.
+    #[error("the read reaches {rows} rows, past {cap}")]
+    BinReadTooWide { rows: usize, cap: usize },
     /// A run holds no package to read again: it did not end `build`, it was opened from a
     /// package, or it is a mod explored.
     #[error("the run holds no package")]

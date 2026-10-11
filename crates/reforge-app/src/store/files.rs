@@ -10,7 +10,9 @@
 //! its old path and added at its new one.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
+use reforge::game::NameBook;
 use reforge::model::entity::{FileId, WadId};
 use reforge::model::hash::wad_hash_of_hex;
 use reforge::model::{ByteView, ChunkPath, ContentId, FactAccess, Head, Layer, clean};
@@ -341,7 +343,7 @@ impl<'a> Tiers<'a> {
     }
 
     /// The bytes under an id. None when no tier holds them.
-    pub(super) fn get(&self, id: ContentId) -> Option<ByteView> {
+    pub(crate) fn get(&self, id: ContentId) -> Option<ByteView> {
         self.stores().find_map(|store| store.get(id))
     }
 
@@ -415,6 +417,34 @@ impl AppStore {
             plan: plan.as_deref().map(read_snapshot).transpose()?,
             build: build.as_deref().map(read_snapshot).transpose()?,
         }))
+    }
+
+    /// The names a kept run's `load` learnt, held for the few runs read last. Empty for a run
+    /// that did not end `load`; None for a number no run has.
+    pub fn kept_names(&self, id: u64) -> Result<Option<Arc<NameBook>>, AppError> {
+        const HELD: usize = 4;
+        if let Some((_, book)) = self.names.lock().iter().find(|(run, _)| *run == id) {
+            return Ok(Some(Arc::clone(book)));
+        }
+        let Ok(row) = i64::try_from(id) else {
+            return Ok(None);
+        };
+        let query = "SELECT load.json FROM run LEFT JOIN load ON load.id = run.load_id
+             WHERE run.id = ?1";
+        let column: Option<Option<Vec<u8>>> = {
+            let rows = self.rows.lock();
+            rows.query_row(query, [row], |row| row.get(0)).optional()?
+        };
+        let Some(column) = column else {
+            return Ok(None);
+        };
+        let load: Option<LoadSnapshot> = column.as_deref().map(read_snapshot).transpose()?;
+        let book = Arc::new(load.map(|load| load.names().clone()).unwrap_or_default());
+        let mut held = self.names.lock();
+        held.retain(|(run, _)| *run != id);
+        held.push_front((id, Arc::clone(&book)));
+        held.truncate(HELD);
+        Ok(Some(book))
     }
 
     /// The files of a kept run at a stage, each marked against the nearest earlier stage the

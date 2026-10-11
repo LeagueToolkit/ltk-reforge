@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::io::Cursor;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use ltk_meta::{Bin, BinObject, BinStream};
+use ltk_meta::{Bin, BinObject, BinOverride, BinStream};
 
 use super::hash::{BinHash, ContentId};
 use super::text::panic_text;
@@ -57,6 +57,8 @@ pub struct ParsedObject {
 /// A bin read from bytes.
 #[derive(Debug, Clone)]
 pub struct ParsedBin {
+    /// The version its header writes.
+    pub version: u32,
     /// The paths of the bins it links, as it spells them.
     pub dependencies: Vec<String>,
     /// Its objects, in file order.
@@ -74,6 +76,19 @@ pub fn parse(bytes: &[u8]) -> Result<ParsedBin, BinError> {
         _ => return Err(BinError::NotABin),
     }
     catch_unwind(AssertUnwindSafe(|| read(bytes)))
+        .unwrap_or_else(|payload| Err(BinError::Panicked(panic_text(&*payload))))
+}
+
+/// Reads a `PTCH`: the objects it adds, the ones it deletes and its records. The bytes may be a
+/// mod's, so the reader runs where its panic is caught.
+pub fn parse_patch(bytes: &[u8]) -> Result<BinOverride, BinError> {
+    if bytes.get(..4) != Some(b"PTCH") {
+        return Err(BinError::NotABin);
+    }
+    let read = || {
+        BinOverride::from_reader(&mut Cursor::new(bytes)).map_err(|e| BinError::Read(e.to_string()))
+    };
+    catch_unwind(AssertUnwindSafe(read))
         .unwrap_or_else(|payload| Err(BinError::Panicked(panic_text(&*payload))))
 }
 
@@ -112,6 +127,7 @@ fn read(bytes: &[u8]) -> Result<ParsedBin, BinError> {
         });
     }
     Ok(ParsedBin {
+        version: stream.version(),
         dependencies: stream.dependencies().to_vec(),
         objects,
         duplicates,

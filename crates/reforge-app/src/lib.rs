@@ -4,6 +4,7 @@
 
 pub mod archive;
 pub mod batch;
+pub mod bin_rows;
 pub mod catalog;
 pub mod census;
 pub mod commands;
@@ -35,6 +36,7 @@ use camino::Utf8PathBuf;
 use tauri::Manager;
 
 use crate::archive::Clones;
+use crate::bin_rows::BinViews;
 use crate::settings::SettingsStore;
 use crate::state::{
     Explored, HashesJob, IndexJob, LastRun, OpenInputs, RunJob, RunStore, SchemaJob,
@@ -85,6 +87,7 @@ pub fn run() -> tauri::Result<()> {
             app.manage(Arc::new(RunJob::default()));
             app.manage(Arc::new(Explored::default()));
             app.manage(Arc::new(LastRun::default()));
+            app.manage(Arc::new(BinViews::default()));
             app.manage(RunStore::open(&data.join("store")));
             Ok(())
         })

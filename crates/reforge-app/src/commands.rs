@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use parking_lot::Mutex;
-use reforge::game::{meta_cache_dir, mimir_cache_dir};
+use reforge::game::{Speller, meta_cache_dir, mimir_cache_dir};
 use reforge::model::{BinHash, ContentId};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -16,6 +16,7 @@ use tauri_specta::Event;
 
 use crate::archive::{ArchiveNote, ArchiveProgress, Bootstrap, CloneView};
 use crate::batch::{self, BatchProgress, BatchRequest, BatchView};
+use crate::bin_rows::{self, BinDocument, BinDocumentHandle, BinRows, BinSource, BinViews};
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
@@ -41,6 +42,7 @@ use crate::state::{
 use crate::storage::StorageView;
 use crate::store::{
     AppStore, CompareView, FileAsk, FileView, RunAgain, RunRow, StageFiles, StoreState, StoreView,
+    Tiers,
 };
 use crate::view::Finding;
 
@@ -407,6 +409,113 @@ fn content_of(hex: &str) -> Result<ContentId, AppError> {
     ContentId::parse(hex).ok_or_else(|| AppError::Internal {
         detail: format!("{hex:?} is no content id"),
     })
+}
+
+/// What `ask` reads of one bin of a run, by the id of its bytes as 64 hex digits (#ADR-0104):
+/// the bin read from the run's tiers and held parsed, its hashes spelled through the run's
+/// names and the inputs' tables, when they open.
+async fn read_bin<T, F>(app: AppHandle, run: RunRef, content: String, ask: F) -> IpcResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&BinDocument, &Speller<'_>) -> Result<T, AppError> + Send + 'static,
+{
+    let store = app.state::<RunStore>().get();
+    let last = app.state::<Arc<LastRun>>().get();
+    let explored = Arc::clone(&app.state::<Arc<Explored>>());
+    let views = Arc::clone(&app.state::<Arc<BinViews>>());
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let content = content_of(&content)?;
+        // Inputs that do not open leave the run's own names.
+        let inputs = open.get(&choice).ok();
+        let names = inputs.as_deref().map(|inputs| inputs.env().names());
+        let missing = || AppError::BlobMissing { id: content.hex() };
+        match run {
+            RunRef::Kept { id } => {
+                let store = store?;
+                let book = store.kept_names(id)?;
+                let source = BinSource::new(Tiers::of(&store), book.as_deref());
+                source.read(&views, content, names, ask)
+            }
+            RunRef::Last => {
+                let store = store.ok();
+                match (last.as_deref(), store.as_deref()) {
+                    (Some(held), store) => held.bin_source(store),
+                    (None, Some(store)) => BinSource::new(Tiers::of(store), None),
+                    (None, None) => return Err(missing()),
+                }
+                .read(&views, content, names, ask)
+            }
+            RunRef::Explored => {
+                let store = store.ok();
+                explored.with(|explored| {
+                    match (explored, store.as_deref()) {
+                        (Some(explored), store) => explored.bin_source(store),
+                        (None, Some(store)) => BinSource::new(Tiers::of(store), None),
+                        (None, None) => return Err(missing()),
+                    }
+                    .read(&views, content, names, ask)
+                })
+            }
+        }
+    })
+    .await
+}
+
+/// A bin of a run, by the id of its bytes as 64 hex digits: its header and its rows at depth
+/// zero, one per object and one per object its patch records target (#ADR-0104).
+#[tauri::command]
+#[specta::specta]
+pub async fn bin_open(
+    app: AppHandle,
+    run: RunRef,
+    content: String,
+) -> IpcResult<BinDocumentHandle> {
+    read_bin(app, run, content, |document, speller| {
+        Ok(document.open(speller))
+    })
+    .await
+}
+
+/// The rows under one node of a bin of a run, `offset` in and at most `limit` of them: the
+/// node is its object's entry, `0x` and eight hex digits, and its hash path, empty for the
+/// object itself (#ADR-0104).
+#[tauri::command]
+#[specta::specta]
+pub async fn bin_children(
+    app: AppHandle,
+    run: RunRef,
+    content: String,
+    entry: String,
+    path: String,
+    offset: usize,
+    limit: usize,
+) -> IpcResult<BinRows> {
+    read_bin(app, run, content, move |document, speller| {
+        let entry = bin_rows::parse_entry(&entry)?;
+        Ok(document.children(entry, &path, offset, limit, speller)?)
+    })
+    .await
+}
+
+/// The first page of rows under each of several nodes of one object of a bin of a run, in the
+/// order asked: a path reaching nothing answers an empty page. Refused past
+/// `bin_rows::READ_ROW_CAP` rows in all (#ADR-0104).
+#[tauri::command]
+#[specta::specta]
+pub async fn bin_read(
+    app: AppHandle,
+    run: RunRef,
+    content: String,
+    entry: String,
+    paths: Vec<String>,
+) -> IpcResult<Vec<BinRows>> {
+    read_bin(app, run, content, move |document, speller| {
+        let entry = bin_rows::parse_entry(&entry)?;
+        Ok(document.children_each(entry, &paths, speller)?)
+    })
+    .await
 }
 
 /// A name for each hash a run's names or the inputs' tables spell, by the hash as asked

@@ -4932,6 +4932,7 @@ dependencies = [
  "fs-err",
  "gix",
  "image",
+ "indexmap 2.14.2",
  "ltk_hashdb",
  "ltk_meta",
  "ltk_mimir_cache",

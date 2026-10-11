@@ -12,6 +12,7 @@ use reforge::snapshot::Snapshots;
 use reforge::store::{BlobStore, MemoryStore};
 
 use super::{RunRequest, StageName};
+use crate::bin_rows::BinSource;
 use crate::error::AppError;
 use crate::store::{self, AppStore, FileAsk, FileView, KeptSnapshots, StageFiles, Tiers};
 
@@ -69,6 +70,16 @@ impl HeldRun {
         };
         let tiers = Tiers::layered(&*self.layer, store);
         KeptSnapshots::of(snapshots).files(stage, &tiers).map(Some)
+    }
+
+    /// Where the viewer reads the run's bins: the run's layer over the store's tiers, named
+    /// through the run's load names.
+    pub fn bin_source<'a>(&'a self, store: Option<&'a AppStore>) -> BinSource<'a> {
+        let book = self
+            .snapshots
+            .as_ref()
+            .map(|snapshots| snapshots.load.names());
+        BinSource::new(Tiers::layered(&*self.layer, store), book)
     }
 
     /// One file by the id of its bytes, over the run's layer and the store's tiers, a bin's

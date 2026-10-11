@@ -20,6 +20,7 @@ use reforge_magic::Kind;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::bin_rows::BinSource;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
 use crate::run::{
@@ -216,6 +217,13 @@ impl ExploredMod {
                 .unwrap_or_default())
         };
         store::file_view(&tiers, ask, book, names)
+    }
+
+    /// Where the viewer reads the mod's bins: what `load` made over the store's tiers, named
+    /// through the load's names.
+    pub fn bin_source<'a>(&'a self, store: Option<&'a AppStore>) -> BinSource<'a> {
+        let book = self.load.as_ref().map(LoadSnapshot::names);
+        BinSource::new(Tiers::layered(&self.layer, store), book)
     }
 
     /// The archive and the standard settings, for the run page to run it.

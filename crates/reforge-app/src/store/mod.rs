@@ -22,12 +22,14 @@ mod sweep;
 mod tier;
 mod viewer;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use parking_lot::Mutex;
 use reforge::archive::RawSnapshot;
+use reforge::game::NameBook;
 use reforge::model::{ByteView, ContentId, Spelled};
 use reforge::report::Report;
 use reforge::snapshot::{
@@ -133,6 +135,9 @@ pub struct AppStore {
     tier: RunTier,
     rows: Mutex<Connection>,
     bound: usize,
+    /// The names of the kept runs a bin was viewed in last, the latest first. A run's number
+    /// names one run while this store stands, so a held book is never stale.
+    names: Mutex<VecDeque<(u64, Arc<NameBook>)>>,
 }
 
 /// What a run kept leaves: one that wrote its package, or one its request asks to keep
@@ -177,6 +182,7 @@ impl AppStore {
             tier,
             rows: Mutex::new(rows),
             bound: RUN_BOUND,
+            names: Mutex::new(VecDeque::new()),
         })
     }
 

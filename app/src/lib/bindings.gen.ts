@@ -78,6 +78,23 @@ export const commands = {
 	 */
 	lastFile: (content: string, entry: string | null) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_file", { content, entry }),
 	/**
+	 *  A bin of a run, by the id of its bytes as 64 hex digits: its header and its rows at depth
+	 *  zero, one per object and one per object its patch records target (#ADR-0104).
+	 */
+	binOpen: (run: RunRef, content: string) => __TAURI_INVOKE<({ ok: true; value: BinDocumentHandle }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("bin_open", { run, content }),
+	/**
+	 *  The rows under one node of a bin of a run, `offset` in and at most `limit` of them: the
+	 *  node is its object's entry, `0x` and eight hex digits, and its hash path, empty for the
+	 *  object itself (#ADR-0104).
+	 */
+	binChildren: (run: RunRef, content: string, entry: string, path: string, offset: number, limit: number) => __TAURI_INVOKE<({ ok: true; value: BinRows }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("bin_children", { run, content, entry, path, offset, limit }),
+	/**
+	 *  The first page of rows under each of several nodes of one object of a bin of a run, in the
+	 *  order asked: a path reaching nothing answers an empty page. Refused past
+	 *  `bin_rows::READ_ROW_CAP` rows in all (#ADR-0104).
+	 */
+	binRead: (run: RunRef, content: string, entry: string, paths: string[]) => __TAURI_INVOKE<({ ok: true; value: BinRows[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("bin_read", { run, content, entry, paths }),
+	/**
 	 *  A name for each hash a run's names or the inputs' tables spell, by the hash as asked
 	 *  (#ADR-0103): eight hex digits an entry, a field or a class, sixteen a path. A hash none
 	 *  spells is left out. Refused past `places::MAX_SPELLED` hashes.
@@ -425,6 +442,15 @@ export type AppError =
  */
 { code: "BLOB_MISSING"; id: string } | 
 /**
+ *  A file shown as a bin does not read as one: the halting error of the reader, its text
+ *  cleaned.
+ */
+{ code: "BIN_UNREADABLE"; detail: string } | 
+/**  No node of a bin sits at the address asked, written `entry:path`. */
+{ code: "BIN_NODE_NOT_FOUND"; address: string } | 
+/**  One read of a bin's rows reaches more rows than a call answers. */
+{ code: "BIN_READ_TOO_WIDE"; rows: number; cap: number } | 
+/**
  *  A run holds no package to read again: it did not end `build`, it was opened from a
  *  package, or it is a mod explored.
  */
@@ -526,6 +552,37 @@ export type BatchView = {
 	stopped: boolean,
 };
 
+/**  What an open answers: the header, and the rows at depth zero. */
+export type BinDocumentHandle = {
+	/**  The file's facts. */
+	header: BinHeader,
+	/**  One row per object in file order, then one per object the patch records target. */
+	rows: BinRow[],
+};
+
+/**  Which kind of bin file a document holds. */
+export type BinFileKind = 
+/**  A `PROP`: the objects themselves. */
+"prop" | 
+/**  A `PTCH`: a layer over another bin. */
+"patch";
+
+/**  What the header row says about a bin. */
+export type BinHeader = {
+	/**  A `PROP` or a `PTCH`. */
+	kind: BinFileKind,
+	/**  The file version of a `PROP`. A `PTCH` carries none. */
+	version: number | null,
+	/**  The objects the file declares. For a `PTCH`, the objects it adds. */
+	objects: number,
+	/**  How many bins a `PROP` names as its dependencies. */
+	dependencies: number,
+	/**  The patch records of a `PTCH`. */
+	patches: number,
+	/**  How many objects a `PTCH` deletes. */
+	deleted: number,
+};
+
 /**  The bin the game held at the path at the build asked about. */
 export type BinLookup = {
 	/**  The WAD that held it: the first in the census history's order. */
@@ -537,6 +594,141 @@ export type BinLookup = {
 	/**  Its objects, by entry name and then hash. */
 	entries: EntryView[],
 };
+
+/**
+ *  One row of the viewer, flat. Every text a person reads in it is cleaned; the path is an
+ *  address and is not.
+ */
+export type BinRow = {
+	/**  The object's path hash, `0x` and eight hex digits. */
+	entry: string,
+	/**
+	 *  The hash path, every field a hash. Empty for the object itself, and `#` then the
+	 *  record's position under a patch target.
+	 */
+	path: string,
+	/**
+	 *  The same path for a person. Empty for the object itself, and the record's own path
+	 *  first under a patch record.
+	 */
+	label: string,
+	/**  Where the row sits. */
+	node: RowNode,
+	/**  What the row is called: the object's path, the property's name, `[i]` or the key. */
+	name: string,
+	/**  The name is a hash nothing names. */
+	unnamed: boolean,
+	/**  The value's kind. An object row and a target row have none. */
+	kind: PropertyKind | null,
+	/**  The value, in the shape its widget draws. */
+	value: BinValue,
+};
+
+/**  A window of rows under one node, and how many there are in all. */
+export type BinRows = {
+	/**  The rows of the window. */
+	rows: BinRow[],
+	/**  How many rows sit under the node. */
+	total: number,
+};
+
+/**
+ *  A row's value, in the shape its widget draws.
+ * 
+ *  A hash rides beside the name the run or the tables give it. A person reads the name, and
+ *  the hash shows on hover.
+ */
+export type BinValue = 
+/**  A `None`. */
+{ type: "none" } | 
+/**  A `Bool` or a `BitBool`. */
+{ type: "bool"; 
+/**  The value. */
+value: boolean } | 
+/**  Any integer kind, as text. A `U64` does not fit a JSON number. */
+{ type: "integer"; 
+/**  The digits. */
+text: string } | 
+/**  An `F32`. A NaN or an infinity crosses as `null`. */
+{ type: "float"; 
+/**  The value. */
+value: number | null } | 
+/**  Two, three or four components. */
+{ type: "vector"; 
+/**  The components. */
+values: (number | null)[] } | 
+/**  Sixteen cells, row-major. */
+{ type: "matrix"; 
+/**  The cells. */
+values: (number | null)[] } | 
+/**  A colour of four bytes. */
+{ type: "color"; 
+/**  Red. */
+r: number; 
+/**  Green. */
+g: number; 
+/**  Blue. */
+b: number; 
+/**  Alpha. */
+a: number } | 
+/**  A string. */
+{ type: "string"; 
+/**  The text. */
+value: string } | 
+/**  `0x` and eight hex digits, and the string behind it where a name is known. */
+{ type: "hash"; 
+/**  The hash. */
+hash: string; 
+/**  Its name. */
+name: string | null } | 
+/**  Sixteen hex digits, and the chunk's path where a name is known. */
+{ type: "wadChunkLink"; 
+/**  The hash. */
+hash: string; 
+/**  The chunk's path. */
+path: string | null } | 
+/**  `0x` and eight hex digits, and the object's path where a name is known. */
+{ type: "objectLink"; 
+/**  The hash. */
+hash: string; 
+/**  The object's path. */
+name: string | null } | 
+/**  A `Container` or an `UnorderedContainer`, and the kind of every item. */
+{ type: "container"; 
+/**  How many items it holds. */
+len: number; 
+/**  The kind of every item. */
+itemKind: PropertyKind } | 
+/**  A `Struct` with a class, or an `Embedded`. */
+{ type: "struct"; 
+/**  The class, `0x` and eight hex digits. */
+classHash: string; 
+/**  The class's name. */
+class: string | null; 
+/**  How many properties it holds. */
+len: number } | 
+/**  A `Struct` with a class hash of zero. */
+{ type: "null" } | 
+/**  Whether a value is held, and the kind it is or would be. */
+{ type: "optional"; 
+/**  A value is held. */
+present: boolean; 
+/**  The kind it is or would be. */
+itemKind: PropertyKind } | 
+/**  The entries, and the kinds the map declares for its keys and its values. */
+{ type: "map"; 
+/**  How many entries it holds. */
+len: number; 
+/**  The kind of every key. */
+keyKind: PropertyKind; 
+/**  The kind of every value. */
+valueKind: PropertyKind } | 
+/**  A leaf this build has no widget for. */
+{ type: "undrawn" } | 
+/**  The patch records a `PTCH` writes to one object. */
+{ type: "records"; 
+/**  How many records. */
+len: number };
 
 /**  A build of the history. */
 export type BuildView = {
@@ -1480,6 +1672,68 @@ export type PolicyView = {
 	anim_reuse: string,
 };
 
+/**
+ *  The 27 kinds `ltk_meta` reads, as they cross IPC.
+ * 
+ *  A mirror of [`Kind`], spelled in ritobin's words. The spelling is the tag a row draws. An
+ *  upstream rename or addition is a compile error here.
+ */
+export type PropertyKind = 
+/**  `none`. */
+"none" | 
+/**  `bool`. */
+"bool" | 
+/**  `i8`. */
+"i8" | 
+/**  `u8`. */
+"u8" | 
+/**  `i16`. */
+"i16" | 
+/**  `u16`. */
+"u16" | 
+/**  `i32`. */
+"i32" | 
+/**  `u32`. */
+"u32" | 
+/**  `i64`. */
+"i64" | 
+/**  `u64`. */
+"u64" | 
+/**  `f32`. */
+"f32" | 
+/**  `vec2`. */
+"vec2" | 
+/**  `vec3`. */
+"vec3" | 
+/**  `vec4`. */
+"vec4" | 
+/**  `mtx44`. */
+"mtx44" | 
+/**  `rgba`. */
+"rgba" | 
+/**  `string`. */
+"string" | 
+/**  `hash`. */
+"hash" | 
+/**  `file`. */
+"file" | 
+/**  `list`. */
+"list" | 
+/**  `list2`. */
+"list2" | 
+/**  `pointer`. */
+"pointer" | 
+/**  `embed`. */
+"embed" | 
+/**  `link`. */
+"link" | 
+/**  `option`. */
+"option" | 
+/**  `map`. */
+"map" | 
+/**  `flag`. */
+"flag";
+
 /**  One question of the guided view. */
 export type Question = {
 	/**
@@ -1566,6 +1820,21 @@ export type RecordView = {
 	/**  Every bundled record whose text names it, sorted. */
 	cited_by: string[],
 };
+
+/**  Where a row sits in the tree. */
+export type RowNode = 
+/**  An object of the file. */
+"object" | 
+/**  A property of an object, a struct or an embedded. */
+"property" | 
+/**  One element of a container, or the value of a present optional. */
+"element" | 
+/**  One entry of a map. */
+"entry" | 
+/**  An object the patch records of a `PTCH` target, holding those records. */
+"target" | 
+/**  One patch record of a `PTCH`. */
+"record";
 
 /**
  *  The places of the values one row of a type check's finding counts, in the order found, up

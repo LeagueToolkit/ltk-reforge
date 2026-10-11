@@ -155,6 +155,17 @@ export function describeError(error: AppError): ErrorCopy {
       description: m["error.BLOB_MISSING.description"](),
       detail: id,
     }))
+    .with({ code: "BIN_UNREADABLE" }, ({ detail }) => ({
+      title: m["error.BIN_UNREADABLE.title"](),
+      detail,
+    }))
+    .with({ code: "BIN_NODE_NOT_FOUND" }, ({ address }) => ({
+      title: m["error.BIN_NODE_NOT_FOUND.title"](),
+      detail: address,
+    }))
+    .with({ code: "BIN_READ_TOO_WIDE" }, ({ rows, cap }) => ({
+      title: m["error.BIN_READ_TOO_WIDE.title"]({ rows, cap }),
+    }))
     .with({ code: "NO_PACKAGE_HELD" }, () => ({
       title: m["error.NO_PACKAGE_HELD.title"](),
       description: m["error.NO_PACKAGE_HELD.description"](),
