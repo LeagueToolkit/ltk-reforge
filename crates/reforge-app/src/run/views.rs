@@ -331,13 +331,13 @@ pub struct RunView {
 }
 
 #[derive(Deserialize)]
-pub(super) struct WadRow {
+pub(crate) struct WadRow {
     pub id: String,
     pub name: String,
 }
 
 #[derive(Deserialize)]
-pub(super) struct FileRow {
+pub(crate) struct FileRow {
     pub id: String,
     #[serde(default)]
     pub path: Option<String>,
@@ -345,14 +345,14 @@ pub(super) struct FileRow {
 }
 
 #[derive(Deserialize)]
-pub(super) struct UnitRow {
+pub(crate) struct UnitRow {
     pub id: String,
     pub character_name: String,
     pub slot: u16,
 }
 
 #[derive(Deserialize)]
-pub(super) struct PackageRow {
+pub(crate) struct PackageRow {
     pub name: String,
     pub version: String,
     pub chunks: Vec<IgnoredAny>,
@@ -363,7 +363,7 @@ pub(super) struct PackageRow {
 
 /// What a fixup did at one place, as the report holds it.
 #[derive(Deserialize)]
-pub(super) struct ChangeRow {
+pub(crate) struct ChangeRow {
     pub object: String,
     pub entry: String,
     pub reached: bool,
@@ -375,7 +375,7 @@ pub(super) struct ChangeRow {
 
 /// What one fixup did, as the report holds it.
 #[derive(Deserialize)]
-pub(super) struct FixupRow {
+pub(crate) struct FixupRow {
     pub fixup: String,
     pub changed: usize,
     pub removed: usize,
@@ -385,14 +385,14 @@ pub(super) struct FixupRow {
 }
 
 #[derive(Deserialize)]
-pub(super) struct CharacterRow {
+pub(crate) struct CharacterRow {
     pub id: String,
     pub spelled: String,
 }
 
 /// The parts of the report the views draw.
 #[derive(Default, Deserialize)]
-pub(super) struct ReportParts {
+pub(crate) struct ReportParts {
     #[serde(default, rename = "mod")]
     pub meta: Option<ModView>,
     #[serde(default)]

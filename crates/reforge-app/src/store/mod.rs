@@ -37,13 +37,16 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 pub use self::compare::{
     ChangeDiff, CompareView, Counts, Diff, FindingsDiff, PackageDiff, RunHead, TargetDiff,
 };
-pub use self::files::{FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, WadFiles};
+pub(crate) use self::files::kind_name;
+pub use self::files::{
+    FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, Tiers, WadFiles, load_files,
+};
 pub use self::kept::KeptRun;
 pub use self::package::EVIDENCE_ONLY_SCHEMA;
 pub use self::project::{PROJECT_EXTENSION, PROJECT_FORMAT};
 pub use self::read::{Origin, RunAgain, RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
-pub use self::viewer::{FileView, HEX_BYTES, MAX_BIN_TEXT, MAX_DECODED, MAX_TEXT};
+pub use self::viewer::{FileView, HEX_BYTES, MAX_BIN_TEXT, MAX_DECODED, MAX_TEXT, file_view};
 use crate::error::AppError;
 use crate::run::{RunKind, RunSettings, RunView};
 

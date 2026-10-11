@@ -1,4 +1,5 @@
-//! One file of a kept run as the Runs page shows it, by the kind its first bytes give: a bin as
+//! One file of a kept run or of an explored mod as the Runs page and the Mod page show it, by
+//! the kind its first bytes give: a bin as
 //! text with its names spelled, a texture as a picture the app decoded, text, else the first
 //! bytes as hex. A mod's bytes reach the window only as text through `clean` or as a PNG the
 //! app encoded (#ADR-0093).
@@ -13,13 +14,12 @@ use image::{DynamicImage, ImageFormat};
 use ltk_texture::Texture;
 use reforge::game::{NameBook, Names, Speller};
 use reforge::model::dump::dump_object;
-use reforge::model::{ByteView, ContentId, bin, clean};
-use reforge::store::BlobStore;
+use reforge::model::{ContentId, bin, clean};
 use reforge_magic::{Categories, Kind};
 use serde::{Deserialize, Serialize};
 
 use super::AppStore;
-use super::files::blob_facts;
+use super::files::Tiers;
 use crate::error::AppError;
 
 /// A file past this size is shown as its first bytes whatever its kind: generous, a power of
@@ -93,34 +93,39 @@ impl AppStore {
         content: ContentId,
         names: Option<&Names>,
     ) -> Result<FileView, AppError> {
-        let missing = || AppError::BlobMissing { id: content.hex() };
-        let (size, head) = blob_facts(self, content).ok_or_else(missing)?;
-        if size > MAX_DECODED {
-            let head = self.head_of(content, HEX_BYTES).ok_or_else(missing)?;
-            return Ok(hex(&head, size));
-        }
-        let bytes = self.tier().get(content);
-        let bytes = bytes.or_else(|| self.ingest().store().get(content));
-        let bytes = bytes.ok_or_else(missing)?;
-        let kind = head.identify(None).kind;
-        let shown = match kind {
-            Kind::PropertyBin => {
-                let book = self.kept_snapshots(id)?.and_then(|kept| kept.load);
-                let book = book.map(|load| load.names().clone());
-                bin_view(&bytes, &book.unwrap_or_default(), names)
-            }
-            Kind::Texture | Kind::TextureDds => picture(&bytes),
-            kind if kind.info().categories.contains(Categories::TEXT) => Some(text(&bytes)),
-            _ => None,
+        let book = || {
+            let load = self.kept_snapshots(id)?.and_then(|kept| kept.load);
+            Ok(load.map(|load| load.names().clone()).unwrap_or_default())
         };
-        Ok(shown.unwrap_or_else(|| hex(&bytes, size)))
+        file_view(&Tiers::of(self), content, book, names)
     }
+}
 
-    fn head_of(&self, content: ContentId, len: usize) -> Option<ByteView> {
-        let head = self.tier().get_head(content, len);
-        let head = head.or_else(|| self.ingest().store().get_head(content, len))?;
-        Some(head.bytes)
+/// The bytes under an id, from the first of `tiers` that holds them, shown by their kind. A
+/// bin's names are spelled through the run's names, which `book` reads when a bin needs them,
+/// and `names`, the tables of the inputs where they are open. Refused when no tier holds the
+/// bytes.
+pub fn file_view(
+    tiers: &Tiers<'_>,
+    content: ContentId,
+    book: impl FnOnce() -> Result<NameBook, AppError>,
+    names: Option<&Names>,
+) -> Result<FileView, AppError> {
+    let missing = || AppError::BlobMissing { id: content.hex() };
+    let (size, head) = tiers.blob_facts(content).ok_or_else(missing)?;
+    if size > MAX_DECODED {
+        let head = tiers.get_head(content, HEX_BYTES).ok_or_else(missing)?;
+        return Ok(hex(&head.bytes, size));
     }
+    let bytes = tiers.get(content).ok_or_else(missing)?;
+    let kind = head.identify(None).kind;
+    let shown = match kind {
+        Kind::PropertyBin => bin_view(&bytes, &book()?, names),
+        Kind::Texture | Kind::TextureDds => picture(&bytes),
+        kind if kind.info().categories.contains(Categories::TEXT) => Some(text(&bytes)),
+        _ => None,
+    };
+    Ok(shown.unwrap_or_else(|| hex(&bytes, size)))
 }
 
 /// A bin's objects as text. None for bytes that do not read as a bin.

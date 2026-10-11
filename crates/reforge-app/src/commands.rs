@@ -18,6 +18,7 @@ use crate::batch::{self, BatchProgress, BatchRequest, BatchView};
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
+use crate::explore::{self, ExploreView, ExploredMod};
 use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{Choice, InputsView};
@@ -30,7 +31,7 @@ use crate::run::{
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
-use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
+use crate::state::{Explored, HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
 use crate::storage::StorageView;
 use crate::store::{AppStore, CompareView, FileView, RunAgain, RunRow, StageFiles, StoreView};
 use crate::view::Finding;
@@ -311,15 +312,20 @@ pub async fn run_file(app: AppHandle, id: u64, content: String) -> IpcResult<Fil
     let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
     off_thread(move || {
         let store = store?;
-        let content = ContentId::parse(&content).ok_or_else(|| AppError::Internal {
-            detail: format!("{content:?} is no content id"),
-        })?;
+        let content = content_of(&content)?;
         // Inputs that do not open leave the run's own names.
         let inputs = open.get(&choice).ok();
         let names = inputs.as_deref().map(|inputs| inputs.env().names());
         store.file_view(id, content, names)
     })
     .await
+}
+
+/// A content id as 64 hex digits, as the front end names a file's bytes.
+fn content_of(hex: &str) -> Result<ContentId, AppError> {
+    ContentId::parse(hex).ok_or_else(|| AppError::Internal {
+        detail: format!("{hex:?} is no content id"),
+    })
 }
 
 /// What a kept run was run on and with, for the run page to run it again. None for a number
@@ -455,6 +461,75 @@ pub async fn peek_mod(archive: String) -> IpcResult<ModPeek> {
 #[specta::specta]
 pub async fn list_archives(folder: String) -> IpcResult<Vec<String>> {
     off_thread(move || batch::list_archives(Utf8Path::new(&folder))).await
+}
+
+/// A mod archive explored through `load` (#ADR-0091), against the inputs the settings choose,
+/// and held until the next explore. It runs as `run_mod` does, one run at a time, and keeps
+/// nothing in the store's rows.
+#[tauri::command]
+#[specta::specta]
+pub async fn explore_mod(app: AppHandle, archive: String) -> IpcResult<ExploreView> {
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    // A store that did not open leaves the run reading the archive into memory.
+    let store = app.state::<RunStore>().get().ok();
+    off_thread(move || {
+        let job = Arc::clone(&app.state::<Arc<RunJob>>());
+        if !job.run.start() {
+            return Err(AppError::RunBusy);
+        }
+        let path = Utf8Path::new(&archive);
+        let explored = open
+            .get(&choice)
+            .map(|inputs| explore::explore(&inputs, path, store.as_deref()));
+        job.run.end();
+        let explored = explored?;
+        let view = explored.view().clone();
+        app.state::<Arc<Explored>>().set(explored);
+        Ok(view)
+    })
+    .await
+}
+
+/// The explored mod's files at `load`, every mark `same`. None when no mod is explored or its
+/// `load` did not end.
+#[tauri::command]
+#[specta::specta]
+pub async fn explore_files(app: AppHandle) -> IpcResult<Option<StageFiles>> {
+    let store = app.state::<RunStore>().get().ok();
+    let explored = Arc::clone(&app.state::<Arc<Explored>>());
+    off_thread(move || {
+        Ok(explored.with(|explored| explored.and_then(|e| e.files(store.as_deref()))))
+    })
+    .await
+}
+
+/// One file of the explored mod, by the id of its bytes as 64 hex digits, shown by its kind.
+/// A bin's names are spelled through the load's names and the inputs' tables, when they open.
+#[tauri::command]
+#[specta::specta]
+pub async fn explore_file(app: AppHandle, content: String) -> IpcResult<FileView> {
+    let store = app.state::<RunStore>().get().ok();
+    let explored = Arc::clone(&app.state::<Arc<Explored>>());
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let content = content_of(&content)?;
+        // Inputs that do not open leave the load's own names.
+        let inputs = open.get(&choice).ok();
+        let names = inputs.as_deref().map(|inputs| inputs.env().names());
+        explored.with(|explored| explore::explored_file(explored, store.as_deref(), content, names))
+    })
+    .await
+}
+
+/// The explored mod's archive and the standard settings, for the run page to run it. None when
+/// no mod is explored.
+#[tauri::command]
+#[specta::specta]
+pub async fn explore_run(app: AppHandle) -> IpcResult<Option<RunAgain>> {
+    let explored = Arc::clone(&app.state::<Arc<Explored>>());
+    off_thread(move || Ok(explored.with(|explored| explored.map(ExploredMod::run_again)))).await
 }
 
 /// The stages of a run of the kind, in order, as the library names them.

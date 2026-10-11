@@ -1,5 +1,5 @@
 //! What the app holds while it runs, beside its settings: the inputs opened for the settings
-//! as they stand, the downloads under way, and the store of runs.
+//! as they stand, the downloads under way, the store of runs and the last mod explored.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,6 +10,7 @@ use reforge::diag::Cancel;
 
 use crate::archive::Clones;
 use crate::error::AppError;
+use crate::explore::ExploredMod;
 use crate::inputs::{Choice, Inputs};
 use crate::storage::Storage;
 use crate::store::AppStore;
@@ -142,6 +143,22 @@ impl RunJob {
     /// The package the last run wrote, while one did.
     pub fn written(&self) -> Option<Utf8PathBuf> {
         self.written.lock().clone()
+    }
+}
+
+/// The last mod explored (#ADR-0091), replaced by the next.
+#[derive(Default)]
+pub struct Explored(Mutex<Option<ExploredMod>>);
+
+impl Explored {
+    /// Holds a mod explored in place of the one held.
+    pub fn set(&self, explored: ExploredMod) {
+        *self.0.lock() = Some(explored);
+    }
+
+    /// What `read` gives of the mod held, or of none.
+    pub fn with<T>(&self, read: impl FnOnce(Option<&ExploredMod>) -> T) -> T {
+        read(self.0.lock().as_ref())
     }
 }
 

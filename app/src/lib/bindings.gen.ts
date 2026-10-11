@@ -60,6 +60,27 @@ export const commands = {
 	 *  read.
 	 */
 	listArchives: (folder: string) => __TAURI_INVOKE<({ ok: true; value: string[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("list_archives", { folder }),
+	/**
+	 *  A mod archive explored through `load` (#ADR-0091), against the inputs the settings choose,
+	 *  and held until the next explore. It runs as `run_mod` does, one run at a time, and keeps
+	 *  nothing in the store's rows.
+	 */
+	exploreMod: (archive: string) => __TAURI_INVOKE<({ ok: true; value: ExploreView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_mod", { archive }),
+	/**
+	 *  The explored mod's files at `load`, every mark `same`. None when no mod is explored or its
+	 *  `load` did not end.
+	 */
+	exploreFiles: () => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_files"),
+	/**
+	 *  One file of the explored mod, by the id of its bytes as 64 hex digits, shown by its kind.
+	 *  A bin's names are spelled through the load's names and the inputs' tables, when they open.
+	 */
+	exploreFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_file", { content }),
+	/**
+	 *  The explored mod's archive and the standard settings, for the run page to run it. None when
+	 *  no mod is explored.
+	 */
+	exploreRun: () => __TAURI_INVOKE<({ ok: true; value: RunAgain | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_run"),
 	/**  The stages of a run of the kind, in order, as the library names them. */
 	runStages: (kind: RunKind) => __TAURI_INVOKE<({ ok: true; value: StageName[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_stages", { kind }),
 	/**  The runs the app's store keeps, newest first (#ADR-0096). */
@@ -467,6 +488,26 @@ export type CharacterPeek = {
 	slots: number[],
 };
 
+/**  A character of the mod. */
+export type CharacterView = {
+	/**  Its id in the report: `%c0`. */
+	id: string,
+	/**  Its directory name, lowercase. */
+	name: string,
+	/**  The spelling entry names use. */
+	spelled: string,
+	/**  `champion` or `sub`. */
+	kind: string,
+	/**  The name of the WAD its bins are in. */
+	wad: string,
+	/**  How many units it has. */
+	units: number,
+	/**  Whether every skin bin of it is the game's byte for byte. */
+	equal_to_game: boolean,
+	/**  Its root bin's path, else its hash, when the mod ships one. */
+	root_bin: string | null,
+};
+
 /**  A check of the package, as the list of checks shows it. */
 export type CheckEntry = {
 	/**  The name it is turned on and off by. */
@@ -542,6 +583,18 @@ export type Counts = {
 	unconvertible: number,
 };
 
+/**  The build the mod was made at or after, and what dated it. */
+export type DatingView = {
+	/**  The build. None when the history dates no piece of the mod. */
+	not_before: string | null,
+	/**  The piece that sets the bound. */
+	evidence: EvidenceView | null,
+	/**  How many pieces the history dates. */
+	dated: number,
+	/**  How many of them first shipped at the bound. */
+	at_bound: number,
+};
+
 /**  The target chosen for one unit. */
 export type DecisionView = {
 	/**  The unit, by its id in the report: `%u0`. */
@@ -582,6 +635,52 @@ export type Diff = {
 	b: string,
 };
 
+/**  What dated the mod: the first piece of it that first shipped at the bound. */
+export type EvidenceView = {
+	/**  `file` or `object`, as the report names the piece. */
+	kind: string,
+	/**  The file's path, else its hash; the object's entry name, else its hash. */
+	name: string,
+	/**  A file's path hash as sixteen hex digits, an object's entry hash as eight. */
+	hash: string,
+};
+
+/**  A mod explored: the load report, rendered. */
+export type ExploreView = {
+	/**  The archive's path. */
+	archive: string,
+	/**  The mod, as its archive names it. */
+	meta: ModView | null,
+	/**
+	 *  Its thumbnail as a `data:` URL, as the mod card's: the WebP the library encoded from
+	 *  the mod's image (#ADR-0051), never the archive's own bytes.
+	 */
+	thumbnail: string | null,
+	/**  The fatal finding that ended the run, by its id. */
+	halted: number | null,
+	/**  An input that did not answer, which ended the run. */
+	fault: string | null,
+	/**  Every finding of `read` and `load`, in the order raised: the inputs' first. */
+	findings: Finding[],
+	/**  A name for each id of the report's tables, as `RunView::names` holds them. */
+	names: { [key in string]: string },
+	/**  The dating. None when `load` did not end. */
+	dating: DatingView | null,
+	/**  The WADs. */
+	wads: WadView[],
+	/**  The characters. */
+	characters: CharacterView[],
+	/**  The skin units. */
+	units: UnitView[],
+	/**  The files and entries per kind, in the kind's order. */
+	kinds: KindCount[],
+	/**
+	 *  The files per provenance fact, in the fact's order. Empty when `load` gave no
+	 *  provenance.
+	 */
+	sources: SourceCount[],
+};
+
 /**  A field a rule renames or moves: its name before, and its name after. */
 export type FieldRow = {
 	/**  The field's name in the old layout, or its hash as `0x1e6ba0c4`. */
@@ -607,6 +706,12 @@ export type FileRow = {
 	kind: string,
 	/**  How it stands against the stage before. */
 	mark: Mark,
+	/**
+	 *  Whose bytes it holds, as the load's file provenance names the fact: `install`,
+	 *  `history` or `own`. Set for an explored mod's file the provenance covers, None for a
+	 *  kept run's file.
+	 */
+	source?: string | null,
 };
 
 /**  One file's bytes as the window shows them. */
@@ -872,6 +977,16 @@ export type KeptIndex = {
 	/**  How many builds it holds. */
 	builds: number,
 	/**  Its bytes on disk. */
+	bytes: number,
+};
+
+/**  The files and bytes of one kind, as `reforge-magic` names kinds. */
+export type KindCount = {
+	/**  The kind. */
+	kind: string,
+	/**  How many files and entries are of it. */
+	files: number,
+	/**  Their bytes. */
 	bytes: number,
 };
 
@@ -1399,6 +1514,16 @@ export type SeverityCounts = {
 	note: number,
 };
 
+/**  The files and bytes of one provenance fact. */
+export type SourceCount = {
+	/**  The fact, as the load's file provenance names it: `install`, `history` or `own`. */
+	fact: string,
+	/**  How many files it covers. */
+	files: number,
+	/**  Their bytes. */
+	bytes: number,
+};
+
 /**  A stage starting or ending, as a run tells its [`Watch`]. */
 export type StageEvent = 
 /**  The stage started. */
@@ -1550,6 +1675,22 @@ export type Theme =
 /**  Light. */
 "light";
 
+/**  A skin unit of the mod. */
+export type UnitView = {
+	/**  Its id in the report: `%u0`. */
+	id: string,
+	/**  Its character's name. */
+	character_name: string,
+	/**  The slot its bin sits in. */
+	slot: number,
+	/**  Its skin bin's path, else its hash. */
+	file: string,
+	/**  The slot its skin entry's name spells. */
+	entry_name_slot: number | null,
+	/**  How many bins the client loads for it, the skin bin among them. */
+	loads: number,
+};
+
 /**  How far an update of the index has got, for the window to show. */
 export type UpdateStep = 
 /**  The census history is fetching. */
@@ -1584,6 +1725,26 @@ export type WadFiles = {
 	name: string,
 	/**  Its files in path order, the ones named by their hash alone last. */
 	files: FileRow[],
+};
+
+/**  A WAD of the mod. */
+export type WadView = {
+	/**  Its id in the report: `%w0`. */
+	id: string,
+	/**  Its name as the archive spells it. */
+	name: string,
+	/**  Whose it is: `champion`, `locale` or `other`. */
+	role: string,
+	/**  How the archive holds it: `loose` or `packed`. */
+	layout: string,
+	/**  How many files it holds. */
+	files: number,
+	/**  How many of them have a path the archive or the names spell. */
+	named: number,
+	/**  The locale of a locale WAD taken as its champion's. */
+	packed_locale: string | null,
+	/**  Whether it restores a champion's model from before its rework. */
+	restoration: boolean,
 };
 
 /* Tauri Specta runtime */

@@ -28,7 +28,9 @@ use reforge::{Porter, Repairer, Run, RunError, Settings, Start};
 use serde::{Deserialize, Serialize};
 
 use self::drawn::Drawn;
+pub(crate) use self::drawn::data_url;
 pub use self::peek::{CharacterPeek, ModPeek, peek};
+pub(crate) use self::views::ReportParts;
 pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
@@ -252,7 +254,7 @@ fn millis_since(at: Instant) -> u64 {
 }
 
 /// The porter or the repairer a request's run is made with.
-enum Maker<'a> {
+pub(crate) enum Maker<'a> {
     Repair(Repairer<'a>),
     Port(Porter<'a>),
 }
@@ -266,7 +268,7 @@ impl Maker<'_> {
         }
     }
 
-    fn settings(&self) -> &Settings {
+    pub(crate) fn settings(&self) -> &Settings {
         match self {
             Maker::Repair(repairer) => repairer.settings(),
             Maker::Port(porter) => porter.settings(),
@@ -275,7 +277,12 @@ impl Maker<'_> {
 
     /// A new run, its log the inputs' with `watch` listening, reading through the store's
     /// tiers when there is one (#ADR-0093).
-    fn start(&self, inputs: &Inputs, store: Option<&AppStore>, watch: &mut dyn Watch) -> Run<'_> {
+    pub(crate) fn start(
+        &self,
+        inputs: &Inputs,
+        store: Option<&AppStore>,
+        watch: &mut dyn Watch,
+    ) -> Run<'_> {
         let mut log = inputs.log();
         if let Some(mut listener) = watch.findings() {
             log.listen(move |diagnostic| listener(Finding::of(diagnostic, &Render::plain())));
@@ -297,7 +304,7 @@ impl Maker<'_> {
 /// The raw snapshot the store's ingest tier holds of the archive at `path`, read under `caps`
 /// (#ADR-0095), under the name a read of the path gives it. None when the file does not read:
 /// `read` then says why.
-fn ingested(store: &AppStore, path: &Utf8Path, caps: &Caps) -> Option<RawSnapshot> {
+pub(crate) fn ingested(store: &AppStore, path: &Utf8Path, caps: &Caps) -> Option<RawSnapshot> {
     let file = fs::File::open(path).ok()?;
     let sha256 = ContentId::of_reader(file).ok()?;
     let mut raw = store.ingest().get(sha256, caps)?;
