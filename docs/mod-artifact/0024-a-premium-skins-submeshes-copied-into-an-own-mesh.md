@@ -40,6 +40,10 @@ hidden prop are skin N's graph events.
 A mod for skin N, where the submesh is visible or shown by an event. Where it is hidden and
 never shown, the mesh with the submesh removed fits any slot.
 
+A mod that ships the unit at a slot whose game mesh is skin N's, skin N or a chroma of it,
+needs no repair: the submesh is that slot's own. The warning names only submeshes copied from
+another skin's mesh.
+
 ## Evidence
 
 - The threshold of 90% and the rounding are ltk-forge's, set over its first corpus (1,029 mods,

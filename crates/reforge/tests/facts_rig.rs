@@ -2,6 +2,7 @@
 //! at a slot, and the typed questions the game answers them from (#ADR-0080). The game is
 //! `reforge_testkit::skins`, with rig files that read where a test needs them.
 
+use reforge::diag::Render;
 use reforge::facts::rig::GraphFrom;
 use reforge::facts::{
     Aspect, Facts, FactsError, FactsFound, Outcome, RigPart, RigUnreadable, Source,
@@ -144,6 +145,49 @@ fn a_submesh_copied_from_a_premium_skin_blocks_the_base() {
         ),
         ("cape", Slot(3))
     );
+    let log = run.raised();
+    let raised = log.iter().find(|d| d.code.name == "rig.submesh-copied");
+    let raised = raised.expect("the copy is raised");
+    assert_eq!(
+        raised.message(&Render::plain()),
+        "1 submesh copied from skin 3's mesh: cape (visible)"
+    );
+}
+
+// #MOD-ARTIFACT-0024: a mod for skin N.
+#[test]
+fn a_unit_whose_mesh_holds_its_own_slots_submeshes_raises_no_copy_warning() {
+    let env = env(game(), NoHistory);
+    // Skin 3's body and cape, with a hidden placeholder of the author's. Skin 9 is a chroma of
+    // skin 3 on its mesh.
+    for slot in [3, 9] {
+        let mesh = rigs::mesh(&[("body", BODY), ("cape", CAPE), ("hat", HAT)], 0);
+        let entry_name = format!("Characters/Test/Skins/Skin{slot}");
+        let skin = Skin {
+            name: format!("TestSkin0{slot}"),
+            ..own_skin(
+                "a",
+                "Characters/Test/Animations/Skin3",
+                &format!("{entry_name}/Resources"),
+            )
+        };
+        let objects = vec![
+            hiding(entry(&entry_name, &skin), "Hat"),
+            graph("Characters/Test/Animations/Skin3", S3_CLIPS),
+        ];
+        let mut files = own_model_of(mesh, rigs::skeleton(&["Root", "Spine", "Cape"]), objects);
+        files.last_mut().expect("the files end in the skin bin").0 = skins::skin_bin("test", slot);
+        let run = FactRun::of(&env, &archive(&files));
+        let rig = run
+            .facts
+            .rigs
+            .of(run.unit("test", slot))
+            .expect("the unit has a rig");
+        let cape = &rig.mesh.submeshes[1];
+        assert!(cape.copied_from().is_some(), "skin {slot}\n{}", run.dump());
+        let copied: Vec<SubmeshesCopied> = run.found();
+        assert_eq!(copied, [], "skin {slot}");
+    }
 }
 
 // #MOD-ARTIFACT-0024: hidden and never shown.

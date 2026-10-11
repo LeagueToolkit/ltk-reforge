@@ -695,14 +695,20 @@ impl Rigs {
             .map(|skeleton| skeleton.joints.as_slice())
     }
 
-    /// Raises what the rigs show: submeshes copied from a premium skin, files that do not
+    /// Raises what the rigs show: submeshes copied from another skin's mesh, files that do not
     /// parse.
-    pub fn report(&self, sink: &mut Sink<'_>) {
+    ///
+    /// `own_mesh` says whether the game's skin at a slot has the mesh the game uses at the
+    /// unit's own slot. A copy from that mesh is the mod's slot's own (#MOD-ARTIFACT-0024).
+    pub fn report(&self, own_mesh: impl Fn(UnitId, Slot) -> bool, sink: &mut Sink<'_>) {
         for (unit, rig) in self.iter() {
             let copied = rig.mesh.submeshes.iter().filter_map(|submesh| {
+                let from = submesh
+                    .copied_from()
+                    .filter(|&from| !own_mesh(unit, from))?;
                 Some(CopiedSubmesh {
                     name: submesh.name.clone(),
-                    from: submesh.copied_from()?,
+                    from,
                     visibility: submesh.visibility,
                 })
             });

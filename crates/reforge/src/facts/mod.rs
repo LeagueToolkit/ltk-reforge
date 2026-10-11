@@ -396,11 +396,31 @@ impl Facts {
         })
     }
 
+    /// Whether the game's skin at `slot` has the mesh the game uses at the slot the unit's bin
+    /// sits in. A chroma shares its parent's mesh, so meshes are compared, not slots.
+    fn own_slot_mesh(&self, unit: UnitId, slot: Slot) -> bool {
+        let characters = self
+            .roster
+            .groups
+            .iter()
+            .flat_map(|group| &group.characters);
+        let mut units = characters.flat_map(|c| c.units.iter().map(move |u| (c.id, u.slot, u.id)));
+        let Some((character, own, _)) = units.find(|(_, _, id)| *id == unit) else {
+            return false;
+        };
+        let Some(catalog) = self.catalogs.of(character) else {
+            return false;
+        };
+        let mesh = |slot: Slot| catalog.skin(slot).and_then(|skin| skin.mesh);
+        mesh(own).is_some() && mesh(own) == mesh(slot)
+    }
+
     /// Raises what the facts found, in the order they were gathered.
     pub fn report(&self, sink: &mut Sink<'_>) {
         self.copies.report(sink);
         self.origins.report(sink);
-        self.rigs.report(sink);
+        self.rigs
+            .report(|unit, slot| self.own_slot_mesh(unit, slot), sink);
         self.sounds.report(sink);
     }
 }

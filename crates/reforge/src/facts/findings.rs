@@ -188,7 +188,8 @@ pub struct CopiedSubmesh {
     pub visibility: Visibility,
 }
 
-/// Submeshes copied whole from a premium skin into the mod's own mesh.
+/// Submeshes copied whole into the mod's own mesh from a premium skin's mesh other than the
+/// one the game uses at the unit's slot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SubmeshesCopied {
     /// The unit.
@@ -207,19 +208,20 @@ impl Diag for SubmeshesCopied {
 
     fn message(&self, f: &mut Message) {
         let n = self.submeshes.len();
-        let _ = write!(
-            f,
-            "{n} submesh{} copied from a premium skin: ",
-            if n == 1 { "" } else { "es" }
-        );
+        let plural = if n == 1 { "" } else { "es" };
+        let from = self.submeshes.first().map(|submesh| submesh.from);
+        let one_skin = from.filter(|from| self.submeshes.iter().all(|s| s.from == *from));
+        let _ = match one_skin {
+            Some(from) => write!(f, "{n} submesh{plural} copied from skin {from}'s mesh: "),
+            None => write!(f, "{n} submesh{plural} copied from other skins' meshes: "),
+        };
         f.list(&self.submeshes, |f, submesh| {
             f.spelled(submesh.name.raw());
-            let _ = write!(
-                f,
-                " (skin {}, {})",
-                submesh.from,
-                submesh.visibility.as_str()
-            );
+            let visibility = submesh.visibility.as_str();
+            let _ = match one_skin {
+                Some(_) => write!(f, " ({visibility})"),
+                None => write!(f, " (skin {}, {visibility})", submesh.from),
+            };
         });
     }
 }
