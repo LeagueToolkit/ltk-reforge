@@ -7,6 +7,8 @@ import { differingFirst, groupOthers, isDiffKey } from "./compare";
 function run(id: number, sha256: string): RunRow {
   return {
     id,
+    origin: "run",
+    opened_from: null,
     made_at: "2026-10-11 10:00:00",
     kind: "port",
     kept: false,

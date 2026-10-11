@@ -826,6 +826,15 @@ export type ObjectView = {
 	bin: string,
 };
 
+/**  Where a kept run came from (#ADR-0096). */
+export type Origin = 
+/**  A run of the app's that wrote its package. */
+"run" | 
+/**  A project file imported: a run with its load, its raw snapshot and their bytes. */
+"project" | 
+/**  A package's embedded evidence (#ADR-0041), opened as a run with no snapshots. */
+"package";
+
 /**  Where a unit's work comes from. */
 export type OriginView = {
 	/**  `base`, `premium`, `custom` or `unknown`. */
@@ -1040,6 +1049,10 @@ export type RunRequest = {
 export type RunRow = {
 	/**  Its number: the order the runs were written in. */
 	id: number,
+	/**  Where it came from. */
+	origin: Origin,
+	/**  The path the project or the package was opened from. None for a run of the app's. */
+	opened_from: string | null,
 	/**  When the store wrote it, by the store's clock. Shown, never part of a report. */
 	made_at: string,
 	/**  A repair or a port. */
@@ -1058,11 +1071,15 @@ export type RunRow = {
 	version: string | null,
 	/**  The `.modpkg` written. */
 	package: string | null,
-	/**  The stages it keeps a snapshot of, in stage order, `load` first. */
+	/**
+	 *  The stages it keeps a snapshot of, in stage order, `load` first. Empty for a run
+	 *  opened from a package.
+	 */
 	reached: StageName[],
 	/**
 	 *  Whether the ingest tier holds the archive's raw snapshot. A run whose mod was cleared
-	 *  from it is read-only until the archive is read again (#ADR-0096).
+	 *  from it is read-only until the archive is read again (#ADR-0096). False for a run
+	 *  opened from a package, which never had one.
 	 */
 	archive_ingested: boolean,
 };

@@ -33,9 +33,9 @@ impl AppStore {
         self.change(|_, tx| Ok(((), remove_runs(tx, "id = ?1", &[&id])?)))
     }
 
-    /// Removes every run of a mod: every run whose load is of the archive with this SHA-256.
+    /// Removes every run of a mod: every run of the archive with this SHA-256.
     pub fn remove_mod(&self, sha256: ContentId) -> Result<(), AppError> {
-        let of_mod = "load_id IN (SELECT id FROM load WHERE sha256 = ?1)";
+        let of_mod = "sha256 = ?1";
         let sha256 = sha256.0.as_slice();
         self.change(|_, tx| Ok(((), remove_runs(tx, of_mod, &[&sha256])?)))
     }
@@ -99,11 +99,13 @@ fn cut(tx: &Transaction<'_>, bound: usize) -> Result<usize, AppError> {
     remove_runs(tx, past, &[&bound])
 }
 
-/// Deletes every load no run refers to, then every raw row no load refers to.
+/// Deletes every load no run refers to, then every raw row no load and no run refers to.
 fn sweep_rows(tx: &Transaction<'_>) -> Result<(), AppError> {
+    // A NULL in a `NOT IN` list matches nothing, so a run with no load is left out of it.
     tx.execute_batch(
-        "DELETE FROM load WHERE id NOT IN (SELECT load_id FROM run);
-         DELETE FROM raw WHERE sha256 NOT IN (SELECT sha256 FROM load);",
+        "DELETE FROM load WHERE id NOT IN (SELECT load_id FROM run WHERE load_id IS NOT NULL);
+         DELETE FROM raw WHERE sha256 NOT IN (SELECT sha256 FROM load)
+           AND sha256 NOT IN (SELECT sha256 FROM run);",
     )?;
     Ok(())
 }

@@ -37,7 +37,7 @@ pub use self::compare::{
 };
 pub use self::files::{FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, WadFiles};
 pub use self::kept::KeptRun;
-pub use self::read::{RunAgain, RunRow, StoreView};
+pub use self::read::{Origin, RunAgain, RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
 pub use self::viewer::{FileView, HEX_BYTES, MAX_BIN_TEXT, MAX_DECODED, MAX_TEXT};
 use crate::error::AppError;
@@ -67,7 +67,9 @@ const ZSTD_LEVEL: i32 = 3;
 /// The files SQLite keeps beside a database, which go where it goes.
 const SIDE_FILES: [&str; 3] = ["-journal", "-wal", "-shm"];
 
-/// The tables of format 1. `check` is a word of SQL's, so its column is always quoted.
+/// The tables of format 1. `check` is a word of SQL's, so its column is always quoted. A run
+/// names its mod's `raw` row itself, since a run opened from a package has no load
+/// (#ADR-0096).
 const SCHEMA: &str = "
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE raw (
@@ -89,7 +91,10 @@ CREATE TABLE load (
 CREATE INDEX load_raw ON load(sha256);
 CREATE TABLE run (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  load_id INTEGER NOT NULL REFERENCES load(id),
+  load_id INTEGER REFERENCES load(id),
+  sha256 BLOB NOT NULL REFERENCES raw(sha256),
+  origin TEXT NOT NULL,
+  opened_from TEXT,
   kind TEXT NOT NULL,
   settings TEXT NOT NULL,
   schema_build TEXT,
@@ -103,6 +108,7 @@ CREATE TABLE run (
   view BLOB NOT NULL
 );
 CREATE INDEX run_load ON run(load_id);
+CREATE INDEX run_raw ON run(sha256);
 CREATE TABLE run_blob (
   run_id INTEGER NOT NULL REFERENCES run(id),
   id BLOB NOT NULL,
@@ -228,11 +234,14 @@ fn insert_run(tx: &Transaction<'_>, saved: &Saved) -> Result<u64, AppError> {
     let s = &saved.snapshots;
     let program = load.program();
     tx.execute(
-        "INSERT INTO run (load_id, kind, settings, schema_build, program_version,
-           program_commit, package, fix, facts, decide, plan, build, \"check\", report, view)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+        "INSERT INTO run (load_id, sha256, origin, kind, settings, schema_build,
+           program_version, program_commit, package, fix, facts, decide, plan, build, \"check\",
+           report, view)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             load_id,
+            meta.sha256.0.as_slice(),
+            Origin::Run.as_str(),
             kind_text(saved.kind),
             json_of(&saved.settings),
             saved.schema_build,

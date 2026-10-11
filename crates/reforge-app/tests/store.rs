@@ -15,7 +15,7 @@ use reforge_app::run::{
     self, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent, StageName, StageState,
     Unwatched, Watch,
 };
-use reforge_app::store::{AppStore, FORMAT, KEYSPACE, ROWS_FILE, RunTier};
+use reforge_app::store::{AppStore, FORMAT, KEYSPACE, Origin, ROWS_FILE, RunTier};
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -729,6 +729,10 @@ fn the_runs_are_listed_newest_first_with_the_stages_each_reached() {
     assert_eq!(ported.sha256, repaired.sha256);
     assert_eq!(ported.sha256.len(), 64);
     assert!(!ported.kept);
+    assert_eq!(
+        (ported.origin, ported.opened_from.as_deref()),
+        (Origin::Run, None)
+    );
     assert!(
         ported
             .package
@@ -811,6 +815,36 @@ fn removing_the_only_run_empties_the_run_tier_and_the_rows() {
         assert_eq!(bench.count(table), 0, "{table}");
     }
     assert_eq!(bench.store.tier().ids().unwrap(), []);
+}
+
+#[test]
+fn a_raw_row_with_a_run_and_no_load_survives_the_sweep() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+    // A run as an opened package makes it: its mod's raw row and no load.
+    bench
+        .rows()
+        .execute(
+            "INSERT INTO run (sha256, origin, opened_from, kind, settings, program_version,
+               kept, report, view)
+             SELECT sha256, 'package', 'mod.modpkg', 'port', '{}', '0', 1, x'', x'' FROM raw",
+            [],
+        )
+        .unwrap();
+
+    bench.store.remove_run(1).unwrap();
+
+    assert_eq!((bench.count("raw"), bench.count("load")), (1, 0));
+    let listed = bench.store.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].origin, Origin::Package);
+    assert_eq!(listed[0].opened_from.as_deref(), Some("mod.modpkg"));
+    assert_eq!(listed[0].reached, []);
+    assert!(!listed[0].archive_ingested);
+
+    bench.store.remove_run(2).unwrap();
+
+    assert_eq!(bench.count("raw"), 0);
 }
 
 #[test]

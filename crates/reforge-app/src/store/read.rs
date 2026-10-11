@@ -6,7 +6,7 @@ use reforge::archive::Caps;
 use reforge::model::{ContentId, clean};
 use reforge::snapshot::RawCache;
 use rusqlite::{OptionalExtension, Row};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{AppStore, ROWS_FILE, failed, number, unpack};
 use crate::error::AppError;
@@ -25,11 +25,48 @@ const REACHED: [(StageName, &str); 6] = [
     (StageName::Check, "\"check\""),
 ];
 
+/// Where a kept run came from (#ADR-0096).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum Origin {
+    /// A run of the app's that wrote its package.
+    Run,
+    /// A project file imported: a run with its load, its raw snapshot and their bytes.
+    Project,
+    /// A package's embedded evidence (#ADR-0041), opened as a run with no snapshots.
+    Package,
+}
+
+impl Origin {
+    /// The text the origin is kept as.
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Origin::Run => "run",
+            Origin::Project => "project",
+            Origin::Package => "package",
+        }
+    }
+
+    /// The origin from the text it is kept as.
+    pub(super) fn of(text: &str) -> Result<Self, AppError> {
+        match text {
+            "run" => Ok(Origin::Run),
+            "project" => Ok(Origin::Project),
+            "package" => Ok(Origin::Package),
+            other => Err(failed(format!("a run of the origin {other:?}"))),
+        }
+    }
+}
+
 /// A run the store keeps, as the Runs page lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct RunRow {
     /// Its number: the order the runs were written in.
     pub id: u64,
+    /// Where it came from.
+    pub origin: Origin,
+    /// The path the project or the package was opened from. None for a run of the app's.
+    pub opened_from: Option<String>,
     /// When the store wrote it, by the store's clock. Shown, never part of a report.
     pub made_at: String,
     /// A repair or a port.
@@ -48,10 +85,12 @@ pub struct RunRow {
     pub version: Option<String>,
     /// The `.modpkg` written.
     pub package: Option<String>,
-    /// The stages it keeps a snapshot of, in stage order, `load` first.
+    /// The stages it keeps a snapshot of, in stage order, `load` first. Empty for a run
+    /// opened from a package.
     pub reached: Vec<StageName>,
     /// Whether the ingest tier holds the archive's raw snapshot. A run whose mod was cleared
-    /// from it is read-only until the archive is read again (#ADR-0096).
+    /// from it is read-only until the archive is read again (#ADR-0096). False for a run
+    /// opened from a package, which never had one.
     pub archive_ingested: bool,
 }
 
@@ -148,8 +187,7 @@ impl AppStore {
             return Ok(None);
         };
         let query = "SELECT run.kind, raw.path, run.settings
-             FROM run JOIN load ON load.id = run.load_id JOIN raw ON raw.sha256 = load.sha256
-             WHERE run.id = ?1";
+             FROM run JOIN raw ON raw.sha256 = run.sha256 WHERE run.id = ?1";
         let row: Option<(String, String, String)> = {
             let rows = self.rows.lock();
             let row = rows.query_row(query, [id], |row| {
@@ -236,8 +274,9 @@ fn listing(tail: &str) -> String {
     let reached = REACHED.map(|(_, column)| format!("run.{column} IS NOT NULL"));
     format!(
         "SELECT run.id, run.made_at, run.kind, run.kept, raw.sha256, raw.file_name,
-           raw.name, raw.author, raw.mod_version, run.package, raw.version, raw.caps, {}
-         FROM run JOIN load ON load.id = run.load_id JOIN raw ON raw.sha256 = load.sha256
+           raw.name, raw.author, raw.mod_version, run.package, raw.version, raw.caps,
+           run.origin, run.opened_from, run.load_id IS NOT NULL, {}
+         FROM run JOIN raw ON raw.sha256 = run.sha256
          {tail}",
         reached.join(", ")
     )
@@ -247,21 +286,36 @@ fn listing(tail: &str) -> String {
 fn run_row(row: &Row<'_>, ingest: &RawCache) -> Result<RunRow, AppError> {
     let shown = |text: Option<String>| text.map(|text| clean(&text).into_owned());
     let kind = kind_of(&row.get::<_, String>(2)?)?;
+    let origin = Origin::of(&row.get::<_, String>(12)?)?;
     let sha256: Vec<u8> = row.get(4)?;
-    let mut reached = vec![StageName::Load];
+    let mut reached = Vec::new();
+    if row.get::<_, bool>(14)? {
+        reached.push(StageName::Load);
+    }
     for (at, (stage, _)) in REACHED.iter().enumerate() {
-        if row.get::<_, bool>(12 + at)? {
+        if row.get::<_, bool>(15 + at)? {
             reached.push(*stage);
         }
     }
-    let caps: Caps = serde_json::from_str(&row.get::<_, String>(11)?).map_err(failed)?;
     let version: u32 = row.get(10)?;
+    let caps = match origin {
+        // A package's raw row names no reading: its archive was never read here.
+        Origin::Package => None,
+        Origin::Run | Origin::Project => {
+            let caps = serde_json::from_str::<Caps>(&row.get::<_, String>(11)?);
+            Some(caps.map_err(failed)?)
+        }
+    };
     // The entry's file, not its snapshot: a listing reads no snapshot.
-    let archive_ingested = <[u8; 32]>::try_from(sha256.as_slice())
-        .is_ok_and(|id| ingest.entry(ContentId(id), version, &caps).is_file());
+    let archive_ingested = caps.is_some_and(|caps| {
+        <[u8; 32]>::try_from(sha256.as_slice())
+            .is_ok_and(|id| ingest.entry(ContentId(id), version, &caps).is_file())
+    });
     Ok(RunRow {
         archive_ingested,
         id: number(row.get(0)?),
+        origin,
+        opened_from: shown(row.get(13)?),
         made_at: row.get(1)?,
         kind,
         kept: row.get(3)?,
