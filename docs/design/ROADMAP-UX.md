@@ -810,7 +810,8 @@ user picks another policy and runs again.
   `check.class-undeclared`) open to a row per class and field: `Class.field`, the two shapes
   as the message writes them (`Pointer<Class>`, `Map<Hash, Embed<Class>>`), the count, and the
   first place as `WAD · bin path · entry`. A row opens to the place of each of its values,
-  `WAD · bin path · entry · path`, the path's fields spelled. `type_places` resumes the run
+  `WAD · bin path · entry · path`, the path's fields spelled. The path is read in the hash
+  form `ltk_meta`'s `ValuePath` writes; text of another form shows as it came. `type_places` resumes the run
   after `build` from its snapshots against the inputs as they stand and runs the check's walk
   again (#ADR-0103): asked once per run, when a row first opens, with a line saying the package
   is read again. A run the inputs or the program no longer resume says so (`NOT_RESUMED`). The

@@ -36,18 +36,19 @@ export function shapeText(shape: Shape, className: (hash: string) => string): st
 export type Step = { field: string } | { index: number } | { key: string };
 
 /**
- * A value's path in the hash form the library writes (`FieldPath`): a field as eight hex digits,
- * `.` before each field but the first, `[i]` an index, `{key}` a map entry, a string key written
- * as JSON. Null for text of another form.
+ * A value's path in the hash form `ltk_meta`'s `ValuePath` writes: a field as eight lowercase
+ * hex digits, `.` before each field but the first, `[i]` an index, `{key}` a map entry. A key
+ * is a number, a tuple, a hash in hex, or a string as JSON, which alone may hold `}`. Null for
+ * text of another form, which a caller shows as it is.
  */
 export function parseFieldPath(at: string): Step[] | null {
   const steps: Step[] = [];
   let i = 0;
   while (i < at.length) {
     const rest = at.slice(i);
-    const field = /^\.?([0-9a-f]{8})/i.exec(rest);
-    if (field && (steps.length > 0 || !rest.startsWith("."))) {
-      steps.push({ field: field[1].toLowerCase() });
+    const field = (steps.length === 0 ? /^([0-9a-f]{8})/ : /^\.([0-9a-f]{8})/).exec(rest);
+    if (field) {
+      steps.push({ field: field[1] });
       i += field[0].length;
       continue;
     }
@@ -71,17 +72,19 @@ export function parseFieldPath(at: string): Step[] | null {
   return steps;
 }
 
-/** Where a map key that starts at `from` ends: its closing `}`, past a JSON string. -1 for none. */
+/**
+ * Where a map key that starts at `from` ends: its closing `}`, right after a JSON string's
+ * closing quote. -1 for none.
+ */
 function keyEnd(at: string, from: number): number {
-  let i = from;
-  if (at[i] === '"') {
-    i += 1;
-    while (i < at.length && at[i] !== '"') {
-      i += at[i] === "\\" ? 2 : 1;
-    }
-    i += 1;
+  if (at[from] !== '"') {
+    return at.indexOf("}", from);
   }
-  return at.indexOf("}", i);
+  let i = from + 1;
+  while (i < at.length && at[i] !== '"') {
+    i += at[i] === "\\" ? 2 : 1;
+  }
+  return at[i + 1] === "}" ? i + 1 : -1;
 }
 
 /** The fields a path names, each once. */

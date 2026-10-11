@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
+use ltk_meta::property::values::Map;
+use ltk_meta::{PropertyKind, PropertyValueEnum};
 use reforge::env::Env;
 use reforge::game::NameBook;
 use reforge::model::{name_hash, path_hash};
@@ -14,9 +16,9 @@ use reforge_app::inputs::Inputs;
 use reforge_app::places::{self, Held, MAX_SPELLED, TypePlacesView};
 use reforge_app::run::{self, HeldRun, RunKind, RunRequest, RunSettings, StageName, Unwatched};
 use reforge_app::store::AppStore;
-use reforge_testkit::bins::{float, object};
+use reforge_testkit::bins::{float, object, pointer, text};
 use reforge_testkit::fixes::skin_archive;
-use reforge_testkit::schema::{field, kind};
+use reforge_testkit::schema::{field, kind, map_of};
 use reforge_testkit::skins::{self, WAD, skin_bin};
 use reforge_testkit::{ModArchive, SchemaRows};
 use tempfile::TempDir;
@@ -39,7 +41,14 @@ impl Bench {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         let schema = SchemaRows::new(300)
-            .class("Material", &[field("count", kind("U8"))])
+            .class(
+                "Material",
+                &[
+                    field("count", kind("U8")),
+                    field("parts", map_of("String", "Part")),
+                ],
+            )
+            .class("Part", &[field("count", kind("U8"))])
             .build();
         let env = Env::builder()
             .game(skins::game_at("16.19.300"))
@@ -55,8 +64,13 @@ impl Bench {
 
     /// A repair of [`mistyped_mod`] through `check`, held and kept on request.
     fn held(&self) -> (Option<u64>, HeldRun) {
+        self.held_of(&mistyped_mod())
+    }
+
+    /// A repair of a mod with one mismatched row through `check`, held and kept on request.
+    fn held_of(&self, archive: &ModArchive) -> (Option<u64>, HeldRun) {
         let path = Utf8PathBuf::from_path_buf(self.dir.path().join("mod.fantome")).unwrap();
-        fs::write(&path, mistyped_mod().build()).unwrap();
+        fs::write(&path, archive.build()).unwrap();
         let request = RunRequest {
             kind: RunKind::Repair,
             archive: path.to_string(),
@@ -119,6 +133,39 @@ fn the_last_run_gives_the_place_of_a_value_of_another_type() {
         only_place(&places),
         (WAD, skin.as_str(), entry.as_str(), count.as_str())
     );
+}
+
+#[test]
+fn a_string_map_key_reaches_the_window_cleaned_and_written_as_json() {
+    let bench = Bench::new();
+    // A key that holds each character the path's form uses, and a bidirectional control.
+    let key = "a.b]c}\"d\u{202e}";
+    let part = (text(key), pointer("Part", vec![("count", float(2.0))]));
+    let parts = Map::new(PropertyKind::String, PropertyKind::Struct, vec![part]).unwrap();
+    let material = object(
+        "A",
+        "Material",
+        vec![("parts", PropertyValueEnum::Map(parts))],
+    );
+    let (_, held) = bench.held_of(&skin_archive(vec![material]));
+    let request = held.request();
+
+    let places = places::type_places(
+        &bench.inputs,
+        Some(&bench.store),
+        Held {
+            kind: request.kind,
+            settings: &request.settings,
+            snapshots: held.snapshots().cloned().expect("the run ended load"),
+            layer: Some(Arc::clone(held.layer())),
+        },
+    )
+    .unwrap();
+
+    let parts = format!("{:08x}", name_hash("parts").0);
+    let count = format!("{:08x}", name_hash("count").0);
+    let at = format!("{parts}{{\"a.b]c}}\\\"d\\u{{202e}}\"}}.{count}");
+    assert_eq!(only_place(&places).3, at);
 }
 
 #[test]

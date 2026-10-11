@@ -48,10 +48,28 @@ describe("parseFieldPath", () => {
     expect(parseFieldPath("{9dbcac96}")).toEqual([{ key: "9dbcac96" }]);
   });
 
+  it("reads a string key holding the path's own characters, as the app sends it cleaned", () => {
+    // The form `places.rs`'s `a_string_map_key_reaches_the_window_cleaned_and_written_as_json`
+    // pins on the backend.
+    const at = 'bc037de7[3]{"a.b]c}\\"d\\u{202e}"}.0000abcd';
+    const steps = parseFieldPath(at);
+    expect(steps).toEqual([
+      { field: "bc037de7" },
+      { index: 3 },
+      { key: '"a.b]c}\\"d\\u{202e}"' },
+      { field: "0000abcd" },
+    ]);
+    expect(pathText(steps ?? [], (hash) => hash)).toBe(at);
+  });
+
   it("refuses text of another form", () => {
     expect(parseFieldPath("not a path")).toBeNull();
     expect(parseFieldPath(".bc037de7")).toBeNull();
     expect(parseFieldPath("bc037de7{open")).toBeNull();
+    expect(parseFieldPath("bc037de70000abcd")).toBeNull();
+    expect(parseFieldPath("BC037DE7")).toBeNull();
+    expect(parseFieldPath('bc037de7{"a"b}')).toBeNull();
+    expect(parseFieldPath('bc037de7{"open}')).toBeNull();
   });
 
   it("names each field it can, and lists the fields once", () => {
