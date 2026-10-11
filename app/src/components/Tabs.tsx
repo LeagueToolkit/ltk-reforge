@@ -83,11 +83,7 @@ export interface TabPanelProps<T extends string> {
  */
 export function TabPanel<T extends string>({ value, children, className }: TabPanelProps<T>) {
   return (
-    <BaseTabs.Panel
-      value={value}
-      keepMounted
-      className={twMerge("flex flex-col gap-6", className)}
-    >
+    <BaseTabs.Panel value={value} keepMounted className={twMerge("flex flex-col gap-6", className)}>
       {children}
     </BaseTabs.Panel>
   );
