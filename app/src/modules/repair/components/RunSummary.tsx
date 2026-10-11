@@ -24,6 +24,15 @@ function fileNameOf(path: string): string {
   return cut >= 0 ? path.slice(cut + 1) : path;
 }
 
+/** Findings counted by severity, the fatal ones among the errors, each count with its noun. */
+export function countsLabel(counts: ReturnType<typeof countBySeverity>): string {
+  return m.repair_summary_counts_label({
+    errors: m.repair_summary_errors({ count: counts.error + counts.fatal }),
+    warnings: m.repair_summary_warnings({ count: counts.warning }),
+    notes: m.repair_summary_notes({ count: counts.note }),
+  });
+}
+
 function bannerOf(view: RunView): Banner {
   const counts = countBySeverity(view.findings);
   if (view.fault) {
@@ -114,11 +123,7 @@ export function RunSummary({ view, onWriteAnyway, writing }: RunSummaryProps) {
         {banner.path && detail ? <Tooltip content={banner.path}>{detail}</Tooltip> : detail}
         {reveal.isError && <FailureNote failure={reveal.error} className="mt-1" />}
         <p className="mt-1 text-xs text-surface-400 select-none">
-          {m.repair_summary_counts_label({
-            errors: counts.error + counts.fatal,
-            warnings: counts.warning,
-            notes: counts.note,
-          })}{" "}
+          {countsLabel(counts)}{" "}
           {m.repair_summary_time_label({ seconds: (view.millis / 1000).toFixed(1) })}
         </p>
         {unkept && (

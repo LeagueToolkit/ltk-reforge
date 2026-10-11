@@ -7,6 +7,7 @@ import { countBySeverity } from "@/modules/findings";
 import { twMerge } from "@/utils";
 
 import type { LiveRun } from "../state/repairStore";
+import { countsLabel } from "./RunSummary";
 
 /** Seconds since a moment, ticking while shown. */
 function useElapsed(since: number): number {
@@ -35,13 +36,7 @@ export function LiveProgress({ live, stages }: { live: LiveRun; stages: StageNam
         <p className="text-sm font-medium text-surface-50 select-none">
           {m.run_live_title({ seconds: elapsed.toFixed(1) })}
         </p>
-        <p className="text-xs text-surface-400 select-none">
-          {m.repair_summary_counts_label({
-            errors: counts.error + counts.fatal,
-            warnings: counts.warning,
-            notes: counts.note,
-          })}
-        </p>
+        <p className="text-xs text-surface-400 select-none">{countsLabel(counts)}</p>
       </div>
       <ol className="flex flex-wrap gap-2">
         {stages.map((stage) => {
