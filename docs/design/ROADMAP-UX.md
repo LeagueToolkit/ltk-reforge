@@ -37,7 +37,7 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   here too.
 - The pages share one column, centred, at the width the default window draws them at. A wider
   window buys margins, as LTK Manager's pages do (its `docs/ux/HOME.md`, "Layout"). A page of
-  panes side by side, the Runs page, takes the whole width.
+  panes side by side, the Runs page and the Records page, takes the whole width.
 - The crate's modules: `inputs` opens the inputs once and raises what they found into every
   run's log, as the command raises it when it opens them; `state` holds them open for the
   settings as they stand; `run` takes a request (the kind, the archive, the last stage, the
@@ -78,8 +78,9 @@ run and writes the report, in some two hundred lines.
 | text that is safe to show | a mod's name, description and paths are `Spelled` and reach a person through `clean`. A mod is untrusted input: [ARCHITECTURE.md](ARCHITECTURE.md), "Untrusted input" |
 
 A record a fixup or a finding names (`#GAME-CHANGE-0005`, `#MOD-ARTIFACT-0017`) is a file
-under `docs/`, written for a person: what the game or a tool does, and the repair. The app can
-show it where it shows the fixup.
+under `docs/`, written for a person: what the game or a tool does, and the repair. The app
+bundles the records and opens one from the fixup or the finding that names it ("The Records
+page").
 
 ## What the library lacks for the app
 
@@ -434,6 +435,37 @@ Clear unused archive data (`clear_unused_ingest`, off when there is none) and Re
 (`remove_all_runs`). The run tier reserves 64 MB for its journal, which the row says. A keep,
 a removal, a clear and a run kept ask the list, the views and the store's counts again.
 
+## The Records page
+
+#ADR-0091. The page lists the numbered records under `docs/` and shows one, in two panes as the
+Runs page, at the window's whole width. The records are the repository's own text: read-only
+in the app, and edited in the repository.
+
+**The bundle.** The app's build script reads the four series, `docs/adr`, `docs/game-change`,
+`docs/game-behavior` and `docs/mod-artifact`, and includes every record's file in the binary,
+in series order then number order, with its code and the title its heading gives
+(`docs/agents/records.md`). A file whose name or heading does not have a record's shape fails
+the build with its path. The binary grows by the records' text and no more. Two commands read
+it: `records` lists every record's code, series, number, title and, for an ADR, its status
+line as written; `record` opens one by its code, with or without the `#`, with its Markdown,
+the codes its text names (`cites`) and the records whose text names it (`cited_by`), and
+answers none for a code the bundle lacks.
+
+**The list** groups the records by series under a heading each (Decisions, Game changes, Game
+behaviors, Mod artifacts), which folds the group while the page is open. A line has the code,
+the title and, for an ADR that is not accepted, the first word of its status (Proposed,
+Superseded, Withdrawn). A box above it filters by code and title.
+
+**The record** has the title, the code and the series, then the record's text rendered as
+Markdown with its tables (`react-markdown` and `remark-gfm`), in the app's own classes. Each
+code the text names outside code is a link to that record; a code the bundle lacks stays text,
+and a link into the repository reads as its text. Under the text, "Cites" and "Cited by" list
+the codes as links. With no record picked, the pane says to pick one.
+
+**The links.** The page is routed by the code without its `#` (`/records/GAME-CHANGE-0005`),
+so a link anywhere opens it at that record and the list marks it. A fixup's records in the
+list of fixups and a finding's record are such links.
+
 ## The history index
 
 #ADR-0047. To build, in this order:
@@ -530,7 +562,7 @@ user picks another policy and runs again.
   finding, errors first, and a second button writes it with nothing blocking, as a new run.
 - The app holds no rule about a mod. It shows what the library returned and passes settings in.
 - Every finding shows its code. A fixup and a finding that name a record show the record's
-  code; the record is in `docs/`, and the app opens no link to it.
+  code as a link that opens it on the Records page ("The Records page").
 - A mod's name, description and paths reach the screen through `clean`: the crate reads its
   views of a run from `Report::to_json`, which writes every character a terminal acts on as an
   escape.
@@ -629,8 +661,8 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    at each stage and one file opened, and the store's row in the settings; a rerun resumed
    from a kept run's snapshots, a kept run run again from the Runs page, the ingest tier
    cleared by mod and of what no run names, two runs compared, the project file exported and
-   imported, and a package's evidence opened as a kept run with no snapshots. Left: the
-   records.
+   imported, and a package's evidence opened as a kept run with no snapshots; the Records
+   page, the records bundled and opened from a fixup or a finding.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
 
 A review of the pages step 4 added (2026-10-11, screenshots of every state over runs of two
