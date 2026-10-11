@@ -37,6 +37,7 @@ pub fn builder() -> Builder<Wry> {
             commands::open_inputs,
             commands::run_mod,
             commands::peek_mod,
+            commands::list_archives,
             commands::run_stages,
             commands::list_runs,
             commands::run_report,

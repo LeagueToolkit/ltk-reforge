@@ -14,6 +14,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
 use crate::archive::{ArchiveNote, ArchiveProgress, Bootstrap, CloneView};
+use crate::batch;
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
@@ -412,6 +413,14 @@ pub async fn store_view(app: AppHandle) -> IpcResult<StoreView> {
 #[specta::specta]
 pub async fn peek_mod(archive: String) -> IpcResult<ModPeek> {
     off_thread(move || run::peek(Utf8Path::new(&archive))).await
+}
+
+/// The mod archives of a folder, `.fantome` and `.zip`, sorted by name. Its subfolders are not
+/// read.
+#[tauri::command]
+#[specta::specta]
+pub async fn list_archives(folder: String) -> IpcResult<Vec<String>> {
+    off_thread(move || batch::list_archives(Utf8Path::new(&folder))).await
 }
 
 /// The stages of a run of the kind, in order, as the library names them.

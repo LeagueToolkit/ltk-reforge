@@ -3,6 +3,7 @@
 //! mod. `docs/design/ROADMAP-UX.md` holds the plan.
 
 pub mod archive;
+pub mod batch;
 pub mod catalog;
 pub mod census;
 pub mod commands;

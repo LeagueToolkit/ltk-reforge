@@ -149,6 +149,9 @@ pub enum AppError {
     /// A folder did not open in the system's file manager.
     #[error("{path} could not be shown: {detail}")]
     NotShown { path: String, detail: String },
+    /// A folder of mods did not list.
+    #[error("the folder {path} does not read: {detail}")]
+    FolderUnreadable { path: String, detail: String },
     /// The user stopped the work.
     #[error("cancelled")]
     Cancelled,

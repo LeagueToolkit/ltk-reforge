@@ -173,6 +173,10 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.NOT_SHOWN.title"](),
       detail: path ? `${path}: ${detail}` : detail,
     }))
+    .with({ code: "FOLDER_UNREADABLE" }, ({ path, detail }) => ({
+      title: m["error.FOLDER_UNREADABLE.title"](),
+      detail: `${path}: ${detail}`,
+    }))
     .with({ code: "CANCELLED" }, () => ({ title: m["error.CANCELLED.title"]() }))
     .with({ code: "INTERNAL" }, ({ detail }) => ({
       title: m["error.INTERNAL.title"](),

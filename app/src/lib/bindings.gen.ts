@@ -46,6 +46,11 @@ export const commands = {
 	 *  the window to show when the mod is picked.
 	 */
 	peekMod: (archive: string) => __TAURI_INVOKE<({ ok: true; value: ModPeek }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("peek_mod", { archive }),
+	/**
+	 *  The mod archives of a folder, `.fantome` and `.zip`, sorted by name. Its subfolders are not
+	 *  read.
+	 */
+	listArchives: (folder: string) => __TAURI_INVOKE<({ ok: true; value: string[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("list_archives", { folder }),
 	/**  The stages of a run of the kind, in order, as the library names them. */
 	runStages: (kind: RunKind) => __TAURI_INVOKE<({ ok: true; value: StageName[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_stages", { kind }),
 	/**  The runs the app's store keeps, newest first (#ADR-0096). */
@@ -322,6 +327,8 @@ export type AppError =
 { code: "NOT_REMOVED"; path: string; detail: string } | 
 /**  A folder did not open in the system's file manager. */
 { code: "NOT_SHOWN"; path: string; detail: string } | 
+/**  A folder of mods did not list. */
+{ code: "FOLDER_UNREADABLE"; path: string; detail: string } | 
 /**  The user stopped the work. */
 { code: "CANCELLED" } | 
 /**  A fault of the app's own, with no remedy a person can take. */
