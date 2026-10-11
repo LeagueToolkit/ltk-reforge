@@ -69,6 +69,20 @@ export function useRunMod() {
   });
 }
 
+/**
+ * Stops the run under way: the stage under way ends after its step (#ADR-0097), and the run
+ * answers with its report, nothing written.
+ */
+export function useStopRun() {
+  const setLive = useRepairStore((state) => state.setLive);
+  return useMutation({
+    mutationFn: async () => {
+      setLive((live) => live && { ...live, stopping: true });
+      unwrap(await commands.cancelRun());
+    },
+  });
+}
+
 /** A stage of the run under way, as an event of it tells. */
 export function liveStage(event: StageEvent): LiveStage {
   return match(event)

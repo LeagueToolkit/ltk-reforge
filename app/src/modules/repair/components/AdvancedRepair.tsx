@@ -29,6 +29,7 @@ import { fixupDetail } from "./RunFindings";
 import { liveResults, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
 import { StageStrip, stageLabel } from "./StageStrip";
+import { StopButton } from "./StopButton";
 import { type ToggleItem, ToggleList } from "./ToggleList";
 
 /** The advanced view's tabs. */
@@ -54,15 +55,18 @@ function RunBar({
 
   return (
     <div className="flex flex-wrap items-center gap-3" data-ui="RunBar">
-      <Button
-        variant="filled"
-        left={<PlayIcon weight="bold" />}
-        loading={running}
-        disabled={!archive || inputs.isPending}
-        onClick={onRun}
-      >
-        {m.advanced_run_action()}
-      </Button>
+      {running ? (
+        <StopButton />
+      ) : (
+        <Button
+          variant="filled"
+          left={<PlayIcon weight="bold" />}
+          disabled={!archive || inputs.isPending}
+          onClick={onRun}
+        >
+          {m.advanced_run_action()}
+        </Button>
+      )}
       <span className="text-sm text-surface-400 select-none">{m.advanced_through_label()}</span>
       <SegmentedControl
         options={options}

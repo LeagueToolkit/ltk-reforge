@@ -28,6 +28,7 @@ function ended(over: Partial<RunView>): RunView {
     saved: null,
     refused: false,
     fault: null,
+    cancelled: null,
     millis: 0,
     names: {},
     ...over,

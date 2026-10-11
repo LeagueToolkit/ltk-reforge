@@ -1,10 +1,12 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "run_kind_port_label": "Port",
+  "run_live_stopping_label": "Stopping in {stage}, after the step under way",
   "run_live_title": "Running, {seconds} s",
   "run_page_title": "Run",
   "run_simple_port_description": "Ports the mod with the standard settings and the automatic policy, and writes a .modpkg",
   "run_stage_millis_label": "{millis} ms",
   "run_stage_resumed_label": "from store",
-  "run_stage_resumed_state_label": "{state}, from store"
+  "run_stage_resumed_state_label": "{state}, from store",
+  "run_stop_action": "Stop"
 }

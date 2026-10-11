@@ -28,6 +28,14 @@ function bannerOf(view: RunView): Banner {
   if (view.fault) {
     return { tone: "danger", title: m.repair_status_fault_title(), detail: view.fault };
   }
+  if (view.cancelled) {
+    const stage = m[`stage.${view.cancelled}.label`]();
+    return {
+      tone: "neutral",
+      title: m.repair_status_cancelled_title({ stage }),
+      description: m.repair_status_cancelled_description(),
+    };
+  }
   if (view.halted != null) {
     const halting = view.findings.find((finding) => finding.id === view.halted);
     return {

@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use parking_lot::Mutex;
+use reforge::diag::Cancel;
 
 use crate::archive::Clones;
 use crate::error::AppError;
@@ -104,17 +105,35 @@ pub struct SchemaJob {
     pub run: Job,
 }
 
-/// The run of a mod: one at a time, since the window follows one run's events.
+/// The run of a mod, or a batch of them: one at a time, since the window follows one run's
+/// events.
 #[derive(Default)]
 pub struct RunJob {
     /// The run under way.
     pub run: Job,
+    /// The cancel of the run under way. A cancel once set stays set, so each start makes one.
+    cancel: Mutex<Cancel>,
     /// The package the last run wrote, for the window to show in its folder without naming a
     /// path (`docs/design/ROADMAP-UX.md`, "The inputs page").
     written: Mutex<Option<Utf8PathBuf>>,
 }
 
 impl RunJob {
+    /// Marks a run started, unless one is under way, and answers the cancel it reads.
+    pub fn start(&self) -> Option<Cancel> {
+        if !self.run.start() {
+            return None;
+        }
+        let cancel = Cancel::new();
+        *self.cancel.lock() = cancel.clone();
+        Some(cancel)
+    }
+
+    /// Sets the cancel of the run under way (#ADR-0097).
+    pub fn cancel(&self) {
+        self.cancel.lock().cancel();
+    }
+
     /// Records what a run that ended wrote: its package, or nothing.
     pub fn set_written(&self, path: Option<Utf8PathBuf>) {
         *self.written.lock() = path;

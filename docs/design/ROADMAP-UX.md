@@ -586,8 +586,14 @@ user picks another policy and runs again.
   ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the
   changes, `decide` the decisions, `build` the package. The window shows each part as it
   comes, in the same place it shows the ended run's (`reforge_app::run`, `drawn`). The app
-  carries no progress inside a stage and no cancel of a run: the library has both
-  (#ADR-0097), and the app's run events do not carry them.
+  carries no progress inside a stage: the library reports it (#ADR-0097), and the app's run
+  events do not carry it.
+- A run under way is stopped with the library's cancel (#ADR-0097): the run page's Run button
+  is Stop while one is under way, and `cancel_run` sets the cancel the run job made at its
+  start. The stage under way ends after its step; the run answers with its report and the
+  stage it stopped in (`RunView::cancelled`), writes nothing and is not kept. A cancel set
+  after `check` stops the write. The live progress says which stage it is stopping in, and
+  the result banner which stage it stopped in.
 - Every finding opens to its details. A fixup's `fixup.*` finding opens to the values it
   counts, object by object, each with its path and its value before and after. Another
   finding opens to its fields, and an id among them (`%f12`) shows the name the report's

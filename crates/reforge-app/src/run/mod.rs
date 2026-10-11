@@ -18,7 +18,7 @@ use std::time::Instant;
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use reforge::archive::{Caps, RawSnapshot, file_name_of};
-use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Stage};
+use reforge::diag::{Action, Cancel, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
 use reforge::model::{ContentId, Spelled};
 use reforge::package::{CheckSelection, CheckSet, EvidenceDoc, Modpkg, PackageWriter};
@@ -249,6 +249,14 @@ enum Maker<'a> {
 }
 
 impl Maker<'_> {
+    /// The maker with `cancel` handed to each of its runs.
+    fn cancel(self, cancel: &Cancel) -> Self {
+        match self {
+            Maker::Repair(repairer) => Maker::Repair(repairer.cancel(cancel.clone())),
+            Maker::Port(porter) => Maker::Port(porter.cancel(cancel.clone())),
+        }
+    }
+
     fn settings(&self) -> &Settings {
         match self {
             Maker::Repair(repairer) => repairer.settings(),
@@ -291,11 +299,15 @@ fn ingested(store: &AppStore, path: &Utf8Path, caps: &Caps) -> Option<RawSnapsho
 /// Runs a request against the inputs, telling `watch` how it goes. With a store, the run
 /// reads through its tiers and starts from the raw snapshot it holds of the archive, and a
 /// run that wrote its package is kept in it (#ADR-0096).
+///
+/// A `cancel` set ends the stage under way after its step (#ADR-0097): the run ends with its
+/// report, writes nothing and is not kept. Set after `check`, it stops the write.
 pub fn run(
     inputs: &Inputs,
     request: &RunRequest,
     store: Option<&AppStore>,
     watch: &mut dyn Watch,
+    cancel: Option<&Cancel>,
 ) -> Result<RunView, AppError> {
     let settings = &request.settings;
     let fixups = settings.fixups()?;
@@ -329,6 +341,10 @@ pub fn run(
                 .keep_dds(settings.keep_dds),
         ),
     };
+    let maker = match cancel {
+        Some(cancel) => maker.cancel(cancel),
+        None => maker,
+    };
     let archive = Utf8PathBuf::from(&request.archive);
     let caps = maker.settings().caps();
     let raw = store.and_then(|store| ingested(store, &archive, caps));
@@ -358,7 +374,7 @@ pub fn run(
         timed.push((name, millis));
         match ran {
             Ok(()) => send_parts(&run, name, watch),
-            Err(RunError::Halted(_)) => break,
+            Err(RunError::Halted(_) | RunError::Cancelled(_)) => break,
             Err(error) => {
                 fault = Some(chain(&error));
                 break;
@@ -366,9 +382,15 @@ pub fn run(
         }
     }
 
+    let mut cancelled = run.cancelled_at().map(StageName::of);
     let mut written = None;
     let mut refused = false;
-    if let (Some(out), Some(package), None) = (&out, run.package(), &fault) {
+    let writes = out.is_some() && run.package().is_some() && fault.is_none();
+    // The write is one step: a cancel set before it stops it, and none after it does.
+    if writes && cancelled.is_none() && cancel.is_some_and(Cancel::is_set) {
+        cancelled = Some(StageName::Write);
+    }
+    if let (Some(out), Some(package), None, None) = (&out, run.package(), &fault, cancelled) {
         watch.stage(StageName::Write, StageEvent::Started);
         let at = Instant::now();
         let modpkg = Modpkg::new(out);
@@ -401,6 +423,7 @@ pub fn run(
         written,
         refused,
         fault,
+        cancelled,
         millis,
     };
     if let (Some(store), Some(package)) = (store, view.written.clone()) {
@@ -636,6 +659,7 @@ fn view_not_run(kind: RunKind, drawn: Drawn) -> RunView {
         saved: None,
         refused: false,
         fault: None,
+        cancelled: None,
         millis: 0,
         names: drawn.names,
     }

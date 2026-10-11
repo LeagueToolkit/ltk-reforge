@@ -5,6 +5,7 @@
 use camino::Utf8PathBuf;
 use fs_err as fs;
 use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
+use reforge::diag::Cancel;
 use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::model::BinHash;
@@ -79,7 +80,7 @@ impl Bench {
     }
 
     fn try_run(&self, request: &RunRequest) -> Result<RunView, AppError> {
-        run::run(&self.inputs, request, None, &mut Unwatched)
+        run::run(&self.inputs, request, None, &mut Unwatched, None)
     }
 
     fn run(&self, request: &RunRequest) -> RunView {
@@ -266,7 +267,7 @@ fn each_stage_that_gives_a_part_sends_it_as_it_ends_and_the_view_holds_the_same(
     request.kind = RunKind::Port;
     let mut heard = Heard::default();
 
-    let view = run::run(&bench.inputs, &request, None, &mut heard).unwrap();
+    let view = run::run(&bench.inputs, &request, None, &mut heard, None).unwrap();
 
     let [
         PartView::Names { names },
@@ -451,6 +452,7 @@ fn a_watch_hears_each_stage_start_and_end_in_order_and_each_finding() {
         &bench.request(&own_mod(), StageName::Fix),
         None,
         &mut heard,
+        None,
     )
     .unwrap();
 
@@ -482,6 +484,60 @@ fn a_watch_hears_each_stage_start_and_end_in_order_and_each_finding() {
         .map(|f| f.code.clone())
         .collect();
     assert_eq!(heard_codes, run_codes);
+}
+
+#[test]
+fn a_cancel_set_before_the_run_ends_it_in_its_first_stage_and_writes_nothing() {
+    let bench = Bench::new();
+    let cancel = Cancel::new();
+    cancel.cancel();
+
+    let request = bench.request(&own_mod(), StageName::Write);
+    let view = run::run(&bench.inputs, &request, None, &mut Unwatched, Some(&cancel)).unwrap();
+
+    let cancelled = view.cancelled.expect("the stage the cancel ended");
+    assert!(
+        matches!(cancelled, StageName::Read | StageName::Load),
+        "{cancelled:?}"
+    );
+    assert_eq!(view.fault, None);
+    assert_eq!(view.halted, None);
+    assert_eq!(view.written, None);
+    assert!(!bench.path("out").exists());
+    assert!(
+        view.stages
+            .iter()
+            .filter(|stage| stage.stage >= cancelled)
+            .all(|stage| stage.state == StageState::NotRun),
+        "{:?}",
+        states(&view)
+    );
+}
+
+/// A watch that sets a cancel as `check` ends.
+struct CancelAfterCheck(Cancel);
+
+impl Watch for CancelAfterCheck {
+    fn stage(&mut self, stage: StageName, event: StageEvent) {
+        if let (StageName::Check, StageEvent::Ended { .. }) = (stage, event) {
+            self.0.cancel();
+        }
+    }
+}
+
+#[test]
+fn a_cancel_set_after_check_stops_the_write() {
+    let bench = Bench::new();
+    let cancel = Cancel::new();
+    let mut watch = CancelAfterCheck(cancel.clone());
+
+    let request = bench.request(&own_mod(), StageName::Write);
+    let view = run::run(&bench.inputs, &request, None, &mut watch, Some(&cancel)).unwrap();
+
+    assert_eq!(view.cancelled, Some(StageName::Write));
+    assert!(view.package.is_some());
+    assert_eq!(view.written, None);
+    assert!(!bench.path("out").exists());
 }
 
 fn remove_rule(field: &str) -> RuleSpec {

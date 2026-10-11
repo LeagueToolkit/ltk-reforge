@@ -18,6 +18,8 @@
   "repair_notes_show_action": "Show {count} notes",
   "repair_out_beside_label": "Written beside the mod",
   "repair_out_folder_label": "Written to {folder}",
+  "repair_status_cancelled_description": "Nothing was written, and the run is not kept.",
+  "repair_status_cancelled_title": "Stopped in {stage}",
   "repair_status_fault_title": "The run stopped: an input did not answer",
   "repair_status_halted_title": "No package: {message}",
   "repair_status_refused_description": "Each error is listed below. A package written anyway holds what each one says it loses.",

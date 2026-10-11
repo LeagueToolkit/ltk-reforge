@@ -197,12 +197,17 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
     let store = app.state::<RunStore>().get().ok();
     off_thread(move || {
         let job = Arc::clone(&app.state::<Arc<RunJob>>());
-        if !job.run.start() {
-            return Err(AppError::RunBusy);
-        }
-        let ran = open
-            .get(&choice)
-            .and_then(|inputs| run::run(&inputs, &request, store.as_deref(), &mut Window(app)));
+        let cancel = job.start().ok_or(AppError::RunBusy)?;
+        let ran = open.get(&choice).and_then(|inputs| {
+            let mut watch = Window(app);
+            run::run(
+                &inputs,
+                &request,
+                store.as_deref(),
+                &mut watch,
+                Some(&cancel),
+            )
+        });
         if let Ok(view) = &ran {
             job.set_written(view.written.as_deref().map(Utf8PathBuf::from));
         }
@@ -210,6 +215,15 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
         ran
     })
     .await
+}
+
+/// Stops the run under way: the stage under way ends after its step (#ADR-0097), and the run
+/// ends with its report, writes nothing and is not kept.
+#[tauri::command]
+#[specta::specta]
+pub fn cancel_run(job: State<'_, Arc<RunJob>>) -> IpcResult<()> {
+    job.cancel();
+    IpcResult::ok(())
 }
 
 /// The runs the app's store keeps, newest first (#ADR-0096).

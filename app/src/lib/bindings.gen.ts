@@ -42,6 +42,11 @@ export const commands = {
 	 */
 	runMod: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_mod", { request }),
 	/**
+	 *  Stops the run under way: the stage under way ends after its step (#ADR-0097), and the run
+	 *  ends with its report, writes nothing and is not kept.
+	 */
+	cancelRun: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("cancel_run"),
+	/**
 	 *  A mod archive read alone: what it says of itself, its characters and its thumbnail, for
 	 *  the window to show when the mod is picked.
 	 */
@@ -1210,6 +1215,11 @@ export type RunView = {
 	refused: boolean,
 	/**  An input that did not answer, which ended the run. */
 	fault: string | null,
+	/**
+	 *  The stage a cancel ended, when one did (#ADR-0097). A kept view without the field
+	 *  reads as none.
+	 */
+	cancelled: StageName | null,
 	/**  How long the run took, in milliseconds. Shown, never written to a report. */
 	millis: number,
 	/**

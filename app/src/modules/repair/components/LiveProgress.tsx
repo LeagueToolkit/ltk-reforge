@@ -26,6 +26,7 @@ function useElapsed(since: number): number {
 export function LiveProgress({ live, stages }: { live: LiveRun; stages: StageName[] }) {
   const elapsed = useElapsed(live.started);
   const counts = countBySeverity(live.findings);
+  const running = stages.find((stage) => live.stages[stage]?.state === "running");
   return (
     <div
       className="flex flex-col gap-3 rounded-xl border border-accent-500/40 bg-surface-900 p-4"
@@ -76,6 +77,11 @@ export function LiveProgress({ live, stages }: { live: LiveRun; stages: StageNam
           );
         })}
       </ol>
+      {live.stopping && running && (
+        <p className="text-xs text-warning-text select-none" data-ui="LiveProgress:stopping">
+          {m.run_live_stopping_label({ stage: stageLabel(running) })}
+        </p>
+      )}
     </div>
   );
 }

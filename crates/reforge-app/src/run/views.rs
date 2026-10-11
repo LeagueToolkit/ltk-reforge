@@ -320,6 +320,9 @@ pub struct RunView {
     pub refused: bool,
     /// An input that did not answer, which ended the run.
     pub fault: Option<String>,
+    /// The stage a cancel ended, when one did (#ADR-0097). A kept view without the field
+    /// reads as none.
+    pub cancelled: Option<StageName>,
     /// How long the run took, in milliseconds. Shown, never written to a report.
     pub millis: u64,
     /// A name for each id of the report's tables and of the objects the fixups changed: what

@@ -350,7 +350,14 @@ impl Bench {
     }
 
     fn run(&self, request: &RunRequest) -> RunView {
-        let view = run::run(&self.inputs, request, Some(&self.store), &mut Unwatched).unwrap();
+        let view = run::run(
+            &self.inputs,
+            request,
+            Some(&self.store),
+            &mut Unwatched,
+            None,
+        )
+        .unwrap();
         assert_eq!(view.fault, None);
         view
     }
@@ -662,10 +669,24 @@ fn a_watch_hears_the_stages_a_rerun_takes_from_a_kept_run_with_their_parts() {
     let mut request = bench.request(&own_mod(), "mod.fantome", Write);
     request.kind = RunKind::Port;
     let mut first = Heard::default();
-    run::run(&bench.inputs, &request, Some(&bench.store), &mut first).unwrap();
+    run::run(
+        &bench.inputs,
+        &request,
+        Some(&bench.store),
+        &mut first,
+        None,
+    )
+    .unwrap();
 
     let mut heard = Heard::default();
-    run::run(&bench.inputs, &request, Some(&bench.store), &mut heard).unwrap();
+    run::run(
+        &bench.inputs,
+        &request,
+        Some(&bench.store),
+        &mut heard,
+        None,
+    )
+    .unwrap();
 
     let resumed = [Load, Fix, Facts, Decide, Plan, Build, Check].map(|stage| (stage, "resumed"));
     let mut expected = vec![(Read, "started"), (Read, "ended")];

@@ -114,7 +114,14 @@ impl Bench {
             settings,
             out: Some(root.join("out").to_string()),
         };
-        let view = run::run(&self.inputs, &request, Some(&self.store), &mut Unwatched).unwrap();
+        let view = run::run(
+            &self.inputs,
+            &request,
+            Some(&self.store),
+            &mut Unwatched,
+            None,
+        )
+        .unwrap();
         assert_eq!(view.fault, None);
         (view.saved.expect("the run is kept"), view)
     }

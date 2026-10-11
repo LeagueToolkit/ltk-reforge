@@ -126,11 +126,14 @@ export interface LiveRun {
   targets: TargetsView | null;
   /** The package, once `build` ended. */
   package: PackageView | null;
+  /** Whether the person asked the run to stop: it ends after the step under way (#ADR-0097). */
+  stopping: boolean;
 }
 
 /** A run with nothing heard of it yet, started now. */
 export function startedRun(): LiveRun {
   return {
+    stopping: false,
     started: Date.now(),
     stages: {},
     findings: [],
