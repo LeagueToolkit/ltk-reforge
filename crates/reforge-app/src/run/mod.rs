@@ -131,6 +131,15 @@ impl Default for RunSettings {
 }
 
 impl RunSettings {
+    /// Refuses settings the library does not take, as a run refuses them before it starts.
+    pub fn validate(&self) -> Result<(), AppError> {
+        self.fixups()?;
+        self.checks()?;
+        self.blocking()?;
+        self.policy()?;
+        Ok(())
+    }
+
     fn fixups(&self) -> Result<FixupSet, AppError> {
         let selection = self.fixups.selection()?;
         if let Some(unknown) = selection.unknown().first() {

@@ -14,7 +14,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
 use crate::archive::{ArchiveNote, ArchiveProgress, Bootstrap, CloneView};
-use crate::batch;
+use crate::batch::{self, BatchProgress, BatchRequest, BatchView};
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
@@ -211,6 +211,33 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
         if let Ok(view) = &ran {
             job.set_written(view.written.as_deref().map(Utf8PathBuf::from));
         }
+        job.run.end();
+        ran
+    })
+    .await
+}
+
+/// Runs a batch of mods through `write`, one after another against the inputs the settings
+/// choose, as one job with `run_mod`'s (#ADR-0091). How it goes comes as `BatchProgress`
+/// events, and no run's events are sent.
+#[tauri::command]
+#[specta::specta]
+pub async fn run_batch(app: AppHandle, request: BatchRequest) -> IpcResult<BatchView> {
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    // A store that did not open leaves the runs unkept.
+    let store = app.state::<RunStore>().get().ok();
+    off_thread(move || {
+        let job = Arc::clone(&app.state::<Arc<RunJob>>());
+        let cancel = job.start().ok_or(AppError::RunBusy)?;
+        let inputs = batch::Chosen {
+            open: &open,
+            choice: &choice,
+        };
+        let mut progress = |seen: BatchProgress| {
+            let _ = seen.emit(&app);
+        };
+        let ran = batch::run_batch(&inputs, &request, store.as_deref(), &cancel, &mut progress);
         job.run.end();
         ran
     })

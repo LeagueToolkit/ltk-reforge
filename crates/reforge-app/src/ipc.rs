@@ -8,6 +8,7 @@ use tauri::Wry;
 use tauri_specta::{Builder, collect_commands, collect_events};
 
 use crate::archive::ArchiveProgress;
+use crate::batch::BatchProgress;
 use crate::census::IndexUpdateProgress;
 use crate::commands;
 use crate::hashes::HashesProgress;
@@ -36,6 +37,7 @@ pub fn builder() -> Builder<Wry> {
             commands::choose_install,
             commands::open_inputs,
             commands::run_mod,
+            commands::run_batch,
             commands::cancel_run,
             commands::peek_mod,
             commands::list_archives,
@@ -86,7 +88,8 @@ pub fn builder() -> Builder<Wry> {
             HashesProgress,
             commands::RunStage,
             commands::RunFinding,
-            commands::RunPart
+            commands::RunPart,
+            BatchProgress
         ])
 }
 

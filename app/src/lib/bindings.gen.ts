@@ -42,6 +42,12 @@ export const commands = {
 	 */
 	runMod: (request: RunRequest) => __TAURI_INVOKE<({ ok: true; value: RunView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_mod", { request }),
 	/**
+	 *  Runs a batch of mods through `write`, one after another against the inputs the settings
+	 *  choose, as one job with `run_mod`'s (#ADR-0091). How it goes comes as `BatchProgress`
+	 *  events, and no run's events are sent.
+	 */
+	runBatch: (request: BatchRequest) => __TAURI_INVOKE<({ ok: true; value: BatchView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_batch", { request }),
+	/**
 	 *  Stops the run under way: the stage under way ends after its step (#ADR-0097), and the run
 	 *  ends with its report, writes nothing and is not kept.
 	 */
@@ -192,6 +198,7 @@ export const commands = {
 /** Events */
 export const events = {
 	archiveProgress: makeEvent<ArchiveProgress>("archive-progress"),
+	batchProgress: makeEvent<BatchProgress>("batch-progress"),
 	hashesProgress: makeEvent<HashesProgress>("hashes-progress"),
 	indexUpdateProgress: makeEvent<IndexUpdateProgress>("index-update-progress"),
 	installProgress: makeEvent<InstallProgress>("install-progress"),
@@ -350,6 +357,60 @@ export type ArchiveProgress = {
 	done: number,
 	/**  The bytes to do. */
 	total: number,
+};
+
+/**  An archive of the batch under way starting, or ending with its row. */
+export type BatchProgress = {
+	/**  The archive's place in the request, from 0. */
+	index: number,
+	/**  How many archives the request holds. */
+	total: number,
+	/**  The archive's file name. */
+	archive: string,
+	/**  Its row, once its run ended. */
+	row: BatchRow | null,
+};
+
+/**  What the front end asks a batch to do. Every archive runs through `write`. */
+export type BatchRequest = {
+	/**  A repair or a port, of every archive. */
+	kind?: RunKind,
+	/**  The archives, in the order they run. */
+	archives: string[],
+	/**  The settings of every run. */
+	settings: RunSettings,
+	/**  The folder every package is written in. None writes each beside its archive. */
+	out: string | null,
+};
+
+/**  One archive of a batch and how its run ended. */
+export type BatchRow = {
+	/**  Its place in the request, from 0. */
+	index: number,
+	/**  The archive's file name. */
+	archive: string,
+	/**  The mod's name, as its archive says, once it was read. */
+	name: string | null,
+	/**  How the run ended. */
+	outcome: Outcome,
+	/**  The run's number in the app's store, once a write kept it there (#ADR-0096). */
+	saved: number | null,
+	/**  The `.modpkg` written. */
+	package: string | null,
+	/**  The run's findings by severity. */
+	counts: SeverityCounts,
+	/**  How long the run took, in milliseconds. Shown, never written to a report. */
+	millis: number,
+};
+
+/**  A batch as it ended. */
+export type BatchView = {
+	/**  A row per archive that ran, in order. */
+	rows: BatchRow[],
+	/**  How long the batch took, in milliseconds. */
+	millis: number,
+	/**  Whether a cancel stopped the batch before its last archive ran to its end. */
+	stopped: boolean,
 };
 
 /**  A slot weighed for a unit. */
@@ -885,6 +946,27 @@ export type OriginView = {
 	slot?: number | null,
 };
 
+/**  How one archive's run ended. */
+export type Outcome = 
+/**  The package was written. */
+{ outcome: "written" } | 
+/**  A finding the settings block refused the write. */
+{ outcome: "refused" } | 
+/**  A fatal finding ended the run after `read`. */
+{ outcome: "halted"; 
+/**  The finding's code. */
+code: string } | 
+/**  The batch's cancel ended the run. */
+{ outcome: "cancelled"; 
+/**  The stage it ended. */
+stage: StageName } | 
+/**  An input did not answer, or the run did not start. */
+{ outcome: "fault"; 
+/**  Why, as text from outside the app. */
+detail: string } | 
+/**  The archive does not read: a fatal finding ended `read`. */
+{ outcome: "unreadable" };
+
 /**  Which `fixup.*` finding a change counts under: its code is `fixup.` and this. */
 export type OutcomeView = 
 /**  A value converted to the form the target build reads. */
@@ -1308,6 +1390,18 @@ export type Severity =
 "error" | 
 /**  There is no output. */
 "fatal";
+
+/**  The findings of one run by severity: its own, not the inputs'. */
+export type SeverityCounts = {
+	/**  Fatal findings. */
+	fatal: number,
+	/**  Errors. */
+	error: number,
+	/**  Warnings. */
+	warning: number,
+	/**  Notes. */
+	note: number,
+};
 
 /**  A stage starting or ending, as a run tells its [`Watch`]. */
 export type StageEvent = 
