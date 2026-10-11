@@ -36,7 +36,7 @@ use crate::load::{
 use crate::model::{Blobs, ByteView, ContentId, FactAccess, Head, Missing, Mod, Spelled};
 use crate::package::{
     BuildError, CheckCx, CheckSet, EvidenceDoc, InPlaceBuilder, Made, Overlay, Package,
-    PackageWriter, PortBuilder, Refused, WriteError, WriterKind, permit,
+    PackageWriter, PortBuilder, Refused, TypePlaces, Types, WriteError, WriterKind, permit,
 };
 use crate::port::{PlanError, Policy, Port, PortInputs, PortOptions, Targets, UnitTarget};
 use crate::report::{AgainRow, AppliedRow, PackageRow, Report};
@@ -1776,6 +1776,27 @@ impl<'a> Run<'a> {
         let snapshot = CheckSnapshot::of(applied, &patched, declared, &self.store);
         self.check_snapshot = Some(snapshot);
         Ok(())
+    }
+
+    /// Every value the type check counts in the run's package, each with its place
+    /// (#ADR-0103). Reads what `check` reads and raises nothing: a caller asks for it when a
+    /// person wants to see a value, and the run's findings stay as they are.
+    pub fn type_places(&mut self) -> Result<TypePlaces, RunError> {
+        guarded(Stage::Check, || {
+            let fixed = self.module.fixed(Stage::Check)?;
+            let package = held(self.package.as_ref(), Stage::Check, Stage::Build)?;
+            let types = TargetTypes::of(fixed, self.env).map_err(RunError::Check)?;
+            Ok(match self.mode {
+                Mode::Port => {
+                    let port = held(self.plan.as_ref(), Stage::Check, Stage::Plan)?;
+                    let game = self.env.game();
+                    let overlay = Overlay::apply(package, game).map_err(RunError::Check)?;
+                    let cx = CheckCx::new(package, &types).of_port(game, &overlay, port);
+                    Types::places(&cx)
+                }
+                Mode::InPlace => Types::places(&CheckCx::new(package, &types)),
+            })
+        })
     }
 
     /// Folds the stages up to `last` over the run's snapshots, in order: each stage the run

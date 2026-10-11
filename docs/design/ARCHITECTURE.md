@@ -262,6 +262,10 @@ The stages are fixed. What a caller turns on and off is inside two of them: the 
 and `load`, and the checks in `check`. Both are lists of objects that describe themselves
 ([Fixups](#fixups)).
 
+A finding of the type check counts values and names one place per row. The place of every
+value, with its path inside its object, is asked for apart (#ADR-0103): `Run::type_places`
+walks the package again as `check` does and raises nothing.
+
 ## Callers
 
 `reforge` is a library, and the command is one caller of it. A GUI is another (the user's wish,

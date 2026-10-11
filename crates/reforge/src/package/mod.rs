@@ -31,7 +31,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 pub use self::check::{
-    Apply, BaseSkin, Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, RoundTrip, Types,
+    Apply, BaseSkin, Check, CheckCx, CheckId, CheckInfo, CheckSelection, CheckSet, Detailed,
+    MAX_ROW_PLACES, RoundTrip, TypePlaces, Types, ValuePlace,
 };
 pub use self::config::{Made, ProjectConfig};
 pub use self::evidence::{

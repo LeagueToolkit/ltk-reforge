@@ -12,13 +12,13 @@ use reforge::game::{Build, Schema};
 use reforge::model::entity::FileId;
 use reforge::model::known::field;
 use reforge::model::{
-    BinHash, ByteView, ChunkPath, SkinEntry, Spelled, WadName, name_hash, path_hash,
+    BinHash, ByteView, ChunkPath, FieldPath, SkinEntry, Spelled, WadName, name_hash, path_hash,
 };
 use reforge::package::{
     Against, BaseSkin, BinWrite, Blocked, Check, CheckCx, CheckInfo, CheckSelection, CheckSet,
     Chunk, ChunkKey, ClassUndeclared, Coverage, Done, FieldUndeclared, HeldBy, Layer, Origin,
     Package, ProjectConfig, Refused, RoundTripFailed, RoundTripProblem, SkinValue, TypeMismatch,
-    WrittenBin, permit,
+    TypePlaces, Types, WrittenBin, permit,
 };
 use reforge_testkit::SchemaRows;
 use reforge_testkit::bins::{bin, float, object, pointer, text};
@@ -414,6 +414,104 @@ fn a_struct_its_field_does_not_take_under_a_later_key_of_a_map_is_a_value_of_ano
 fn a_struct_of_a_derived_class_second_in_a_list_reads_as_its_base() {
     let list = children(&["Leaf", "Special"]);
     assert_eq!(mismatches(vec![("children", list)]), []);
+}
+
+/// The places the type check gives for a package, against the schema.
+fn places_of(package: &Package) -> TypePlaces {
+    let schema = schema();
+    let build = Build::parse("16.19.300");
+    let types = TargetTypes::new(Some(&schema), build.as_ref());
+    Types::places(&CheckCx::new(package, &types))
+}
+
+#[test]
+fn the_type_check_places_each_value_by_its_path_in_its_object() {
+    // The second and third children are strangers, and the child's own field holds text.
+    let child = pointer("Special", vec![("more", text("one"))]);
+    let fields = vec![
+        ("children", children(&["Leaf", "Stranger", "Stranger"])),
+        ("child", child),
+    ];
+    let package = package_of(kept(vec![object("A", "Material", fields)]));
+    let places = places_of(&package);
+    let material = name_hash("Material");
+    let root = FieldPath::root();
+    let children = root.field(material, name_hash("children"));
+    let more = root
+        .field(material, name_hash("child"))
+        .field(name_hash("Special"), name_hash("more"));
+
+    let rows: Vec<(BinHash, usize, Vec<&FieldPath>)> = places
+        .mismatched
+        .iter()
+        .map(|detailed| {
+            let at = detailed.places.iter().map(|place| &place.at).collect();
+            (detailed.row.field, detailed.row.values, at)
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            (
+                name_hash("children"),
+                2,
+                vec![&children.item(1), &children.item(2)]
+            ),
+            (name_hash("more"), 1, vec![&more]),
+        ]
+    );
+    let place = &places.mismatched[0].places[0].place;
+    assert_eq!(place.entry, name_hash("A"));
+    assert_eq!(place.path.as_str(), SKIN_BIN);
+    assert!(places.undeclared.is_empty());
+    assert!(places.classes.is_empty());
+
+    // The run's finding holds the same rows, with no place but the first.
+    let log = checked(&package, Some(&schema()), &types_only());
+    let found = log.of::<TypeMismatch>().next().expect("it is found");
+    let rows: Vec<_> = places.mismatched.iter().map(|d| &d.row).collect();
+    assert_eq!(found.fields.iter().collect::<Vec<_>>(), rows);
+}
+
+#[test]
+fn the_type_check_places_an_undeclared_field_and_an_undeclared_class() {
+    let material = name_hash("Material");
+    let root = FieldPath::root();
+    let child = root.field(material, name_hash("child"));
+
+    // `junk` is on the material, `stray` on the child's struct.
+    let places = places_of(&package_of(kept(mistyped())));
+    let undeclared: Vec<(BinHash, Vec<&FieldPath>)> = places
+        .undeclared
+        .iter()
+        .map(|d| (d.row.field, d.places.iter().map(|p| &p.at).collect()))
+        .collect();
+    assert_eq!(
+        undeclared,
+        [
+            (
+                name_hash("junk"),
+                vec![&root.field(material, name_hash("junk"))]
+            ),
+            (
+                name_hash("stray"),
+                vec![&child.field(name_hash("Special"), name_hash("stray"))]
+            ),
+        ]
+    );
+
+    // A ghost object is at its root, a ghost child at the field that holds it.
+    let places = places_of(&package_of(kept(ghosts())));
+    let classes: Vec<(Option<HeldBy>, Vec<&FieldPath>)> = places
+        .classes
+        .iter()
+        .map(|d| (d.row.held_by, d.places.iter().map(|p| &p.at).collect()))
+        .collect();
+    let by = HeldBy {
+        class: material,
+        field: name_hash("child"),
+    };
+    assert_eq!(classes, [(None, vec![&root]), (Some(by), vec![&child])]);
 }
 
 /// Runs the type check on a package against these types, and gives what it raised.

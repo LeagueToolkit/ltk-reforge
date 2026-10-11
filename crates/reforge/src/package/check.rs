@@ -11,6 +11,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use ltk_meta::path::MapKey;
 use ltk_meta::property::values;
 use ltk_meta::{Bin, BinObject, PropertyValueEnum};
 use reforge_wwise::{Bank, BankKind, CLIENT_VERSION};
@@ -29,7 +30,7 @@ use crate::fixups::{TargetTypes, TypeSource};
 use crate::game::{FieldType, GameBin, GameSource};
 use crate::model::entity::UnitId;
 use crate::model::{
-    BinHash, Fields, SkinEntry, WadHash, bin, name_hash, panic_text, path_hash, value,
+    BinHash, FieldPath, Fields, SkinEntry, WadHash, bin, name_hash, panic_text, path_hash, value,
 };
 use crate::port::{FileVerdict, Group, Port};
 
@@ -834,8 +835,67 @@ impl Check for Types {
     }
 
     fn run(&self, cx: &CheckCx<'_>, sink: &mut Sink<'_>) {
+        let (typing, bins) = Self::walk(cx, false);
+        if !typing.wrong.is_empty() {
+            let fields: Vec<TypeRow> = typing.wrong.into_values().map(|(row, _)| row).collect();
+            sink.raise(TypeMismatch {
+                values: fields.iter().map(|row| row.values).sum(),
+                fields,
+            });
+        }
+        if !typing.undeclared.is_empty() {
+            let fields: Vec<UndeclaredRow> = typing
+                .undeclared
+                .into_values()
+                .map(|(row, _)| row)
+                .collect();
+            sink.raise(FieldUndeclared {
+                values: fields.iter().map(|row| row.values).sum(),
+                fields,
+            });
+        }
+        if !typing.classes.is_empty() {
+            let classes: Vec<ClassRow> = typing.classes.into_values().map(|(row, _)| row).collect();
+            // The finding rests on a record of its own, and not on the check's.
+            sink.by(TYPES.id.as_str(), None).raise(ClassUndeclared {
+                structs: classes.iter().map(|row| row.structs).sum(),
+                classes,
+            });
+        }
+        let against = match cx.types.schema().and(cx.types.build()) {
+            Some(build) => Against::Schema { build },
+            None => Against::Install,
+        };
+        sink.raise(Done(Coverage::Types {
+            bins,
+            fields: typing.fields,
+            against,
+        }));
+    }
+}
+
+impl Types {
+    /// Every value the check counts, each with its place (#ADR-0103): the same walk as
+    /// [`Check::run`], with nothing raised. A row's places stop at [`MAX_ROW_PLACES`]; its
+    /// count goes on.
+    pub fn places(cx: &CheckCx<'_>) -> TypePlaces {
+        let (typing, _) = Self::walk(cx, true);
+        fn detailed<R>((row, places): (R, Vec<ValuePlace>)) -> Detailed<R> {
+            Detailed { row, places }
+        }
+        TypePlaces {
+            mismatched: typing.wrong.into_values().map(detailed).collect(),
+            undeclared: typing.undeclared.into_values().map(detailed).collect(),
+            classes: typing.classes.into_values().map(detailed).collect(),
+        }
+    }
+
+    /// Types every value of every bin the package ships and every field its patches change.
+    /// Gives the walk and how many bins it read.
+    fn walk<'a>(cx: &CheckCx<'a>, places: bool) -> (Typing<'a>, usize) {
         let mut typing = Typing {
             types: cx.types,
+            places,
             fields: 0,
             wrong: IndexMap::new(),
             undeclared: IndexMap::new(),
@@ -874,59 +934,114 @@ impl Check for Types {
                     path: patch.target.clone(),
                     entry: object.path_hash,
                 };
+                let root = At::root(typing.places);
                 for field in fields {
                     if let Some(value) = object.properties.get(field) {
-                        typing.field((object.class_hash, *field), value, &place);
+                        typing.field((object.class_hash, *field), value, &place, &root);
                     }
                 }
             }
         }
-        if !typing.wrong.is_empty() {
-            let fields: Vec<TypeRow> = typing.wrong.into_values().collect();
-            sink.raise(TypeMismatch {
-                values: fields.iter().map(|row| row.values).sum(),
-                fields,
-            });
-        }
-        if !typing.undeclared.is_empty() {
-            let fields: Vec<UndeclaredRow> = typing.undeclared.into_values().collect();
-            sink.raise(FieldUndeclared {
-                values: fields.iter().map(|row| row.values).sum(),
-                fields,
-            });
-        }
-        if !typing.classes.is_empty() {
-            let classes: Vec<ClassRow> = typing.classes.into_values().collect();
-            // The finding rests on a record of its own, and not on the check's.
-            sink.by(TYPES.id.as_str(), None).raise(ClassUndeclared {
-                structs: classes.iter().map(|row| row.structs).sum(),
-                classes,
-            });
-        }
-        let against = match cx.types.schema().and(cx.types.build()) {
-            Some(build) => Against::Schema { build },
-            None => Against::Install,
-        };
-        sink.raise(Done(Coverage::Types {
-            bins,
-            fields: typing.fields,
-            against,
-        }));
+        (typing, bins)
     }
 }
+
+/// How many places of one row [`Types::places`] keeps. A row of a thousand values is one
+/// field written wrong everywhere: its first places say where.
+pub const MAX_ROW_PLACES: usize = 1024;
+
+/// Where one value a type check counts is: its chunk, its object and its path in the object.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ValuePlace {
+    /// The chunk and the object.
+    #[serde(flatten)]
+    pub place: Place,
+    /// The value's path from the object's root, in the hash form.
+    pub at: FieldPath,
+}
+
+/// One row of a type check's finding with the places of the values it counts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Detailed<R> {
+    /// The row, as the finding holds it.
+    pub row: R,
+    /// Its values' places, in the order found, up to [`MAX_ROW_PLACES`].
+    pub places: Vec<ValuePlace>,
+}
+
+/// Every value the type check counts, with its place (#ADR-0103). What a caller asks for
+/// apart from the run, when a person wants to see a value: the run's findings carry the
+/// counts and one place per row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TypePlaces {
+    /// The rows of `check.type-mismatch`, in the finding's order.
+    pub mismatched: Vec<Detailed<TypeRow>>,
+    /// The rows of `check.field-undeclared`, in the finding's order.
+    pub undeclared: Vec<Detailed<UndeclaredRow>>,
+    /// The rows of `check.class-undeclared`, in the finding's order.
+    pub classes: Vec<Detailed<ClassRow>>,
+}
+
+/// Where the walk is inside an object. The path is built only when places are asked for:
+/// every value of every bin passes here, and the run's findings keep no path.
+#[derive(Clone)]
+struct At(Option<FieldPath>);
+
+impl At {
+    fn root(places: bool) -> Self {
+        Self(places.then(FieldPath::root))
+    }
+
+    fn field(&self, class: BinHash, field: BinHash) -> Self {
+        Self(self.0.as_ref().map(|at| at.field(class, field)))
+    }
+
+    fn item(&self, index: usize) -> Self {
+        Self(self.0.as_ref().map(|at| at.item(index)))
+    }
+
+    /// The value under a map key. A key of a kind a path cannot hold leaves the path at the
+    /// map, as the fixups' walks do.
+    fn key(&self, key: &PropertyValueEnum) -> Self {
+        Self(
+            self.0
+                .as_ref()
+                .map(|at| MapKey::try_from(key).map_or_else(|_| at.clone(), |key| at.key(key))),
+        )
+    }
+
+    fn place(&self, place: &Place) -> Option<ValuePlace> {
+        self.0.as_ref().map(|at| ValuePlace {
+            place: place.clone(),
+            at: at.clone(),
+        })
+    }
+}
+
+/// Adds a value's place to a row's, under the cap.
+fn record(places: &mut Vec<ValuePlace>, at: &At, place: &Place) {
+    if places.len() < MAX_ROW_PLACES {
+        places.extend(at.place(place));
+    }
+}
+
+/// The rows of one finding by what they count, each with the places of its values.
+type Rows<K, R> = IndexMap<K, (R, Vec<ValuePlace>)>;
 
 /// The walk of one package's values against the target's types.
 struct Typing<'a> {
     types: &'a TargetTypes<'a>,
+    /// Whether each value counted gets its place beside its row.
+    places: bool,
     /// How many fields were typed.
     fields: usize,
     /// The values of another type, by class, field and the two shapes, in the order found.
-    wrong: IndexMap<(BinHash, BinHash, Shape, Shape), TypeRow>,
+    wrong: Rows<(BinHash, BinHash, Shape, Shape), TypeRow>,
     /// The values on a field its class does not declare, by class and field.
-    undeclared: IndexMap<(BinHash, BinHash), UndeclaredRow>,
+    undeclared: Rows<(BinHash, BinHash), UndeclaredRow>,
     /// The structs and objects of a class the target build does not declare, by what holds
     /// them and the class, in the order found.
-    classes: IndexMap<(Option<HeldBy>, BinHash), ClassRow>,
+    classes: Rows<(Option<HeldBy>, BinHash), ClassRow>,
 }
 
 /// How a field takes a struct of a class.
@@ -986,17 +1101,18 @@ impl Typing<'_> {
     }
 
     /// Counts one struct or object of a class the target build does not declare.
-    fn class_undeclared(&mut self, held_by: Option<HeldBy>, held: BinHash, place: &Place) {
-        let row = self
-            .classes
-            .entry((held_by, held))
-            .or_insert_with(|| ClassRow {
+    fn class_undeclared(&mut self, held_by: Option<HeldBy>, held: BinHash, place: &Place, at: &At) {
+        let (row, places) = self.classes.entry((held_by, held)).or_insert_with(|| {
+            let row = ClassRow {
                 held_by,
                 held,
                 structs: 0,
                 first: place.clone(),
-            });
+            };
+            (row, Vec::new())
+        });
         row.structs += 1;
+        record(places, at, place);
     }
 
     /// Counts one value of a field written in the shape `found` where the build reads `wants`.
@@ -1005,49 +1121,59 @@ impl Typing<'_> {
         (class, field): (BinHash, BinHash),
         (found, wants): (Shape, Shape),
         place: &Place,
+        at: &At,
     ) {
-        let row = self
+        let (row, places) = self
             .wrong
             .entry((class, field, found, wants))
-            .or_insert_with(|| TypeRow {
-                class,
-                field,
-                found,
-                wants,
-                values: 0,
-                first: place.clone(),
+            .or_insert_with(|| {
+                let row = TypeRow {
+                    class,
+                    field,
+                    found,
+                    wants,
+                    values: 0,
+                    first: place.clone(),
+                };
+                (row, Vec::new())
             });
         row.values += 1;
+        record(places, at, place);
     }
 
     fn object(&mut self, object: &BinObject, place: &Place) {
+        let root = At::root(self.places);
         if self.types.declares_class(object.class_hash) == Some(false) {
-            self.class_undeclared(None, object.class_hash, place);
+            self.class_undeclared(None, object.class_hash, place, &root);
             return;
         }
-        self.structure(object.class_hash, &object.properties, place);
+        self.structure(object.class_hash, &object.properties, place, &root);
     }
 
-    fn structure(&mut self, class: BinHash, fields: &Fields, place: &Place) {
+    /// Types the fields of the struct at `at`, which is of `class`.
+    fn structure(&mut self, class: BinHash, fields: &Fields, place: &Place, at: &At) {
         for (field, value) in fields {
-            self.field((class, *field), value, place);
+            self.field((class, *field), value, place, at);
         }
     }
 
+    /// Types the value of a field of the struct at `at`.
     fn field(
         &mut self,
         (class, field): (BinHash, BinHash),
         value: &PropertyValueEnum,
         place: &Place,
+        at: &At,
     ) {
         self.fields += 1;
+        let at = at.field(class, field);
         let mut holder = None;
         match self.types.type_of(class, field) {
             Some((want, source)) => {
                 let found = FieldType::of(value);
                 if !reads_as(&want, &found) {
                     let shapes = (Shape::of(&found), Shape::of(&want));
-                    self.mistyped((class, field), shapes, place);
+                    self.mistyped((class, field), shapes, place, &at);
                     return;
                 }
                 holder = Some(Holder {
@@ -1061,49 +1187,53 @@ impl Typing<'_> {
             None => {
                 let schema = self.types.schema().filter(|_| self.types.build().is_some());
                 if schema.is_some_and(|schema| schema.knows_class(class)) {
-                    let row =
-                        self.undeclared
-                            .entry((class, field))
-                            .or_insert_with(|| UndeclaredRow {
+                    let (row, places) =
+                        self.undeclared.entry((class, field)).or_insert_with(|| {
+                            let row = UndeclaredRow {
                                 class,
                                 field,
                                 values: 0,
                                 first: place.clone(),
-                            });
+                            };
+                            (row, Vec::new())
+                        });
                     row.values += 1;
+                    record(places, &at, place);
                     return;
                 }
             }
         }
-        self.value(value, holder, place);
+        self.value(value, holder, place, &at);
     }
 
-    /// Goes on into the structs a value holds, each judged against the class its field reads.
-    fn value(&mut self, value: &PropertyValueEnum, holder: Option<Holder>, place: &Place) {
+    /// Goes on into the structs the value at `at` holds, each judged against the class its
+    /// field reads.
+    fn value(&mut self, value: &PropertyValueEnum, holder: Option<Holder>, place: &Place, at: &At) {
         use PropertyValueEnum as V;
         match value {
-            V::Embedded(embedded) => self.held(&embedded.0, holder, place),
-            V::Struct(pointer) if pointer.class_hash.0 != 0 => self.held(pointer, holder, place),
+            V::Embedded(embedded) => self.held(&embedded.0, holder, place, at),
+            V::Struct(pointer) if pointer.class_hash.0 != 0 => {
+                self.held(pointer, holder, place, at);
+            }
             V::Container(list) => {
-                list.items()
-                    .iter()
-                    .for_each(|v| self.value(v, holder, place));
+                for (index, v) in list.items().iter().enumerate() {
+                    self.value(v, holder, place, &at.item(index));
+                }
             }
             V::UnorderedContainer(list) => {
-                list.0
-                    .items()
-                    .iter()
-                    .for_each(|v| self.value(v, holder, place));
+                for (index, v) in list.0.items().iter().enumerate() {
+                    self.value(v, holder, place, &at.item(index));
+                }
             }
             V::Optional(option) => {
                 if let Some(inner) = option.value() {
-                    self.value(inner, holder, place);
+                    self.value(inner, holder, place, &at.item(0));
                 }
             }
             V::Map(map) => {
-                map.entries()
-                    .iter()
-                    .for_each(|(_, v)| self.value(v, holder, place));
+                for (key, v) in map.entries() {
+                    self.value(v, holder, place, &at.key(key));
+                }
             }
             _ => {}
         }
@@ -1112,27 +1242,27 @@ impl Typing<'_> {
     /// Types the fields of a struct its field takes. A struct of a class the field does not
     /// take is one value of another type, one of a class the build does not declare is counted
     /// apart, and the fields of neither are typed.
-    fn held(&mut self, held: &values::Struct, holder: Option<Holder>, place: &Place) {
+    fn held(&mut self, held: &values::Struct, holder: Option<Holder>, place: &Place, at: &At) {
         let Some(holder) = holder else {
-            self.structure(held.class_hash, &held.properties, place);
+            self.structure(held.class_hash, &held.properties, place, at);
             return;
         };
         match self.takes(holder.want.class, held.class_hash, holder.source) {
-            Taken::Yes => self.structure(held.class_hash, &held.properties, place),
+            Taken::Yes => self.structure(held.class_hash, &held.properties, place, at),
             Taken::Other => {
                 let found = FieldType {
                     class: Some(held.class_hash),
                     ..holder.found
                 };
                 let shapes = (Shape::of(&found), Shape::of(&holder.want));
-                self.mistyped((holder.class, holder.field), shapes, place);
+                self.mistyped((holder.class, holder.field), shapes, place, at);
             }
             Taken::Undeclared => {
                 let by = HeldBy {
                     class: holder.class,
                     field: holder.field,
                 };
-                self.class_undeclared(Some(by), held.class_hash, place);
+                self.class_undeclared(Some(by), held.class_hash, place, at);
             }
         }
     }
