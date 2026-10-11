@@ -101,7 +101,8 @@ export function ModFace({
   return (
     <div
       className={twMerge(
-        "flex items-start justify-between gap-4 rounded-md",
+        // The actions go under the mod when beside it they would squeeze its path.
+        "flex flex-wrap items-start justify-between gap-4 rounded-md",
         over && "outline-2 outline-offset-8 outline-accent-500 outline-dashed",
       )}
       data-ui="ModCard:mod"
@@ -113,7 +114,7 @@ export function ModFace({
           className="h-16 w-16 shrink-0 rounded-md border border-surface-700 object-cover"
         />
       )}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-64 flex-1 flex-col gap-0.5">
         {meta?.name && <p className="text-sm text-surface-50">{meta.name}</p>}
         {(meta?.author || meta?.version) && (
           <p className="text-xs text-surface-300">
@@ -146,7 +147,7 @@ export function ModFace({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2">{actions}</div>
+      <div className="ml-auto flex shrink-0 flex-wrap justify-end gap-2">{actions}</div>
     </div>
   );
 }

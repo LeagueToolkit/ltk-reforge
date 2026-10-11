@@ -4,10 +4,17 @@ import type { ReactNode } from "react";
 import { SectionCard, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { DatingView, ExploreView } from "@/lib/bindings.gen";
-import { sizeLabel, sourceLabel } from "@/modules/runs";
+import { kindGroup, sizeLabel, sourceLabel } from "@/modules/runs";
 import { twMerge } from "@/utils";
 
-import { type CountRow, entrySlotDiffers, isOneOf, kindRows, sourceRows } from "../model";
+import {
+  type CountRow,
+  endedEmpty,
+  entrySlotDiffers,
+  isOneOf,
+  kindRows,
+  sourceRows,
+} from "../model";
 
 const tableClass = "w-full text-left text-xs";
 const headClass = "pb-2 pr-3 font-medium text-surface-400 select-none";
@@ -29,6 +36,43 @@ function layoutLabel(layout: string): string {
 
 function characterKindLabel(kind: string): string {
   return isOneOf(CHARACTER_KINDS, kind) ? m[`mod_character_kind.${kind}.label`]() : kind;
+}
+
+/** The kinds of file a mod commonly holds, each with a word of its own. */
+const FILE_KINDS = [
+  "property-bin",
+  "property-bin-override",
+  "ritobin-text",
+  "ritobin-json",
+  "texture",
+  "texture-dds",
+  "png",
+  "jpeg",
+  "animation",
+  "skeleton",
+  "simple-skin",
+  "static-mesh-binary",
+  "static-mesh-ascii",
+  "wwise-bank",
+  "wwise-package",
+  "ttf",
+  "otf",
+] as const;
+
+/** A file kind in a person's words: its own word, else the file viewer's word for its group. */
+function fileKindLabel(kind: string): string {
+  return isOneOf(FILE_KINDS, kind)
+    ? m[`mod_file_kind.${kind}.label`]()
+    : m[`runs_file_kind.${kindGroup(kind)}.label`]();
+}
+
+/** A file kind's word, the library's name of the kind on hover. */
+function FileKind({ kind }: { kind: string }) {
+  return (
+    <Tooltip content={<span className="font-mono text-xs">{kind}</span>}>
+      <span>{fileKindLabel(kind)}</span>
+    </Tooltip>
+  );
 }
 
 /** A yes as a check, its word on hover. Nothing for a no. */
@@ -120,6 +164,8 @@ function CharactersSection({ view }: { view: ExploreView }) {
 }
 
 function UnitsSection({ view }: { view: ExploreView }) {
+  // A unit names its character by the directory, lower case; the Characters card spells it.
+  const spelled = new Map(view.characters.map((character) => [character.name, character.spelled]));
   return (
     <SectionCard title={m.mod_units_title()}>
       {view.units.length === 0 ? (
@@ -138,7 +184,9 @@ function UnitsSection({ view }: { view: ExploreView }) {
           <tbody className="divide-y divide-surface-700/50">
             {view.units.map((unit) => (
               <tr key={unit.id}>
-                <td className={cellClass}>{unit.character_name}</td>
+                <td className={cellClass}>
+                  {spelled.get(unit.character_name) ?? unit.character_name}
+                </td>
                 <td className={numberClass}>{unit.slot}</td>
                 <td className={monoClass}>{unit.file}</td>
                 <td className={twMerge(numberClass, "text-warning-text")}>
@@ -239,7 +287,7 @@ function CountsSection({ view }: { view: ExploreView }) {
           <CountTable
             rows={kinds}
             head={m.mod_column_kind()}
-            label={(key) => <span className="font-mono">{key}</span>}
+            label={(key) => <FileKind kind={key} />}
             ui="ModPage:by-kind"
           />
         )}
@@ -262,6 +310,9 @@ function CountsSection({ view }: { view: ExploreView }) {
 
 /** The load report of a mod explored: its dating, characters, units, WADs and counts. */
 export function Overview({ view }: { view: ExploreView }) {
+  if (endedEmpty(view)) {
+    return <Empty>{m.mod_overview_ended()}</Empty>;
+  }
   return (
     <div className="flex flex-col gap-6" data-ui="ModPage:overview">
       <DatingSection dating={view.dating} />

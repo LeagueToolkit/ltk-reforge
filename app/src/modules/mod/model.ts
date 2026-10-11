@@ -34,6 +34,22 @@ export function haltingFinding(view: ExploreView): Finding | null {
   return view.findings.find((finding) => finding.id === view.halted) ?? null;
 }
 
+/**
+ * Whether the explore's run ended before it knew anything of the mod: halted or faulted, with
+ * no dating, character, unit, WAD or count. An overview of empty cards would read as an empty
+ * archive.
+ */
+export function endedEmpty(view: ExploreView): boolean {
+  const ended = view.halted != null || view.fault != null;
+  return (
+    ended &&
+    view.dating == null &&
+    [view.characters, view.units, view.wads, view.kinds, view.sources].every(
+      (list) => list.length === 0,
+    )
+  );
+}
+
 /** Whether a word from the backend is one of the keys the app has messages for. */
 export function isOneOf<K extends string>(keys: readonly K[], word: string): word is K {
   return (keys as readonly string[]).includes(word);

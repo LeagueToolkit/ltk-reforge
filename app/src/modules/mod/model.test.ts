@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ExploreView, Finding, UnitView } from "@/lib/bindings.gen";
 
-import { entrySlotDiffers, haltingFinding, kindRows, sourceRows } from "./model";
+import { endedEmpty, entrySlotDiffers, haltingFinding, kindRows, sourceRows } from "./model";
 
 function unit(slot: number, entryNameSlot: number | null): UnitView {
   return {
@@ -83,5 +83,27 @@ describe("haltingFinding", () => {
     const halting = finding(4);
     expect(haltingFinding(view(4, [finding(1), halting]))).toBe(halting);
     expect(haltingFinding(view(null, [finding(1)]))).toBeNull();
+  });
+});
+
+describe("endedEmpty", () => {
+  it("is true for a run that ended before it knew anything of the mod", () => {
+    expect(endedEmpty(view(0, [finding(0)]))).toBe(true);
+    expect(endedEmpty({ ...view(null, []), fault: "the index did not answer" })).toBe(true);
+  });
+
+  it("is false for a run that ended its load, or ended early knowing some of the mod", () => {
+    expect(endedEmpty(view(null, []))).toBe(false);
+    const wad = {
+      id: "%w0",
+      name: "Test.wad.client",
+      role: "champion",
+      layout: "packed",
+      files: 1,
+      named: 1,
+      packed_locale: null,
+      restoration: false,
+    };
+    expect(endedEmpty({ ...view(0, [finding(0)]), wads: [wad] })).toBe(false);
   });
 });
