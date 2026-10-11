@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use camino::Utf8Path;
 use reforge::model::clean;
-use reforge::snapshot::LoadSnapshot;
+use reforge::snapshot::{LoadSnapshot, Program};
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 
@@ -154,8 +154,10 @@ pub struct CompareView {
 struct Side {
     row: RunRow,
     settings: RunSettings,
+    program: Program,
     schema_build: Option<String>,
-    load: LoadSnapshot,
+    /// None for a run opened from a package.
+    load: Option<LoadSnapshot>,
     view: RunView,
 }
 
@@ -167,8 +169,8 @@ impl AppStore {
         };
         let settings_a = settings_rows(a.row.kind, &a.settings);
         let settings_b = settings_rows(b.row.kind, &b.settings);
-        let inputs_a = input_rows(&a.load, a.schema_build.as_deref());
-        let inputs_b = input_rows(&b.load, b.schema_build.as_deref());
+        let inputs_a = input_rows(&a);
+        let inputs_b = input_rows(&b);
         Ok(Some(CompareView {
             same_mod: a.row.sha256 == b.row.sha256,
             settings: differing(settings_a, settings_b),
@@ -193,24 +195,39 @@ impl AppStore {
         let (Some(row), Ok(number)) = (self.row(id)?, i64::try_from(id)) else {
             return Ok(None);
         };
-        let query = "SELECT run.settings, run.schema_build, load.json
-             FROM run JOIN load ON load.id = run.load_id WHERE run.id = ?1";
-        let columns: Option<(String, Option<String>, Vec<u8>)> = {
+        let query = "SELECT run.settings, run.schema_build, run.program_version,
+               run.program_commit, load.json
+             FROM run LEFT JOIN load ON load.id = run.load_id WHERE run.id = ?1";
+        type Columns = (
+            String,
+            Option<String>,
+            String,
+            Option<String>,
+            Option<Vec<u8>>,
+        );
+        let columns: Option<Columns> = {
             let rows = self.rows.lock();
             let found = rows.query_row(query, [number], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
             });
             found.optional()?
         };
-        let (Some((settings, schema_build, load)), Some(view)) = (columns, self.run_view(id)?)
-        else {
+        let (Some(columns), Some(view)) = (columns, self.run_view(id)?) else {
             return Ok(None);
         };
+        let (settings, schema_build, version, commit, load) = columns;
         Ok(Some(Side {
             row,
             settings: serde_json::from_str(&settings).map_err(failed)?,
+            program: Program { version, commit },
             schema_build,
-            load: read_snapshot(&load)?,
+            load: load.as_deref().map(read_snapshot).transpose()?,
             view,
         }))
     }
@@ -252,23 +269,30 @@ fn settings_rows(kind: RunKind, settings: &RunSettings) -> Vec<(&'static str, St
     ]
 }
 
-/// What a run was judged under, as text, by key: the program and the inputs its load snapshot
-/// was made under (#ADR-0094), and the schema's build.
-fn input_rows(load: &LoadSnapshot, schema_build: Option<&str>) -> Vec<(&'static str, String)> {
-    let program = load.program();
-    let inputs = load.inputs();
+/// What a run was judged under, as text, by key: the program that made it, the inputs its load
+/// snapshot was made under (#ADR-0094), none for a run with no load, and the schema's build.
+fn input_rows(side: &Side) -> Vec<(&'static str, String)> {
+    let program = &side.program;
     let program = match &program.commit {
         Some(commit) => format!("{} ({commit})", program.version),
         None => program.version.clone(),
     };
-    let build = inputs.build.as_ref().map(ToString::to_string);
-    let history = (inputs.history.as_ref()).map(|h| format!("{} ({})", h.newest_build, h.head));
+    let inputs = side.load.as_ref().map(LoadSnapshot::inputs);
+    let build = inputs
+        .and_then(|i| i.build.as_ref())
+        .map(ToString::to_string);
+    let history = inputs.and_then(|i| i.history.as_ref());
+    let history = history.map(|h| format!("{} ({})", h.newest_build, h.head));
+    let names = inputs.map(|inputs| json_of(&inputs.names));
     vec![
         ("program", program),
         ("install_build", build.unwrap_or_default()),
         ("history_head", history.unwrap_or_default()),
-        ("names", json_of(&inputs.names)),
-        ("schema_build", schema_build.unwrap_or_default().to_string()),
+        ("names", names.unwrap_or_default()),
+        (
+            "schema_build",
+            side.schema_build.clone().unwrap_or_default(),
+        ),
     ]
 }
 

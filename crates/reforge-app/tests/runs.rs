@@ -6,12 +6,21 @@ use camino::Utf8PathBuf;
 use fs_err as fs;
 use ltk_meta::BinObject;
 use reforge::history::NoHistory;
-use reforge::model::{BinHash, ByteView, ContentId, name_hash};
+use reforge::model::entity::FileId;
+use reforge::model::{BinHash, ByteView, ChunkPath, ContentId, Spelled, WadName, name_hash};
+use reforge::package::{
+    Chunk, ChunkKey, Layer, Modpkg, Origin as ChunkOrigin, Package, PackageWriter, ProjectConfig,
+};
 use reforge::store::BlobStore;
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
-use reforge_app::run::{self, RunKind, RunRequest, RunSettings, RunView, StageName, Unwatched};
-use reforge_app::store::{AppStore, Counts, FileRow, FileView, HEX_BYTES, Mark, StageFiles};
+use reforge_app::run::{
+    self, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, Unwatched,
+};
+use reforge_app::store::{
+    AppStore, Counts, EVIDENCE_ONLY_SCHEMA, FileRow, FileView, HEX_BYTES, Mark, Origin, StageFiles,
+};
+use reforge_app::view::Finding;
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry, float};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -412,4 +421,185 @@ fn bytes_no_tier_holds_are_refused() {
     let refused = bench.store.file_view(1, id, None);
 
     assert_eq!(refused, Err(AppError::BlobMissing { id: id.hex() }));
+}
+
+/// A port of [`artifact_mod`] kept, and a fresh store beside the bench's.
+fn ported_and_fresh(bench: &Bench) -> (RunView, AppStore) {
+    let (_, view) = bench.kept(&artifact_mod(), RunKind::Port);
+    let fresh = AppStore::open(&Bench::root_of(&bench.dir).join("fresh")).unwrap();
+    (view, fresh)
+}
+
+/// Each decision of a view by its unit's name, with the slot chosen.
+fn decided(view: &RunView) -> Vec<(String, Option<u16>)> {
+    let targets = view.targets.as_ref().expect("the decisions");
+    let decisions = targets.decisions.iter();
+    decisions
+        .map(|d| {
+            let unit = view.names.get(&d.unit).unwrap_or(&d.unit);
+            (unit.clone(), d.chosen)
+        })
+        .collect()
+}
+
+/// The findings of a run raised before its write: what the report beside its package holds,
+/// since the writer writes that file before the write raises what it wrote.
+fn before_write(view: &RunView) -> Vec<Finding> {
+    let findings = view.findings.iter().filter(|f| f.stage != "write");
+    findings.cloned().collect()
+}
+
+#[test]
+fn a_package_opened_reads_as_the_run_that_wrote_it() {
+    let bench = Bench::new();
+    let (view, fresh) = ported_and_fresh(&bench);
+    let package = Utf8PathBuf::from(view.written.clone().expect("the package"));
+
+    let id = fresh.open_package(&package).unwrap();
+
+    let listed = fresh.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    let row = &listed[0];
+    assert_eq!(row.id, id);
+    assert_eq!(row.origin, Origin::Package);
+    assert_eq!(row.opened_from.as_deref(), Some(package.as_str()));
+    assert_eq!(row.package.as_deref(), Some(package.as_str()));
+    assert!(row.kept && !row.archive_ingested);
+    assert_eq!(row.reached, []);
+    assert_eq!(row.kind, RunKind::Port);
+    let built = view.package.as_ref().expect("the package view");
+    assert!(row.name.is_some());
+    assert_eq!(row.version.as_deref(), Some(built.version.as_str()));
+    let opened = fresh.run_view(id).unwrap().expect("the view");
+    assert_eq!(decided(&opened), decided(&view));
+    assert_eq!(opened.findings, before_write(&view));
+    assert!(opened.stages.iter().all(|s| s.state == StageState::NotRun));
+    assert_eq!(
+        fresh.stage_files(id, StageName::Load),
+        Err(AppError::NoFilesAtStage {
+            stage: StageName::Load
+        })
+    );
+    let export = fresh.export_project(id, &package.with_extension("reforge-project"));
+    assert_eq!(export, Err(AppError::NoProjectOf { id }));
+}
+
+#[test]
+fn the_stages_of_a_kind_without_inputs_are_the_librarys() {
+    let bench = Bench::new();
+
+    for kind in [RunKind::Repair, RunKind::Port] {
+        assert_eq!(
+            run::stages_of_kind(kind),
+            run::stages_of(&bench.inputs, kind)
+        );
+    }
+}
+
+#[test]
+fn a_package_opened_beside_its_run_compares_over_the_views() {
+    let bench = Bench::new();
+    let (run, view) = bench.kept(&artifact_mod(), RunKind::Port);
+    let package = Utf8PathBuf::from(view.written.clone().expect("the package"));
+    let opened = bench.store.open_package(&package).unwrap();
+
+    let compared = bench
+        .store
+        .compare(run, opened)
+        .unwrap()
+        .expect("both are kept");
+
+    assert!(compared.same_mod);
+    let gone: Vec<&str> = compared
+        .findings
+        .gone
+        .iter()
+        .map(|f| f.stage.as_str())
+        .collect();
+    assert_eq!(gone, ["write"]);
+    assert_eq!(compared.findings.added, []);
+    assert!(compared.targets.iter().all(|target| !target.differs));
+    let files = bench.store.compare_files(run, opened, StageName::Load);
+    assert_eq!(
+        files,
+        Err(AppError::NoFilesAtStage {
+            stage: StageName::Load
+        })
+    );
+}
+
+#[test]
+fn a_package_opened_with_no_report_beside_it_reads_from_its_evidence() {
+    let bench = Bench::new();
+    let (view, fresh) = ported_and_fresh(&bench);
+    let package = Utf8PathBuf::from(view.written.clone().expect("the package"));
+    let stem = package.file_stem().unwrap();
+    fs::remove_file(package.with_file_name(format!("{stem}.reforge-report.json"))).unwrap();
+
+    let id = fresh.open_package(&package).unwrap();
+
+    let opened = fresh.run_view(id).unwrap().expect("the view");
+    assert_eq!(opened.findings, []);
+    let targets = opened.targets.as_ref().expect("the evidence's units");
+    let shipped: Vec<(String, u16, Option<u16>)> = targets
+        .decisions
+        .iter()
+        .map(|d| (d.character_name.clone(), d.source, d.chosen))
+        .collect();
+    let ran = view
+        .targets
+        .as_ref()
+        .expect("the decisions")
+        .decisions
+        .iter();
+    let ran: Vec<(String, u16, Option<u16>)> = ran
+        .filter(|d| d.chosen.is_some())
+        .map(|d| (d.character_name.to_lowercase(), d.source, d.chosen))
+        .collect();
+    assert!(!ran.is_empty());
+    assert_eq!(shipped, ran);
+    let report: serde_json::Value =
+        serde_json::from_str(&fresh.report(id).unwrap().expect("the report")).unwrap();
+    assert_eq!(report["schema"], EVIDENCE_ONLY_SCHEMA);
+    assert_eq!(report["evidence"]["run"], "port");
+    let meta = opened.meta.as_ref().expect("the mod");
+    assert_eq!(meta.file_name, package.file_name().unwrap());
+}
+
+#[test]
+fn a_package_with_no_readme_is_refused() {
+    let bench = Bench::new();
+    let out = Bench::root_of(&bench.dir).join("bare");
+    let config = ProjectConfig {
+        name: "Bare".into(),
+        display_name: Spelled::new("Bare"),
+        version: "1.0.0".into(),
+        description: Spelled::new("A package no run built."),
+        authors: vec![Spelled::new("reforge tests")],
+        champions: vec!["Test".into()],
+    };
+    let mut package = Package::new(config);
+    let key = ChunkKey::new(
+        WadName::parse(WAD).unwrap(),
+        ChunkPath::parse("data/characters/test/skins/skin0.bin").unwrap(),
+    );
+    let bytes = ByteView::from(bin(vec![tool_artifact()]));
+    package.insert(
+        Layer::Base,
+        key,
+        Chunk::new(bytes, ChunkOrigin::Kept(FileId::new(0))),
+    );
+    let writer = Modpkg::new(&out);
+    writer.write(&package, "{}").unwrap();
+    let path = writer.path_of(&package);
+
+    let refused = bench.store.open_package(&path);
+
+    assert_eq!(
+        refused,
+        Err(AppError::NoEvidence {
+            path: path.to_string()
+        })
+    );
+    assert_eq!(bench.store.list().unwrap(), []);
 }

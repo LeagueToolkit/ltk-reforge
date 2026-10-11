@@ -4935,6 +4935,7 @@ dependencies = [
  "ltk_meta",
  "ltk_mimir_cache",
  "ltk_mod_core",
+ "ltk_modpkg",
  "ltk_texture",
  "parking_lot",
  "reforge",

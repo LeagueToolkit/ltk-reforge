@@ -132,6 +132,10 @@ pub enum AppError {
     /// A kept run opened from a package has no snapshots and no bytes to export as a project.
     #[error("run {id} was opened from a package and has no project")]
     NoProjectOf { id: u64 },
+    /// A package holds no evidence of the run that made it (#ADR-0041): no README, or no
+    /// block of evidence in it.
+    #[error("the package at {path} holds no evidence")]
+    NoEvidence { path: String },
     /// A project file is of another format than this version reads.
     #[error("the project file is of format {found}")]
     ProjectFormat { found: u64 },

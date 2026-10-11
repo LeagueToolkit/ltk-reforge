@@ -12,6 +12,7 @@ mod drawn;
 mod peek;
 mod views;
 
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -20,7 +21,7 @@ use reforge::archive::{Caps, RawSnapshot, file_name_of};
 use reforge::diag::{Action, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
 use reforge::model::{ContentId, Spelled};
-use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter};
+use reforge::package::{CheckSelection, CheckSet, EvidenceDoc, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy};
 use reforge::snapshot::{LoadInputs, Program, Snapshots, StageSettings};
 use reforge::{Porter, Repairer, Run, RunError, Settings, Start};
@@ -578,6 +579,89 @@ fn run_stage(run: &mut Run<'_>, stage: StageName, archive: &Utf8Path) -> Result<
         StageName::Check => run.check(),
         StageName::Write => Ok(()),
     }
+}
+
+/// The stages of a run of the kind, in order, as the library's `Run::stages` names them: what
+/// a view with no run behind it lists. A repair has no `facts`, `decide` or `plan`
+/// (#ADR-0011).
+pub fn stages_of_kind(kind: RunKind) -> &'static [StageName] {
+    use StageName::*;
+    match kind {
+        RunKind::Repair => &[Read, Load, Fix, Build, Check, Write],
+        RunKind::Port => &[Read, Load, Fix, Facts, Decide, Plan, Build, Check, Write],
+    }
+}
+
+/// A view with no run behind it: every stage of the kind not run, and what was drawn.
+fn view_not_run(kind: RunKind, drawn: Drawn) -> RunView {
+    let stages = stages_of_kind(kind).iter().map(|&stage| StageView {
+        stage,
+        state: StageState::NotRun,
+        millis: None,
+        resumed: false,
+    });
+    RunView {
+        stages: stages.collect(),
+        meta: drawn.meta,
+        halted: drawn.halted,
+        findings: drawn.findings,
+        changes: drawn.changes,
+        objects: drawn.objects,
+        targets: drawn.targets,
+        package: drawn.package,
+        written: None,
+        saved: None,
+        refused: false,
+        fault: None,
+        millis: 0,
+        names: drawn.names,
+    }
+}
+
+/// What a package's report gives the views, for a package opened as a run (#ADR-0096). None
+/// for a report the views do not read.
+pub fn view_of_report(kind: RunKind, report: &str) -> Option<RunView> {
+    Drawn::of_report(report).map(|drawn| view_not_run(kind, drawn))
+}
+
+/// What a package's evidence alone gives the views (#ADR-0041, #ADR-0096): the mod, and for
+/// a port each unit that ships with the slot it ships at and why.
+pub fn view_of_evidence(kind: RunKind, evidence: &EvidenceDoc, meta: ModView) -> RunView {
+    let targets = evidence.port.as_ref().map(|port| {
+        let decisions = port.units.iter().map(|unit| DecisionView {
+            // The evidence names a unit by its character and slot, not by a report's id.
+            unit: format!("{} skin{}", unit.character, unit.source),
+            character: unit.character.clone(),
+            character_name: unit.character.clone(),
+            source: unit.source,
+            chosen: Some(unit.target),
+            reason: unit.reason.clone(),
+            origin: OriginView {
+                verdict: "unknown".to_string(),
+                slot: None,
+            },
+            candidates: Vec::new(),
+            alternatives: Vec::new(),
+        });
+        TargetsView {
+            policy: PolicyView {
+                target: port.policy.target.clone(),
+                anim_reuse: port.policy.anim_reuse.clone(),
+            },
+            decisions: decisions.collect(),
+        }
+    });
+    let drawn = Drawn {
+        meta: Some(meta),
+        halted: None,
+        findings: Vec::new(),
+        changes: Vec::new(),
+        objects: Vec::new(),
+        targets,
+        package: None,
+        names: BTreeMap::new(),
+    };
+    view_not_run(kind, drawn)
 }
 
 /// Each stage of a run, in order, with how far it got and how long it took.

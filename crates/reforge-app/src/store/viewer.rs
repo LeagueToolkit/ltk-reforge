@@ -105,9 +105,8 @@ impl AppStore {
         let kind = head.identify(None).kind;
         let shown = match kind {
             Kind::PropertyBin => {
-                let book = self
-                    .kept_snapshots(id)?
-                    .map(|kept| kept.load.names().clone());
+                let book = self.kept_snapshots(id)?.and_then(|kept| kept.load);
+                let book = book.map(|load| load.names().clone());
                 bin_view(&bytes, &book.unwrap_or_default(), names)
             }
             Kind::Texture | Kind::TextureDds => picture(&bytes),

@@ -25,6 +25,7 @@ ltk_mimir_cache.workspace = true
 tauri.workspace = true
 tauri-plugin-dialog.workspace = true
 ltk_mod_core.workspace = true
+ltk_modpkg.workspace = true
 sysinfo.workspace = true
 ltk_texture.workspace = true
 image.workspace = true

@@ -82,8 +82,8 @@ pub struct StageFiles {
 
 /// The snapshots of a kept run that name files.
 pub struct KeptSnapshots {
-    /// The snapshot after `load`.
-    pub load: LoadSnapshot,
+    /// The snapshot after `load`. None for a run opened from a package, which has none.
+    pub load: Option<LoadSnapshot>,
     /// The snapshot after `fix`.
     pub fix: Option<FixSnapshot>,
     /// The snapshot after `plan`.
@@ -96,7 +96,7 @@ impl KeptSnapshots {
     /// The stages of [`FILE_STAGES`] the run holds a snapshot of.
     pub fn stages(&self) -> Vec<StageName> {
         let held = [
-            true,
+            self.load.is_some(),
             self.fix.is_some(),
             self.plan.is_some(),
             self.build.is_some(),
@@ -120,9 +120,10 @@ impl KeptSnapshots {
     /// holds no files at.
     fn listing(&self, stage: StageName) -> Option<Listing> {
         let mut listing = Listing::new();
-        let load_wads = self.load.wads();
+        let load = self.load.as_ref()?;
+        let load_wads = load.wads();
         let wad_name = |id: reforge::model::entity::WadId| {
-            let rows = &self.load.part().wads;
+            let rows = &load.part().wads;
             rows.iter()
                 .find(|row| row.id == id)
                 .map_or_else(|| format!("{id}"), |row| row.name.to_string())
@@ -272,8 +273,13 @@ impl AppStore {
             return Ok(None);
         };
         let query = "SELECT load.json, run.fix, run.plan, run.build
-             FROM run JOIN load ON load.id = run.load_id WHERE run.id = ?1";
-        type Columns = (Vec<u8>, Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>);
+             FROM run LEFT JOIN load ON load.id = run.load_id WHERE run.id = ?1";
+        type Columns = (
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+            Option<Vec<u8>>,
+        );
         let columns: Option<Columns> = {
             let rows = self.rows.lock();
             let row = rows.query_row(query, [id], |row| {
@@ -285,7 +291,7 @@ impl AppStore {
             return Ok(None);
         };
         Ok(Some(KeptSnapshots {
-            load: read_snapshot(&load)?,
+            load: load.as_deref().map(read_snapshot).transpose()?,
             fix: fix.as_deref().map(read_snapshot).transpose()?,
             plan: plan.as_deref().map(read_snapshot).transpose()?,
             build: build.as_deref().map(read_snapshot).transpose()?,

@@ -14,6 +14,7 @@
 mod compare;
 mod files;
 mod kept;
+mod package;
 mod project;
 mod read;
 mod sweep;
@@ -38,6 +39,7 @@ pub use self::compare::{
 };
 pub use self::files::{FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, WadFiles};
 pub use self::kept::KeptRun;
+pub use self::package::EVIDENCE_ONLY_SCHEMA;
 pub use self::project::{PROJECT_EXTENSION, PROJECT_FORMAT};
 pub use self::read::{Origin, RunAgain, RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};

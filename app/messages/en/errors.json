@@ -32,6 +32,8 @@
   "error.NOT_SHOWN.title": "The folder could not be shown",
   "error.NO_ARCHIVE.title": "No release holds the census history",
   "error.NO_DATA_DIR.title": "The app has no folder for its data",
+  "error.NO_EVIDENCE.description": "Only a package this app or the command wrote holds the evidence of its run.",
+  "error.NO_EVIDENCE.title": "The package holds no evidence of the run that made it",
   "error.NO_FILES_AT_STAGE.title": "The run holds no files at {stage}",
   "error.NO_GAME.description": "Find the game, or choose its folder, under Inputs",
   "error.NO_GAME.title": "No game is chosen",

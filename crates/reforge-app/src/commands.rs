@@ -298,6 +298,15 @@ pub async fn import_project(app: AppHandle, path: String) -> IpcResult<u64> {
     off_thread(move || store?.import_project(Utf8Path::new(&path))).await
 }
 
+/// Opens a package's embedded evidence as a kept run (#ADR-0041, #ADR-0096), and answers its
+/// number.
+#[tauri::command]
+#[specta::specta]
+pub async fn open_package(app: AppHandle, path: String) -> IpcResult<u64> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.open_package(Utf8Path::new(&path))).await
+}
+
 /// Marks a kept run so that the store's bound does not remove it, or unmarks it.
 #[tauri::command]
 #[specta::specta]

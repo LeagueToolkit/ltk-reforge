@@ -147,6 +147,11 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.NO_PROJECT_OF.title"](),
       description: m["error.NO_PROJECT_OF.description"](),
     }))
+    .with({ code: "NO_EVIDENCE" }, ({ path }) => ({
+      title: m["error.NO_EVIDENCE.title"](),
+      description: m["error.NO_EVIDENCE.description"](),
+      detail: path,
+    }))
     .with({ code: "PROJECT_FORMAT" }, ({ found }) => ({
       title: m["error.PROJECT_FORMAT.title"]({ found: String(found) }),
       description: m["error.PROJECT_FORMAT.description"](),

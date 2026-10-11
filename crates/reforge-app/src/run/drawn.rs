@@ -17,10 +17,10 @@ use serde::Serialize;
 
 use super::StageName;
 use super::views::{
-    ChangeView, FixupChanges, FixupRow, ModView, ObjectView, OutcomeView, PackageRow, PackageView,
-    PartView, ReportParts, TargetsView,
+    AfterView, ChangeView, FixupChanges, FixupRow, ModView, ObjectView, OutcomeView, PackageRow,
+    PackageView, PartView, ReportParts, TargetsView,
 };
-use crate::view::{Finding, read_clean, through_clean};
+use crate::view::{Finding, clean_strings, read_clean, through_clean};
 
 /// What the views draw of a run as far as it got.
 pub(super) struct Drawn {
@@ -60,6 +60,35 @@ impl Drawn {
             package,
             names,
         }
+    }
+
+    /// What a report alone gives the views, with no run behind it: the report beside a
+    /// package opened (#ADR-0096). A change has no class or field, no object is drawn, and
+    /// the package has no thumbnail. None for a report the views do not read: the file is
+    /// any text beside the package.
+    pub fn of_report(report: &str) -> Option<Self> {
+        let mut value: serde_json::Value = serde_json::from_str(report).ok()?;
+        clean_strings(&mut value);
+        let mut parts: ReportParts = serde_json::from_value(value).ok()?;
+        let targets = parts.named_targets();
+        let rows = parts.changes.take().unwrap_or_default();
+        let package = parts.package.take().map(|row| PackageView {
+            name: row.name,
+            version: row.version,
+            chunks: row.chunks.len(),
+            patches: row.patches.len(),
+            thumbnail: None,
+        });
+        Some(Self {
+            meta: parts.meta.take(),
+            halted: parts.halted,
+            changes: rows.into_iter().map(reported_changes).collect(),
+            objects: Vec::new(),
+            targets,
+            package,
+            names: parts.names(),
+            findings: parts.diagnostics,
+        })
     }
 
     /// What a stage that ended gave the views, read from a report of that part alone, as
@@ -167,6 +196,35 @@ fn changes_of(run: &Run<'_>, rows: Vec<FixupRow>) -> Vec<FixupChanges> {
             }
         })
         .collect()
+}
+
+/// A report's row of one fixup's changes as a view, from the report alone: no class or field,
+/// and the outcome the change's `after` says.
+fn reported_changes(row: FixupRow) -> FixupChanges {
+    let views = row.changes.into_iter().map(|change| ChangeView {
+        object: change.object,
+        entry: change.entry,
+        field: String::new(),
+        // As the library counts a change: a value kept or moved is changed.
+        outcome: match &change.after {
+            AfterView::Value { .. } | AfterView::Moved { .. } => OutcomeView::Changed,
+            AfterView::Removed => OutcomeView::Removed,
+            AfterView::Lost => OutcomeView::Lost,
+            AfterView::Unconvertible { .. } => OutcomeView::Unconvertible,
+        },
+        reached: change.reached,
+        path: change.path,
+        before: change.before,
+        after: change.after,
+    });
+    FixupChanges {
+        fixup: row.fixup,
+        changed: row.changed,
+        removed: row.removed,
+        lost: row.lost,
+        unconvertible: row.unconvertible,
+        changes: views.collect(),
+    }
 }
 
 /// The class and the field a change is at, `Class.field`. Empty for the object itself.
