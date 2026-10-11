@@ -169,6 +169,43 @@ removes them, asked about first (#ADR-0061, `reforge_app::storage`). The work on
 (a download, an update, a bootstrap, a removal) runs one at a time, and the buttons of the
 others are off while one runs. A page left and come back to shows the work still under way.
 
+## The Mod page
+
+#ADR-0091. The page shows what an archive holds before a run: the load report, rendered
+(`reforge_app::explore`). It takes the window's whole width, and adds no rule about a mod
+(#ADR-0046).
+
+**What it runs.** `explore_mod` takes a port's run with the standard settings through `load`,
+as `run_mod` makes one: over the store's tiers, from the raw snapshot the ingest tier holds of
+the archive when there is one, and as one run at a time with the runs of `run_mod`
+(`RUN_BUSY` while one is under way). A read of the archive it makes goes into the ingest tier
+as any run's does. Nothing goes to the store's rows: the app holds the last mod explored in
+memory (`state::Explored`), with its raw snapshot, its load snapshot and the run's memory
+layer, until the next explore replaces it. A run halted in `read` or `load` keeps what it has,
+and its view names the halting finding; an input that does not answer is the view's `fault`.
+
+**What it shows.** At the top, the mod card the run page shows, from `peek_mod` as soon as the
+mod is picked or dropped on the window, with "Choose mod", "Explore" and "Run this mod". Run
+this mod takes the archive and the standard settings (`explore_run`) into the run page as the
+Runs page's Run again does; nothing runs until the person presses Run. While the explore runs
+the page says so. Once explored, three tabs:
+
+- **Overview**: the build the mod was made at, else "not dated", with the file or object that
+  dated it and how many pieces the history dates, at the bound among them; the characters with
+  their kind, WAD, unit count and a mark when every skin bin is the game's; the units with
+  their character, slot and skin bin, the slot the entry's name spells when it differs, and
+  how many bins load for them; the WADs with their role, layout, files, named files, locale and
+  a mark for a restoration; the files per kind, from the inventory, in the kind's order; and
+  the files per provenance fact (the install's bytes, earlier builds', the mod's own), in the
+  order the library declares the facts. Every text is the report's, read through `clean`.
+- **Files**: the Runs page's files browser over the files at `load` (`explore_files`), each
+  marked the same, with a badge of its provenance fact and a filter by fact beside the filter
+  by path and kind; a file opens in the Runs page's viewer (`explore_file`), over the explored
+  run's layer, the run tier and the ingest tier, a bin's names spelled through the load's
+  names. The listing is the function a kept run's files go through
+  (`store::load_files`, `store::Tiers`).
+- **Findings**: the findings of `read` and `load`, the worst first.
+
 ## The app's store
 
 #ADR-0093, #ADR-0096. The app keeps runs in one folder of its data folder, `store/`
@@ -709,7 +746,8 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    - the output folder in Settings, the mod card saying where the package goes;
    - the census history's group folded under a disclosure for maintainers.
 2. **The Mod page** and the **History page** (#ADR-0091), which share a renderer of values with
-   names, and the library's read of an archive alone and its spelled history queries.
+   names, and the library's read of an archive alone and its spelled history queries. Built:
+   the Mod page ("The Mod page"). Left: the History page.
 3. **The guided view** (#ADR-0090), its answers the library's settings, a unit's own target
    and a file kept among them (#ADR-0098).
 4. **Runs** and **Records** (#ADR-0091): the runs kept in the app's store with their
