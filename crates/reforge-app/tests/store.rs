@@ -378,6 +378,7 @@ impl Bench {
             through,
             settings: RunSettings::default(),
             out: Some(self.folder.root.join("out").to_string()),
+            keep: false,
         }
     }
 
@@ -849,6 +850,30 @@ fn a_rerun_through_a_stage_resumes_no_later_than_it() {
         .map(|s| s.stage)
         .collect();
     assert_eq!(reached, [Read, Load, Fix]);
+}
+
+#[test]
+fn a_port_through_plan_kept_on_request_is_listed_without_a_package_and_the_write_resumes_from_it() {
+    use StageName::*;
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), "mod.fantome", Plan);
+    request.kind = RunKind::Port;
+    let unkept = bench.run(&request);
+    assert_eq!(unkept.saved, None, "a run not asked to be kept");
+    assert!(bench.ids().is_empty());
+    request.keep = true;
+
+    let kept = bench.run(&request);
+
+    assert_eq!((kept.saved, kept.written.as_deref()), (Some(1), None));
+    let listed = bench.store.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].package, None);
+    assert_eq!(listed[0].reached, [Load, Fix, Facts, Decide, Plan]);
+    let written = bench.port(&own_mod(), "mod.fantome");
+    assert!(written.written.is_some());
+    assert_eq!(resumed(&written), [Load, Fix, Facts, Decide, Plan]);
+    assert_eq!(bench.ids(), [2, 1]);
 }
 
 #[test]

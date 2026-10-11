@@ -314,7 +314,7 @@ pub struct RunView {
     pub package: Option<PackageView>,
     /// The `.modpkg` written.
     pub written: Option<String>,
-    /// The run's number in the app's store, once a write kept it there (#ADR-0096).
+    /// The run's number in the app's store, once the store kept it (#ADR-0096).
     pub saved: Option<u64>,
     /// Whether a finding the settings block refused the write.
     pub refused: bool,

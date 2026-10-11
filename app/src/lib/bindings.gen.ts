@@ -1284,7 +1284,7 @@ export type ObjectView = {
 
 /**  Where a kept run came from (#ADR-0096). */
 export type Origin = 
-/**  A run of the app's that wrote its package. */
+/**  A run of the app's that wrote its package, or one kept on request before the write. */
 "run" | 
 /**  A project file imported: a run with its load, its raw snapshot and their bytes. */
 "project" | 
@@ -1609,6 +1609,12 @@ export type RunRequest = {
 	settings: RunSettings,
 	/**  The folder the `.modpkg` and its report are written in. Required to write. */
 	out: string | null,
+	/**
+	 *  Keep the run in the store when it ends at `through` without writing, as a written run
+	 *  is kept: the guided view's run through `plan`, which the run from the answers resumes
+	 *  from (#ADR-0090, #ADR-0094).
+	 */
+	keep?: boolean,
 };
 
 /**  A run the store keeps, as the Runs page lists it. */
@@ -1713,7 +1719,7 @@ export type RunView = {
 	package: PackageView | null,
 	/**  The `.modpkg` written. */
 	written: string | null,
-	/**  The run's number in the app's store, once a write kept it there (#ADR-0096). */
+	/**  The run's number in the app's store, once the store kept it (#ADR-0096). */
 	saved: number | null,
 	/**  Whether a finding the settings block refused the write. */
 	refused: boolean,

@@ -29,7 +29,7 @@ const REACHED: [(StageName, &str); 6] = [
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum Origin {
-    /// A run of the app's that wrote its package.
+    /// A run of the app's that wrote its package, or one kept on request before the write.
     Run,
     /// A project file imported: a run with its load, its raw snapshot and their bytes.
     Project,

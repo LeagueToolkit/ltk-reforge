@@ -186,7 +186,8 @@ export function GuidedRepair() {
       return;
     }
     setGuided(NOT_GUIDED);
-    gate(() => run.mutate(asked, { onSuccess: askOf }));
+    // Kept, so that the run from the answers resumes from its plan.
+    gate(() => run.mutate({ ...asked, keep: true }, { onSuccess: askOf }));
   };
 
   const runAnswers = () => {

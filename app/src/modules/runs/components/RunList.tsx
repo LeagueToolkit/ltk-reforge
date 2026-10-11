@@ -79,6 +79,22 @@ export function ClearedBadge({ row }: { row: RunRow }) {
   );
 }
 
+/**
+ * How far a run that wrote no package went: the guided view's run kept at its plan. None for a
+ * run that wrote one, and for a package opened, which holds no snapshot.
+ */
+function ReachedLabel({ row }: { row: RunRow }) {
+  const last = row.reached.at(-1);
+  if (row.package || !last) {
+    return null;
+  }
+  return (
+    <span className="shrink-0 select-none" data-ui="RunList:reached">
+      {m.runs_reached_label({ stage: m[`stage.${last}.label`]() })}
+    </span>
+  );
+}
+
 /** A run as the list draws it: its name and marks, then its kind, author and when. */
 export function RunLine({ row, now }: { row: RunRow; now: Date }) {
   return (
@@ -99,6 +115,7 @@ export function RunLine({ row, now }: { row: RunRow; now: Date }) {
       <span className="flex min-w-0 items-center gap-2 text-xs text-surface-400">
         <KindBadge kind={row.kind} />
         <ClearedBadge row={row} />
+        <ReachedLabel row={row} />
         {row.author && (
           <span className="min-w-0 truncate">{m.runs_by_label({ author: row.author })}</span>
         )}

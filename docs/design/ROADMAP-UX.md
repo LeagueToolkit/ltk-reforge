@@ -233,17 +233,19 @@ it is the ingest tier's entry. A `meta` table holds the rows' format; a file of 
 format, or one whose format does not read, is moved aside under its format's name and a new
 one made, never migrated.
 
-**The save.** A run is kept when it writes its package. With the store, a run reads through
+**The save.** A run is kept when it writes its package, and when its request asks to keep it
+(`RunRequest::keep`) and it ends at its `through` stage, with no package: the guided view's
+run through `plan` ("The guided view"). With the store, a run reads through
 both tiers, and starts from a kept run ("The rerun") or from the raw snapshot the ingest
 tier holds of its archive's SHA-256 when there is one, `read` then shown as ran. Once the
 write succeeds, its memory layer is flushed into the run tier and synced, then the rows are
 written in one transaction: the raw row, the load row unless one of its key is there, the run
-row and its `run_blob` rows. A run through `check` and no further, a write the settings
-refuse and a run with no snapshots keep nothing. The view of the run names its number
+row and its `run_blob` rows. A run through `check` and no further that its request does not
+ask to keep, a write the settings refuse and a run with no snapshots keep nothing. The view of the run names its number
 (`RunView::saved`). A save that fails leaves the run as it ran, unkept, and logs why.
 
 **The rerun.** A run whose archive the ingest tier holds resumes from a kept run where one
-holds (#ADR-0094). Its load key is computed before it runs, by the function that keys a
+holds (#ADR-0094), a run kept at its plan on request among them. Its load key is computed before it runs, by the function that keys a
 saved load (`store::load_key`), from the raw snapshot, this program, the load inputs open and
 the load settings its settings declare. The newest run of that load and of the request's
 kind is the one resumed from (`AppStore::newest_kept_run_of`), and its row alone is
@@ -366,11 +368,13 @@ right. It takes the window's whole width, which the route asks of the shell (`st
 **The list** has a row per run, newest first: the mod's name, else the archive's file name,
 the author, the kind (Repair or Port), when the store wrote it as a relative time ("3 min
 ago", "yesterday", the date beyond a week) with the full time on hover, a pin when a person
-marked it kept and a package when it wrote one. A run whose archive data the ingest tier
+marked it kept and a package when it wrote one. A run kept at its plan on request ("The
+save") has no package, and says the last stage it reached ("through Plan"); its Show package
+is off and Run again works as for any run. A run whose archive data the ingest tier
 lacks has a badge "archive data cleared" (`RunRow::archive_ingested`); a package opened,
 which never had any, has none. A box above it filters by name and author. The run picked is
 the route's (`/runs?run=<number>`), so a link elsewhere opens the page at a run. With no run kept,
-the page says none has written a package and links to the run page.
+the page says none is kept and links to the run page.
 
 **Open…**, a menu beside the box (and under the empty page's line), opens a file as a kept
 run: "Import project" picks a `.reforge-project` (`import_project`), "Open package" a
@@ -757,7 +761,7 @@ user picks another policy and runs again.
 
 **The guided view.** #ADR-0090, #ADR-0098, #ADR-0099. "Guide me" ports the mod with the
 standard settings and an empty block list through `plan`, with the live progress the simple
-view shows. A run that halts shows the simple view's banner. The questions are the app
+view shows, and asks the store to keep that run (`RunRequest::keep`, "The save"). A run that halts shows the simple view's banner. The questions are the app
 crate's (`reforge_app::guided`, the command `guided_questions`), derived from the view the
 window holds, so the rule of what is asked is one place and the front end renders it. One
 question is asked for each finding of a kind the library decided by a default, in this order,
@@ -785,9 +789,10 @@ runs through `write`. A run with nothing to ask goes on to the write with the sa
 The result shows as the simple view's, with the answers kept: "Change answers" derives the
 questions of the run that wrote, keeps an answer where a question's id and its choice's id
 match, and keeps a question that run no longer asks while its answer is not the default, since
-that answer is why its finding went. A written run is kept, so each run from changed answers
-resumes from it as "The rerun" says, from its load at worst; the run through `plan` is not
-kept, so the first write resumes from the raw snapshot. The advanced view's settings show the
+that answer is why its finding went. The run through `plan` is kept, so the first write
+resumes from it as "The rerun" says, after the latest stage whose settings the answers
+leave as that run had them, after its load at worst; a written run is kept too, so each run
+from changed answers resumes from it the same way. The advanced view's settings show the
 targets given to units, the files kept and the other slots shipped that the last guided run
 set, read only under the policy, each with Clear; they name one mod's units and files, so
 picking another mod clears them and a batch leaves them out.

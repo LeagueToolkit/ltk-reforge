@@ -76,6 +76,7 @@ impl Bench {
             through,
             settings: RunSettings::default(),
             out: Some(self.path("out").to_string()),
+            keep: false,
         }
     }
 

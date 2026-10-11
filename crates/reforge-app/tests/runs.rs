@@ -115,6 +115,7 @@ impl Bench {
             through: StageName::Write,
             settings,
             out: Some(root.join("out").to_string()),
+            keep: false,
         };
         let view = run::run(
             &self.inputs,

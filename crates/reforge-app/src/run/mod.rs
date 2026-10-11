@@ -2,7 +2,8 @@
 //! last stage to run, the settings the library has, and where the package is written. Each
 //! request is a new `Run`: resumed from a kept run's snapshots where one of its load holds,
 //! else from the raw snapshot the app's store holds of the archive, else from the archive; a
-//! run is kept in the store when it writes its package (#ADR-0094, #ADR-0096).
+//! run is kept in the store when it writes its package, or when its request asks to keep it
+//! (#ADR-0094, #ADR-0096).
 //!
 //! The stages are run one at a time, as `Run::through` runs them, so a [`Watch`] hears each
 //! one start and end, or taken from a kept run, each finding as it is raised, and what each
@@ -269,6 +270,11 @@ pub struct RunRequest {
     pub settings: RunSettings,
     /// The folder the `.modpkg` and its report are written in. Required to write.
     pub out: Option<String>,
+    /// Keep the run in the store when it ends at `through` without writing, as a written run
+    /// is kept: the guided view's run through `plan`, which the run from the answers resumes
+    /// from (#ADR-0090, #ADR-0094).
+    #[serde(default)]
+    pub keep: bool,
 }
 
 /// A stage starting or ending, as a run tells its [`Watch`].
@@ -383,7 +389,8 @@ pub(crate) fn ingested(store: &AppStore, path: &Utf8Path, caps: &Caps) -> Option
 
 /// Runs a request against the inputs, telling `watch` how it goes. With a store, the run
 /// reads through its tiers and starts from the raw snapshot it holds of the archive, and a
-/// run that wrote its package is kept in it (#ADR-0096).
+/// run that wrote its package is kept in it (#ADR-0096), as is one the request asks to keep
+/// that ended at its `through` stage.
 ///
 /// A `cancel` set ends the stage under way after its step (#ADR-0097): the run ends with its
 /// report, writes nothing and is not kept. Set after `check`, it stops the write.
@@ -517,16 +524,25 @@ pub fn run(
         cancelled,
         millis,
     };
-    if let (Some(store), Some(package)) = (store, view.written.clone()) {
+    let keeps = view.written.is_some() || (request.keep && reached(&view, request.through));
+    if let Some(store) = store.filter(|_| keeps) {
+        let package = view.written.clone();
         let kept = Kept {
             request,
             raw,
-            package: &package,
+            package: package.as_deref(),
             view: &view,
         };
         view.saved = save(store, run, inputs, kept);
     }
     Ok(view)
+}
+
+/// Whether a run ended at `through` with that stage run: not halted, stopped or faulted.
+fn reached(view: &RunView, through: StageName) -> bool {
+    let ended = view.halted.is_none() && view.cancelled.is_none() && view.fault.is_none();
+    let ran = (view.stages.iter()).any(|s| s.stage == through && s.state == StageState::Ran);
+    ended && ran
 }
 
 /// What a stage gave the views, sent to a watch that takes it, as the stage ends or is taken
@@ -659,19 +675,21 @@ fn from_kept<'m>(
     }
 }
 
-/// What a run that wrote its package keeps beside the run itself.
+/// What a run kept keeps beside the run itself.
 struct Kept<'a> {
     request: &'a RunRequest,
     /// The raw snapshot the ingest tier held of the archive, which a run resumed from a kept
     /// run's later snapshots does not hold.
     raw: Option<RawSnapshot>,
-    package: &'a str,
+    /// The package written. None for a run kept on request at `through`.
+    package: Option<&'a str>,
     view: &'a RunView,
 }
 
-/// Keeps a run that wrote its package in the store with the view it ended with, and answers
-/// its number. A run with no snapshots, one judged with an earlier run's evidence, is not
-/// kept. A store that does not write leaves the run as it ran, unkept, and says so in the log.
+/// Keeps a run that wrote its package, or one the request asks to keep, in the store with the
+/// view it ended with, and answers its number. A run with no snapshots, one judged with an
+/// earlier run's evidence, is not kept. A store that does not write leaves the run as it ran,
+/// unkept, and says so in the log.
 fn save(store: &AppStore, run: Run<'_>, inputs: &Inputs, kept: Kept<'_>) -> Option<u64> {
     let Kept {
         request,
@@ -693,11 +711,11 @@ fn save(store: &AppStore, run: Run<'_>, inputs: &Inputs, kept: Kept<'_>) -> Opti
             .env()
             .schema()
             .map(|schema| schema.latest().to_string()),
-        package: Some(package.to_string()),
+        package: package.map(str::to_string),
         layer: run.into_layer(),
     };
     let kept = store.save(saved);
-    kept.inspect_err(|error| tracing::warn!(%error, "a run that wrote its package is not kept"))
+    kept.inspect_err(|error| tracing::warn!(%error, "a run is not kept"))
         .ok()
 }
 

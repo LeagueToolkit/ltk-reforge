@@ -282,6 +282,7 @@ impl Batch<'_> {
             through: StageName::Write,
             settings: self.request.settings.clone(),
             out: Some(out_of(self.request, archive)),
+            keep: false,
         };
         let mut watch = Counting::default();
         let at = Instant::now();

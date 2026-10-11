@@ -133,7 +133,8 @@ pub struct AppStore {
     bound: usize,
 }
 
-/// What a run that wrote its package leaves to keep (#ADR-0096).
+/// What a run kept leaves: one that wrote its package, or one its request asks to keep
+/// (#ADR-0096).
 pub struct Saved {
     /// The raw snapshot the run started from.
     pub raw: RawSnapshot,
@@ -151,7 +152,7 @@ pub struct Saved {
     pub settings: RunSettings,
     /// The schema database's build, as the inputs report it.
     pub schema_build: Option<String>,
-    /// The `.modpkg` written.
+    /// The `.modpkg` written. None for a run kept on request before the write.
     pub package: Option<String>,
     /// The run's memory layer: every byte its stages made, by id.
     pub layer: BTreeMap<ContentId, ByteView>,
@@ -195,7 +196,7 @@ impl AppStore {
         &self.tier
     }
 
-    /// Keeps a run that wrote its package, and answers its number. The layer is flushed into
+    /// Keeps a run, and answers its number. The layer is flushed into
     /// the run tier first and the rows written after it in one transaction, so a row never
     /// names a byte the tier lacks: the raw row (its path the last one read), the load row,
     /// shared by every run of its key, the run row, and the ids of its layer and of its
