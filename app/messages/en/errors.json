@@ -2,6 +2,7 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "error.BAD_FILTER.title": "The filter {filter} does not read",
   "error.BAD_POLICY.title": "The policy is none the library has",
+  "error.BAD_SETTING.title": "A unit's target or a file to keep names nothing the library takes",
   "error.ARCHIVE_UNREADABLE.title": "The census history's archive does not read",
   "error.BAD_RULE.title": "The rule {id} does not read",
   "error.BLOB_MISSING.description": "The mod's bytes were cleared from the store. Run the mod again to have them back.",

@@ -20,9 +20,10 @@ use fs_err as fs;
 use reforge::archive::{Caps, RawSnapshot, file_name_of};
 use reforge::diag::{Action, Cancel, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
-use reforge::model::{ContentId, Spelled};
+use reforge::load::KeptFile;
+use reforge::model::{ContentId, Slot, Spelled};
 use reforge::package::{CheckSelection, CheckSet, EvidenceDoc, Modpkg, PackageWriter};
-use reforge::port::{AnimReuse, Policy, TargetPolicy};
+use reforge::port::{AnimReuse, Policy, TargetPolicy, UnitTarget};
 use reforge::snapshot::{LoadInputs, Program, Snapshots, StageSettings};
 use reforge::{Porter, Repairer, Run, RunError, Settings, Start};
 use serde::{Deserialize, Serialize};
@@ -114,6 +115,34 @@ pub struct RunSettings {
     pub game_events_only: bool,
     /// Ship each DDS as it is, put in TEX's container nowhere.
     pub keep_dds: bool,
+    /// Targets given to units alone, each in place of the policy's for that unit (#ADR-0098).
+    pub unit_targets: Vec<UnitTargetView>,
+    /// Files kept where the run would drop them as stale copies (#ADR-0098, #ADR-0099).
+    pub kept_files: Vec<KeptFileView>,
+    /// Ship a port's units at slots other than their champion's target too (#ADR-0082).
+    pub keep_other_slots: bool,
+}
+
+/// A target given to one unit (#ADR-0098): the unit by its character and the slot the mod
+/// ships it at, and the slot it ships to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct UnitTargetView {
+    /// The character's name, as the mod's directory spells it.
+    pub character: String,
+    /// The slot the mod ships the unit at.
+    pub slot: u16,
+    /// The slot it ships to. None: it is left to the game.
+    pub target: Option<u16>,
+}
+
+/// A file kept where the run would drop it as a stale copy (#ADR-0098): by its WAD's name and
+/// its path in that WAD, or its path hash as sixteen hex digits.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+pub struct KeptFileView {
+    /// The WAD's name: `lux.wad.client`.
+    pub wad: String,
+    /// The file's path in the WAD.
+    pub path: String,
 }
 
 impl Default for RunSettings {
@@ -128,6 +157,9 @@ impl Default for RunSettings {
             anim_reuse: policy.anim_reuse.as_str().to_string(),
             game_events_only: false,
             keep_dds: false,
+            unit_targets: Vec::new(),
+            kept_files: Vec::new(),
+            keep_other_slots: false,
         }
     }
 }
@@ -139,7 +171,37 @@ impl RunSettings {
         self.checks()?;
         self.blocking()?;
         self.policy()?;
+        self.unit_targets()?;
+        self.kept_files()?;
         Ok(())
+    }
+
+    fn unit_targets(&self) -> Result<Vec<UnitTarget>, AppError> {
+        let given = self.unit_targets.iter().map(|given| {
+            let character = given.character.trim();
+            if character.is_empty() || character.contains(['/', '\\']) {
+                return Err(AppError::BadSetting {
+                    detail: format!("{character:?} names no character"),
+                });
+            }
+            Ok(UnitTarget {
+                character: character.to_ascii_lowercase(),
+                slot: Slot(given.slot),
+                target: given.target.map(Slot),
+            })
+        });
+        given.collect()
+    }
+
+    fn kept_files(&self) -> Result<Vec<KeptFile>, AppError> {
+        let kept = self.kept_files.iter().map(|kept| {
+            let bad = |detail: String| AppError::BadSetting { detail };
+            if kept.wad.trim().is_empty() || kept.path.trim().is_empty() {
+                return Err(bad(format!("{}/{} names no file", kept.wad, kept.path)));
+            }
+            KeptFile::new(&kept.wad, &kept.path).map_err(|error| bad(error.to_string()))
+        });
+        kept.collect()
     }
 
     fn fixups(&self) -> Result<FixupSet, AppError> {
@@ -330,6 +392,8 @@ pub fn run(
     let checks = settings.checks()?;
     let blocking = settings.blocking()?;
     let policy = settings.policy()?;
+    let unit_targets = settings.unit_targets()?;
+    let kept_files = settings.kept_files()?;
     let out = match (request.through, &request.out) {
         (StageName::Write, None) => return Err(AppError::NoOutput),
         (StageName::Write, Some(out)) => Some(Utf8PathBuf::from(out)),
@@ -344,16 +408,20 @@ pub fn run(
                 .fixups(fixups)
                 .checks(checks)
                 .keep_stale(settings.keep_stale)
+                .keep_files(kept_files)
                 .keep_dds(settings.keep_dds),
         ),
         RunKind::Port => Maker::Port(
             Porter::new(env)
                 .policy(policy)
+                .unit_targets(unit_targets)
                 .compare(policy.other_levels())
                 .fixups(fixups)
                 .checks(checks)
                 .keep_stale(settings.keep_stale)
+                .keep_files(kept_files)
                 .game_events_only(settings.game_events_only)
+                .keep_other_slots(settings.keep_other_slots)
                 .keep_dds(settings.keep_dds),
         ),
     };

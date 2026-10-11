@@ -12,18 +12,18 @@ use reforge::model::BinHash;
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
-    self, AfterView, OutcomeView, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent,
-    StageName, StageState, Unwatched, Watch,
+    self, AfterView, KeptFileView, OutcomeView, PartView, RunKind, RunRequest, RunSettings,
+    RunView, StageEvent, StageName, StageState, UnitTargetView, Unwatched, Watch,
 };
 use reforge_app::selection::{FixupChoice, RuleOp, RuleSpec};
 use reforge_app::view::Finding;
 use reforge_testkit::archive::zip;
-use reforge_testkit::bins::{bin, blob, entry, flag, object};
+use reforge_testkit::bins::{Skin, bin, blob, entry, flag, object};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
 use reforge_testkit::fixes::skin_archive;
 use reforge_testkit::schema::{field, kind};
-use reforge_testkit::skins::{self, skin_bin};
-use reforge_testkit::{ModArchive, SchemaRows};
+use reforge_testkit::skins::{self, BASE_TEX, WAD, skin_bin};
+use reforge_testkit::{MemoryHistory, ModArchive, SchemaRows};
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
@@ -586,6 +586,95 @@ fn a_rule_added_in_the_settings_runs_as_a_fixup() {
         .unwrap_or_else(|| panic!("the rule changed nothing: {:?}", view.changes));
     assert_eq!(fixup.removed, 1);
     assert_eq!(fixup.changes[0].path, "toolField");
+}
+
+#[test]
+fn a_unit_given_no_target_is_left_to_the_game_by_its_own_setting() {
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), StageName::Check);
+    request.kind = RunKind::Port;
+    request.settings.unit_targets = vec![UnitTargetView {
+        character: "Test".to_string(),
+        slot: 0,
+        target: None,
+    }];
+
+    let view = bench.run(&request);
+
+    let targets = view.targets.expect("the decisions");
+    let decision = &targets.decisions[0];
+    assert_eq!(
+        (decision.chosen, decision.reason.as_str()),
+        (None, "per-unit")
+    );
+}
+
+#[test]
+fn a_unit_target_or_a_kept_file_that_names_nothing_is_refused_before_the_run() {
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), StageName::Check);
+    request.kind = RunKind::Port;
+    request.settings.unit_targets = vec![UnitTargetView {
+        character: "a/b".to_string(),
+        slot: 0,
+        target: Some(1),
+    }];
+    assert!(matches!(
+        bench.try_run(&request),
+        Err(AppError::BadSetting { .. })
+    ));
+
+    request.settings.unit_targets.clear();
+    request.settings.kept_files = vec![KeptFileView {
+        wad: WAD.to_string(),
+        path: String::new(),
+    }];
+    assert!(matches!(
+        bench.try_run(&request),
+        Err(AppError::BadSetting { .. })
+    ));
+}
+
+/// The base texture as the game shipped it one build ago.
+const STALE_TEX: &str = "the base texture one build ago";
+
+/// The mod's own rig at skin0, its skin naming the base's texture, which it ships as the game
+/// had it one build ago: a stale copy (#MOD-ARTIFACT-0004).
+fn stale_mod() -> ModArchive {
+    let skin = Skin {
+        texture: BASE_TEX.into(),
+        ..own_skin("a", GRAPH0, RESOURCES0)
+    };
+    let mut files = own_files("a");
+    files.push((BASE_TEX.into(), blob(STALE_TEX)));
+    let objects = vec![entry(SKIN0, &skin), own_graph("a", GRAPH0)];
+    files.push((skin_bin("test", 0), bin(objects)));
+    archive(&files)
+}
+
+#[test]
+fn a_repair_with_a_kept_file_carries_the_stale_copy() {
+    let history =
+        MemoryHistory::new(&["16.18.1", "16.19.1"]).with_content(BASE_TEX, &blob(STALE_TEX), 0..=0);
+    let bench = Bench {
+        inputs: Inputs::of_env(env(skins::game(), history)),
+        ..Bench::new()
+    };
+    let standard = bench.request(&stale_mod(), StageName::Check);
+    let mut keeping = standard.clone();
+    keeping.settings.kept_files = vec![KeptFileView {
+        wad: WAD.to_string(),
+        path: BASE_TEX.to_string(),
+    }];
+
+    let dropped = bench.run(&standard);
+    let kept = bench.run(&keeping);
+
+    let stale = |view: &RunView| view.findings.iter().any(|f| f.code == "file.stale");
+    assert!(stale(&dropped), "the standard run finds the stale copy");
+    assert!(!stale(&kept), "the kept file is no stale copy");
+    let chunks = |view: &RunView| view.package.as_ref().expect("a package").chunks;
+    assert_eq!(chunks(&kept), chunks(&dropped) + 1);
 }
 
 #[test]

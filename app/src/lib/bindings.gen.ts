@@ -282,6 +282,8 @@ export type AppError =
 { code: "SELECTION_UNREADABLE"; path: string; detail: string } | 
 /**  A target policy or a level of animation reuse the library does not have. */
 { code: "BAD_POLICY"; detail: string } | 
+/**  A target given to one unit, or a file to keep, the library does not take. */
+{ code: "BAD_SETTING"; detail: string } | 
 /**  A write was asked for with no folder to write in. */
 { code: "NO_OUTPUT" } | 
 /**  A mod archive does not read: the halting diagnostic of `read`, its text cleaned. */
@@ -968,6 +970,17 @@ export type InstallView = {
 	chosen: boolean,
 };
 
+/**
+ *  A file kept where the run would drop it as a stale copy (#ADR-0098): by its WAD's name and
+ *  its path in that WAD, or its path hash as sixteen hex digits.
+ */
+export type KeptFileView = {
+	/**  The WAD's name: `lux.wad.client`. */
+	wad: string,
+	/**  The file's path in the WAD. */
+	path: string,
+};
+
 /**  An index the app installed that the settings do not choose. */
 export type KeptIndex = {
 	/**  Its folder. */
@@ -1372,6 +1385,12 @@ export type RunSettings = {
 	game_events_only?: boolean,
 	/**  Ship each DDS as it is, put in TEX's container nowhere. */
 	keep_dds?: boolean,
+	/**  Targets given to units alone, each in place of the policy's for that unit (#ADR-0098). */
+	unit_targets?: UnitTargetView[],
+	/**  Files kept where the run would drop them as stale copies (#ADR-0098, #ADR-0099). */
+	kept_files?: KeptFileView[],
+	/**  Ship a port's units at slots other than their champion's target too (#ADR-0082). */
+	keep_other_slots?: boolean,
 };
 
 /**  A stage of the run under way starting or ending. */
@@ -1674,6 +1693,19 @@ export type Theme =
 "dark" | 
 /**  Light. */
 "light";
+
+/**
+ *  A target given to one unit (#ADR-0098): the unit by its character and the slot the mod
+ *  ships it at, and the slot it ships to.
+ */
+export type UnitTargetView = {
+	/**  The character's name, as the mod's directory spells it. */
+	character: string,
+	/**  The slot the mod ships the unit at. */
+	slot: number,
+	/**  The slot it ships to. None: it is left to the game. */
+	target: number | null,
+};
 
 /**  A skin unit of the mod. */
 export type UnitView = {

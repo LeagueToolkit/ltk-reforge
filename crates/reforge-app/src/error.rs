@@ -49,6 +49,9 @@ pub enum AppError {
     /// A target policy or a level of animation reuse the library does not have.
     #[error("{detail}")]
     BadPolicy { detail: String },
+    /// A target given to one unit, or a file to keep, the library does not take.
+    #[error("{detail}")]
+    BadSetting { detail: String },
     /// A write was asked for with no folder to write in.
     #[error("no folder to write the package in")]
     NoOutput,

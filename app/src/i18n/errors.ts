@@ -57,6 +57,10 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.BAD_POLICY.title"](),
       detail,
     }))
+    .with({ code: "BAD_SETTING" }, ({ detail }) => ({
+      title: m["error.BAD_SETTING.title"](),
+      detail,
+    }))
     .with({ code: "NO_OUTPUT" }, () => ({
       title: m["error.NO_OUTPUT.title"](),
     }))
