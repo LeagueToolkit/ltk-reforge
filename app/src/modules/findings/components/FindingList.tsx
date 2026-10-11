@@ -5,6 +5,7 @@ import { match } from "ts-pattern";
 import { Disclosure } from "@/components";
 import { m } from "@/i18n";
 import type { Finding, Severity } from "@/lib/bindings.gen";
+import { RecordLink } from "@/modules/records";
 import { twMerge } from "@/utils";
 
 import { DataTree, hasFields, type IdNames, subjectName } from "./DataTree";
@@ -48,7 +49,7 @@ function FindingHead({ finding, folds, names }: FindingHeadProps) {
           <span className="text-surface-300">{finding.code}</span>
           <span className="break-all">{subjectName(finding.subject, names)}</span>
           {finding.by && <span>{m.findings_by_label({ by: finding.by })}</span>}
-          {finding.record && <span className="text-accent-300">{finding.record}</span>}
+          {finding.record && <RecordLink code={finding.record} />}
         </span>
       </span>
     </span>

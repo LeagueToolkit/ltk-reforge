@@ -11,8 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InputsRouteImport } from './routes/inputs'
+import { Route as RecordsRouteImport } from './routes/records'
 import { Route as RunsRouteImport } from './routes/runs'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RecordsIndexRouteImport } from './routes/records.index'
+import { Route as RecordsCodeRouteImport } from './routes/records.$code'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
 const InputsRoute = InputsRouteImport.update({
   id: '/inputs',
   path: '/inputs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecordsRoute = RecordsRouteImport.update({
+  id: '/records',
+  path: '/records',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RunsRoute = RunsRouteImport.update({
@@ -34,37 +42,71 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RecordsIndexRoute = RecordsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RecordsRoute,
+} as any)
+const RecordsCodeRoute = RecordsCodeRouteImport.update({
+  id: '/$code',
+  path: '/$code',
+  getParentRoute: () => RecordsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/inputs': typeof InputsRoute
+  '/records': typeof RecordsRouteWithChildren
   '/runs': typeof RunsRoute
   '/settings': typeof SettingsRoute
+  '/records/$code': typeof RecordsCodeRoute
+  '/records/': typeof RecordsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/inputs': typeof InputsRoute
   '/runs': typeof RunsRoute
   '/settings': typeof SettingsRoute
+  '/records/$code': typeof RecordsCodeRoute
+  '/records': typeof RecordsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/inputs': typeof InputsRoute
+  '/records': typeof RecordsRouteWithChildren
   '/runs': typeof RunsRoute
   '/settings': typeof SettingsRoute
+  '/records/$code': typeof RecordsCodeRoute
+  '/records/': typeof RecordsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inputs' | '/runs' | '/settings'
+  fullPaths:
+    | '/'
+    | '/inputs'
+    | '/records'
+    | '/runs'
+    | '/settings'
+    | '/records/$code'
+    | '/records/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inputs' | '/runs' | '/settings'
-  id: '__root__' | '/' | '/inputs' | '/runs' | '/settings'
+  to: '/' | '/inputs' | '/runs' | '/settings' | '/records/$code' | '/records'
+  id:
+    | '__root__'
+    | '/'
+    | '/inputs'
+    | '/records'
+    | '/runs'
+    | '/settings'
+    | '/records/$code'
+    | '/records/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   InputsRoute: typeof InputsRoute
+  RecordsRoute: typeof RecordsRouteWithChildren
   RunsRoute: typeof RunsRoute
   SettingsRoute: typeof SettingsRoute
 }
@@ -85,6 +127,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InputsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/records': {
+      id: '/records'
+      path: '/records'
+      fullPath: '/records'
+      preLoaderRoute: typeof RecordsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/runs': {
       id: '/runs'
       path: '/runs'
@@ -99,12 +148,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/records/': {
+      id: '/records/'
+      path: '/'
+      fullPath: '/records/'
+      preLoaderRoute: typeof RecordsIndexRouteImport
+      parentRoute: typeof RecordsRoute
+    }
+    '/records/$code': {
+      id: '/records/$code'
+      path: '/$code'
+      fullPath: '/records/$code'
+      preLoaderRoute: typeof RecordsCodeRouteImport
+      parentRoute: typeof RecordsRoute
+    }
   }
 }
+
+interface RecordsRouteChildren {
+  RecordsCodeRoute: typeof RecordsCodeRoute
+  RecordsIndexRoute: typeof RecordsIndexRoute
+}
+
+const RecordsRouteChildren: RecordsRouteChildren = {
+  RecordsCodeRoute: RecordsCodeRoute,
+  RecordsIndexRoute: RecordsIndexRoute,
+}
+
+const RecordsRouteWithChildren =
+  RecordsRoute._addFileChildren(RecordsRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InputsRoute: InputsRoute,
+  RecordsRoute: RecordsRouteWithChildren,
   RunsRoute: RunsRoute,
   SettingsRoute: SettingsRoute,
 }

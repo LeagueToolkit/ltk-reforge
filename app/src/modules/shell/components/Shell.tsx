@@ -1,4 +1,5 @@
 import {
+  BookOpenTextIcon,
   ClockCounterClockwiseIcon,
   GearSixIcon,
   StackIcon,
@@ -60,6 +61,10 @@ export function Shell({ inputsMark, wide = false, children }: ShellProps) {
         <NavLink to="/runs">
           <ClockCounterClockwiseIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_runs_label()}
+        </NavLink>
+        <NavLink to="/records">
+          <BookOpenTextIcon weight="bold" className="h-4 w-4" />
+          {m.shell_nav_records_label()}
         </NavLink>
         <NavLink to="/inputs">
           <StackIcon weight="bold" className="h-4 w-4" />

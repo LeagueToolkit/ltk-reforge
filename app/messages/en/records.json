@@ -1,0 +1,20 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "records_cited_by_title": "Cited by",
+  "records_cites_title": "Cites",
+  "records_filter_label": "Filter the records",
+  "records_filter_placeholder": "Filter by code or title",
+  "records_list_label": "Records",
+  "records_none_match": "No record matches",
+  "records_page_title": "Records",
+  "records_pick_hint": "Pick a record",
+  "records_series.adr.group": "Decisions",
+  "records_series.adr.label": "Decision",
+  "records_series.game-behavior.group": "Game behaviors",
+  "records_series.game-behavior.label": "Game behavior",
+  "records_series.game-change.group": "Game changes",
+  "records_series.game-change.label": "Game change",
+  "records_series.mod-artifact.group": "Mod artifacts",
+  "records_series.mod-artifact.label": "Mod artifact",
+  "records_unknown": "No record has the code {code}."
+}

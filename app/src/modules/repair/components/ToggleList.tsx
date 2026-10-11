@@ -1,11 +1,12 @@
 import { SectionCard, Switch } from "@/components";
+import { RecordLink } from "@/modules/records";
 
 /** One item of a list of things a run turns on and off. */
 export interface ToggleItem {
   id: string;
   title: string;
-  /** What it rests on: records, a phase. */
-  meta: string;
+  /** The records it rests on, by their codes, each a link to its page. */
+  records: string[];
   on: boolean;
   /** Whether the standard set differs from `on`. */
   changed: boolean;
@@ -34,7 +35,12 @@ export function ToggleList({ title, description, items, onToggle }: ToggleListPr
               </p>
               <p className="font-mono text-xs text-surface-400">
                 {item.id}
-                {item.meta && ` · ${item.meta}`}
+                {item.records.map((code) => (
+                  <span key={code}>
+                    {" · "}
+                    <RecordLink code={code} />
+                  </span>
+                ))}
               </p>
             </div>
             <Switch

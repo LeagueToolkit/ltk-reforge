@@ -192,7 +192,7 @@ function Toggles() {
     return {
       id: fixup.id,
       title: fixup.title,
-      meta: fixup.records.join(" "),
+      records: fixup.records,
       on,
       changed: on !== fixup.default,
     };
@@ -208,7 +208,8 @@ function Toggles() {
 
   const checkItems: ToggleItem[] = (checks.data ?? []).map((check) => {
     const on = !advanced.checksOff.includes(check.id);
-    return { id: check.id, title: check.title, meta: check.record ?? "", on, changed: !on };
+    const records = check.record ? [check.record] : [];
+    return { id: check.id, title: check.title, records, on, changed: !on };
   });
 
   return (
