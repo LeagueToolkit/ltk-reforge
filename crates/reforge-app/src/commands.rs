@@ -21,6 +21,7 @@ use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{self, Choice, InputsView};
 use crate::installs::{self, InstallView};
+use crate::records::{self, RecordHead, RecordView};
 use crate::reveal::{self, Place};
 use crate::run::{
     self, ModPeek, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch,
@@ -76,6 +77,20 @@ pub fn fixup_catalog() -> IpcResult<Vec<FixupEntry>> {
 #[specta::specta]
 pub fn check_catalog() -> IpcResult<Vec<CheckEntry>> {
     IpcResult::ok(catalog::checks())
+}
+
+/// Every record bundled into the app, in series order then number order.
+#[tauri::command]
+#[specta::specta]
+pub fn records() -> IpcResult<Vec<RecordHead>> {
+    IpcResult::ok(records::list())
+}
+
+/// A bundled record by its code, with or without its `#`. None for a code the bundle lacks.
+#[tauri::command]
+#[specta::specta]
+pub fn record(code: String) -> IpcResult<Option<RecordView>> {
+    IpcResult::ok(records::record(&code))
 }
 
 /// The game install on this machine, found as LTK Manager finds it. None when none is found.

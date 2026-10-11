@@ -13,6 +13,10 @@ export const commands = {
 	fixupCatalog: () => __TAURI_INVOKE<({ ok: true; value: FixupEntry[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("fixup_catalog"),
 	/**  Every check of the library, in the order they run. */
 	checkCatalog: () => __TAURI_INVOKE<({ ok: true; value: CheckEntry[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("check_catalog"),
+	/**  Every record bundled into the app, in series order then number order. */
+	records: () => __TAURI_INVOKE<({ ok: true; value: RecordHead[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("records"),
+	/**  A bundled record by its code, with or without its `#`. None for a code the bundle lacks. */
+	record: (code: string) => __TAURI_INVOKE<({ ok: true; value: RecordView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("record", { code }),
 	/**  The game install on this machine, found as LTK Manager finds it. None when none is found. */
 	findGame: () => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("find_game"),
 	/**
@@ -962,12 +966,38 @@ export type PolicyView = {
 	anim_reuse: string,
 };
 
+/**  A record as the list shows it. */
+export type RecordHead = {
+	/**  Its code as a citation: `#GAME-CHANGE-0005`. */
+	code: string,
+	/**  The series it is in. */
+	series: Series,
+	/**  Its number in the series. */
+	number: number,
+	/**  The heading's text after the code. */
+	title: string,
+	/**  An ADR's status line as written: `Accepted (2026-10-04)`. None for the other series. */
+	status: string | null,
+};
+
 /**  A record a rule rests on, as the library writes one. */
 export type RecordRef = {
 	/**  The series: `game-change`, `game-behavior`, `mod-artifact`. */
 	series: string,
 	/**  Its number in the series. */
 	number: number,
+};
+
+/**  A record opened: its head, its text and the records it names and is named by. */
+export type RecordView = {
+	/**  The record as the list shows it. */
+	head: RecordHead,
+	/**  The whole file, as Markdown. */
+	markdown: string,
+	/**  Every record its text names, each once, sorted, itself left out. */
+	cites: string[],
+	/**  Every bundled record whose text names it, sorted. */
+	cited_by: string[],
 };
 
 /**  What a rule does in the structs of its class. */
@@ -1200,6 +1230,20 @@ export type SchemaView = {
 	/**  The newest build number it describes. */
 	latest_build: string | null,
 };
+
+/**
+ *  A series of numbered records under `docs/`. The library's `Series` names the series code
+ *  cites as data; this one holds the decisions too, since the app lists them all.
+ */
+export type Series = 
+/**  A decision. */
+"adr" | 
+/**  A change Riot made to the game. */
+"game-change" | 
+/**  How the game client behaves. */
+"game-behavior" | 
+/**  What tools, mod managers and authors' practices put in mods. */
+"mod-artifact";
 
 /**
  *  The app's settings, as `settings.json` holds them.

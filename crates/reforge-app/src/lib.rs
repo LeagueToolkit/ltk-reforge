@@ -13,6 +13,7 @@ pub mod index;
 pub mod inputs;
 pub mod installs;
 pub mod ipc;
+pub mod records;
 pub mod reveal;
 pub mod run;
 pub mod schema;
