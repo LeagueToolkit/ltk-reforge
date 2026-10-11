@@ -8,7 +8,7 @@ import { FindingList } from "@/modules/findings";
 import { useSaveSettings, useSettings } from "@/modules/settings";
 
 import { useHashesCheck } from "../api/hashes";
-import { useFindGame, useInputs } from "../api/inputs";
+import { useInputs } from "../api/inputs";
 import { pickFile, pickFolder } from "../api/pick";
 import { useSchemaCheck } from "../api/schema";
 import { useCheckInputs } from "../api/stale";
@@ -16,9 +16,11 @@ import { CensusRow, KeptDownloads } from "./CensusRow";
 import { HashesDownload } from "./HashesDownload";
 import { IndexRow } from "./IndexRow";
 import { InputRow, StatusBadge } from "./InputRow";
+import { InstallsRow } from "./InstallsRow";
 import { SchemaDownload } from "./SchemaDownload";
 
-type InputKey = "inputs.game" | "inputs.hashes" | "inputs.schema" | "inputs.history";
+/** The inputs set by a path. The game install is chosen from its list (#ADR-0101). */
+type InputKey = "inputs.hashes" | "inputs.schema" | "inputs.history";
 
 function useSetInput() {
   const settings = useSettings();
@@ -76,7 +78,6 @@ function SchemaBadge({ own, read }: { own: boolean; read: boolean }) {
 function Rows({ view }: { view: InputsView | undefined }) {
   const settings = useSettings();
   const set = useSetInput();
-  const find = useFindGame();
   const chosen = settings.data ?? {};
 
   const choose = async (key: InputKey) => {
@@ -91,51 +92,10 @@ function Rows({ view }: { view: InputsView | undefined }) {
       set("inputs.schema", picked);
     }
   };
-  const findGame = () =>
-    find.mutate(undefined, {
-      onSuccess: (game) => {
-        if (game) {
-          set("inputs.game", game);
-        }
-      },
-    });
-  const game = view?.game.path ?? chosen["inputs.game"];
 
   return (
     <div className="flex flex-col divide-y divide-surface-700/50">
-      <InputRow
-        title={m.inputs_game_title()}
-        badge={!game && <StatusBadge tone="bad">{m.inputs_status_not_chosen_label()}</StatusBadge>}
-        description={m.inputs_game_description()}
-        path={game}
-        place="game"
-        none={m.inputs_game_none()}
-        facts={
-          <>
-            {view?.game.build && (
-              <span>{m.inputs_game_build_label({ build: view.game.build })}</span>
-            )}
-            {view && view.game.unreadable_wads > 0 && (
-              <span className="text-warning-text">
-                {m.inputs_game_unreadable_wads_label({ count: view.game.unreadable_wads })}
-              </span>
-            )}
-            {find.isSuccess && !find.data && (
-              <span className="text-warning-text">{m.inputs_find_none_hint()}</span>
-            )}
-          </>
-        }
-        actions={
-          <>
-            <Button size="sm" variant="ghost" loading={find.isPending} onClick={findGame}>
-              {m.inputs_find_action()}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => void choose("inputs.game")}>
-              {m.inputs_choose_folder_action()}
-            </Button>
-          </>
-        }
-      />
+      <InstallsRow view={view} />
       <InputRow
         title={m.inputs_hashes_title()}
         badge={view && <HashesBadge installed={view.hashes.tables.length > 0} />}

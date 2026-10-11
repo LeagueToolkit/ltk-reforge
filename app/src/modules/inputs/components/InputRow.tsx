@@ -60,7 +60,7 @@ export function StatusBadge({ tone, children }: { tone: Tone; children: ReactNod
 }
 
 /** A path read, and a button that shows its folder. */
-function PathLine({ path, place }: { path: string; place: Place }) {
+export function PathLine({ path, place }: { path: string; place: Place }) {
   const reveal = useReveal();
   return (
     <>

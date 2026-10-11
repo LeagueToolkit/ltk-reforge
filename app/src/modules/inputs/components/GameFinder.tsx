@@ -1,17 +1,18 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
-import { useSaveSettings, useSettings } from "@/modules/settings";
+import { useSettings } from "@/modules/settings";
 
-import { useFindGame } from "../api/inputs";
+import { installsQuery, useChooseInstall } from "../api/installs";
 
 /**
- * Looks for the game once, when the app starts with none chosen, and chooses the one found.
- * A game the user chose is never replaced.
+ * Looks for the installs once, when the app starts with none chosen, and chooses the live one,
+ * else the first found. An install the user chose is never replaced.
  */
 export function GameFinder() {
   const settings = useSettings();
-  const save = useSaveSettings();
-  const find = useFindGame();
+  const queryClient = useQueryClient();
+  const choose = useChooseInstall();
   const tried = useRef(false);
 
   useEffect(() => {
@@ -19,15 +20,17 @@ export function GameFinder() {
       return;
     }
     tried.current = true;
-    const current = settings.data;
-    find.mutate(undefined, {
-      onSuccess: (game) => {
-        if (game) {
-          save.mutate({ ...current, "inputs.game": game });
+    void queryClient.fetchQuery(installsQuery()).then(
+      (installs) => {
+        const found = installs.find((install) => install.source === "live") ?? installs[0];
+        if (found) {
+          choose.mutate(found.path);
         }
       },
-    });
-  }, [settings.isSuccess, settings.data, find, save]);
+      // A detection that fails chooses nothing; the inputs page lists the installs again.
+      () => undefined,
+    );
+  }, [settings.isSuccess, settings.data, queryClient, choose]);
 
   return null;
 }

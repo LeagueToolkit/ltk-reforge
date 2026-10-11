@@ -751,6 +751,15 @@ pub async fn reveal_place(app: AppHandle, place: Place) -> IpcResult<()> {
                 return reveal::reveal_file(Utf8Path::new(&file));
             }
             Place::Game => chosen.game,
+            Place::Install { path } => {
+                if !installs::is_listed(installs::detect(), &settings, &path) {
+                    return Err(AppError::NotShown {
+                        path,
+                        detail: "not a listed install".to_string(),
+                    });
+                }
+                Some(Utf8PathBuf::from(path))
+            }
             Place::Hashes => Some(hashes_dir(&settings)?),
             Place::Schema => match chosen.schema {
                 Some(file) => file.parent().map(Utf8Path::to_path_buf),

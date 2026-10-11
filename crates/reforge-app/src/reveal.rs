@@ -1,6 +1,7 @@
 //! A folder of the inputs, or a package written, shown in the system's file manager. The
 //! window names which place, never a path: the path comes from the settings, the app's own
-//! folders, the last run and the store's rows.
+//! folders, the last run and the store's rows. A game install is named by its path, and only
+//! a path the list of installs holds is shown.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 
 /// A place the window can show.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub enum Place {
     /// The package the last run wrote, selected in its folder.
@@ -21,8 +22,13 @@ pub enum Place {
         /// The run's number in the store.
         id: u64,
     },
-    /// The game install.
+    /// The game install chosen.
     Game,
+    /// A game install of the list, detected or added (#ADR-0101).
+    Install {
+        /// Its root, as the list gives it.
+        path: String,
+    },
     /// The hash cache.
     Hashes,
     /// The folder of the schema database.

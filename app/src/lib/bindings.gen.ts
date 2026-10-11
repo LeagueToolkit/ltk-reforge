@@ -810,12 +810,17 @@ export type Place =
 /**  The package the last run wrote, selected in its folder. */
 "written" | 
 /**  The package a kept run wrote, selected in its folder. */
-{ run: {
+({ run: {
 	/**  The run's number in the store. */
 	id: number,
-} } | 
-/**  The game install. */
+} }) & { install?: never } | 
+/**  The game install chosen. */
 "game" | 
+/**  A game install of the list, detected or added (#ADR-0101). */
+({ install: {
+	/**  Its root, as the list gives it. */
+	path: string,
+} }) & { run?: never } | 
 /**  The hash cache. */
 "hashes" | 
 /**  The folder of the schema database. */

@@ -1,8 +1,8 @@
-import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 
 import { commands, type Settings } from "@/lib/bindings.gen";
 import { useSettings } from "@/modules/settings";
-import { queryFn, unwrap } from "@/utils";
+import { queryFn } from "@/utils";
 
 /** The input settings, in the order a query key holds them. */
 function inputKey(settings: Settings) {
@@ -32,12 +32,5 @@ export function useInputs() {
   return useQuery({
     ...inputsQuery(settings.data ?? {}),
     enabled: settings.isSuccess,
-  });
-}
-
-/** Looks for the game on this machine, as LTK Manager does. */
-export function useFindGame() {
-  return useMutation({
-    mutationFn: async () => unwrap(await commands.findGame()),
   });
 }
