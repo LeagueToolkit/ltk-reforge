@@ -166,9 +166,13 @@ fn the_skin_bin_of_a_mod_explored_opens_as_a_bin() {
     let content = ContentId::parse(&skin.content).unwrap();
     let shown = explore::explored_file(Some(&explored), Some(&bench.store), content, None);
     match shown.unwrap() {
-        FileView::Bin { text, more } => {
+        FileView::Bin {
+            text,
+            more,
+            entry_found,
+        } => {
             assert!(text.contains("SkinCharacterDataProperties"), "{text}");
-            assert_eq!(more, 0);
+            assert_eq!((more, entry_found), (0, None));
         }
         other => panic!("shown as {other:?}"),
     }

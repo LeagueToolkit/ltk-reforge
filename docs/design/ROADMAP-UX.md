@@ -444,7 +444,8 @@ Under them are three tabs:
   icon of its kind, its size and its mark: a dot coloured for changed, added or removed, the
   word on hover, a removed file struck through. A box filters by path and kind, and a switch
   hides the files that are the same. A WAD opens at first and a folder closed, so a WAD of
-  thousands of files draws its rows as they are opened. The file picked opens below the tree.
+  thousands of files draws its rows as they are opened. The file picked opens below the tree;
+  a finding's Show in bin picks the bin at `build` and opens it at the value's object.
 - **Report**: the report the package embeds (`run_report`), as its JSON.
 
 For a package opened, the Files tab is one line saying the run has no snapshots, and the
@@ -503,7 +504,14 @@ hover), the size and the content id:
 | anything else | the first 256 bytes as hex, sixteen to a line | |
 
 A file over 64 MB, and a texture that does not decode, shows as hex. A mod's bytes reach the
-window only as text through `clean` or as a PNG the app encoded (#ADR-0093). Bytes no tier
+window only as text through `clean` or as a PNG the app encoded (#ADR-0093).
+
+A bin asked for at an object's entry (`run_file`, `last_file` and `explore_file` take
+`entry`, eight hex digits) shows that object first, between two lines that hold the record
+separator alone (`ENTRY_FENCE`): a control the dump escapes, so no object's text holds it.
+The other objects follow in the bin's order under the same cap, and `entry_found` says
+whether the bin holds the entry. The viewer marks the object, scrolls to it and names the
+entry in its badge row; a bin without the entry says so above its objects. Bytes no tier
 holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSING`.
 
 **The settings page** has a storage group with a row for the store: its runs, kept runs and
@@ -807,7 +815,11 @@ user picks another policy and runs again.
   is read again. A run the inputs or the program no longer resume says so (`NOT_RESUMED`). The
   rows are matched by their index, which the library keeps; when the package read again gives
   another count of rows, each row shows its first place alone. A run under way and the
-  comparison of two runs name no run to ask, and their rows do not open.
+  comparison of two runs name no run to ask, and their rows do not open. On the run page and
+  the Runs page's run detail, a place whose bin is a file of the package at `build`, matched
+  by its WAD's name and its path, has a Show in bin button: it opens the Files tab at `build`
+  at that file, and the viewer at the place's object. A place in a game bin a patch changes is
+  in no file of the package, and has none.
 - "What changed" holds every value the fixups changed, by fixup or by object, filtered by a
   word of its object, field, path or value and by outcome. A change carries its class and
   field and its outcome from the run's own `Changes`, which the report lists in the same

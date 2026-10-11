@@ -2,7 +2,7 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 
 import { commands, type StageName, type StoreState } from "@/lib/bindings.gen";
 import { keptRunKey, runsKey } from "@/lib/query";
-import type { FileQuery } from "@/modules/files";
+import type { FileQuery, FilesQuery } from "@/modules/files";
 import { mutationFn, queryFn, type Result } from "@/utils";
 
 import type { Opened } from "./drop";
@@ -12,7 +12,8 @@ export const runsKeys = {
   list: () => [...runsKey, "list"] as const,
   view: (id: number) => [...runsKey, "view", id] as const,
   files: (id: number, stage: StageName) => [...runsKey, "files", id, stage] as const,
-  file: (id: number, content: string) => [...runsKey, "file", id, content] as const,
+  file: (id: number, content: string, entry: string | null) =>
+    [...runsKey, "file", id, content, entry] as const,
   report: (id: number) => [...runsKey, "report", id] as const,
   again: (id: number) => [...runsKey, "again", id] as const,
   compare: (a: number, b: number) => [...runsKey, "compare", a, b] as const,
@@ -62,15 +63,15 @@ export function useRunAgain(id: number) {
   );
 }
 
+/** The read of a kept run's files at a stage. */
+export const runFilesQuery = (id: number, stage: StageName): FilesQuery => ({
+  queryKey: runsKeys.files(id, stage),
+  queryFn: queryFn(() => commands.runFiles(id, stage)),
+});
+
 /** The files of a kept run at a stage, each marked against the stage before. */
 export function useRunFiles(id: number, stage: StageName) {
-  return useQuery(
-    queryOptions({
-      queryKey: runsKeys.files(id, stage),
-      queryFn: queryFn(() => commands.runFiles(id, stage)),
-      staleTime: Infinity,
-    }),
-  );
+  return useQuery({ ...runFilesQuery(id, stage), staleTime: Infinity });
 }
 
 /** Two kept runs compared, `a` against `b`. Kept runs never change. */
@@ -95,10 +96,14 @@ export function useCompareFiles(a: number, b: number, stage: StageName) {
   );
 }
 
-/** One file of a kept run, by the id of its bytes, shown by its kind. */
-export const runFileQuery = (id: number, content: string): FileQuery => ({
-  queryKey: runsKeys.file(id, content),
-  queryFn: queryFn(() => commands.runFile(id, content)),
+/** One file of a kept run, by the id of its bytes, shown by its kind, the object of `entry` first. */
+export const runFileQuery = (
+  id: number,
+  content: string,
+  entry: string | null = null,
+): FileQuery => ({
+  queryKey: runsKeys.file(id, content, entry),
+  queryFn: queryFn(() => commands.runFile(id, content, entry)),
 });
 
 /** What the store holds and its bytes on disk. Asked only while `enabled`: the store is open. */

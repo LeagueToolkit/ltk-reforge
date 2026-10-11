@@ -418,7 +418,7 @@ fn a_bin_opens_as_its_objects_with_their_names() {
         .file_view(id, content(skin), Some(names))
         .unwrap();
 
-    let FileView::Bin { text, more } = view else {
+    let FileView::Bin { text, more, .. } = view else {
         panic!("not a bin: {view:?}");
     };
     assert_eq!(more, 0);

@@ -13,7 +13,7 @@ import {
 import { m, stageLabel } from "@/i18n";
 import type { PolicyView, RunView, StageName } from "@/lib/bindings.gen";
 import { ChangesExplorer } from "@/modules/changes";
-import { heldStages } from "@/modules/files";
+import { FileJumpContext, heldStages } from "@/modules/files";
 import { FindingList, worstFirst } from "@/modules/findings";
 import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
 import { useInputs, useInputsGate } from "@/modules/inputs";
@@ -23,7 +23,7 @@ import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state
 import { BlockPicker } from "./BlockPicker";
 import { DecisionsView } from "./DecisionsView";
 import { GuidedSettingsCard } from "./GuidedSettingsCard";
-import { LastRunFiles } from "./LastRunFiles";
+import { LastRunFiles, useLastRunFiles } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { PolicyCard } from "./PolicyCard";
@@ -288,6 +288,7 @@ export function AdvancedRepair() {
 
   // The run under way holds no files yet.
   const held = live ? [] : heldStages(last);
+  const files = useLastRunFiles(held, () => setTab("files"));
   const tabs = [
     { value: "result" as const, label: m.advanced_tab_result() },
     ...(held.length > 0 ? [{ value: "files" as const, label: m.runs_tab_files() }] : []),
@@ -300,46 +301,53 @@ export function AdvancedRepair() {
     <div className="flex flex-col gap-6" data-ui="AdvancedRepair">
       <RunBar stages={stages} onRun={() => start()} running={running} />
       {dialog}
-      <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.advanced_tabs_label()}>
-        <TabPanel value="result">
-          {live && <LiveProgress live={live} stages={stages} />}
-          {live && <RunResults {...liveResults(live)} />}
-          {run.isError && <FailureNote failure={run.error} />}
-          {last && !live && (
-            <>
-              <RunSummary view={last} />
-              <StageStrip
-                stages={last.stages}
-                findings={last.findings}
-                selected={shown}
-                onSelect={setSelected}
-              />
-              <StageDetail view={last} stage={shown} onPolicy={runWithPolicy} />
-            </>
-          )}
-          {!last && !live && !run.isError && (
-            <p className="text-sm text-surface-400 select-none" data-ui="AdvancedRepair:empty">
-              {m.advanced_no_run_yet()}
-            </p>
-          )}
-        </TabPanel>
-        {held.length > 0 && (
-          <TabPanel value="files">
-            <LastRunFiles stages={held} />
+      <FileJumpContext value={files.jump}>
+        <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.advanced_tabs_label()}>
+          <TabPanel value="result">
+            {live && <LiveProgress live={live} stages={stages} />}
+            {live && <RunResults {...liveResults(live)} />}
+            {run.isError && <FailureNote failure={run.error} />}
+            {last && !live && (
+              <>
+                <RunSummary view={last} />
+                <StageStrip
+                  stages={last.stages}
+                  findings={last.findings}
+                  selected={shown}
+                  onSelect={setSelected}
+                />
+                <StageDetail view={last} stage={shown} onPolicy={runWithPolicy} />
+              </>
+            )}
+            {!last && !live && !run.isError && (
+              <p className="text-sm text-surface-400 select-none" data-ui="AdvancedRepair:empty">
+                {m.advanced_no_run_yet()}
+              </p>
+            )}
           </TabPanel>
-        )}
-        <TabPanel value="settings">
-          <SettingsCard />
-          {kind === "port" && <PolicyCard />}
-          <GuidedSettingsCard />
-        </TabPanel>
-        <TabPanel value="toggles">
-          <Toggles />
-        </TabPanel>
-        <TabPanel value="rules">
-          <RulesCard />
-        </TabPanel>
-      </Tabs>
+          {held.length > 0 && (
+            <TabPanel value="files">
+              <LastRunFiles
+                stages={held}
+                at={files.at}
+                onStage={files.setStage}
+                onPick={files.setPicked}
+              />
+            </TabPanel>
+          )}
+          <TabPanel value="settings">
+            <SettingsCard />
+            {kind === "port" && <PolicyCard />}
+            <GuidedSettingsCard />
+          </TabPanel>
+          <TabPanel value="toggles">
+            <Toggles />
+          </TabPanel>
+          <TabPanel value="rules">
+            <RulesCard />
+          </TabPanel>
+        </Tabs>
+      </FileJumpContext>
     </div>
   );
 }

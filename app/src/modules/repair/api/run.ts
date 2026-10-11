@@ -17,7 +17,7 @@ import {
   type StageName,
 } from "@/lib/bindings.gen";
 import { jobKey, lastKey, runsKey } from "@/lib/query";
-import type { FileQuery } from "@/modules/files";
+import type { FileQuery, FilesQuery } from "@/modules/files";
 import { queryFn, unwrap } from "@/utils";
 
 import { type LiveStage, startedRun, useRepairStore, withPart } from "../state/repairStore";
@@ -77,21 +77,21 @@ export function useRunMod() {
   });
 }
 
+/** The read of the last run's files at a stage. */
+export const lastFilesQuery = (stage: StageName): FilesQuery => ({
+  queryKey: [...lastKey, "files", stage],
+  queryFn: queryFn(() => commands.lastFiles(stage)),
+});
+
 /** The last run's files at a stage, each marked against the stage before. */
 export function useLastFiles(stage: StageName) {
-  return useQuery(
-    queryOptions({
-      queryKey: [...lastKey, "files", stage],
-      queryFn: queryFn(() => commands.lastFiles(stage)),
-      staleTime: Infinity,
-    }),
-  );
+  return useQuery({ ...lastFilesQuery(stage), staleTime: Infinity });
 }
 
-/** One file of the last run, by the id of its bytes, shown by its kind. */
-export const lastFileQuery = (content: string): FileQuery => ({
-  queryKey: [...lastKey, "file", content],
-  queryFn: queryFn(() => commands.lastFile(content)),
+/** One file of the last run, by the id of its bytes, shown by its kind, the object of `entry` first. */
+export const lastFileQuery = (content: string, entry: string | null = null): FileQuery => ({
+  queryKey: [...lastKey, "file", content, entry],
+  queryFn: queryFn(() => commands.lastFile(content, entry)),
 });
 
 /**

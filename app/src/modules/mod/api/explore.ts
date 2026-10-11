@@ -39,10 +39,10 @@ export function useExploreFiles(enabled: boolean) {
   );
 }
 
-/** One file of the mod explored, by the id of its bytes, shown by its kind. */
-export const exploreFileQuery = (content: string): FileQuery => ({
-  queryKey: [...exploreKey, "file", content],
-  queryFn: async () => unwrap(await commands.exploreFile(content)),
+/** One file of the mod explored, by the id of its bytes, shown by its kind, the object of `entry` first. */
+export const exploreFileQuery = (content: string, entry: string | null = null): FileQuery => ({
+  queryKey: [...exploreKey, "file", content, entry],
+  queryFn: async () => unwrap(await commands.exploreFile(content, entry)),
 });
 
 /** The mod explored's archive and the standard settings, for the run page. */

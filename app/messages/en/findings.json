@@ -5,6 +5,7 @@
   "findings_places_capped": "The first {shown} of {count} places",
   "findings_places_differ": "The package read again gives other rows than this finding, so each row shows its first place alone.",
   "findings_places_reading": "Reading the package again to find each value. A large port takes a few seconds.",
+  "findings_show_in_bin_action": "Show in bin",
   "findings_type_class_held_row": "{field} holds {held}",
   "findings_type_class_object_row": "{held} as an object",
   "findings_type_first": "first at {place}",

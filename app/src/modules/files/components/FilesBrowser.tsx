@@ -6,6 +6,7 @@ import { FailureNote, SegmentedControl, Spinner, Switch } from "@/components";
 import { m, stageLabel } from "@/i18n";
 import type { FileRow, RunView, StageFiles, StageName } from "@/lib/bindings.gen";
 
+import type { Picked } from "../jump";
 import { buildTree, filtering, sourcesOf } from "../tree";
 import { FileTree, sourceLabel } from "./FileTree";
 import { type FileQuery, FileViewer } from "./FileViewer";
@@ -29,12 +30,15 @@ export interface FilesBrowserProps {
   stages: StageName[];
   stage: StageName;
   onStage: (stage: StageName) => void;
-  /** The read of a file's bytes. */
-  fileQuery: (row: FileRow) => FileQuery;
+  /** The read of a file's bytes, a bin's object of `entry` first. */
+  fileQuery: (row: FileRow, entry: string | null) => FileQuery;
   /** Whether the marks are against another run's files, not the stage before. */
   againstRun?: boolean;
   /** Whether the files are marked against anything, which a switch then narrows to. */
   marked?: boolean;
+  /** The file picked, for a page that keeps it so a jump to a value's bin can pick one. */
+  picked?: Picked | null;
+  onPick?: (picked: Picked | null) => void;
 }
 
 /**
@@ -50,11 +54,16 @@ export function FilesBrowser({
   fileQuery,
   againstRun = false,
   marked = true,
+  picked: kept,
+  onPick,
 }: FilesBrowserProps) {
   const [text, setText] = useState("");
   const [changedOnly, setChangedOnly] = useState(againstRun);
   const [source, setSource] = useState(ALL_SOURCES);
-  const [picked, setPicked] = useState<FileRow | null>(null);
+  const [own, setOwn] = useState<Picked | null>(null);
+  const current = kept === undefined ? own : kept;
+  const setPicked = onPick ?? setOwn;
+  const picked = current?.row ?? null;
   const sources = useMemo(() => sourcesOf(files.data?.wads ?? []), [files.data]);
   const filter = useMemo(
     () => ({ text, changedOnly, source: source === ALL_SOURCES ? null : source }),
@@ -127,13 +136,17 @@ export function FilesBrowser({
             roots={roots}
             allOpen={filtering(filter)}
             selected={picked}
-            onPick={setPicked}
+            onPick={(row) => setPicked({ row, entry: null })}
             againstRun={againstRun}
           />
         </div>
       )}
-      {picked ? (
-        <FileViewer row={picked} query={fileQuery(picked)} />
+      {current ? (
+        <FileViewer
+          row={current.row}
+          query={fileQuery(current.row, current.entry)}
+          entry={current.entry}
+        />
       ) : (
         roots.length > 0 && (
           <p className="text-sm text-surface-400 select-none">{m.runs_file_pick_hint()}</p>

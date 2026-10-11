@@ -73,9 +73,10 @@ export const commands = {
 	lastFiles: (stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_files", { stage }),
 	/**
 	 *  One file of the last run, by the id of its bytes as 64 hex digits, shown by its kind. A
-	 *  bin's names are spelled through the run's names and the inputs' tables, when they open.
+	 *  bin's names are spelled through the run's names and the inputs' tables, when they open, and
+	 *  the object of `entry`, eight hex digits, comes first.
 	 */
-	lastFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_file", { content }),
+	lastFile: (content: string, entry: string | null) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_file", { content, entry }),
 	/**
 	 *  A name for each hash a run's names or the inputs' tables spell, by the hash as asked
 	 *  (#ADR-0103): eight hex digits an entry, a field or a class, sixteen a path. A hash none
@@ -112,9 +113,10 @@ export const commands = {
 	exploreFiles: () => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_files"),
 	/**
 	 *  One file of the explored mod, by the id of its bytes as 64 hex digits, shown by its kind.
-	 *  A bin's names are spelled through the load's names and the inputs' tables, when they open.
+	 *  A bin's names are spelled through the load's names and the inputs' tables, when they open,
+	 *  and the object of `entry`, eight hex digits, comes first.
 	 */
-	exploreFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_file", { content }),
+	exploreFile: (content: string, entry: string | null) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_file", { content, entry }),
 	/**
 	 *  The explored mod's archive and the standard settings, for the run page to run it. None when
 	 *  no mod is explored.
@@ -140,9 +142,10 @@ export const commands = {
 	runFiles: (id: number, stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_files", { id, stage }),
 	/**
 	 *  One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A
-	 *  bin's names are spelled through the run's names and the inputs' tables, when they open.
+	 *  bin's names are spelled through the run's names and the inputs' tables, when they open, and
+	 *  the object of `entry`, eight hex digits, comes first.
 	 */
-	runFile: (id: number, content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_file", { id, content }),
+	runFile: (id: number, content: string, entry: string | null) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_file", { id, content, entry }),
 	/**
 	 *  What a kept run was run on and with, for the run page to run it again. None for a number
 	 *  no run has.
@@ -901,10 +904,16 @@ export type FileRow = {
 export type FileView = 
 /**  A bin's objects as text, names spelled where the run or the tables spell them. */
 { as: "bin"; 
-/**  The objects, whole, up to [`MAX_BIN_TEXT`]. */
+/**
+ *  The objects, whole, up to [`MAX_BIN_TEXT`]. The object of the entry asked for comes
+ *  first, between two lines that hold [`ENTRY_FENCE`] alone, and the others follow in
+ *  the bin's order.
+ */
 text: string; 
 /**  How many objects follow the ones shown. */
-more: number } | 
+more: number; 
+/**  Whether the bin holds the entry asked for. None when none was asked. */
+entry_found: boolean | null } | 
 /**  A texture's largest mip, decoded by the app. */
 { as: "image"; 
 /**  A PNG as a `data:` URL, its longest side at most 1024 pixels. */

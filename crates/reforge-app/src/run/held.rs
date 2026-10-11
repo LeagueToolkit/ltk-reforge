@@ -13,7 +13,7 @@ use reforge::store::{BlobStore, MemoryStore};
 
 use super::{RunRequest, StageName};
 use crate::error::AppError;
-use crate::store::{self, AppStore, FileView, KeptSnapshots, StageFiles, Tiers};
+use crate::store::{self, AppStore, FileAsk, FileView, KeptSnapshots, StageFiles, Tiers};
 
 /// A run that ended, as the app holds it until the next.
 pub struct HeldRun {
@@ -76,7 +76,7 @@ impl HeldRun {
     pub fn file(
         &self,
         store: Option<&AppStore>,
-        content: ContentId,
+        ask: impl Into<FileAsk>,
         names: Option<&Names>,
     ) -> Result<FileView, AppError> {
         let tiers = Tiers::layered(&*self.layer, store);
@@ -84,7 +84,7 @@ impl HeldRun {
             let load = self.snapshots.as_ref().map(|snapshots| &snapshots.load);
             Ok(load.map(|load| load.names().clone()).unwrap_or_default())
         };
-        store::file_view(&tiers, content, book, names)
+        store::file_view(&tiers, ask, book, names)
     }
 }
 
@@ -93,14 +93,17 @@ impl HeldRun {
 pub fn held_file(
     held: Option<&HeldRun>,
     store: Option<&AppStore>,
-    content: ContentId,
+    ask: impl Into<FileAsk>,
     names: Option<&Names>,
 ) -> Result<FileView, AppError> {
+    let ask = ask.into();
     match (held, store) {
-        (Some(held), store) => held.file(store, content, names),
+        (Some(held), store) => held.file(store, ask, names),
         (None, Some(store)) => {
-            store::file_view(&Tiers::of(store), content, || Ok(Default::default()), names)
+            store::file_view(&Tiers::of(store), ask, || Ok(Default::default()), names)
         }
-        (None, None) => Err(AppError::BlobMissing { id: content.hex() }),
+        (None, None) => Err(AppError::BlobMissing {
+            id: ask.content.hex(),
+        }),
     }
 }

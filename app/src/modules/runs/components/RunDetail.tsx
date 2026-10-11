@@ -11,7 +11,7 @@ import { useState } from "react";
 import { Button, FailureNote, Spinner, TabPanel, Tabs, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { RunRow, RunView, StageName } from "@/lib/bindings.gen";
-import { heldStages } from "@/modules/files";
+import { FileJumpContext, heldStages, useFilesAt } from "@/modules/files";
 import { keptRun, RunRefContext } from "@/modules/findings";
 import { pickSavePath } from "@/modules/inputs";
 import { endedResults, RunResults, StageStrip, useRepairStore } from "@/modules/repair";
@@ -19,6 +19,7 @@ import { twMerge } from "@/utils";
 
 import { PROJECT_EXTENSION } from "../api/drop";
 import {
+  runFilesQuery,
   useExportProject,
   useKeepRun,
   useRevealRun,
@@ -167,7 +168,6 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
   const takeRun = useRepairStore((state) => state.takeRun);
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("result");
-  const [filesStage, setFilesStage] = useState<StageName | null>(null);
   const [picking, setPicking] = useState(false);
   const [against, setAgainst] = useState<number | null>(null);
   const exportProject = useExportProject();
@@ -175,13 +175,16 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
   // A package opened has no snapshots, no request and no bytes (#ADR-0096).
   const opened = row.origin === "package";
   const held = view.data ? heldStages(view.data) : [];
+  const files = useFilesAt(held.includes("build") ? runFilesQuery(row.id, "build") : null, () =>
+    setTab("files"),
+  );
   const tabs = [
     { value: "result" as const, label: m.runs_tab_result() },
     ...(held.length > 0 || opened ? [{ value: "files" as const, label: m.runs_tab_files() }] : []),
     { value: "report" as const, label: m.runs_tab_report() },
   ];
   const openFiles = (stage: StageName) => {
-    setFilesStage(stage);
+    files.setStage(stage);
     setTab("files");
   };
   const failure = keep.error ?? reveal.error ?? again.error ?? exportProject.error;
@@ -323,29 +326,37 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
       {against == null && view.isError && <FailureNote failure={view.error} />}
       {against == null && view.data && (
         <RunRefContext value={keptRun(row.id)}>
-          <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.runs_tabs_label()}>
-            <TabPanel value="result">
-              <ResultTab view={view.data} onFiles={openFiles} />
-            </TabPanel>
-            {held.length > 0 && (
-              <TabPanel value="files">
-                <FilesTab
-                  id={row.id}
-                  stages={held}
-                  stage={filesStage ?? held[held.length - 1]}
-                  onStage={setFilesStage}
-                />
+          <FileJumpContext value={files.jump}>
+            <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.runs_tabs_label()}>
+              <TabPanel value="result">
+                <ResultTab view={view.data} onFiles={openFiles} />
               </TabPanel>
-            )}
-            {held.length === 0 && opened && (
-              <TabPanel value="files">
-                <NoSnapshots />
+              {held.length > 0 && (
+                <TabPanel value="files">
+                  <FilesTab
+                    id={row.id}
+                    stages={held}
+                    stage={
+                      files.at.stage && held.includes(files.at.stage)
+                        ? files.at.stage
+                        : held[held.length - 1]
+                    }
+                    onStage={files.setStage}
+                    picked={files.at.picked}
+                    onPick={files.setPicked}
+                  />
+                </TabPanel>
+              )}
+              {held.length === 0 && opened && (
+                <TabPanel value="files">
+                  <NoSnapshots />
+                </TabPanel>
+              )}
+              <TabPanel value="report">
+                <ReportTab id={row.id} opened={opened} />
               </TabPanel>
-            )}
-            <TabPanel value="report">
-              <ReportTab id={row.id} opened={opened} />
-            </TabPanel>
-          </Tabs>
+            </Tabs>
+          </FileJumpContext>
         </RunRefContext>
       )}
     </div>

@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use camino::{Utf8Path, Utf8PathBuf};
 use reforge::archive::RawSnapshot;
 use reforge::game::{Names, Speller};
-use reforge::model::{BinHash, ContentId, Spell, clean};
+use reforge::model::{BinHash, Spell, clean};
 use reforge::package::Thumbnail;
 use reforge::snapshot::LoadSnapshot;
 use reforge::store::{BlobStore, MemoryStore};
@@ -25,7 +25,7 @@ use crate::inputs::Inputs;
 use crate::run::{
     Maker, ModView, ReportParts, RunKind, RunSettings, Unwatched, data_url, ingested,
 };
-use crate::store::{self, AppStore, FileView, RunAgain, StageFiles, Tiers};
+use crate::store::{self, AppStore, FileAsk, FileView, RunAgain, StageFiles, Tiers};
 use crate::view::{Finding, read_clean, through_clean};
 
 /// What dated the mod: the first piece of it that first shipped at the bound.
@@ -204,7 +204,7 @@ impl ExploredMod {
     pub fn file(
         &self,
         store: Option<&AppStore>,
-        content: ContentId,
+        ask: impl Into<FileAsk>,
         names: Option<&Names>,
     ) -> Result<FileView, AppError> {
         let tiers = Tiers::layered(&self.layer, store);
@@ -215,7 +215,7 @@ impl ExploredMod {
                 .map(|load| load.names().clone())
                 .unwrap_or_default())
         };
-        store::file_view(&tiers, content, book, names)
+        store::file_view(&tiers, ask, book, names)
     }
 
     /// The archive and the standard settings, for the run page to run it.
@@ -234,15 +234,18 @@ impl ExploredMod {
 pub fn explored_file(
     explored: Option<&ExploredMod>,
     store: Option<&AppStore>,
-    content: ContentId,
+    ask: impl Into<FileAsk>,
     names: Option<&Names>,
 ) -> Result<FileView, AppError> {
+    let ask = ask.into();
     match (explored, store) {
-        (Some(explored), store) => explored.file(store, content, names),
+        (Some(explored), store) => explored.file(store, ask, names),
         (None, Some(store)) => {
-            store::file_view(&Tiers::of(store), content, || Ok(Default::default()), names)
+            store::file_view(&Tiers::of(store), ask, || Ok(Default::default()), names)
         }
-        (None, None) => Err(AppError::BlobMissing { id: content.hex() }),
+        (None, None) => Err(AppError::BlobMissing {
+            id: ask.content.hex(),
+        }),
     }
 }
 

@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { FileMagnifyingGlassIcon } from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
+import { useContext, useMemo, useState } from "react";
 
-import { Disclosure, FailureNote, Spinner } from "@/components";
+import { Button, Disclosure, FailureNote, Spinner } from "@/components";
 import { m } from "@/i18n";
 import type { RunRef, ValuePlaceView } from "@/lib/bindings.gen";
+import { FileJumpContext, type FilesQuery, placeRow } from "@/modules/files";
 
 import { useRunRef, useSpelled, useTypePlaces } from "../api/run";
 import {
@@ -80,13 +83,58 @@ function RowSummary({ row, list, name }: RowProps) {
   );
 }
 
+/** A jump to a place's object in its bin, or none. */
+type ShowInBin = (place: FirstPlace) => (() => void) | null;
+
+/** The read of no files, for a page with no jump. */
+const NO_FILES: FilesQuery = { queryKey: ["no-files"], queryFn: () => Promise.resolve(null) };
+
+/**
+ * The jump to a place's object in its bin, through the page's files at `build`. None on a page
+ * with no jump, and for a place in no file of the package, such as a game bin a patch changes.
+ */
+function useShowInBin(): ShowInBin {
+  const jump = useContext(FileJumpContext);
+  const build = useQuery({
+    ...(jump?.build ?? NO_FILES),
+    enabled: jump != null,
+    staleTime: Infinity,
+  });
+  return (place) => {
+    const row = jump && build.data ? placeRow(build.data, place.wad, place.path) : null;
+    return jump && row ? () => jump.open(row, place.entry) : null;
+  };
+}
+
+/** The button that shows a place's object in its bin. */
+function ShowButton({ show }: { show: (() => void) | null }) {
+  if (!show) {
+    return null;
+  }
+  return (
+    <Button
+      size="xs"
+      compact
+      variant="ghost"
+      left={<FileMagnifyingGlassIcon weight="bold" />}
+      className="ml-2 font-sans"
+      onClick={show}
+    >
+      {m.findings_show_in_bin_action()}
+    </Button>
+  );
+}
+
 /** One value's place: `WAD · bin path · entry · path`, each hash by its name. */
-function PlaceLine({ place, name }: { place: ValuePlaceView; name: Namer }) {
+function PlaceLine({ place, name, show }: { place: ValuePlaceView; name: Namer; show: ShowInBin }) {
   const steps = parseFieldPath(place.at);
   const at = steps ? pathText(steps, name) : place.at;
   return (
-    <li className="break-all text-surface-200" title={`${place.entry} · ${place.at}`}>
-      {placeText(place, name)} · <span className="text-surface-50">{at}</span>
+    <li className="break-all text-surface-200">
+      <span title={`${place.entry} · ${place.at}`}>
+        {placeText(place, name)} · <span className="text-surface-50">{at}</span>
+      </span>
+      <ShowButton show={show(place)} />
     </li>
   );
 }
@@ -108,6 +156,7 @@ function PlaceList({
     [page],
   );
   const name = namer(useSpelled(run, hashes));
+  const show = useShowInBin();
   const left = places.length - shown;
   return (
     <div className="flex flex-col gap-1">
@@ -118,7 +167,7 @@ function PlaceList({
       )}
       <ul className="flex flex-col gap-0.5">
         {page.map((place, at) => (
-          <PlaceLine key={at} place={place} name={name} />
+          <PlaceLine key={at} place={place} name={name} show={show} />
         ))}
       </ul>
       {left > 0 && (
@@ -152,6 +201,7 @@ interface RowPlacesProps {
  */
 function RowPlaces({ run, list, index, rows, row, name }: RowPlacesProps) {
   const places = useTypePlaces(run);
+  const show = useShowInBin();
   if (places.isPending) {
     return (
       <p className="flex items-center gap-2 font-sans text-surface-400 select-none">
@@ -168,7 +218,10 @@ function RowPlaces({ run, list, index, rows, row, name }: RowPlacesProps) {
     return (
       <div className="flex flex-col gap-1">
         <p className="font-sans text-surface-400 select-none">{m.findings_places_differ()}</p>
-        <p className="break-all text-surface-200">{placeText(row.first, name)}</p>
+        <p className="break-all text-surface-200">
+          {placeText(row.first, name)}
+          <ShowButton show={show(row.first)} />
+        </p>
       </div>
     );
   }

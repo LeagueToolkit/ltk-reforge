@@ -1,11 +1,13 @@
 import { LockSimpleIcon } from "@phosphor-icons/react";
 import { type QueryKey, useQuery } from "@tanstack/react-query";
+import { useCallback } from "react";
 import { match } from "ts-pattern";
 
 import { FailureNote, Spinner, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { FileRow, FileView } from "@/lib/bindings.gen";
 
+import { fencedObject } from "../fence";
 import { sizeLabel } from "../tree";
 import { kindGroup } from "./FileTree";
 
@@ -21,14 +23,46 @@ export interface FileQuery {
 const preClass =
   "max-h-[60vh] overflow-auto rounded-lg border border-surface-700/50 bg-surface-950/40 p-3 font-mono text-xs whitespace-pre text-surface-200";
 
+/** The object asked for, marked, and scrolled to as it shows. */
+function AskedObject({ text }: { text: string }) {
+  const scrolled = useCallback((node: HTMLSpanElement | null) => {
+    node?.scrollIntoView({ block: "nearest" });
+  }, []);
+  return (
+    <span
+      ref={scrolled}
+      className="-mx-3 block border-l-2 border-accent-500 bg-accent-500/10 px-3"
+      data-ui="FileViewer:entry"
+    >
+      {text}
+    </span>
+  );
+}
+
+/** A bin's objects, the one asked for first and marked. */
+function BinText({ text, more, found }: { text: string; more: number; found: boolean | null }) {
+  const { asked, rest } = fencedObject(text);
+  return (
+    <>
+      {found === false && (
+        <p className="text-xs text-surface-400 select-none" data-ui="FileViewer:entry-missing">
+          {m.runs_file_entry_missing()}
+        </p>
+      )}
+      <pre className={preClass} data-ui="FileViewer:text">
+        {asked !== null && <AskedObject text={asked} />}
+        {rest}
+        {more > 0 && `\n${m.runs_file_more({ count: more })}`}
+      </pre>
+    </>
+  );
+}
+
 /** What a file is shown as, by the kind its bytes have. */
 function Shown({ view }: { view: FileView }) {
   return match(view)
-    .with({ as: "bin" }, ({ text, more }) => (
-      <pre className={preClass} data-ui="FileViewer:text">
-        {text}
-        {more > 0 && `\n${m.runs_file_more({ count: more })}`}
-      </pre>
+    .with({ as: "bin" }, ({ text, more, entry_found }) => (
+      <BinText text={text} more={more} found={entry_found} />
     ))
     .with({ as: "text" }, ({ text, cut }) => (
       <pre className={preClass} data-ui="FileViewer:text">
@@ -60,10 +94,15 @@ interface FileViewerProps {
   row: FileRow;
   /** The read of its bytes. */
   query: FileQuery;
+  /** The entry of a bin's object asked for first, eight hex digits. */
+  entry?: string | null;
 }
 
-/** One file, read-only: what it is, and its bytes as the app shows them. */
-export function FileViewer({ row, query }: FileViewerProps) {
+/**
+ * One file, read-only: what it is, and its bytes as the app shows them. A bin's object asked
+ * for comes first, marked, and the viewer scrolls to it.
+ */
+export function FileViewer({ row, query, entry = null }: FileViewerProps) {
   // A file's bytes under their id never change, and one no tier holds is not asked again.
   const view = useQuery({ ...query, staleTime: Infinity, retry: false });
   return (
@@ -74,6 +113,11 @@ export function FileViewer({ row, query }: FileViewerProps) {
           {m.runs_file_read_only()}
         </span>
         <span className="min-w-0 font-mono break-all text-surface-100">{row.path ?? row.hash}</span>
+        {entry && (
+          <span className="text-surface-300">
+            {m.runs_file_entry_label()} <span className="font-mono">{entry}</span>
+          </span>
+        )}
         <Tooltip content={<span className="font-mono text-xs">{row.kind}</span>}>
           <span className="text-surface-300">
             {m[`runs_file_kind.${kindGroup(row.kind)}.label`]()}
