@@ -5,6 +5,7 @@
 use camino::Utf8PathBuf;
 use fs_err as fs;
 use ltk_meta::BinObject;
+use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::model::entity::FileId;
 use reforge::model::{BinHash, ByteView, ChunkPath, ContentId, Spelled, WadName, name_hash};
@@ -21,11 +22,11 @@ use reforge_app::store::{
     AppStore, Counts, EVIDENCE_ONLY_SCHEMA, FileRow, FileView, HEX_BYTES, Mark, Origin, StageFiles,
 };
 use reforge_app::view::Finding;
-use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry, float};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
 use reforge_testkit::packs::{DdsPixels, dds};
 use reforge_testkit::skins::{self, WAD, skin_bin};
+use reforge_testkit::{ModArchive, SchemaRows};
 use tempfile::TempDir;
 
 const SKIN0: &str = "Characters/Test/Skins/Skin0";
@@ -533,6 +534,35 @@ fn a_package_opened_beside_its_run_compares_over_the_views() {
             stage: StageName::Load
         })
     );
+}
+
+#[test]
+fn a_package_opened_has_no_schema_build_where_its_run_has_the_schemas() {
+    let game = skins::game();
+    let sizes = game.sizes();
+    let env = Env::builder()
+        .game(game)
+        .sizes(sizes)
+        .schema(SchemaRows::new(300).build())
+        .build()
+        .unwrap();
+    let bench = Bench {
+        inputs: Inputs::of_env(env),
+        ..Bench::new()
+    };
+    let (run, view) = bench.kept(&artifact_mod(), RunKind::Port);
+    let package = Utf8PathBuf::from(view.written.clone().expect("the package"));
+    let opened = bench.store.open_package(&package).unwrap();
+
+    let compared = bench
+        .store
+        .compare(run, opened)
+        .unwrap()
+        .expect("both are kept");
+
+    let schema = compared.inputs.iter().find(|d| d.key == "schema_build");
+    let schema = schema.unwrap_or_else(|| panic!("{:?}", compared.inputs));
+    assert_eq!((schema.a.as_str(), schema.b.as_str()), ("300", ""));
 }
 
 #[test]

@@ -298,9 +298,9 @@ reason. Either view lists every stage of the kind as not run. The rows are a `ra
 one is there (its version 0, caps `{}`, path empty, file name the package's, since the
 evidence names the archive by its SHA-256 alone; `archive_ingested` is false) and the run
 with the origin `package`, the package's path as where it was opened from and as its package,
-the mark kept, the kind and the program from the evidence, the build the evidence's inputs
-name as its schema build, and the default settings, since an opened package was asked for by
-no request.
+the mark kept, the kind and the program from the evidence, no schema build, since the build the
+evidence's inputs name is the game's and not the schema database's, and the default settings,
+since an opened package was asked for by no request.
 
 The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
 `run_view` (the view the run ended with, its number set), `run_files`, `run_file`,

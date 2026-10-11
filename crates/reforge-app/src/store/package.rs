@@ -198,7 +198,8 @@ impl AppStore {
     /// The run has no load and no snapshots: its report is the one beside the package when it
     /// reads, else the evidence wrapped as `reforge.evidence-only/1`, and its view what that
     /// gives. Its settings are the default: the row's settings are a request's, and a package
-    /// opened was asked for by no request here. Refused for a package that does not read and
+    /// opened was asked for by no request here. It has no schema build: the evidence names the
+    /// game's build, not the schema database's. Refused for a package that does not read and
     /// for one with no evidence.
     pub fn open_package(&self, path: &Utf8Path) -> Result<u64, AppError> {
         let caps = Caps::default();
@@ -245,14 +246,13 @@ impl AppStore {
             tx.execute(
                 "INSERT INTO run (sha256, origin, opened_from, kind, settings, schema_build,
                    program_version, package, kept, report, view)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?3, 1, ?8, ?9)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?3, 1, ?7, ?8)",
                 params![
                     sha256.0.as_slice(),
                     Origin::Package.as_str(),
                     path.as_str(),
                     kind_text(kind),
                     json_of(&RunSettings::default()),
-                    evidence.inputs.build,
                     evidence.program.version,
                     pack(&report)?,
                     pack(&json_of(&view))?,
