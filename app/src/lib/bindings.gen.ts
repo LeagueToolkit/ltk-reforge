@@ -67,6 +67,11 @@ export const commands = {
 	runSettings: (id: number) => __TAURI_INVOKE<({ ok: true; value: RunAgain | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_settings", { id }),
 	/**  Two kept runs compared, `a` against `b` (#ADR-0091). None when either number names no run. */
 	compareRuns: (a: number, b: number) => __TAURI_INVOKE<({ ok: true; value: CompareView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("compare_runs", { a, b }),
+	/**
+	 *  The files of kept run `b` at a stage, each marked against kept run `a`'s at the same stage.
+	 *  None when either number names no run.
+	 */
+	compareFiles: (a: number, b: number, stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("compare_files", { a, b, stage }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */

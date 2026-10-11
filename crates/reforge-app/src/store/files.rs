@@ -1,6 +1,7 @@
 //! The files of a kept run at a stage (#ADR-0094): what the stage's snapshot names, by WAD,
 //! each with its bytes' size and kind, and a mark against the nearest earlier stage the run
-//! holds files for. The Runs page renders it and adds no rule of its own (#ADR-0046).
+//! holds files for, or against another run's files at the same stage. The Runs page renders it
+//! and adds no rule of its own (#ADR-0046).
 //!
 //! `load` and `fix` name a file by its WAD and path hash. `plan` and `build` name it by the
 //! path it is placed at, whose hash is the one compared, so a file a port moves is removed at
@@ -105,6 +106,14 @@ impl KeptSnapshots {
             .zip(held)
             .filter_map(|(stage, held)| held.then_some(stage))
             .collect()
+    }
+
+    /// The files a stage's snapshot names. Refused for a stage whose snapshot names no files,
+    /// or one the run did not reach.
+    fn held_listing(&self, stage: StageName) -> Result<Listing, AppError> {
+        let held = self.stages().contains(&stage);
+        let listing = held.then(|| self.listing(stage)).flatten();
+        listing.ok_or(AppError::NoFilesAtStage { stage })
     }
 
     /// The files a stage's snapshot names, by WAD and path hash. None for a stage the run
@@ -290,18 +299,36 @@ impl AppStore {
         let Some(kept) = self.kept_snapshots(id)? else {
             return Ok(None);
         };
+        let current = kept.held_listing(stage)?;
         let held = kept.stages();
-        let current = held
-            .contains(&stage)
-            .then(|| kept.listing(stage))
-            .flatten()
-            .ok_or(AppError::NoFilesAtStage { stage })?;
         let before = held.iter().rev().find(|&&earlier| earlier < stage);
         let before = before.and_then(|&earlier| kept.listing(earlier));
+        Ok(Some(self.marked(stage, &current, before.as_ref())))
+    }
 
+    /// The files of kept run `b` at a stage, each marked against kept run `a`'s at the same
+    /// stage. None when either number names no run; refused when either run holds no files at
+    /// the stage.
+    pub fn compare_files(
+        &self,
+        a: u64,
+        b: u64,
+        stage: StageName,
+    ) -> Result<Option<StageFiles>, AppError> {
+        let (Some(a), Some(b)) = (self.kept_snapshots(a)?, self.kept_snapshots(b)?) else {
+            return Ok(None);
+        };
+        let before = a.held_listing(stage)?;
+        let current = b.held_listing(stage)?;
+        Ok(Some(self.marked(stage, &current, Some(&before))))
+    }
+
+    /// The files of `current`, each marked against `before`, and those of `before` it lacks
+    /// marked removed. With nothing before, every file is the same.
+    fn marked(&self, stage: StageName, current: &Listing, before: Option<&Listing>) -> StageFiles {
         let mut wads: BTreeMap<String, Vec<FileRow>> = BTreeMap::new();
         for ((wad, hash), listed) in &current.0 {
-            let mark = match before.as_ref().map(|b| b.0.get(&(wad.clone(), *hash))) {
+            let mark = match before.map(|b| b.0.get(&(wad.clone(), *hash))) {
                 None => Mark::Same,
                 Some(None) => Mark::Added,
                 Some(Some(earlier)) if earlier.content == listed.content => Mark::Same,
@@ -326,10 +353,10 @@ impl AppStore {
                 files,
             }
         });
-        Ok(Some(StageFiles {
+        StageFiles {
             stage,
             wads: wads.collect(),
-        }))
+        }
     }
 
     fn file_row(&self, hash: u64, listed: &Listed, mark: Mark) -> FileRow {

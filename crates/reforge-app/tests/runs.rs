@@ -284,6 +284,43 @@ fn a_comparison_with_a_run_not_kept_is_none() {
     assert_eq!(bench.store.compare(a + 1, a), Ok(None));
 }
 
+#[test]
+fn two_runs_files_at_fix_are_marked_against_each_other() {
+    let bench = Bench::new();
+    let (a, b) = port_pair(&bench);
+    let skin = skin_bin("test", 0);
+
+    let fix = bench.store.compare_files(a, b, StageName::Fix).unwrap();
+    let fix = fix.expect("both runs are kept");
+
+    assert_eq!(fix.stage, StageName::Fix);
+    assert_eq!(file(&fix, WAD, &skin).mark, Mark::Changed);
+    let rows = fix.wads.iter().flat_map(|wad| &wad.files);
+    let others = rows.filter(|row| row.path.as_deref() != Some(skin.as_str()));
+    assert!(others.clone().count() > 0);
+    assert!(others.clone().all(|row| row.mark == Mark::Same), "{fix:?}");
+}
+
+#[test]
+fn files_compared_at_a_stage_a_run_lacks_are_refused() {
+    let bench = Bench::new();
+    let (a, _) = bench.kept(&artifact_mod(), RunKind::Repair);
+    let (b, _) = bench.kept(&artifact_mod(), RunKind::Port);
+
+    let refused = bench.store.compare_files(a, b, StageName::Plan);
+
+    assert_eq!(
+        refused,
+        Err(AppError::NoFilesAtStage {
+            stage: StageName::Plan
+        })
+    );
+    assert_eq!(
+        bench.store.compare_files(a, b + 1, StageName::Fix),
+        Ok(None)
+    );
+}
+
 /// The one file of a stage whose path ends so.
 fn ending<'a>(files: &'a StageFiles, end: &str) -> &'a FileRow {
     let rows = files.wads.iter().flat_map(|wad| &wad.files);

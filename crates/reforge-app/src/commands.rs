@@ -237,6 +237,20 @@ pub async fn compare_runs(app: AppHandle, a: u64, b: u64) -> IpcResult<Option<Co
     off_thread(move || store?.compare(a, b)).await
 }
 
+/// The files of kept run `b` at a stage, each marked against kept run `a`'s at the same stage.
+/// None when either number names no run.
+#[tauri::command]
+#[specta::specta]
+pub async fn compare_files(
+    app: AppHandle,
+    a: u64,
+    b: u64,
+    stage: StageName,
+) -> IpcResult<Option<StageFiles>> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.compare_files(a, b, stage)).await
+}
+
 /// One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A
 /// bin's names are spelled through the run's names and the inputs' tables, when they open.
 #[tauri::command]
