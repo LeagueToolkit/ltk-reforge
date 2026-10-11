@@ -72,6 +72,11 @@ export const commands = {
 	 *  None when either number names no run.
 	 */
 	compareFiles: (a: number, b: number, stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("compare_files", { a, b, stage }),
+	/**
+	 *  Writes a kept run as a project file at `path` (#ADR-0096), and answers the file's size.
+	 *  None for a number no run has.
+	 */
+	exportProject: (id: number, path: string) => __TAURI_INVOKE<({ ok: true; value: number | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("export_project", { id, path }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */
@@ -288,6 +293,8 @@ export type AppError =
  *  cleared from the ingest tier.
  */
 { code: "BLOB_MISSING"; id: string } | 
+/**  A kept run opened from a package has no snapshots and no bytes to export as a project. */
+{ code: "NO_PROJECT_OF"; id: number } | 
 /**  A folder of the app's did not go when the user asked for it removed. */
 { code: "NOT_REMOVED"; path: string; detail: string } | 
 /**  A folder did not open in the system's file manager. */

@@ -817,6 +817,61 @@ fn removing_the_only_run_empties_the_run_tier_and_the_rows() {
     assert_eq!(bench.store.tier().ids().unwrap(), []);
 }
 
+/// The names of a zip's entries, in order, each with whether it is deflated.
+fn entries_of(path: &Utf8Path) -> Vec<(String, bool)> {
+    let mut zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+    (0..zip.len())
+        .map(|at| {
+            let entry = zip.by_index(at).unwrap();
+            let deflated = entry.compression() == zip::CompressionMethod::Deflated;
+            (entry.name().to_string(), deflated)
+        })
+        .collect()
+}
+
+#[test]
+fn a_port_exported_holds_its_json_and_one_stored_blob_per_id() {
+    let bench = Bench::new();
+    let request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+    let id = bench.port(&own_mod(), "mod.fantome").saved.unwrap();
+    let sha256 = ContentId::of(&fs::read(&request.archive).unwrap());
+    let raw = bench.store.ingest().get(sha256, &Caps::default()).unwrap();
+    let mut ids: Vec<ContentId> = bench.named();
+    ids.extend(raw.ids());
+    ids.sort();
+    ids.dedup();
+    let path = bench.folder.root.join("mod.reforge-project");
+
+    let size = bench.store.export_project(id, &path).unwrap();
+
+    assert_eq!(size, Some(fs::metadata(&path).unwrap().len()));
+    let mut expected = vec![("project.json".to_string(), true)];
+    expected.extend(ids.iter().map(|id| (format!("blobs/{}", id.hex()), false)));
+    assert_eq!(entries_of(&path), expected);
+    let mut zip = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
+    for id in &ids {
+        let mut bytes = Vec::new();
+        let mut entry = zip.by_name(&format!("blobs/{}", id.hex())).unwrap();
+        std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+        assert_eq!(ContentId::of(&bytes), *id);
+    }
+    let json: serde_json::Value =
+        serde_json::from_reader(zip.by_name("project.json").unwrap()).unwrap();
+    assert_eq!(json["format"], 1);
+    assert_eq!(json["run"]["origin"], "run");
+    assert_eq!(json["raw"]["sha256"], sha256.hex());
+    let listed = json["blobs"].as_array().unwrap();
+    let listed: Vec<&str> = listed.iter().map(|b| b["id"].as_str().unwrap()).collect();
+    assert_eq!(listed, ids.iter().map(ContentId::hex).collect::<Vec<_>>());
+    let left: Vec<String> = fs::read_dir(&bench.folder.root)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| name.ends_with(".tmp") || name.starts_with(".tmp"))
+        .collect();
+    assert_eq!(left, Vec::<String>::new(), "a temporary file is left");
+    assert_eq!(bench.store.export_project(id + 1, &path), Ok(None));
+}
+
 #[test]
 fn a_raw_row_with_a_run_and_no_load_survives_the_sweep() {
     let bench = Bench::new();

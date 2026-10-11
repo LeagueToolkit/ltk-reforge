@@ -129,6 +129,9 @@ pub enum AppError {
     /// cleared from the ingest tier.
     #[error("no tier holds the bytes under {id}")]
     BlobMissing { id: String },
+    /// A kept run opened from a package has no snapshots and no bytes to export as a project.
+    #[error("run {id} was opened from a package and has no project")]
+    NoProjectOf { id: u64 },
     /// A folder of the app's did not go when the user asked for it removed.
     #[error("{path} could not be removed: {detail}")]
     NotRemoved { path: String, detail: String },

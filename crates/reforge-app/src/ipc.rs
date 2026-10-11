@@ -44,6 +44,7 @@ pub fn builder() -> Builder<Wry> {
             commands::run_settings,
             commands::compare_runs,
             commands::compare_files,
+            commands::export_project,
             commands::keep_run,
             commands::remove_run,
             commands::remove_mod_runs,

@@ -38,6 +38,8 @@
   "error.NO_INDEX.title": "No history index is chosen",
   "error.NO_INDEX_RELEASE.title": "No release of the census history holds an index",
   "error.NO_OUTPUT.title": "No folder to write the package in",
+  "error.NO_PROJECT_OF.description": "A run opened from a package holds its report alone: no files to carry.",
+  "error.NO_PROJECT_OF.title": "This run has no project to export",
   "error.RUN_BUSY.description": "Wait for it to end, then run again.",
   "error.RUN_BUSY.title": "A run is under way already",
   "error.SCHEMA_BUSY.title": "The schema database is downloading already",

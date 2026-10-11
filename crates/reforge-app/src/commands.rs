@@ -281,6 +281,15 @@ pub async fn run_settings(app: AppHandle, id: u64) -> IpcResult<Option<RunAgain>
     off_thread(move || store?.run_again(id)).await
 }
 
+/// Writes a kept run as a project file at `path` (#ADR-0096), and answers the file's size.
+/// None for a number no run has.
+#[tauri::command]
+#[specta::specta]
+pub async fn export_project(app: AppHandle, id: u64, path: String) -> IpcResult<Option<u64>> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.export_project(id, Utf8Path::new(&path))).await
+}
+
 /// Marks a kept run so that the store's bound does not remove it, or unmarks it.
 #[tauri::command]
 #[specta::specta]

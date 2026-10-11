@@ -143,6 +143,10 @@ export function describeError(error: AppError): ErrorCopy {
       description: m["error.BLOB_MISSING.description"](),
       detail: id,
     }))
+    .with({ code: "NO_PROJECT_OF" }, () => ({
+      title: m["error.NO_PROJECT_OF.title"](),
+      description: m["error.NO_PROJECT_OF.description"](),
+    }))
     .with({ code: "NOT_REMOVED" }, ({ path, detail }) => ({
       title: m["error.NOT_REMOVED.title"]({ path }),
       description: m["error.NOT_REMOVED.description"](),
