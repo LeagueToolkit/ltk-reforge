@@ -325,11 +325,3 @@ pub struct InputsView {
     /// What opening them found, as each run reports it.
     pub findings: Vec<Finding>,
 }
-
-/// The game install on this machine, found as LTK Manager finds it: the Riot Client's list of
-/// installs, a running client, then the usual folders on every drive.
-pub fn find_game() -> Option<String> {
-    let exe = ltk_mod_core::auto_detect_league_path()?;
-    // The detection names `<install>/Game/League of Legends.exe`.
-    exe.parent()?.parent().map(ToString::to_string)
-}

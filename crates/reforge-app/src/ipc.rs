@@ -30,7 +30,6 @@ pub fn builder() -> Builder<Wry> {
             commands::check_catalog,
             commands::records,
             commands::record,
-            commands::find_game,
             commands::installs,
             commands::add_install,
             commands::remove_install,

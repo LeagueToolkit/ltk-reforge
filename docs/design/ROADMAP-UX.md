@@ -146,7 +146,8 @@ A row holds, in this order:
    does not open.
 2. The path read, with a button that shows the folder in the system's file manager
    (`reveal_place`, which takes the name of a place and never a path; the places are the
-   inputs' folders, the package the last run wrote, which the run state remembers, and the
+   folders of the hash tables, the schema database, the history index and the census clone, a
+   listed install, the package the last run wrote, which the run state remembers, and the
    package a kept run wrote, which its row names). The game's row lists the installs instead
    (#ADR-0101), one line each: a mark on the chosen one, where it was found (live, PBE,
    running, added), its build or that it does not open, its path with the same button (a

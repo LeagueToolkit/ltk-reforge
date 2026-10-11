@@ -20,7 +20,7 @@ use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
 use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
-use crate::inputs::{self, Choice, InputsView};
+use crate::inputs::{Choice, InputsView};
 use crate::installs::{self, InstallView};
 use crate::records::{self, RecordHead, RecordView};
 use crate::reveal::{self, Place};
@@ -92,13 +92,6 @@ pub fn records() -> IpcResult<Vec<RecordHead>> {
 #[specta::specta]
 pub fn record(code: String) -> IpcResult<Option<RecordView>> {
     IpcResult::ok(records::record(&code))
-}
-
-/// The game install on this machine, found as LTK Manager finds it. None when none is found.
-#[tauri::command]
-#[specta::specta]
-pub async fn find_game() -> IpcResult<Option<String>> {
-    off_thread(|| Ok(inputs::find_game())).await
 }
 
 /// The game installs detected on this machine and the ones added, the chosen one first
@@ -863,7 +856,6 @@ pub async fn reveal_place(app: AppHandle, place: Place) -> IpcResult<()> {
                 let file = store?.package_of(id)?.ok_or_else(none_written)?;
                 return reveal::reveal_file(Utf8Path::new(&file));
             }
-            Place::Game => chosen.game,
             Place::Install { path } => {
                 if !installs::is_listed(installs::detect(), &settings, &path) {
                     return Err(AppError::NotShown {

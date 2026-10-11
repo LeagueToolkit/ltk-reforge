@@ -22,8 +22,6 @@ pub enum Place {
         /// The run's number in the store.
         id: u64,
     },
-    /// The game install chosen.
-    Game,
     /// A game install of the list, detected or added (#ADR-0101).
     Install {
         /// Its root, as the list gives it.

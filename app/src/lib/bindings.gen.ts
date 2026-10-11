@@ -17,8 +17,6 @@ export const commands = {
 	records: () => __TAURI_INVOKE<({ ok: true; value: RecordHead[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("records"),
 	/**  A bundled record by its code, with or without its `#`. None for a code the bundle lacks. */
 	record: (code: string) => __TAURI_INVOKE<({ ok: true; value: RecordView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("record", { code }),
-	/**  The game install on this machine, found as LTK Manager finds it. None when none is found. */
-	findGame: () => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("find_game"),
 	/**
 	 *  The game installs detected on this machine and the ones added, the chosen one first
 	 *  (#ADR-0101).
@@ -1036,8 +1034,6 @@ export type Place =
 	/**  The run's number in the store. */
 	id: number,
 } }) & { install?: never } | 
-/**  The game install chosen. */
-"game" | 
 /**  A game install of the list, detected or added (#ADR-0101). */
 ({ install: {
 	/**  Its root, as the list gives it. */
