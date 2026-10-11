@@ -488,14 +488,14 @@ pub async fn spell_hashes(
     off_thread(move || {
         let book = match run {
             RunRef::Kept { id } => match &store {
-                Some(store) => store.kept_snapshots(id)?.and_then(|kept| kept.load),
+                Some(store) => store.kept_names(id)?,
                 None => None,
             }
-            .map(|load| load.names().clone()),
+            .map(|book| (*book).clone()),
             RunRef::Last => last
                 .as_deref()
                 .and_then(HeldRun::snapshots)
-                .map(|snapshots| snapshots.load.names().clone()),
+                .map(|snapshots| snapshots.names().clone()),
             RunRef::Explored => {
                 explored.with(|e| e.and_then(ExploredMod::load).map(|l| l.names().clone()))
             }

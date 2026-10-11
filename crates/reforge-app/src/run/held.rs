@@ -72,12 +72,9 @@ impl HeldRun {
     }
 
     /// Where the viewer reads the run's bins: the run's layer over the store's tiers, named
-    /// through the run's load names.
+    /// through the run's names as far as its snapshots go.
     pub fn bin_source<'a>(&'a self, store: Option<&'a AppStore>) -> BinSource<'a> {
-        let book = self
-            .snapshots
-            .as_ref()
-            .map(|snapshots| snapshots.load.names());
+        let book = self.snapshots.as_ref().map(Snapshots::names);
         BinSource::new(Tiers::layered(&*self.layer, store), book)
     }
 

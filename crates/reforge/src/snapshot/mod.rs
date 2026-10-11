@@ -116,6 +116,15 @@ impl Snapshots {
         }
     }
 
+    /// The names the run learnt, as far as its snapshots go: the plan's book holds the
+    /// entries and paths the port made over the load's, so a made bin's objects spell.
+    pub fn names(&self) -> &NameBook {
+        match &self.plan {
+            Some(plan) => plan.names(),
+            None => self.load.names(),
+        }
+    }
+
     /// Every id the snapshots name, each once, in order: what a store must hold for a run to
     /// resume after any of their stages.
     pub fn ids(&self) -> Vec<ContentId> {

@@ -514,8 +514,9 @@ and dependency count, a `PTCH`'s records and deletions) and one row per object, 
 row per object a `PTCH`'s records patch; `bin_children` answers the rows under one node, 500
 a page; `bin_read` answers the first page under several nodes of one object, four pages a
 call at most. A node is its object's entry and its hash path, the form a type check's place
-writes, `#` and the record's position under a target. Names are the run's load names over the
-inputs' tables, every text cleaned. The front end (`modules/bin`) draws the rows as a
+writes, `#` and the record's position under a target. Names are the run's own, as far as its
+snapshots go (the plan's book holds the entries and paths the port made over the load's, so a
+made bin's objects spell), over the inputs' tables, every text cleaned. The front end (`modules/bin`) draws the rows as a
 virtualized tree: the objects sorted by class then name, a bin of one object opened, a tag of
 the kind in ritobin's words, guide lines, the arrow keys, Home and End, and `Ctrl+←` or the
 header's collapse-all button to shut every row and scroll to the top. A value-family row
@@ -800,7 +801,7 @@ user picks another policy and runs again.
   the mod explored. `last_files` lists a stage through the function a kept run's files go
   through, over that layer and the store's tiers, so a run the store did not keep, one that
   halted or did not write, is browsed as a kept one is; `last_file` opens a file in the Runs
-  page's viewer, a bin's rows named through the run's load names.
+  page's viewer, a bin's rows named through the run's names as far as its snapshots go.
 - The app runs the stages one at a time, as `Run::through` does, and tells the window as each
   starts and ends, and each finding as it is raised. A stage that gives a part sends it as it
   ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the
@@ -818,7 +819,7 @@ user picks another policy and runs again.
   counts, object by object, each with its path and its value before and after. Another
   finding opens to its fields, and an id among them (`%f12`) shows the name the report's
   tables give it. A hash among them, under a key that names one (`class`, `field`, `entry`,
-  `hash`, `held`, a field of `held_by`), shows the name the run's load names or the inputs'
+  `hash`, `held`, a field of `held_by`), shows the name the run's names or the inputs'
   tables spell, the hash on hover; the report keeps hex (#ADR-0103). `spell_hashes` spells
   them for a run named as a `RunRef`: a kept run by its number, the last run, or the mod
   explored. Eight hex digits are tried as an entry, a field and a class, sixteen as a path,

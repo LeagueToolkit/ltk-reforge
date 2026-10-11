@@ -103,6 +103,16 @@ pub struct KeptSnapshots {
 }
 
 impl KeptSnapshots {
+    /// The names the run learnt, as far as its snapshots go: the plan's book over the load's,
+    /// as `Snapshots::names` reads them. Empty for a run with no load snapshot.
+    pub fn names(&self) -> NameBook {
+        match (&self.plan, &self.load) {
+            (Some(plan), _) => plan.names().clone(),
+            (None, Some(load)) => load.names().clone(),
+            (None, None) => NameBook::default(),
+        }
+    }
+
     /// The snapshots that name files of a run's snapshots from `load` on.
     pub fn of(snapshots: &Snapshots) -> Self {
         Self {
@@ -419,27 +429,17 @@ impl AppStore {
         }))
     }
 
-    /// The names a kept run's `load` learnt, held for the few runs read last. Empty for a run
-    /// that did not end `load`; None for a number no run has.
+    /// The names a kept run learnt, as far as its snapshots go, held for the few runs read
+    /// last. Empty for a run that did not end `load`; None for a number no run has.
     pub fn kept_names(&self, id: u64) -> Result<Option<Arc<NameBook>>, AppError> {
         const HELD: usize = 4;
         if let Some((_, book)) = self.names.lock().iter().find(|(run, _)| *run == id) {
             return Ok(Some(Arc::clone(book)));
         }
-        let Ok(row) = i64::try_from(id) else {
+        let Some(kept) = self.kept_snapshots(id)? else {
             return Ok(None);
         };
-        let query = "SELECT load.json FROM run LEFT JOIN load ON load.id = run.load_id
-             WHERE run.id = ?1";
-        let column: Option<Option<Vec<u8>>> = {
-            let rows = self.rows.lock();
-            rows.query_row(query, [row], |row| row.get(0)).optional()?
-        };
-        let Some(column) = column else {
-            return Ok(None);
-        };
-        let load: Option<LoadSnapshot> = column.as_deref().map(read_snapshot).transpose()?;
-        let book = Arc::new(load.map(|load| load.names().clone()).unwrap_or_default());
+        let book = Arc::new(kept.names());
         let mut held = self.names.lock();
         held.retain(|(run, _)| *run != id);
         held.push_front((id, Arc::clone(&book)));

@@ -214,6 +214,33 @@ fn a_run_a_stage_at_a_time_holds_each_result_and_reports_as_the_whole_run() {
 }
 
 #[test]
+fn the_snapshots_names_are_the_plans_once_the_port_is_planned() {
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let mut run = porter.run().in_store(MemoryStore::new());
+    run.read(&own_mod(), FILE_NAME).expect("the archive reads");
+    run.through(Stage::Decide).expect("no fault");
+    let at_load = run
+        .snapshots()
+        .expect("the snapshots")
+        .names()
+        .paths()
+        .count();
+
+    run.plan().expect("the port is planned");
+
+    let snapshots = run.snapshots().expect("the snapshots");
+    assert!(
+        snapshots.names().paths().count() > at_load,
+        "the plan's book holds the paths the port made"
+    );
+    assert_eq!(
+        snapshots.names().paths().count(),
+        run.names().paths().count()
+    );
+}
+
+#[test]
 fn a_stage_asked_again_gives_what_the_run_holds() {
     let env = game_env();
     let porter = Porter::new(&env);
