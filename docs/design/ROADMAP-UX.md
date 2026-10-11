@@ -446,7 +446,7 @@ Under them are three tabs:
   hides the files that are the same. A WAD opens at first and a folder closed, so a WAD of
   thousands of files draws its rows as they are opened. The file picked opens below the tree;
   a finding's Show in bin picks the bin at `build`, opens the folders down to it, scrolls the
-  tree to it and opens it at the value's object.
+  tree's box to it and opens it at the value's object.
 - **Report**: the report the package embeds (`run_report`), as its JSON.
 
 For a package opened, the Files tab is one line saying the run has no snapshots, and the
@@ -511,10 +511,13 @@ A bin asked for at an object's entry (`run_file`, `last_file` and `explore_file`
 `entry`, eight hex digits) shows that object first, between two lines that hold the record
 separator alone (`ENTRY_FENCE`): a control the dump escapes, so no object's text holds it.
 The other objects follow in the bin's order under the same cap, and `entry_found` says
-whether the bin holds the entry. The viewer marks the object, brings its own top to the top
-of the page (the object may stand taller than the page) and names the entry in its badge row,
-by the name the finding's detail spelled, the hash on hover; a bin without the entry says so
-above its objects. A page's tabs keep their panels mounted, so what a person opened in the
+whether the bin holds the entry. The viewer marks the object and names the entry in its badge
+row, by the name the finding's detail spelled, the hash on hover; a bin without the entry says
+so above its objects. Each jump, a second one to the object shown too, brings the viewer's top
+to the top of the page, under its padding, and its text back to its start, once the text
+shows: the object may stand taller than the page. A file's text stands as tall as the page
+less its padding and the badge row, so the page's end does not stop that scroll short, and
+the tree scrolls its own box to the file, never the page. A page's tabs keep their panels mounted, so what a person opened in the
 result is as they left it when they come back from the files. Bytes no tier
 holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSING`.
 

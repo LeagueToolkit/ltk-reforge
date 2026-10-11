@@ -1,5 +1,5 @@
 import type { QueryKey } from "@tanstack/react-query";
-import { createContext, useCallback, useState } from "react";
+import { createContext, useCallback, useRef, useState } from "react";
 
 import type { FileRow, StageFiles, StageName } from "@/lib/bindings.gen";
 
@@ -10,6 +10,11 @@ export interface Picked {
   entry: string | null;
   /** The entry's name, where the page that asked for it spelled one. */
   entryName?: string;
+  /**
+   * The number of the jump that picked it, each jump's its own, so a jump to the object shown
+   * already lands again. None for a file a person picked in the tree.
+   */
+  jump?: number;
 }
 
 /** The read of a run's files at one stage. */
@@ -59,6 +64,7 @@ export interface FilesAt {
  */
 export function useFilesAt(build: FilesQuery | null, showFiles: () => void) {
   const [at, setAt] = useState<FilesAt>({ stage: null, picked: null });
+  const jumps = useRef(0);
   const setStage = useCallback((stage: StageName) => setAt({ stage, picked: null }), []);
   const setPicked = useCallback(
     (picked: Picked | null) => setAt((current) => ({ ...current, picked })),
@@ -67,7 +73,8 @@ export function useFilesAt(build: FilesQuery | null, showFiles: () => void) {
   const jump: FileJump | null = build && {
     build,
     open: (row, entry, entryName) => {
-      setAt({ stage: "build", picked: { row, entry, entryName } });
+      jumps.current += 1;
+      setAt({ stage: "build", picked: { row, entry, entryName, jump: jumps.current } });
       showFiles();
     },
   };

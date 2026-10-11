@@ -20,8 +20,10 @@ export interface FileQuery {
   queryFn: () => Promise<FileView>;
 }
 
+// A text about the page's height less the page's padding and the badge row, so a jump that
+// brings the viewer's top to the page's top is not stopped short by the page's end.
 const preClass =
-  "max-h-[60vh] overflow-auto rounded-lg border border-surface-700/50 bg-surface-950/40 p-3 font-mono text-xs whitespace-pre text-surface-200";
+  "max-h-[calc(100vh-8rem)] overflow-auto rounded-lg border border-surface-700/50 bg-surface-950/40 p-3 font-mono text-xs whitespace-pre text-surface-200";
 
 /** The object asked for, marked. It is the text's first, so the text's own scroll is at it. */
 function AskedObject({ text }: { text: string }) {
@@ -94,26 +96,36 @@ interface FileViewerProps {
   entry?: string | null;
   /** The entry's name, shown in place of its hash, which shows on hover. */
   entryName?: string;
+  /**
+   * The number of the jump that asked for the file. Each new one brings the viewer's top to the
+   * top of the page and its text to its start, once the text shows.
+   */
+  landing?: number;
 }
 
 /**
  * One file, read-only: what it is, and its bytes as the app shows them. A bin's object asked
  * for comes first, marked, and the viewer scrolls to it.
  */
-export function FileViewer({ row, query, entry = null, entryName }: FileViewerProps) {
+export function FileViewer({ row, query, entry = null, entryName, landing }: FileViewerProps) {
   // A file's bytes under their id never change, and one no tier holds is not asked again.
   const view = useQuery({ ...query, staleTime: Infinity, retry: false });
   const root = useRef<HTMLDivElement>(null);
-  // The viewer's top goes to the top of the page once the asked object shows: the object is
-  // the text's first, and may stand taller than the page, which a scroll to its nearest edge
-  // leaves where it is.
+  // The asked object is the text's first and may stand taller than the page, which a scroll
+  // to its nearest edge leaves where it is: the viewer's top goes to the page's top, and the
+  // text, which a person may have scrolled on a tab kept mounted, to its start.
   useEffect(() => {
-    if (entry && view.data) {
-      root.current?.scrollIntoView({ block: "start" });
+    if (landing === undefined || !view.data) {
+      return;
     }
-  }, [entry, view.data]);
+    const text = root.current?.querySelector<HTMLElement>("[data-ui='FileViewer:text']");
+    if (text) {
+      text.scrollTop = 0;
+    }
+    root.current?.scrollIntoView({ block: "start" });
+  }, [landing, view.data]);
   return (
-    <div ref={root} className="flex flex-col gap-3" data-ui="FileViewer">
+    <div ref={root} className="flex scroll-mt-8 flex-col gap-3" data-ui="FileViewer">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-surface-veil-soft px-3 py-2 text-xs">
         <span className="inline-flex items-center gap-1 rounded-full bg-surface-veil px-2 py-0.5 font-medium text-surface-200 select-none">
           <LockSimpleIcon weight="bold" className="h-3 w-3" />

@@ -19,6 +19,7 @@ import { m } from "@/i18n";
 import type { FileRow, Mark } from "@/lib/bindings.gen";
 import { twMerge } from "@/utils";
 
+import { showInScrollBox } from "../scroll";
 import {
   foldersTo,
   isSourceFact,
@@ -195,8 +196,11 @@ export function FileTree({ roots, allOpen, selected, onPick, againstRun = false 
       });
     }
   }
+  // The tree's box alone scrolls to the row: a jump's viewer moves the page.
   const scrolled = useCallback((node: HTMLButtonElement | null) => {
-    node?.scrollIntoView({ block: "nearest" });
+    if (node) {
+      showInScrollBox(node);
+    }
   }, []);
   const isOpen = (node: TreeFolder, depth: number) =>
     allOpen || (depth === 0) !== flipped.has(node.key);
