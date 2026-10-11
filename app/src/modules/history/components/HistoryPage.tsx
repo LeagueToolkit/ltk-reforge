@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { FailureNote, Spinner } from "@/components";
 import { m } from "@/i18n";
@@ -7,48 +7,41 @@ import type { HistoryBuilds } from "@/lib/bindings.gen";
 import { useInputs } from "@/modules/inputs";
 
 import { useHistoryBuilds, useHistoryLookup } from "../api/history";
+import { useHistoryStore } from "../state/historyStore";
 import { LookupResult } from "./LookupResult";
-import { type ObjectAsked, ObjectSection } from "./ObjectSection";
+import { ObjectSection } from "./ObjectSection";
 import { SearchBar } from "./SearchBar";
 
-/** A path asked about, at a build. */
-interface Asked {
-  query: string;
-  at: number;
-}
-
-/** The search and what it found, over the builds of the index. */
+/**
+ * The search and what it found, over the builds of the index. What was asked lives in the
+ * page's store and the answers in the query cache, so leaving the page and coming back shows
+ * the same.
+ */
 function HistoryExplorer({ builds }: { builds: HistoryBuilds }) {
-  const [text, setText] = useState("");
-  const [at, setAt] = useState(builds.head);
-  const [asked, setAsked] = useState<Asked | null>(null);
-  const [bin, setBin] = useState("");
-  const [entry, setEntry] = useState("");
-  const [object, setObject] = useState<ObjectAsked | null>(null);
+  const state = useHistoryStore();
+  const { head, text, at, asked, bin, entry, object, start, seed, lookUp: ask } = state;
   const lookup = useHistoryLookup(asked?.query ?? null, asked?.at ?? null);
 
-  // A new path asked about starts the object over, from that path when it is a bin.
+  // Another index's head starts the page over.
+  useEffect(() => start(builds.head), [builds.head, start]);
+
+  // A path asked about fills the object's bin when it is a bin, once per lookup.
   const found = lookup.data;
   useEffect(() => {
-    if (found) {
-      setBin(found.bin ? found.path : "");
-      setEntry("");
-      setObject(null);
+    if (found && asked) {
+      seed(asked, found.path, found.bin != null);
     }
-  }, [found]);
+  }, [found, asked, seed]);
+
+  if (head !== builds.head) {
+    return null;
+  }
 
   const lookUp = (path: string | undefined, atBuild: number) => {
     const query = (path ?? text).trim();
     if (query !== "") {
-      setText(query);
-      setAt(atBuild);
-      setAsked({ query, at: atBuild });
+      ask(query, atBuild);
     }
-  };
-  const openObject = (objectBin: string, objectEntry: string) => {
-    setBin(objectBin);
-    setEntry(objectEntry);
-    setObject({ bin: objectBin, entry: objectEntry });
   };
 
   return (
@@ -56,10 +49,10 @@ function HistoryExplorer({ builds }: { builds: HistoryBuilds }) {
       <SearchBar
         builds={builds}
         text={text}
-        onText={setText}
-        at={at}
-        onAt={setAt}
-        onLookUp={(path) => lookUp(path, at)}
+        onText={state.setText}
+        at={at ?? builds.head}
+        onAt={state.setAt}
+        onLookUp={(path) => lookUp(path, at ?? builds.head)}
       />
       {lookup.isFetching && !found && <Spinner />}
       {lookup.isError && <FailureNote failure={lookup.error} />}
@@ -68,17 +61,19 @@ function HistoryExplorer({ builds }: { builds: HistoryBuilds }) {
           <LookupResult
             view={found}
             onLookUp={(path) => lookUp(path, found.at.position)}
-            onOpenObject={openObject}
+            onOpenObject={state.openObject}
           />
           <ObjectSection
             at={found.at}
             builds={builds}
             bin={bin}
             entry={entry}
-            onBin={setBin}
-            onEntry={setEntry}
+            onBin={state.setBin}
+            onEntry={state.setEntry}
             asked={object}
-            onShow={() => setObject({ bin: bin.trim(), entry: entry.trim() })}
+            onShow={state.showObject}
+            other={state.other}
+            onOther={state.setOther}
           />
         </>
       )}

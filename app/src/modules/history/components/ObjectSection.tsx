@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { Button, FailureNote, SectionCard, Spinner } from "@/components";
 import { m } from "@/i18n";
@@ -7,16 +7,11 @@ import { twMerge } from "@/utils";
 
 import { useHistoryObject } from "../api/history";
 import { type DiffLine, lineDiff } from "../diff";
+import type { ObjectAsked } from "../state/historyStore";
 import { BuildSelect, inputClass, lifeShort } from "./parts";
 
 const preClass =
   "max-h-[70vh] overflow-auto rounded-lg border border-surface-700/50 bg-surface-950/40 p-3 font-mono text-xs whitespace-pre";
-
-/** An object asked for: the bin and the entry as typed or picked. */
-export interface ObjectAsked {
-  bin: string;
-  entry: string;
-}
 
 const lineClass: Record<DiffLine["kind"], string> = {
   same: "text-surface-500",
@@ -97,6 +92,9 @@ interface ObjectSectionProps {
   onEntry: (entry: string) => void;
   asked: ObjectAsked | null;
   onShow: () => void;
+  /** The build the object is compared at, by its position. */
+  other: number | null;
+  onOther: (other: number | null) => void;
 }
 
 /**
@@ -112,8 +110,9 @@ export function ObjectSection({
   onEntry,
   asked,
   onShow,
+  other,
+  onOther,
 }: ObjectSectionProps) {
-  const [other, setOther] = useState<number | null>(null);
   const object = useHistoryObject(asked?.bin ?? "", asked?.entry ?? "", asked ? at.position : null);
   return (
     <SectionCard
@@ -176,7 +175,7 @@ export function ObjectSection({
               <BuildSelect
                 builds={builds}
                 value={other}
-                onChange={setOther}
+                onChange={onOther}
                 label={m.history_compare_label()}
                 none={m.history_compare_none()}
               />

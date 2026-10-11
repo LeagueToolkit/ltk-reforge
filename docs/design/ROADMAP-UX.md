@@ -557,7 +557,10 @@ links or typed, and shows the object's text with its class, its WAD and its life
 ending in a line that says so, as the file viewer's does. "Compare
 with" picks another build: the object at that build is asked for and the card shows a unified
 line diff of the two texts in place of the text, removed lines in the danger tone, added
-lines in the success tone, the rest dimmed.
+lines in the success tone, the rest dimmed. What was asked (the search, the build, the path
+looked up, the object and the build compared) is kept in the page's store, as the run page
+keeps its own, and the answers in the query cache, so the page shows the same when a person
+leaves it and comes back; an index of another head starts it over.
 
 **The diff** is the front end's (`modules/history/diff.ts`): the common head and tail are
 matched, and the lines between them by their longest common subsequence. A text of more than
