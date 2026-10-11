@@ -749,8 +749,8 @@ export type Diff = {
 	/**
 	 *  What differs, as a stable id the window translates. A setting: `kind`, `target`,
 	 *  `anim_reuse`, `keep_stale`, `keep_dds`, `game_events_only`, `block`, `checks_off`,
-	 *  `fixups_off`, `fixups_on`, `rules`. An input: `program`, `install_build`,
-	 *  `history_head`, `names`, `schema_build`.
+	 *  `fixups_off`, `fixups_on`, `rules`, `unit_targets`, `kept_files`, `keep_other_slots`.
+	 *  An input: `program`, `install_build`, `history_head`, `names`, `schema_build`.
 	 */
 	key: string,
 	/**

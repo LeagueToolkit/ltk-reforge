@@ -430,7 +430,9 @@ about a mod. Its header has two columns, the run that was open on the left and t
 on the right, each with its name, kind, when and package file name, and a note when the two
 are of different archives by their SHA-256. Under it, one card each, an empty one saying so:
 
-- **Settings and inputs**: the request's settings that differ, then what the runs were judged
+- **Settings and inputs**: the request's settings that differ, the targets given to units
+  (`<character>:<slot>=<slot|none>`) and the stale copies kept (`<wad>/<path>`) each in the
+  library's text form and sorted, so their order changes nothing; then what the runs were judged
   under that differs: the program and the install's build, the history's newest build and
   head and the hash tables, as the load snapshots hold them, and the schema's build. A key per
   row the window names; a value in mono, a switch as on or off, a fixup by its title with its

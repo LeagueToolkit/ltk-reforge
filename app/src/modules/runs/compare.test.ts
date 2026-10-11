@@ -53,6 +53,7 @@ describe("isDiffKey", () => {
   it("knows the keys the store sends and no other", () => {
     expect(isDiffKey("fixups_off")).toBe(true);
     expect(isDiffKey("install_build")).toBe(true);
+    expect(isDiffKey("unit_targets")).toBe(true);
     expect(isDiffKey("unknown")).toBe(false);
   });
 });

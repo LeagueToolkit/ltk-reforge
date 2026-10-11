@@ -16,14 +16,15 @@ use reforge::store::BlobStore;
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
-    self, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, Unwatched,
+    self, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, UnitTargetView,
+    Unwatched,
 };
 use reforge_app::store::{
     AppStore, Counts, EVIDENCE_ONLY_SCHEMA, FileRow, FileView, HEX_BYTES, Mark, Origin, StageFiles,
 };
 use reforge_app::view::Finding;
 use reforge_testkit::bins::{bin, entry, float};
-use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
+use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
 use reforge_testkit::packs::{DdsPixels, dds};
 use reforge_testkit::skins::{self, WAD, skin_bin};
 use reforge_testkit::{ModArchive, SchemaRows};
@@ -271,6 +272,55 @@ fn a_fixup_turned_off_shows_in_the_settings_the_findings_and_the_changes() {
     assert_eq!(change.b, Counts::default());
     assert!(!compared.targets.is_empty());
     assert!(compared.targets.iter().all(|target| !target.differs));
+}
+
+/// A mod with a model of its own at skin0 and another at skin3, so a port that leaves one
+/// unit to the game still writes the other.
+fn two_skin_mod() -> ModArchive {
+    let skin3 = "Characters/Test/Skins/Skin3";
+    let graph3 = "Characters/Test/Animations/Skin3";
+    let resources3 = "Characters/Test/Skins/Skin3/Resources";
+    let mut files = own_files("a");
+    files.extend(own_files("b"));
+    files.push(mod_skin(
+        "test",
+        0,
+        SKIN0,
+        &own_skin("a", GRAPH0, RESOURCES0),
+        vec![own_graph("a", GRAPH0)],
+    ));
+    files.push(mod_skin(
+        "test",
+        3,
+        skin3,
+        &own_skin("b", graph3, resources3),
+        vec![own_graph("b", graph3)],
+    ));
+    archive(&files)
+}
+
+#[test]
+fn a_unit_left_to_the_game_in_one_port_lists_its_unit_targets_against_none() {
+    let bench = Bench::new();
+    let (a, _) = bench.kept(&two_skin_mod(), RunKind::Port);
+    let mut settings = RunSettings::default();
+    settings.unit_targets.push(UnitTargetView {
+        character: "Test".to_string(),
+        slot: 3,
+        target: None,
+    });
+    let (b, _) = bench.kept_with(&two_skin_mod(), RunKind::Port, settings);
+
+    let compared = bench
+        .store
+        .compare(a, b)
+        .unwrap()
+        .expect("both runs are kept");
+
+    let keys: Vec<&str> = compared.settings.iter().map(|d| d.key.as_str()).collect();
+    assert_eq!(keys, ["unit_targets"]);
+    assert_eq!(compared.settings[0].a, "");
+    assert_eq!(compared.settings[0].b, "test:3=none");
 }
 
 #[test]

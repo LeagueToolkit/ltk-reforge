@@ -135,6 +135,17 @@ pub struct UnitTargetView {
     pub target: Option<u16>,
 }
 
+impl UnitTargetView {
+    /// The library's target this names, the character trimmed and lowercase.
+    pub fn unit_target(&self) -> UnitTarget {
+        UnitTarget {
+            character: self.character.trim().to_ascii_lowercase(),
+            slot: Slot(self.slot),
+            target: self.target.map(Slot),
+        }
+    }
+}
+
 /// A file kept where the run would drop it as a stale copy (#ADR-0098): by its WAD's name and
 /// its path in that WAD, or its path hash as sixteen hex digits.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -184,11 +195,7 @@ impl RunSettings {
                     detail: format!("{character:?} names no character"),
                 });
             }
-            Ok(UnitTarget {
-                character: character.to_ascii_lowercase(),
-                slot: Slot(given.slot),
-                target: given.target.map(Slot),
-            })
+            Ok(given.unit_target())
         });
         given.collect()
     }

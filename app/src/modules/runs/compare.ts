@@ -33,6 +33,9 @@ export const DIFF_KEYS = [
   "fixups_off",
   "fixups_on",
   "rules",
+  "unit_targets",
+  "kept_files",
+  "keep_other_slots",
   "program",
   "install_build",
   "history_head",
@@ -48,4 +51,9 @@ export function isDiffKey(key: string): key is DiffKey {
 }
 
 /** The keys whose values are switches, sent as `true` or `false`. */
-export const SWITCH_KEYS: readonly DiffKey[] = ["keep_stale", "keep_dds", "game_events_only"];
+export const SWITCH_KEYS: readonly DiffKey[] = [
+  "keep_stale",
+  "keep_dds",
+  "game_events_only",
+  "keep_other_slots",
+];

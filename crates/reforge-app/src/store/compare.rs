@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use camino::Utf8Path;
+use reforge::load::KeptFile;
 use reforge::model::clean;
 use reforge::snapshot::{LoadSnapshot, Program};
 use rusqlite::OptionalExtension;
@@ -13,7 +14,7 @@ use serde::Serialize;
 use super::files::read_snapshot;
 use super::{AppStore, failed, json_of, kind_text};
 use crate::error::AppError;
-use crate::run::{FixupChanges, PackageView, RunKind, RunSettings, RunView};
+use crate::run::{FixupChanges, KeptFileView, PackageView, RunKind, RunSettings, RunView};
 use crate::store::RunRow;
 use crate::view::Finding;
 
@@ -41,8 +42,8 @@ pub struct RunHead {
 pub struct Diff {
     /// What differs, as a stable id the window translates. A setting: `kind`, `target`,
     /// `anim_reuse`, `keep_stale`, `keep_dds`, `game_events_only`, `block`, `checks_off`,
-    /// `fixups_off`, `fixups_on`, `rules`. An input: `program`, `install_build`,
-    /// `history_head`, `names`, `schema_build`.
+    /// `fixups_off`, `fixups_on`, `rules`, `unit_targets`, `kept_files`, `keep_other_slots`.
+    /// An input: `program`, `install_build`, `history_head`, `names`, `schema_build`.
     pub key: String,
     /// The value in the first run, as text: a list joined with `, `, a switch `true` or
     /// `false`, none empty.
@@ -254,6 +255,9 @@ fn head(row: RunRow) -> RunHead {
 fn settings_rows(kind: RunKind, settings: &RunSettings) -> Vec<(&'static str, String)> {
     let list = |items: &[String]| items.join(", ");
     let rules = settings.fixups.rules.iter().map(json_of);
+    let unit_targets = settings.unit_targets.iter();
+    let unit_targets = unit_targets.map(|given| given.unit_target().to_string());
+    let kept_files = settings.kept_files.iter().map(kept_file);
     vec![
         ("kind", kind_text(kind).to_string()),
         ("target", settings.target.clone()),
@@ -266,7 +270,26 @@ fn settings_rows(kind: RunKind, settings: &RunSettings) -> Vec<(&'static str, St
         ("fixups_off", list(&settings.fixups.off)),
         ("fixups_on", list(&settings.fixups.on)),
         ("rules", rules.collect::<Vec<_>>().join(", ")),
+        ("unit_targets", sorted(unit_targets)),
+        ("kept_files", sorted(kept_files)),
+        ("keep_other_slots", settings.keep_other_slots.to_string()),
     ]
+}
+
+/// The items as text, sorted and joined: the order they were given in changes nothing.
+fn sorted(items: impl Iterator<Item = String>) -> String {
+    let mut items: Vec<String> = items.collect();
+    items.sort();
+    items.join(", ")
+}
+
+/// A kept file as `<wad>/<path>`, in the library's spelling when it takes it, so two runs that
+/// name one file in two spellings do not differ.
+fn kept_file(kept: &KeptFileView) -> String {
+    match KeptFile::new(&kept.wad, &kept.path) {
+        Ok(file) => file.to_string(),
+        Err(_) => format!("{}/{}", kept.wad, kept.path),
+    }
 }
 
 /// What a run was judged under, as text, by key: the program that made it, the inputs its load
