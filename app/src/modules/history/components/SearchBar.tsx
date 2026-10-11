@@ -53,6 +53,8 @@ export function SearchBar({ builds, text, onText, at, onAt, onLookUp }: SearchBa
       event.preventDefault();
       setHighlight((at) => Math.max(at - 1, -1));
     } else if (event.key === "Escape") {
+      // A search box's own Escape empties it: the path typed stays.
+      event.preventDefault();
       setOpen(false);
       setHighlight(-1);
     } else if (event.key === "Enter") {

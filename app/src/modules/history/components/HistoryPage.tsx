@@ -97,10 +97,12 @@ export function HistoryPage() {
   const builds = useHistoryBuilds(hasIndex);
   return (
     <div className="flex flex-col gap-6" data-ui="HistoryPage">
-      <h1 className="font-display text-xl font-semibold text-surface-50">
-        {m.history_page_title()}
-      </h1>
-      <p className="text-sm text-surface-400 select-none">{m.history_page_description()}</p>
+      <div className="flex flex-col gap-1">
+        <h1 className="font-display text-xl font-semibold text-surface-50">
+          {m.history_page_title()}
+        </h1>
+        <p className="text-sm text-surface-400 select-none">{m.history_page_description()}</p>
+      </div>
       {inputs.isPending && <Spinner />}
       {inputs.isError && <FailureNote failure={inputs.error} />}
       {inputs.isSuccess && !hasIndex && (

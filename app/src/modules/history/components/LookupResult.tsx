@@ -64,7 +64,7 @@ function HeldIn({ view }: { view: LookupView }) {
               <td className={twMerge(cellClass, "font-mono text-xs break-all text-surface-100")}>
                 {held.wad}
               </td>
-              <td className={cellClass}>
+              <td className={twMerge(cellClass, "text-xs")}>
                 <Tooltip content={<span className="font-mono text-xs">{held.content}</span>}>
                   <span className="font-mono text-xs text-surface-300">
                     {held.content.slice(0, SHORT_CONTENT)}
