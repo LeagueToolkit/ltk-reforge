@@ -229,9 +229,28 @@ The rows are three groups after #ADR-0094's, each naming the one before it by ke
 | `run_blob` | a run and a content id | the ids of the run's memory layer and every id its snapshots name, so a run resumed from an older one keeps the older one's bytes from its sweep |
 
 A snapshot, the report and the view are their JSON in one zstd frame. The raw snapshot is not a row:
-it is the ingest tier's entry. A `meta` table holds the rows' format; a file of another
-format, or one whose format does not read, is moved aside under its format's name and a new
-one made, never migrated.
+it is the ingest tier's entry.
+
+**The format.** A `meta` table holds the rows' format (`store::FORMAT`, 2), raised with every
+change of the tables (`SCHEMA`). At open, after the format is read, every table `SCHEMA`
+declares is read with `PRAGMA table_info` and its columns compared with the declared ones by
+name and in order, the declared ones as SQLite reads `SCHEMA` in a database in memory: a file
+an earlier build made under the same number would otherwise open and fail on a missing
+column. A file of another format, of other columns, or that is no database is left as it is
+and the store stays closed, outdated (`StoreState::Outdated`), with what a reset loses read
+from the file by queries any shape answers: its format (0 when unread), its runs, the runs
+marked kept, the rows' bytes and the run tier's bytes, each 0 when its query fails. An
+outdated store is never migrated (#ADR-0096): it is reset. While it is closed, outdated or
+failed (another instance holds it, or a file does not open), runs are not kept, and the
+commands that need it answer `STORE_OUTDATED` or `STORE_FAILED`.
+
+**The reset** (`reset_store`, `RunStore::reset`) removes the rows' file and SQLite's files
+beside it, not moved aside, since the person asked for it and copies would pile up, and opens
+the store anew, which sweeps every blob of the run tier, since no row names one. The ingest
+tier stays: an archive's data is still good. It works in every state: outdated, open (a
+person who wants a clean store) and failed (a retry). It holds the store's lock until the
+store is open again, so no command sees it half made, and it is refused while a run is under
+way, and holds the run job, so none starts while it resets.
 
 **The save.** A run is kept when it writes its package, and when its request asks to keep it
 (`RunRequest::keep`) and it ends at its `through` stage, with no package: the guided view's
@@ -283,7 +302,7 @@ of a run's mark each cut the bound and delete, in the same transaction, the load
 refers to and the raw rows no load and no run refers to. When a run went, the run tier's blobs no
 `run_blob` row lists are removed after the commit, and the tier compacts its tables, which
 gives back its value log's space. Opening the store sweeps the run tier too, for a rows file
-moved aside or a save a crash ended between its flush and its rows. The rows and the run tier
+a reset removed or a save a crash ended between its flush and its rows. The rows and the run tier
 are behind one lock, so a sweep never runs while a save flushes. The ingest tier is not swept.
 
 **The project file** (#ADR-0096) is a kept run with its load, its raw snapshot and the bytes
@@ -353,10 +372,11 @@ The commands are `list_runs` (newest first, a mod's text through `clean`), `run_
 `run_settings`, `compare_runs` and `compare_files` ("The Runs page"), `export_project`,
 `import_project`, `open_package`, `keep_run`,
 `remove_run`, `remove_mod_runs`, `remove_all_runs`, `mod_ingest_bytes`, `clear_mod_ingest`,
-`clear_unused_ingest` and `store_view` (each tier's bytes, and the ingest bytes no run's
-archive names, for the settings page). A removal or a clear while a run is under way is refused. A
-store that does not open at start, such as one another instance of the app holds, leaves the
-runs unkept, and its commands answer why.
+`clear_unused_ingest`, `store_view` (each tier's bytes, and the ingest bytes no run's
+archive names, for the settings page), `store_state` (open, outdated with what a reset loses,
+or failed with why) and `reset_store`. A removal, a clear or a reset while a run is under way
+is refused. A store that does not open at start, such as one another instance of the app
+holds or one another build made, leaves the runs unkept, and its commands answer why.
 
 ## The Runs page
 
@@ -374,7 +394,9 @@ is off and Run again works as for any run. A run whose archive data the ingest t
 lacks has a badge "archive data cleared" (`RunRow::archive_ingested`); a package opened,
 which never had any, has none. A box above it filters by name and author. The run picked is
 the route's (`/runs?run=<number>`), so a link elsewhere opens the page at a run. With no run kept,
-the page says none is kept and links to the run page.
+the page says none is kept and links to the run page. While the store is not open, the page
+shows one line in place of the list, that the store cannot be read or why it did not open,
+with a link to Settings, where it is reset.
 
 **Open…**, a menu beside the box (and under the empty page's line), opens a file as a kept
 run: "Import project" picks a `.reforge-project` (`import_project`), "Open package" a
@@ -486,8 +508,16 @@ holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSIN
 mods, the bytes of the rows, the run tier and the ingest tier, the ingest bytes no run's
 archive names (`StoreView::ingest_unused_bytes`), and two actions, each asked about first:
 Clear unused archive data (`clear_unused_ingest`, off when there is none) and Remove all
-(`remove_all_runs`). The run tier reserves 64 MB for its journal, which the row says. A keep,
-a removal, a clear and a run kept ask the list, the views and the store's counts again.
+(`remove_all_runs`). The run tier reserves 64 MB for its journal, which the row says. At the
+row's end a small Reset store asks first that it removes every run, those marked kept too.
+While the store is outdated, a warning box takes the counts' place: the store was made by
+another version and cannot be read, a reset keeps runs again, what it removes (the runs, the
+kept ones, and the bytes of the rows and the run tier) and that the archives' ingested data
+stays, with a Reset store button in the danger tone, asked about first. While it failed, the
+box gives why, and the button reads Try again. A run page's result for a run that wrote its
+package while the store is not open says, in one muted line, that the run was not kept. A
+keep, a removal, a clear, a reset and a run kept ask the list, the views, the store's state
+and its counts again.
 
 ## The Records page
 
