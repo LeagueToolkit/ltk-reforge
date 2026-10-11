@@ -513,6 +513,51 @@ the codes as links. With no record picked, the pane says to pick one.
 so a link anywhere opens it at that record and the list marks it. A fixup's records in the
 list of fixups and a finding's record are such links.
 
+## The History page
+
+#ADR-0091. The page asks the history index the settings choose what the game held, and takes
+the window's whole width. It reads the index of the inputs as a run does (`OpenInputs`), and
+spells every hash through the hash tables of the same inputs. It needs no census clone: the
+index holds every object's bytes (#ADR-0078). It adds no rule (#ADR-0046): each command is
+one question to the library's `History` (`reforge_app::lookup`), and a name reaches the page
+through `clean`. With no index chosen every command answers `NO_INDEX`, and the page says so
+with a link to the Inputs page.
+
+**The queries.** `history_builds` lists the builds in position order with the head.
+`history_lookup` takes a path, or its path hash as sixteen hex digits, and a build (the head
+when none is given), and answers the path's life (`History::path`), the files the WADs held
+there at the build (`placed`), the objects that named it (`named_by`, the first 256, and
+whether more did) and the bin at the path at the build with its links and entries (`bin`).
+`history_suggest` answers the first 64 paths the tables spell that start with a prefix of
+three characters or more (`Names::first_paths_with_prefix`, which reads the hash cache no
+further than it needs: collecting every path of a three-letter prefix took 4.4 s on this
+machine, 2026-10-11). `history_object` takes a bin, a path or a hash, an entry, a name or
+eight hex digits, and a build, and answers the object as text: `History::object_bytes`,
+`model::bin::read_stored`, then `dump_object` with the tables' names. A build that holds no
+such object answers none, and bytes that do not read are `HISTORY_OBJECT_UNREADABLE`.
+
+**The page.** A search box takes a path or a hash and lists the suggestions under it as the
+person types, picked with a click or with Enter; a select picks the build, newest first, the
+head chosen; Look up asks. The result shows the path, its hash, its kind and its life ("from
+8.20.2483196 to 16.20.8248524, 758 builds", or "never held"), then three cards: Held in, the
+WADs with the content id shortened and whole on hover; Named by, each object a link that
+opens it below; and Bin, when the path is a bin at the build, with its WAD, its links as chips
+that look the linked path up at the same build, and its entries in a table with a filter,
+each entry a link that opens it. The Object card holds the bin and the entry, filled by those
+links or typed, and shows the object's text with its class, its WAD and its life. "Compare
+with" picks another build: the object at that build is asked for and the card shows a unified
+line diff of the two texts in place of the text, removed lines in the danger tone, added
+lines in the success tone, the rest dimmed.
+
+**The diff** is the front end's (`modules/history/diff.ts`): the common head and tail are
+matched, and the lines between them by their longest common subsequence. A text of more than
+20,000 lines, or lines between the common head and tail too many for a table of 16 Mi cells,
+reads "too long to compare".
+
+On this machine, over the index of 758 builds and the shared hash cache (2026-10-11), a lookup
+of a skin bin took 1 to 12 ms, a suggestion under 1 ms and an object at a build 0.4 to 5 ms;
+opening the hash tables took 1.3 s, once for the inputs.
+
 ## The Batch page
 
 #ADR-0091. A folder of mods, or files dropped, run as one job with one set of settings: a
@@ -793,7 +838,9 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    - the census history's group folded under a disclosure for maintainers.
 2. **The Mod page** and the **History page** (#ADR-0091), which share a renderer of values with
    names, and the library's read of an archive alone and its spelled history queries. Built:
-   the Mod page ("The Mod page"). Left: the History page.
+   the Mod page ("The Mod page") and the History page ("The History page"). The library
+   gained the read of an object as the index stores it and the first paths of a prefix; the
+   spelling of its answers and the diff of two objects are the app's.
 3. **The guided view** (#ADR-0090), its answers the library's settings, a unit's own target
    and a file kept among them (#ADR-0098). Built: the targets given to units, the files kept
    and the other slots shipped in a run's request, the questions derived from a run's view,
