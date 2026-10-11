@@ -139,8 +139,17 @@ pub struct Question {
     pub choices: Vec<Choice>,
     /// The default's index among the choices: what the run did.
     pub chosen: usize,
-    /// The mod's own facts the question names, the finding's message first.
+    /// The mod's own facts the question names, the finding's message first. A candidate is
+    /// not one: it is in `candidates`.
     pub facts: Vec<String>,
+    /// The slots weighed for the unit, as the decision holds them, the chosen one included:
+    /// for a `unit-target`, the unit's candidates in the order weighed; for a
+    /// `slot-conflict`, each unit's candidate at the slot, in the order of its `takes-slot`
+    /// choices, and none when a unit weighed none there. Empty for the other kinds.
+    pub candidates: Vec<CandidateView>,
+    /// The slot the run chose for the unit, for a `unit-target`. None for the other kinds, and
+    /// for a unit left to the game: the units of a `slot-conflict` each leave the slot.
+    pub chosen_slot: Option<u16>,
 }
 
 /// The questions a run's view asks, in the order asked: the stale files first, since that
@@ -337,6 +346,8 @@ impl Asker<'_> {
             choices,
             chosen: 0,
             facts,
+            candidates: Vec::new(),
+            chosen_slot: None,
         })
     }
 
@@ -349,8 +360,6 @@ impl Asker<'_> {
             .find(|code| finding.code == *code)?;
         let data: UnitData = data_of(finding, code)?;
         let decision = self.decision(&data.unit)?;
-        let mut facts = vec![finding.message.clone()];
-        facts.extend(decision.candidates.iter().map(candidate_fact));
 
         let mut slots: Vec<u16> = Vec::new();
         for candidate in decision.candidates.iter().filter(|c| c.feasible) {
@@ -404,7 +413,9 @@ impl Asker<'_> {
             subject: self.subject(finding),
             choices: choices.collect(),
             chosen,
-            facts,
+            facts: vec![finding.message.clone()],
+            candidates: decision.candidates.clone(),
+            chosen_slot: decision.chosen,
         })
     }
 
@@ -446,6 +457,12 @@ impl Asker<'_> {
             label: ChoiceLabel::LeaveToGame,
             answer: Answer::default(),
         });
+        // One candidate per `takes-slot` choice, or none: the window pairs them by place.
+        let at_slot = units.iter().map(|unit| {
+            let mut candidates = unit.candidates.iter();
+            candidates.find(|candidate| candidate.slot == slot).cloned()
+        });
+        let candidates = at_slot.collect::<Option<Vec<_>>>().unwrap_or_default();
         Some(Question {
             id: format!("slot-conflict:{}:{slot}", data.character),
             kind: QuestionKind::SlotConflict,
@@ -454,6 +471,8 @@ impl Asker<'_> {
             chosen: choices.len() - 1,
             choices,
             facts,
+            candidates,
+            chosen_slot: None,
         })
     }
 
@@ -506,6 +525,8 @@ impl Asker<'_> {
             choices,
             chosen: 0,
             facts,
+            candidates: Vec::new(),
+            chosen_slot: None,
         })
     }
 
@@ -551,6 +572,8 @@ impl Asker<'_> {
             choices,
             chosen: 0,
             facts,
+            candidates: Vec::new(),
+            chosen_slot: None,
         })
     }
 
@@ -595,6 +618,8 @@ impl Asker<'_> {
             choices,
             chosen: 0,
             facts,
+            candidates: Vec::new(),
+            chosen_slot: None,
         })
     }
 }
@@ -636,6 +661,8 @@ fn blocking_error(finding: &Finding) -> Option<Question> {
         choices,
         chosen: 0,
         facts: vec![finding.message.clone()],
+        candidates: Vec::new(),
+        chosen_slot: None,
     })
 }
 
@@ -646,23 +673,6 @@ fn given(decision: &DecisionView, target: Option<u16>) -> UnitTargetView {
         slot: decision.source,
         target,
     }
-}
-
-/// A candidate slot and its checks as one sentence.
-fn candidate_fact(candidate: &CandidateView) -> String {
-    let fits = match candidate.feasible {
-        true => "fits",
-        false => "does not fit",
-    };
-    let checks: Vec<String> = (candidate.checks.iter())
-        .map(|check| format!("{} {}: {}", check.aspect, check.fit, check.detail))
-        .collect();
-    format!(
-        "skin{} ({}) {fits}: {}",
-        candidate.slot,
-        candidate.why,
-        checks.join("; ")
-    )
 }
 
 /// What a unit that leaves holds of its own, its counts that are not zero.

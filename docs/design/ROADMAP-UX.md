@@ -779,10 +779,11 @@ and none when the finding is absent:
 
 The stale question comes first, since its answer runs `load` again (#ADR-0099), and the errors
 come last, one by one, in place of the simple view's one button (#ADR-0003). A question names
-its subject and the mod's facts from the finding's data and the decision's candidates: the
-finding's message, the files that are older bytes, each candidate slot with its checks, the
-units at other slots with their own work from `unit.left-with-work`, the banks and their
-events. Its default is what the run did and gives no setting, but for an error's, which blocks
+its subject and the mod's facts from the finding's data: the finding's message, the files that
+are older bytes, the units at other slots with their own work from `unit.left-with-work`, the
+banks and their events. A unit's question and a conflict's carry the decision's candidates as
+data (`Question::candidates`), and the window draws each as the Targets card does, beside the
+choice that targets it; a unit's slots no choice gives are drawn under the choices. Its default is what the run did and gives no setting, but for an error's, which blocks
 it by its code and subject. An answer is a patch of the run's settings; the window merges the
 answers into the standard settings in question order, a list appended to and a switch set, and
 runs through `write`. A run with nothing to ask goes on to the write with the same settings.
@@ -895,9 +896,9 @@ the Records page's list running past the window's bottom, its filter scrolling o
 titles a word a line in a narrow window, their Markdown backticks shown, and a code linked in
 the text broken at its hyphen; the Batch page's summary running its two sentences together, a
 stopped batch said to have stopped before the last mod alone, its table's counts and times out
-of line with their rows, and its description apart from its title; and "Guide me" broken onto
-two lines. Left: a unit question's facts give each candidate in the library's words (its reason
-id, the check's aspect and fit), since they are the sentences `guided_questions` answers.
+of line with their rows, and its description apart from its title; "Guide me" broken onto two
+lines; and a unit question's candidates given as sentences in the library's words (its reason
+id, the check's aspect and fit).
 
 Each library change is one rule with its test (#ADR-0045), made before the page that needs it.
 

@@ -1455,8 +1455,23 @@ export type Question = {
 	choices: Choice[],
 	/**  The default's index among the choices: what the run did. */
 	chosen: number,
-	/**  The mod's own facts the question names, the finding's message first. */
+	/**
+	 *  The mod's own facts the question names, the finding's message first. A candidate is
+	 *  not one: it is in `candidates`.
+	 */
 	facts: string[],
+	/**
+	 *  The slots weighed for the unit, as the decision holds them, the chosen one included:
+	 *  for a `unit-target`, the unit's candidates in the order weighed; for a
+	 *  `slot-conflict`, each unit's candidate at the slot, in the order of its `takes-slot`
+	 *  choices, and none when a unit weighed none there. Empty for the other kinds.
+	 */
+	candidates: CandidateView[],
+	/**
+	 *  The slot the run chose for the unit, for a `unit-target`. None for the other kinds, and
+	 *  for a unit left to the game: the units of a `slot-conflict` each leave the slot.
+	 */
+	chosen_slot: number | null,
 };
 
 /**  What a question is about, which gives its title. */

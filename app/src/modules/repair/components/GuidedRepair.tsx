@@ -17,7 +17,13 @@ import { useInputs, useInputsGate } from "@/modules/inputs";
 import { mutationFn } from "@/utils";
 
 import { useJobRunning, useRunMod, useRunRunning, useRunStages } from "../api/run";
-import { askAgain, mergeAnswers, takenAnswers, takenChoice } from "../state/guided";
+import {
+  askAgain,
+  mergeAnswers,
+  placeCandidates,
+  takenAnswers,
+  takenChoice,
+} from "../state/guided";
 import {
   type AdvancedSettings,
   type GuidedAnswers,
@@ -26,6 +32,7 @@ import {
   STANDARD,
   useRepairStore,
 } from "../state/repairStore";
+import { Candidate } from "./DecisionsView";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { resultsOf, RunResults } from "./RunResults";
@@ -76,6 +83,7 @@ function QuestionCard({
   onAnswer: (choice: string) => void;
 }) {
   const taken = takenChoice(question, answers).id;
+  const { byChoice, apart } = placeCandidates(question);
   return (
     <SectionCard title={kindTitle[question.kind]()} description={question.subject}>
       {question.facts.length > 0 && (
@@ -90,28 +98,50 @@ function QuestionCard({
       )}
       <fieldset className="flex flex-col gap-1.5">
         <legend className="sr-only">{m.guided_choices_label()}</legend>
-        {question.choices.map((choice, at) => (
-          <label
-            key={choice.id}
-            className="flex cursor-pointer items-start gap-2 text-sm text-surface-100 select-none"
-          >
-            <input
-              type="radio"
-              name={question.id}
-              value={choice.id}
-              checked={taken === choice.id}
-              onChange={() => onAnswer(choice.id)}
-              className="mt-1 accent-accent-500"
-            />
-            <span className="min-w-0 break-words">
-              {choiceText(choice.label)}
-              {at === question.chosen && (
-                <span className="ml-1.5 text-xs text-surface-400">{m.guided_default_label()}</span>
-              )}
-            </span>
-          </label>
-        ))}
+        {question.choices.map((choice, at) => {
+          const targeted = byChoice.get(choice.id);
+          return (
+            <label
+              key={choice.id}
+              className="flex cursor-pointer items-start gap-2 text-sm text-surface-100 select-none"
+            >
+              <input
+                type="radio"
+                name={question.id}
+                value={choice.id}
+                checked={taken === choice.id}
+                onChange={() => onAnswer(choice.id)}
+                className="mt-1 accent-accent-500"
+              />
+              <div className="min-w-0 break-words">
+                {choiceText(choice.label)}
+                {at === question.chosen && (
+                  <span className="ml-1.5 text-xs text-surface-400">
+                    {m.guided_default_label()}
+                  </span>
+                )}
+                {targeted && (
+                  <ul>
+                    <Candidate candidate={targeted} />
+                  </ul>
+                )}
+              </div>
+            </label>
+          );
+        })}
       </fieldset>
+      {apart.length > 0 && (
+        <div className="flex flex-col gap-1" data-ui="GuidedRepair:apart">
+          <p className="text-xs text-surface-400 select-none">
+            {m.guided_candidates_apart_label()}
+          </p>
+          <ul className="divide-y divide-surface-700/50 pl-5">
+            {apart.map((candidate) => (
+              <Candidate key={candidate.slot} candidate={candidate} />
+            ))}
+          </ul>
+        </div>
+      )}
     </SectionCard>
   );
 }

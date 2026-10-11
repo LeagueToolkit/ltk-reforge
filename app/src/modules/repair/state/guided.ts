@@ -1,4 +1,4 @@
-import type { Answer, Choice, Question, QuestionKind } from "@/lib/bindings.gen";
+import type { Answer, CandidateView, Choice, Question, QuestionKind } from "@/lib/bindings.gen";
 
 import type { AdvancedSettings, GuidedAnswers, GuidedState } from "./repairStore";
 
@@ -17,6 +17,42 @@ const KIND_ORDER: QuestionKind[] = [
 export function takenChoice(question: Question, answers: GuidedAnswers): Choice {
   const answered = question.choices.find((choice) => choice.id === answers[question.id]);
   return answered ?? question.choices[question.chosen];
+}
+
+/** A question's candidates placed: beside the choice that targets each, or apart. */
+export interface PlacedCandidates {
+  /** The candidate each choice targets, by the choice's id. */
+  byChoice: Map<string, CandidateView>;
+  /** The candidates no choice targets: slots weighed that the unit does not fit. */
+  apart: CandidateView[];
+}
+
+/**
+ * Each candidate of a question beside the choice that targets it. A unit's choice targets the
+ * candidate of its slot; a conflict's choices that give the slot to a unit take the
+ * candidates in order, which the backend lists one per such choice or not at all.
+ */
+export function placeCandidates(question: Question): PlacedCandidates {
+  const byChoice = new Map<string, CandidateView>();
+  const { candidates } = question;
+  if (question.kind === "slot-conflict") {
+    const takers = question.choices.filter((choice) => choice.label.kind === "takes-slot");
+    if (takers.length === candidates.length) {
+      takers.forEach((choice, at) => byChoice.set(choice.id, candidates[at]));
+    }
+    return { byChoice, apart: [] };
+  }
+  for (const choice of question.choices) {
+    const { label } = choice;
+    if (label.kind === "target" || label.kind === "keep-at-slot") {
+      const targeted = candidates.find((candidate) => candidate.slot === label.slot);
+      if (targeted) {
+        byChoice.set(choice.id, targeted);
+      }
+    }
+  }
+  const placed = new Set(byChoice.values());
+  return { byChoice, apart: candidates.filter((candidate) => !placed.has(candidate)) };
 }
 
 /** Whether a question is answered other than what the run did. */

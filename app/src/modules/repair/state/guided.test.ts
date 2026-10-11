@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { Answer, Choice, Question, QuestionKind } from "@/lib/bindings.gen";
+import type {
+  Answer,
+  CandidateView,
+  Choice,
+  ChoiceLabel,
+  Question,
+  QuestionKind,
+} from "@/lib/bindings.gen";
 
-import { askAgain, mergeAnswers, takenAnswers } from "./guided";
+import { askAgain, mergeAnswers, placeCandidates, takenAnswers } from "./guided";
 import { NOT_GUIDED, STANDARD } from "./repairStore";
 
 const NONE: Answer = {
@@ -19,7 +26,25 @@ function choice(id: string, answer: Partial<Answer> = {}): Choice {
 }
 
 function question(id: string, kind: QuestionKind, choices: Choice[], chosen = 0): Question {
-  return { id, kind, finding: 0, subject: id, choices, chosen, facts: [] };
+  return {
+    id,
+    kind,
+    finding: 0,
+    subject: id,
+    choices,
+    chosen,
+    facts: [],
+    candidates: [],
+    chosen_slot: null,
+  };
+}
+
+function candidate(slot: number, feasible: boolean): CandidateView {
+  return { slot, why: "origin", checks: [], feasible };
+}
+
+function labelled(id: string, label: ChoiceLabel): Choice {
+  return { ...choice(id), label };
 }
 
 const stale = question("stale-files:a.wad.client", "stale-files", [
@@ -119,5 +144,46 @@ describe("a rerun's questions", () => {
   it("drop a question no longer asked that was left at its default", () => {
     const earlier = { ...NOT_GUIDED, questions: [stale, other], answers: {} };
     expect(askAgain(earlier, []).questions).toEqual([]);
+  });
+});
+
+describe("a question's candidates", () => {
+  const fits = candidate(3, true);
+  const unfit = candidate(0, false);
+  const elsewhere = candidate(5, false);
+
+  it("sit beside the unit's choice of their slot, those no choice targets apart", () => {
+    const asked = {
+      ...question("unit-target:%u0", "unit-target", [
+        labelled("target:3", { kind: "target", slot: 3 }),
+        labelled("keep-at:0", { kind: "keep-at-slot", slot: 0 }),
+        labelled("leave", { kind: "leave-to-game" }),
+      ]),
+      candidates: [unfit, fits, elsewhere],
+    };
+    const placed = placeCandidates(asked);
+    expect([...placed.byChoice]).toEqual([
+      ["target:3", fits],
+      ["keep-at:0", unfit],
+    ]);
+    expect(placed.apart).toEqual([elsewhere]);
+  });
+
+  it("sit beside a conflict's choices in order, one per unit given the slot", () => {
+    const first = candidate(5, true);
+    const second = candidate(5, false);
+    const choices = [
+      labelled("takes:%u2", { kind: "takes-slot", unit: "a skin6", slot: 5 }),
+      labelled("takes:%u3", { kind: "takes-slot", unit: "a skin7", slot: 5 }),
+      labelled("leave", { kind: "leave-to-game" }),
+    ];
+    const conflict = question("slot-conflict:%c1:5", "slot-conflict", choices, 2);
+    const placed = placeCandidates({ ...conflict, candidates: [first, second] });
+    expect([...placed.byChoice]).toEqual([
+      ["takes:%u2", first],
+      ["takes:%u3", second],
+    ]);
+    expect(placed.apart).toEqual([]);
+    expect(placeCandidates(conflict).byChoice.size).toBe(0);
   });
 });

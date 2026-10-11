@@ -132,7 +132,8 @@ function Checks({ checks }: { checks: CheckView[] }) {
   );
 }
 
-function Candidate({ candidate }: { candidate: CandidateView }) {
+/** A slot weighed for a unit: whether it fits, why it was weighed, and its checks. */
+export function Candidate({ candidate }: { candidate: CandidateView }) {
   return (
     <li className="flex flex-col gap-1 py-2" data-ui="DecisionsView:candidate">
       <p

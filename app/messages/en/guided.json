@@ -25,6 +25,7 @@
   "guided_choice_takes_slot": "{unit} takes skin {slot}, the others leave it",
   "guided_choice_target": "Ship it to skin {slot}",
   "guided_choices_label": "Choices",
+  "guided_candidates_apart_label": "Other slots weighed, which no choice gives",
   "guided_default_label": "as the run did",
   "guided_facts_label": "What the mod holds",
   "guided_kind_blocking_error_title": "An error that refuses the write",

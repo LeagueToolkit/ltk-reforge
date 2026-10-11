@@ -392,15 +392,13 @@ fn a_unit_question_offers_each_slot_it_fits_and_the_game_s_skin() {
         [given("test", 0, Some(3))]
     );
     assert_eq!(targets(&answer_of(unit, "leave")), [given("test", 0, None)]);
-    // The slot it does not fit is a fact, with its checks.
-    assert!(
-        unit.facts
-            .iter()
-            .any(|fact| fact == "skin0 (origin) does not fit: mesh NO: the mesh"),
-        "{:?}",
-        unit.facts
-    );
+    // The candidates are the decision's, the slot it does not fit among them, and no fact.
+    assert_eq!(unit.candidates, [candidate(0, false), candidate(3, true)]);
+    assert_eq!(unit.chosen_slot, Some(0));
+    assert_eq!(unit.facts, ["the message of target.infeasible"]);
     let unjudged = question(&questions, "unit-target:%u1");
+    assert_eq!(unjudged.candidates, []);
+    assert_eq!(unjudged.chosen_slot, Some(2));
     assert_eq!(
         unjudged.choices[0].label,
         ChoiceLabel::KeepAtSlot { slot: 2 }
@@ -428,6 +426,41 @@ fn a_conflict_question_gives_the_slot_to_one_unit_and_leaves_the_others() {
         targets(&answer_of(conflict, "takes:%u3")),
         [given("testpet", 6, None), given("testpet", 7, Some(5))]
     );
+    // Each unit's candidate at the slot, in the order of its choice.
+    assert_eq!(
+        conflict.candidates,
+        [candidate(5, true), candidate(5, true)]
+    );
+    assert_eq!(conflict.chosen_slot, None);
+}
+
+#[test]
+fn a_conflict_question_lists_no_candidate_when_a_unit_weighed_none_at_the_slot() {
+    let mut run = every_kind();
+    let targets = run.targets.as_mut().unwrap();
+    targets.decisions[3].candidates = vec![candidate(7, true)];
+
+    let questions = guided::questions(&run);
+
+    let conflict = question(&questions, "slot-conflict:%c1:5");
+    assert_eq!(conflict.candidates, []);
+    assert_eq!(conflict.choices.len(), 3);
+}
+
+#[test]
+fn only_a_unit_question_and_a_conflict_list_candidates() {
+    let questions = guided::questions(&every_kind());
+
+    for question in &questions {
+        let unit = matches!(
+            question.kind,
+            QuestionKind::UnitTarget | QuestionKind::SlotConflict
+        );
+        if !unit {
+            assert_eq!(question.candidates, [], "{}", question.id);
+            assert_eq!(question.chosen_slot, None, "{}", question.id);
+        }
+    }
 }
 
 #[test]
