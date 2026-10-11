@@ -34,7 +34,7 @@ The finding stays as it is. The places are asked for apart (the user's call, 202
 - A run gives them through `Run::type_places`, which reads the package and, in a port, applies
   the patches as `check` does. A kept run resumed through `build` can answer.
 - A caller asks when a person opens a row's places or asks to see a value in its bin, and
-  for the finding that halted a run, once, when the run ends.
+  not when a run ends: the three findings are errors, and no run halts on them.
 - Hashes stay hex in the report and in the places. A caller spells them with the run's names
   and the tables when it shows them.
 
