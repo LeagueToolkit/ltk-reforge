@@ -29,7 +29,8 @@ const preClass =
 function AskedObject({ text }: { text: string }) {
   return (
     <span
-      className="-mx-3 block border-l-2 border-accent-500 bg-accent-500/10 px-3"
+      // The bar's width comes out of the left padding, so the text keeps its column.
+      className="-mx-3 block border-l-4 border-accent-500 bg-accent-500/20 pr-3 pl-2"
       data-ui="FileViewer:entry"
     >
       {text}
