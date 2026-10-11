@@ -282,7 +282,8 @@ fn clearing_one_of_two_archives_that_share_a_blob_keeps_the_shared_blob_and_the_
         (second_raw.meta.sha256, bytes_named(&cache, &second_ids)),
     ];
     listed.sort();
-    let found: Vec<(ContentId, u64)> = entries.iter().map(|e| (e.sha256, e.bytes)).collect();
+    let bytes = |entry| cache.entry_bytes(entry);
+    let found: Vec<(ContentId, u64)> = entries.iter().map(|e| (e.sha256, bytes(e))).collect();
     assert_eq!(found, listed);
     assert!(
         entries

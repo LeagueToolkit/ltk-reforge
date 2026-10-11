@@ -223,6 +223,7 @@ impl AppStore {
         let used = self.mods()?;
         let unused = self.ingest.entries().into_iter();
         let unused = unused.filter(|entry| !used.contains(&entry.sha256));
+        let unused_bytes = unused.map(|entry| self.ingest.entry_bytes(&entry)).sum();
         let rows = self.rows.lock();
         let count = |query: &str| rows.query_row(query, [], |row| row.get(0)).map(number);
         Ok(StoreView {
@@ -232,7 +233,7 @@ impl AppStore {
             rows_bytes: bytes_of(&self.dir.join(ROWS_FILE)),
             tier_bytes: self.tier.bytes(),
             ingest_bytes: bytes_of(self.ingest.dir()),
-            ingest_unused_bytes: unused.map(|entry| entry.bytes).sum(),
+            ingest_unused_bytes: unused_bytes,
         })
     }
 
@@ -256,7 +257,7 @@ impl AppStore {
     pub fn mod_ingest_bytes(&self, sha256: ContentId) -> u64 {
         let entries = self.ingest.entries().into_iter();
         let of_mod = entries.filter(|entry| entry.sha256 == sha256);
-        of_mod.map(|entry| entry.bytes).sum()
+        of_mod.map(|entry| self.ingest.entry_bytes(&entry)).sum()
     }
 }
 

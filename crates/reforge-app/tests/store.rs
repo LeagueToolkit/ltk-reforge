@@ -757,6 +757,28 @@ fn clearing_the_unused_archive_data_keeps_the_mods_with_runs() {
 }
 
 #[test]
+fn the_store_view_counts_the_bytes_of_the_entries_no_run_names_alone() {
+    let bench = Bench::new();
+    let other = own_mod().extra("README.txt", "another archive");
+    bench.port(&own_mod(), "mod.fantome");
+    bench.run(&bench.request(&other, "other.fantome", StageName::Check));
+    let named = ContentId::parse(&bench.store.list().unwrap()[0].sha256).unwrap();
+    let entries = bench.store.ingest().entries();
+    assert_eq!(entries.len(), 2);
+    let bytes_of = |sha256: ContentId| {
+        let entry = entries.iter().find(|entry| entry.sha256 == sha256).unwrap();
+        bench.store.ingest().entry_bytes(entry)
+    };
+    let (named_bytes, unnamed_bytes) = (bytes_of(named), bytes_of(ContentId::of(&other.build())));
+    assert!(named_bytes > 0 && unnamed_bytes > 0);
+
+    let view = bench.store.view().unwrap();
+
+    assert_eq!(view.ingest_unused_bytes, unnamed_bytes);
+    assert_eq!(bench.store.mod_ingest_bytes(named), named_bytes);
+}
+
+#[test]
 fn a_rerun_through_a_stage_resumes_no_later_than_it() {
     use StageName::*;
     let bench = Bench::new();

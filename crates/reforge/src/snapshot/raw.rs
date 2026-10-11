@@ -44,8 +44,6 @@ pub struct RawEntry {
     pub version: u32,
     /// The first sixteen hex digits of the SHA-256 of the caps it was read under, as JSON.
     pub caps_hash: String,
-    /// The bytes of the blobs it names that the store holds, each blob once.
-    pub bytes: u64,
 }
 
 impl RawEntry {
@@ -59,12 +57,24 @@ impl RawEntry {
         if parts.next().is_some() || !caps_hex {
             return None;
         }
-        Some(Self {
+        let entry = Self {
             sha256: ContentId::parse(sha256)?,
             version: version.parse().ok()?,
             caps_hash: caps.to_string(),
-            bytes: 0,
-        })
+        };
+        // A name spelled otherwise than `RawCache::entry` spells it is no entry's: the entry
+        // is found again by its name alone.
+        (entry.file_name() == name).then_some(entry)
+    }
+
+    /// The name of its file in the entries' directory.
+    fn file_name(&self) -> String {
+        format!(
+            "{}-{}-{}.json",
+            self.sha256.hex(),
+            self.version,
+            self.caps_hash
+        )
     }
 }
 
@@ -115,9 +125,12 @@ impl RawCache {
     pub fn entry(&self, sha256: ContentId, version: u32, caps: &Caps) -> Utf8PathBuf {
         let caps = serde_json::to_vec(caps)
             .unwrap_or_else(|error| panic!("the caps {caps:?} do not write: {error}"));
-        let caps = &ContentId::of(&caps).hex()[..16];
-        let name = format!("{}-{version}-{caps}.json", sha256.hex());
-        self.dir.join(ENTRIES).join(name)
+        let entry = RawEntry {
+            sha256,
+            version,
+            caps_hash: ContentId::of(&caps).hex()[..16].to_string(),
+        };
+        self.dir.join(ENTRIES).join(entry.file_name())
     }
 
     /// The raw snapshot of the archive with this SHA-256, read under these caps at this
@@ -130,20 +143,22 @@ impl RawCache {
         (fits && raw.ids().all(|id| self.store.contains(id))).then_some(raw)
     }
 
-    /// Every entry the cache holds, sorted by archive, reading and caps, each with the bytes
-    /// of the blobs it names. A file in the entries' directory whose name is no entry's is not
+    /// Every entry the cache holds, sorted by archive, reading and caps, from the names of
+    /// their files alone. A file in the entries' directory whose name is no entry's is not
     /// listed.
     pub fn entries(&self) -> Vec<RawEntry> {
-        let mut entries: Vec<RawEntry> = self
-            .entry_files()
-            .into_iter()
-            .map(|(name, path)| RawEntry {
-                bytes: self.bytes_of(&self.named(&path)),
-                ..name
-            })
-            .collect();
+        let files = self.entry_files().into_iter();
+        let mut entries: Vec<RawEntry> = files.map(|(entry, _)| entry).collect();
         entries.sort();
         entries
+    }
+
+    /// The bytes of the blobs an entry names that the store holds, each blob once: none for
+    /// an entry that does not read. Each blob's size is asked of the store, so a caller asks
+    /// for the entries whose bytes it shows alone.
+    pub fn entry_bytes(&self, entry: &RawEntry) -> u64 {
+        let path = self.dir.join(ENTRIES).join(entry.file_name());
+        self.bytes_of(&self.named(&path))
     }
 
     /// Removes every entry of the archive with this SHA-256, at any reading and caps, and the
