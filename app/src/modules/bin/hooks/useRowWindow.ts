@@ -25,6 +25,9 @@ import type { VisibleRow } from "../rows";
  */
 export const ROW_HEIGHT = 27;
 
+/** The room above the first row and below the last, in pixels. */
+const LIST_PADDING = 4;
+
 /** The lines of a tree that are on screen, and where each one sits. */
 export interface RowWindow {
   /** The items to draw, each carrying its index and its offset. */
@@ -95,6 +98,11 @@ export function useRowWindow(
     estimateSize: () => ROW_HEIGHT,
     overscan: 16,
     getItemKey: (index) => visible[index]?.key ?? index,
+    /* The list's room above and below its rows is the virtualizer's, not the box's padding: a
+       row scrolled to the top then sits flush with it, where padding would show a strip of
+       the row above. */
+    paddingStart: LIST_PADDING,
+    paddingEnd: LIST_PADDING,
     scrollToFn: instantScroll,
     measureElement: measureRow,
   });

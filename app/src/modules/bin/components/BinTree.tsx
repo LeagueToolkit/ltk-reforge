@@ -156,10 +156,7 @@ export function BinTree({
           role="tree"
           aria-label={label}
           data-ui="BinTree"
-          className={twMerge(
-            "overflow-auto px-1 py-1 font-mono outline-none select-none",
-            className,
-          )}
+          className={twMerge("overflow-auto px-1 font-mono outline-none select-none", className)}
           style={{ "--bin-name-cols": nameCols } as CSSProperties}
           onKeyDown={handleKeyDown}
           onPointerDown={(event) => showGuidesAt(event.target)}
