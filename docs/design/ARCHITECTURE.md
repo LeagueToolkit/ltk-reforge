@@ -111,7 +111,8 @@ let report = run.report();
   refused. The corpus scripts' `--from-store` gives each mod by its SHA-256, so a corpus run
   reads no archive. `load` opens the mod from the
   raw snapshot and the store. The cache evicts nothing: `RawCache::entries` lists its
-  entries, each with the bytes of the blobs it names, and `clear(sha256)` and
+  entries from their files' names, `entry_bytes(entry)` sums the blobs one names, and
+  `clear(sha256)` and
   `clear_unnamed(keep)` remove an archive's entries with the blobs no other entry names and
   their facts (#ADR-0093).
 - **A stage reads a mod's bytes from the store on use** (#ADR-0100). The mod and its package
@@ -170,7 +171,9 @@ let report = run.report();
   that is not the run's, which it names (`Input`, `Setting`); a resume after a stage whose
   snapshot the `Snapshots` lack (`Missing`), or that a repair has not (`NotInARepair`); a
   store that lacks bytes a snapshot names (`Store`), the check snapshot's patched bins among
-  them, which no stage reads again and the store is asked for at the resume. The
+  them, which no stage reads again and the store is asked for at the resume. The checks that
+  read no bytes are `Run::start_holds`, which `resume` makes before it reopens anything, so
+  a start refused by a setting reads nothing from the store. The
   caller then starts from an earlier
   snapshot. The commit is the one the build script reads from git. A build outside a
   checkout has none, and a snapshot it wrote is refused (`Uncommitted`): its version alone

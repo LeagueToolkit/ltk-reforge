@@ -65,8 +65,8 @@ run and writes the report, in some two hundred lines.
 | a way to stop a run | `Run::cancel(Cancel)`: a flag set from any thread ends the stage under way after the step it is on (#ADR-0097). `Run::cancelled_at()` names the stage, and the snapshots of the stages before it stand |
 | progress inside a stage | `Diagnostics::listen_progress`: each step of a stage as it begins, a `Progress` with the stage, the step's kind and name, its number and the count (#ADR-0097) |
 | a mod's bytes | `BlobStore` (#ADR-0093): bytes by content id, a memory store, a layered store, an LRU and the ingest store on disk (`cacache`). A run writes into a memory layer of its own (`Run::in_store`, `Run::into_layer`), reads a file's bytes on use (#ADR-0100) and never holds the mod whole; `read` streams the archive from its file |
-| a run's state | a snapshot after every stage (#ADR-0094), `Run::snapshots()`, JSON at one edge. `Run::resume(Start)` starts after any stage from them, refusing with a `ResumeError` that names the input, setting or program that differs, or the id a store lacks. `Snapshots::ids()` lists every content id they name. `Settings::declared(stage)` and `earliest_changed` say which stage a changed setting resumes from |
-| a mod ingested once | `RawCache` (#ADR-0095, #ADR-0100): the raw snapshot kept per archive beside the ingest store, a run started from it by the archive's SHA-256, and the kind of each blob kept by the matcher's generation. `entries()` lists the archives it holds with their bytes; `clear(sha256)` and `clear_unnamed(keep)` remove archives with the blobs no other names |
+| a run's state | a snapshot after every stage (#ADR-0094), `Run::snapshots()`, JSON at one edge. `Run::resume(Start)` starts after any stage from them, refusing with a `ResumeError` that names the input, setting or program that differs, or the id a store lacks. `Run::start_holds(&Start)`, or `start_holds_at(&Snapshots, stage)` on borrowed snapshots, makes every check of `resume` that reads no bytes, and `resume` makes them before it reopens anything. `Snapshots::ids()` lists every content id they name. `Settings::declared(stage)` and `earliest_changed` say which stage a changed setting resumes from |
+| a mod ingested once | `RawCache` (#ADR-0095, #ADR-0100): the raw snapshot kept per archive beside the ingest store, a run started from it by the archive's SHA-256, and the kind of each blob kept by the matcher's generation. `entries()` lists the archives it holds from their files' names, and `entry_bytes(entry)` sums one entry's blobs; `clear(sha256)` and `clear_unnamed(keep)` remove archives with the blobs no other names |
 | the guided view's answers | a unit's own target and a file kept (#ADR-0098, #ADR-0099), settings the run declares and the command takes |
 | the result as data | `Run::report()`: a `Report` (`reforge.report/1`) with a part per stage reached, each serialisable |
 | the fixups as a list | `FixupSet::catalog()`: each `FixupInfo` has an id, a title, the records it implements, its phase and its default |
@@ -201,14 +201,16 @@ refuse and a run with no snapshots keep nothing. The view of the run names its n
 **The rerun.** A run whose archive the ingest tier holds resumes from a kept run where one
 holds (#ADR-0094). Its load key is computed before it runs, by the function that keys a
 saved load (`store::load_key`), from the raw snapshot, this program, the load inputs open and
-the load settings its settings declare. The runs of that load are read newest first
-(`AppStore::kept_runs_of`), and the newest of the request's kind is the one resumed from: a
-repair's snapshots do not resume a port. The start is the latest stage the snapshots hold
-that is at or before the request's `through`, so a resume never runs past the request; the
-run tries it, then each earlier stage down to `load`, each try a fresh run, and the first the
-library does not refuse is the run. A refusal (a setting, an input or the program that
-differs, or a store that lacks an id) is logged at debug; when every try is refused, the run
-starts from the raw snapshot. The stages taken from the snapshots are not run: the watch
+the load settings its settings declare. The newest run of that load and of the request's
+kind is the one resumed from (`AppStore::newest_kept_run_of`), and its row alone is
+unpacked: a repair's snapshots do not resume a port. The start is the latest stage the
+snapshots hold that is at or before the request's `through`, so a resume never runs past the
+request. A start is checked before anything is reopened: one run checks it, then each
+earlier stage down to `load` (`Run::start_holds_at`, `run::kept_start`), with no byte read
+from the store, and resumes once, from the first start that holds. A refusal (a setting, an
+input or the program that differs, or at the resume a store that lacks an id) is logged at
+debug; when no start holds or the resume is refused, the run starts from the raw snapshot.
+The stages taken from the snapshots are not run: the watch
 hears each as `StageEvent::Resumed` with what it gave the views, and its `StageView` says
 `resumed`, which the stage strip shows as "from store" in place of a time. A resumed run's
 report is the report of the same run from the archive. Its layer holds only what its own
@@ -218,7 +220,9 @@ run tier, which the sweep ignores.
 
 **The ingest tier.** The ingest tier is cleared by mod, as its own action (#ADR-0093,
 #ADR-0096). `RawCache::entries` lists its entries, each an archive's SHA-256, reading and
-caps with the bytes of the blobs it names; clearing a mod removes every entry of its archive
+caps, from the names of their files in one directory read; `RawCache::entry_bytes` sums the
+blobs one entry names, so the settings page sums the entries no `raw` row names alone and a
+confirm dialog the entries of its mod alone. Clearing a mod removes every entry of its archive
 and the blobs no other entry names, with their facts. "Clear unused" clears every archive no
 `raw` row names. A run whose entry is gone keeps its rows and opens read-only
 (`RunRow::archive_ingested`): its files no tier holds answer `BLOB_MISSING`, and a run of
