@@ -41,6 +41,29 @@ export function useRunReport(id: number) {
   );
 }
 
+/** The files of a kept run at a stage, each marked against the stage before. */
+export function useRunFiles(id: number, stage: StageName) {
+  return useQuery(
+    queryOptions({
+      queryKey: runsKeys.files(id, stage),
+      queryFn: queryFn(() => commands.runFiles(id, stage)),
+      staleTime: Infinity,
+    }),
+  );
+}
+
+/** One file of a kept run, by the id of its bytes, shown by its kind. */
+export function useRunFile(id: number, content: string) {
+  return useQuery(
+    queryOptions({
+      queryKey: runsKeys.file(id, content),
+      queryFn: queryFn(() => commands.runFile(id, content)),
+      staleTime: Infinity,
+      retry: false,
+    }),
+  );
+}
+
 /** What the store holds and its bytes on disk. */
 export function useStoreView() {
   return useQuery(

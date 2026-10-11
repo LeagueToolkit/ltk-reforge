@@ -9,10 +9,11 @@ import { endedResults, RunResults, StageStrip } from "@/modules/repair";
 import { twMerge } from "@/utils";
 
 import { useKeepRun, useRemoveRun, useRevealRun, useRunReport, useRunView } from "../api/runs";
+import { FILE_STAGES, FilesTab } from "./FilesTab";
 import { runName } from "./RunList";
 
 /** The tabs of a run. */
-type Tab = "result" | "report";
+type Tab = "result" | "files" | "report";
 
 /** The package's thumbnail, else the first letter of the run's name. */
 function Thumbnail({ src, name }: { src: string | null | undefined; name: string }) {
@@ -33,21 +34,36 @@ function Thumbnail({ src, name }: { src: string | null | undefined; name: string
   );
 }
 
-/** The run's result as the run page shows one that ended: its stages and what it found and did. */
-function ResultTab({ view }: { view: RunView }) {
+/**
+ * The run's result as the run page shows one that ended: its stages and what it found and did.
+ * A stage picked that holds files opens them.
+ */
+function ResultTab({ view, onFiles }: { view: RunView; onFiles: (stage: StageName) => void }) {
   const last = view.stages.filter((stage) => stage.state !== "not-run").at(-1)?.stage ?? "read";
   const [selected, setSelected] = useState<StageName>(last);
+  const pick = (stage: StageName) => {
+    setSelected(stage);
+    if (heldStages(view).includes(stage)) {
+      onFiles(stage);
+    }
+  };
   return (
     <>
       <StageStrip
         stages={view.stages}
         findings={view.findings}
         selected={selected}
-        onSelect={setSelected}
+        onSelect={pick}
       />
       <RunResults {...endedResults(view)} />
     </>
   );
+}
+
+/** The stages a run ran that hold files, in order. */
+function heldStages(view: RunView): StageName[] {
+  const ran = view.stages.filter((stage) => stage.state === "ran").map((stage) => stage.stage);
+  return ran.filter((stage) => FILE_STAGES.includes(stage));
 }
 
 /** The report the package embeds, as the store keeps it. */
@@ -73,7 +89,7 @@ interface RunDetailProps {
   onRemoved: () => void;
 }
 
-/** A kept run: its mod and package, what can be done with it, and its result and report. */
+/** A kept run: its mod and package, what can be done with it, its result, files and report. */
 export function RunDetail({ row, onRemoved }: RunDetailProps) {
   const view = useRunView(row.id);
   const keep = useKeepRun();
@@ -81,11 +97,18 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
   const reveal = useRevealRun();
   const [asking, setAsking] = useState(false);
   const [tab, setTab] = useState<Tab>("result");
+  const [filesStage, setFilesStage] = useState<StageName | null>(null);
   const name = runName(row);
+  const held = view.data ? heldStages(view.data) : [];
   const tabs = [
     { value: "result" as const, label: m.runs_tab_result() },
+    ...(held.length > 0 ? [{ value: "files" as const, label: m.runs_tab_files() }] : []),
     { value: "report" as const, label: m.runs_tab_report() },
   ];
+  const openFiles = (stage: StageName) => {
+    setFilesStage(stage);
+    setTab("files");
+  };
   const failure = keep.error ?? remove.error ?? reveal.error;
 
   return (
@@ -153,8 +176,18 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
       {view.data && (
         <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.runs_tabs_label()}>
           <TabPanel value="result">
-            <ResultTab view={view.data} />
+            <ResultTab view={view.data} onFiles={openFiles} />
           </TabPanel>
+          {held.length > 0 && (
+            <TabPanel value="files">
+              <FilesTab
+                id={row.id}
+                stages={held}
+                stage={filesStage ?? held[held.length - 1]}
+                onStage={setFilesStage}
+              />
+            </TabPanel>
+          )}
           <TabPanel value="report">
             <ReportTab id={row.id} />
           </TabPanel>

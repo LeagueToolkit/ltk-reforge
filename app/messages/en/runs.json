@@ -17,6 +17,37 @@
   "runs_by_label": "by {author}",
   "runs_empty": "No run has written a package yet. A run that writes one is kept here.",
   "runs_empty_link": "Run a mod",
+  "runs_file_cut": "… the file holds more than is shown",
+  "runs_file_image_alt": "The texture's largest mip",
+  "runs_file_image_label": "{width} × {height}, {format}",
+  "runs_file_more": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "… {count} more object follows",
+        "countPlural=other": "… {count} more objects follow"
+      }
+    }
+  ],
+  "runs_file_pick_hint": "Pick a file to open it",
+  "runs_file_read_only": "Read-only",
+  "runs_files_changed_only": "Changed only",
+  "runs_files_count": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} file",
+        "countPlural=other": "{count} files"
+      }
+    }
+  ],
+  "runs_files_empty": "The stage holds no files",
+  "runs_files_filter_label": "Filter files",
+  "runs_files_filter_placeholder": "Filter by path or kind",
+  "runs_files_none_match": "No file matches the filter",
+  "runs_files_stage_label": "Stage",
   "runs_filter_label": "Filter runs",
   "runs_filter_placeholder": "Filter by name or author",
   "runs_keep_action": "Keep",
@@ -25,6 +56,9 @@
   "runs_kind.port.label": "Port",
   "runs_kind.repair.label": "Repair",
   "runs_list_label": "Kept runs",
+  "runs_mark.added.label": "added",
+  "runs_mark.changed.label": "changed",
+  "runs_mark.removed.label": "removed",
   "runs_none_match": "No run matches the filter",
   "runs_package_label": "Wrote a package",
   "runs_page_title": "Runs",
@@ -41,6 +75,7 @@
   "runs_storage_remove_description": "Every run and the bytes only runs name are removed. The ingest tier and the packages written stay.",
   "runs_storage_remove_title": "Remove every run?",
   "runs_storage_tier_hint": "The run tier reserves 64 MB for its journal, so it is never smaller.",
+  "runs_tab_files": "Files",
   "runs_tab_report": "Report",
   "runs_tab_result": "Result",
   "runs_tabs_label": "The run",
