@@ -232,7 +232,10 @@ fn capped(mut text: String) -> (String, bool) {
     let within = &text.as_bytes()[..MAX_BIN_TEXT];
     let end = match within.iter().rposition(|&byte| byte == b'\n') {
         Some(at) => at + 1,
-        None => text.floor_char_boundary(MAX_BIN_TEXT),
+        None => (0..=MAX_BIN_TEXT)
+            .rev()
+            .find(|&at| text.is_char_boundary(at))
+            .unwrap_or(0),
     };
     text.truncate(end);
     (text, true)
