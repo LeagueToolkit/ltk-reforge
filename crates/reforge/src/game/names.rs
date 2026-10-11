@@ -465,6 +465,23 @@ impl Names {
         out
     }
 
+    /// The first `count` paths in path order of every path the tables spell that starts with
+    /// `prefix`, which is lowercase. The hash cache is read no further than its first `count`.
+    pub fn first_paths_with_prefix(&self, prefix: &str, count: usize) -> Vec<String> {
+        let mut out = BTreeSet::new();
+        if let Some(db) = self.mimir(NameTable::Paths) {
+            // The cache lists a prefix's paths in path order, and three letters match two
+            // million of them (4.4 s to collect, 2026-10-11).
+            let spelled = db
+                .prefix(prefix)
+                .filter(|(hash, path)| NameTable::Paths.hash_of(path.as_str()) == *hash);
+            out.extend(spelled.take(count).map(|(_, path)| path.into_owned()));
+        }
+        let text = self.text[NameTable::Paths.slot()].values();
+        out.extend(text.filter(|path| path.starts_with(prefix)).cloned());
+        out.into_iter().take(count).collect()
+    }
+
     /// The characters whose name starts with a champion's: the directories under
     /// `data/characters/` that the tables spell, the champion's own included.
     pub fn characters_like(&self, champion: &str) -> BTreeSet<String> {

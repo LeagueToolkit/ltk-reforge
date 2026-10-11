@@ -674,6 +674,54 @@ fn characters_are_found_by_a_champions_name_in_every_table() {
     assert!(names.characters_like("Ahri").is_empty());
 }
 
+#[test]
+fn the_first_paths_of_a_prefix_come_in_path_order_from_every_table() {
+    let (_keep, dir) = scratch();
+    let cache = dir.join("cache");
+    let text = dir.join("text");
+    fs::create_dir_all(&text).unwrap();
+    hash_cache(
+        &cache,
+        "1",
+        &[CacheTable {
+            table: Table::Game,
+            names: &[
+                "data/characters/lux/skins/skin1.bin",
+                "data/characters/lux/lux.bin",
+                "data/characters/lux/skins/skin0.bin",
+                "data/characters/lulu/lulu.bin",
+            ],
+            under: &[],
+        }],
+    );
+    let animations = "data/characters/lux/animations/lux.bin";
+    text_table(
+        &text,
+        "hashes.game.txt",
+        &[(path_hash(animations).0, animations)],
+    );
+    let names = Names::builder()
+        .mimir(&cache)
+        .text_tables(&text)
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        names.first_paths_with_prefix("data/characters/lux/", 2),
+        [animations, "data/characters/lux/lux.bin"]
+    );
+    assert_eq!(
+        names.first_paths_with_prefix("data/characters/lux/", 64),
+        [
+            animations,
+            "data/characters/lux/lux.bin",
+            "data/characters/lux/skins/skin0.bin",
+            "data/characters/lux/skins/skin1.bin",
+        ]
+    );
+    assert!(names.first_paths_with_prefix("data/maps/", 64).is_empty());
+}
+
 /// A cache whose path table holds one path alone under its name hash, and the two twins.
 fn cache_with_twins(dir: &Utf8Path) {
     hash_cache(
