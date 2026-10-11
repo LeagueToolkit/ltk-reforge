@@ -1,3 +1,4 @@
+import { m } from "@/i18n";
 import type { FileRow, WadFiles } from "@/lib/bindings.gen";
 
 /** The folder the files named by their hash alone sit under, last, as LTK Manager shows them. */
@@ -154,15 +155,32 @@ export function buildTree(wads: WadFiles[], filter: TreeFilter): TreeFolder[] {
   return roots;
 }
 
+/** The words a size is written in: bytes, then each unit a thousand times the one before. */
+export interface SizeUnits {
+  bytes: string;
+  kilo: string;
+  mega: string;
+  giga: string;
+}
+
+/** The size units in the person's language. */
+export function sizeUnits(): SizeUnits {
+  return {
+    bytes: m.size_unit_b(),
+    kilo: m.size_unit_kb(),
+    mega: m.size_unit_mb(),
+    giga: m.size_unit_gb(),
+  };
+}
+
 /** A size for a person: bytes under a kilobyte, else the unit that keeps it under a thousand. */
-export function sizeLabel(bytes: number): string {
-  const units = ["KB", "MB", "GB"];
+export function sizeLabel(bytes: number, units: SizeUnits = sizeUnits()): string {
   if (bytes < 1000) {
-    return `${bytes} B`;
+    return `${bytes} ${units.bytes}`;
   }
   let value = bytes;
-  let unit = "B";
-  for (const next of units) {
+  let unit = units.bytes;
+  for (const next of [units.kilo, units.mega, units.giga]) {
     if (value < 1000) {
       break;
     }

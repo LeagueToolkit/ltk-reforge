@@ -211,5 +211,9 @@
   "runs_tab_result": "Result",
   "runs_tabs_label": "The run",
   "runs_thumbnail_alt": "The package's thumbnail",
-  "runs_version_label": "version {version}"
+  "runs_version_label": "version {version}",
+  "size_unit_b": "B",
+  "size_unit_gb": "GB",
+  "size_unit_kb": "KB",
+  "size_unit_mb": "MB"
 }

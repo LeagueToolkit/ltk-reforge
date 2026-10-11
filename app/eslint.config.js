@@ -130,7 +130,8 @@ export default tseslint.config(
           mode: "all",
           "jsx-attributes": {
             exclude: [
-              ".*[cC]lassName",
+              // A prop that holds class strings, named as `CLASS_NAME` names a declaration.
+              ".*[cC]lass(es|Name)?",
               "data-ui",
               "to",
               "href",

@@ -36,15 +36,17 @@ type Tab = "result" | "files" | "report";
 
 /** The package's thumbnail, else the first letter of the run's name. */
 function Thumbnail({ src, name }: { src: string | null | undefined; name: string }) {
-  const box = "h-14 w-14 shrink-0 rounded-md border border-surface-700";
+  const boxClass = "h-14 w-14 shrink-0 rounded-md border border-surface-700";
   if (src) {
-    return <img src={src} alt={m.runs_thumbnail_alt()} className={twMerge(box, "object-cover")} />;
+    return (
+      <img src={src} alt={m.runs_thumbnail_alt()} className={twMerge(boxClass, "object-cover")} />
+    );
   }
   return (
     <span
       aria-hidden
       className={twMerge(
-        box,
+        boxClass,
         "flex items-center justify-center bg-surface-800 font-display text-xl font-semibold text-surface-300 select-none",
       )}
     >

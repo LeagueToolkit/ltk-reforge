@@ -135,4 +135,10 @@ describe("sizeLabel", () => {
     expect(sizeLabel(2_500_000)).toBe("2.5 MB");
     expect(sizeLabel(3_000_000_000)).toBe("3.0 GB");
   });
+
+  it("writes the unit words it is given", () => {
+    const units = { bytes: "o", kilo: "ko", mega: "Mo", giga: "Go" };
+    expect(sizeLabel(38, units)).toBe("38 o");
+    expect(sizeLabel(2_500_000, units)).toBe("2.5 Mo");
+  });
 });

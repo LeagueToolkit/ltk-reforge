@@ -199,19 +199,20 @@ function detailIn(view: RunView | null | undefined) {
 interface FindingsColumnProps {
   title: string;
   icon: ReactNode;
-  tone: string;
+  /** The classes of the column's head: its tone. */
+  toneClass: string;
   findings: Finding[];
   view: RunView | null | undefined;
   empty: string;
 }
 
-function FindingsColumn({ title, icon, tone, findings, view, empty }: FindingsColumnProps) {
+function FindingsColumn({ title, icon, toneClass, findings, view, empty }: FindingsColumnProps) {
   return (
     <div className="flex min-w-0 flex-col gap-2">
       <span
         className={twMerge(
           "flex items-center gap-1.5 self-start rounded-full px-2 py-0.5 text-xs font-medium select-none",
-          tone,
+          toneClass,
         )}
       >
         {icon}
@@ -246,7 +247,7 @@ function FindingsSection({
           <FindingsColumn
             title={m.compare_findings_gone({ count: gone.length })}
             icon={<MinusIcon weight="bold" className="h-3 w-3" />}
-            tone="bg-danger/10 text-danger-text"
+            toneClass="bg-danger/10 text-danger-text"
             findings={gone}
             view={viewA}
             empty={m.compare_findings_none_gone()}
@@ -254,7 +255,7 @@ function FindingsSection({
           <FindingsColumn
             title={m.compare_findings_added({ count: added.length })}
             icon={<PlusIcon weight="bold" className="h-3 w-3" />}
-            tone="bg-success/10 text-success-text"
+            toneClass="bg-success/10 text-success-text"
             findings={added}
             view={viewB}
             empty={m.compare_findings_none_added()}
