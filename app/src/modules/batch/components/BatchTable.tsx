@@ -78,7 +78,8 @@ function Counts({ counts }: { counts: SeverityCounts }) {
 }
 
 const headClass = "px-2 py-1.5 text-left text-xs font-medium text-surface-400 select-none";
-const cellClass = "px-2 py-1.5 align-top";
+// Cells of text, counts and a badge in different sizes line up on their first line's baseline.
+const cellClass = "px-2 py-1.5 align-baseline";
 
 /** The outcome of each archive of a batch, a row per run, in the order they ran. */
 export function BatchTable({ rows }: { rows: readonly BatchRow[] }) {

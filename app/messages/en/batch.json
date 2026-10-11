@@ -33,7 +33,7 @@
   "batch_settings_title": "Settings",
   "batch_start_action": "Start",
   "batch_stop_action": "Stop",
-  "batch_stopped_label": "Stopped before the last mod.",
+  "batch_stopped_label": "Stopped before every mod ran.",
   "batch_stopping_label": "Stopping after the step under way",
   "batch_summary_label": "{written} written, {refused} refused, {failed} failed",
   "batch_summary_stopped_label": "{count} stopped",

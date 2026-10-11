@@ -63,7 +63,7 @@ function BatchSummary() {
       <span className="text-surface-400">
         {m.batch_summary_time_label({ seconds: (ended.millis / 1000).toFixed(1) })}
       </span>
-      {ended.stopped && <span className="text-surface-400"> {m.batch_stopped_label()}</span>}
+      {ended.stopped && <span className="block text-surface-400">{m.batch_stopped_label()}</span>}
     </p>
   );
 }
@@ -112,13 +112,15 @@ export function BatchPage() {
 
   return (
     <div className="flex flex-col gap-6" data-ui="BatchPage">
-      <div className="flex items-center gap-3">
-        <h1 className="font-display text-xl font-semibold text-surface-50">
-          {m.batch_page_title()}
-        </h1>
-        <StaleInputsLink />
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-3">
+          <h1 className="font-display text-xl font-semibold text-surface-50">
+            {m.batch_page_title()}
+          </h1>
+          <StaleInputsLink />
+        </div>
+        <p className="text-sm text-surface-400 select-none">{m.batch_page_description()}</p>
       </div>
-      <p className="text-sm text-surface-400 select-none">{m.batch_page_description()}</p>
       <ModsCard busy={busy} over={over} />
       <BatchSettings busy={busy} />
       <div className="flex items-center gap-3">
