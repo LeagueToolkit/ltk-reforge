@@ -13,6 +13,9 @@ const kept: RunSettings = {
   target: "base",
   anim_reuse: "allow",
   game_events_only: true,
+  unit_targets: [{ character: "test", slot: 3, target: null }],
+  kept_files: [{ wad: "test.wad.client", path: "assets/x.tex" }],
+  keep_other_slots: true,
 };
 
 describe("a kept run run again", () => {

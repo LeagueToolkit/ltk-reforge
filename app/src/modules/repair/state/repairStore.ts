@@ -6,8 +6,10 @@ import type {
   FixupChanges,
   ModPeek,
   ObjectView,
+  KeptFileView,
   PackageView,
   PartView,
+  Question,
   RuleSpec,
   RunAgain,
   RunKind,
@@ -15,11 +17,31 @@ import type {
   RunView,
   StageName,
   TargetsView,
+  UnitTargetView,
 } from "@/lib/bindings.gen";
 import type { IdNames } from "@/modules/findings";
 
-/** Which view of the run the page shows (#ADR-0050). */
-export type RepairMode = "simple" | "advanced";
+/**
+ * Where the guided view is (#ADR-0090): at its start, asking its questions, or done with a run
+ * from the answers.
+ */
+export type GuidedStep = "start" | "asking" | "done";
+
+/** The answers given, by question id: each the id of the choice taken. */
+export type GuidedAnswers = Record<string, string>;
+
+/** The guided view's step, the questions it asks or last asked, and the answers given. */
+export interface GuidedState {
+  step: GuidedStep;
+  questions: Question[];
+  answers: GuidedAnswers;
+}
+
+/** The guided view before it ran. */
+export const NOT_GUIDED: GuidedState = { step: "start", questions: [], answers: {} };
+
+/** Which view of the run the page shows (#ADR-0050, #ADR-0090). */
+export type RepairMode = "simple" | "guided" | "advanced";
 
 /** The settings of the advanced view, as the run request takes them. */
 export interface AdvancedSettings {
@@ -35,6 +57,11 @@ export interface AdvancedSettings {
   target: string;
   animReuse: string;
   gameEventsOnly: boolean;
+  /** Targets given to units alone (#ADR-0098): one mod's, which the guided view's answers set. */
+  unitTargets: UnitTargetView[];
+  /** Files kept among the stale copies (#ADR-0098): one mod's, as the unit targets are. */
+  keptFiles: KeptFileView[];
+  keepOtherSlots: boolean;
 }
 
 /** A port with the standard set and the default policy: what the simple view runs (#ADR-0052). */
@@ -51,6 +78,9 @@ export const STANDARD: AdvancedSettings = {
   target: "auto",
   animReuse: "own-rig",
   gameEventsOnly: false,
+  unitTargets: [],
+  keptFiles: [],
+  keepOtherSlots: false,
 };
 
 /** A repair with the standard set: the mod at its own slots and paths (#ADR-0011, #ADR-0052). */
@@ -72,7 +102,15 @@ export function runSettings(settings: AdvancedSettings): RunSettings {
     target: settings.target,
     anim_reuse: settings.animReuse,
     game_events_only: settings.gameEventsOnly,
+    unit_targets: settings.unitTargets,
+    kept_files: settings.keptFiles,
+    keep_other_slots: settings.keepOtherSlots,
   };
+}
+
+/** The settings without what names one mod's units and files, for a run of other mods. */
+export function forEveryMod(settings: AdvancedSettings): AdvancedSettings {
+  return { ...settings, unitTargets: [], keptFiles: [] };
 }
 
 /**
@@ -97,6 +135,9 @@ export function advancedSettings(
     target: settings.target ?? STANDARD.target,
     animReuse: settings.anim_reuse ?? STANDARD.animReuse,
     gameEventsOnly: settings.game_events_only ?? STANDARD.gameEventsOnly,
+    unitTargets: settings.unit_targets ?? STANDARD.unitTargets,
+    keptFiles: settings.kept_files ?? STANDARD.keptFiles,
+    keepOtherSlots: settings.keep_other_slots ?? STANDARD.keepOtherSlots,
   };
 }
 
@@ -168,12 +209,15 @@ interface RepairState {
   peek: ModPeek | null;
   /** The advanced view's settings. */
   advanced: AdvancedSettings;
+  /** The guided view's step, its questions and the answers given. */
+  guided: GuidedState;
   setArchive: (archive: string | null) => void;
   setPeek: (peek: ModPeek | null) => void;
   setMode: (mode: RepairMode) => void;
   setLast: (last: RunView | null) => void;
   setLive: (change: (live: LiveRun | null) => LiveRun | null) => void;
   setAdvanced: (change: Partial<AdvancedSettings>) => void;
+  setGuided: (change: Partial<GuidedState>) => void;
   /** Replaces the advanced settings with a preset: `STANDARD` or `REPAIR`. */
   applyPreset: (preset: AdvancedSettings) => void;
   /**
@@ -191,12 +235,22 @@ export const useRepairStore = create<RepairState>()((set) => ({
   live: null,
   peek: null,
   advanced: STANDARD,
-  setArchive: (archive) => set({ archive, last: null, peek: null }),
+  guided: NOT_GUIDED,
+  // The unit targets and the kept files name the mod's own units and files.
+  setArchive: (archive) =>
+    set((state) => ({
+      archive,
+      last: null,
+      peek: null,
+      advanced: forEveryMod(state.advanced),
+      guided: NOT_GUIDED,
+    })),
   setPeek: (peek) => set({ peek }),
   setMode: (mode) => set({ mode }),
   setLast: (last) => set({ last }),
   setLive: (change) => set((state) => ({ live: change(state.live) })),
   setAdvanced: (change) => set((state) => ({ advanced: { ...state.advanced, ...change } })),
+  setGuided: (change) => set((state) => ({ guided: { ...state.guided, ...change } })),
   applyPreset: (preset) => set({ advanced: preset }),
   // A run is kept when it writes its package, so its request ran through `write`.
   takeRun: ({ kind, archive, settings }) =>
@@ -206,5 +260,6 @@ export const useRepairStore = create<RepairState>()((set) => ({
       peek: null,
       mode: "advanced",
       advanced: advancedSettings(kind, settings, "write"),
+      guided: NOT_GUIDED,
     }),
 }));

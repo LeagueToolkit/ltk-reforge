@@ -19,6 +19,7 @@ const REASONS = [
   "clips-origin",
   "skeleton-origin",
   "forced",
+  "per-unit",
   "infeasible",
   "sub-follows",
   "sub-left-to-base",
@@ -35,7 +36,8 @@ type Aspect = (typeof ASPECTS)[number];
 const TARGETS = ["auto", "base", "origin", "slot"] as const;
 const LEVELS = ["block", "same-joints", "own-rig", "allow"] as const;
 
-function slotLabel(slot: number | null): string {
+/** A unit's target in words: its skin, or left to the game. */
+export function slotLabel(slot: number | null): string {
   return slot == null ? m.decide_left_to_game_label() : m.decide_skin_label({ slot });
 }
 

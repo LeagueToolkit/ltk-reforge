@@ -6,6 +6,7 @@ import { m } from "@/i18n";
 import type { BatchRequest } from "@/lib/bindings.gen";
 import { StaleInputsLink, useInputs, useInputsGate } from "@/modules/inputs";
 import {
+  forEveryMod,
   runSettings,
   STANDARD,
   useArchiveDrop,
@@ -103,7 +104,7 @@ export function BatchPage() {
     const request: BatchRequest = {
       kind,
       archives,
-      settings: runSettings(runPageSettings ? advanced : STANDARD),
+      settings: runSettings(runPageSettings ? forEveryMod(advanced) : STANDARD),
       out: chosenOut ?? null,
     };
     gate(() => runBatch.mutate(request));

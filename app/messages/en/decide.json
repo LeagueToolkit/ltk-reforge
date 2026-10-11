@@ -11,6 +11,7 @@
   "decide.reason.forced.title": "{character} ships at {chosen}, the skin the policy named",
   "decide.reason.infeasible.title": "{character} fits no skin and is kept at skin 0 for a person to decide",
   "decide.reason.paste-cleaned.title": "{character} ships at skin 0: a paste of a premium skin whose work fits the base",
+  "decide.reason.per-unit.title": "{character}: {chosen}, as the target given to the unit names",
   "decide.reason.pre-rework.title": "{character} is left to the game: it was made for the champion's model before its rework",
   "decide.reason.skeleton-origin.title": "{character} ships at {chosen}, the skin whose skeleton file it takes",
   "decide.reason.slot.title": "{character} stays at {chosen}, the premium skin it sits in",

@@ -21,6 +21,7 @@ import { useJobRunning, useRunMod, useRunRunning, useRunStages } from "../api/ru
 import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state/repairStore";
 import { BlockPicker } from "./BlockPicker";
 import { DecisionsView } from "./DecisionsView";
+import { GuidedSettingsCard } from "./GuidedSettingsCard";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { PolicyCard } from "./PolicyCard";
@@ -320,6 +321,7 @@ export function AdvancedRepair() {
         <TabPanel value="settings">
           <SettingsCard />
           {kind === "port" && <PolicyCard />}
+          <GuidedSettingsCard />
         </TabPanel>
         <TabPanel value="toggles">
           <Toggles />

@@ -13,6 +13,7 @@
       "./messages/{locale}/findings.json",
       "./messages/{locale}/fixups.json",
       "./messages/{locale}/gate.json",
+      "./messages/{locale}/guided.json",
       "./messages/{locale}/inputs.json",
       "./messages/{locale}/mod.json",
       "./messages/{locale}/policy.json",

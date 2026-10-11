@@ -5,12 +5,13 @@ import { StaleInputsLink } from "@/modules/inputs";
 import { useRunEvents } from "../api/run";
 import { type RepairMode, useRepairStore } from "../state/repairStore";
 import { AdvancedRepair } from "./AdvancedRepair";
+import { GuidedRepair } from "./GuidedRepair";
 import { ModCard } from "./ModCard";
 import { SimpleRepair } from "./SimpleRepair";
 
 /**
- * A run of one mod in the simple or the advanced view of the same run (#ADR-0050). Both port
- * by default; a repair is a preset of the advanced view (#ADR-0052).
+ * A run of one mod in the simple, the guided or the advanced view of the same run (#ADR-0050,
+ * #ADR-0090). Each ports by default; a repair is a preset of the advanced view (#ADR-0052).
  */
 export function RepairPage() {
   const mode = useRepairStore((state) => state.mode);
@@ -19,6 +20,7 @@ export function RepairPage() {
 
   const modes: { value: RepairMode; label: string }[] = [
     { value: "simple", label: m.repair_mode_simple_label() },
+    { value: "guided", label: m.repair_mode_guided_label() },
     { value: "advanced", label: m.repair_mode_advanced_label() },
   ];
 
@@ -40,6 +42,7 @@ export function RepairPage() {
       </div>
       <ModCard />
       {mode === "simple" && <SimpleRepair />}
+      {mode === "guided" && <GuidedRepair />}
       {mode === "advanced" && <AdvancedRepair />}
     </div>
   );
