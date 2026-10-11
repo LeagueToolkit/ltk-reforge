@@ -10,10 +10,14 @@
 //! absent, and any number of processes read and write the cache at once. An entry that does
 //! not read, is of another reading or caps, or names a blob the store lacks is a miss.
 //!
+//! The cache evicts nothing: it is cleared by archive (#ADR-0093), each entry of the archive
+//! with the blobs no other entry names and their facts.
+//!
 //! A run takes the cache beside the store it reads through (`Run::in_cache`), not a porter: the
 //! cache is a store, no setting, and the settings are what a snapshot names (#ADR-0094). Which
 //! cache a run reads changes nothing in its report.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -22,7 +26,7 @@ use fs_err as fs;
 use super::{from_json, to_json};
 use crate::archive::{Caps, RAW_VERSION, RawSnapshot};
 use crate::model::ContentId;
-use crate::store::{FactTable, IngestStore};
+use crate::store::{BlobStore, FactTable, IngestStore};
 
 /// The directory of the entries, beside the ingest store's own.
 const ENTRIES: &str = "raw";
@@ -30,6 +34,50 @@ const ENTRIES: &str = "raw";
 /// The directory an entry is written in before it is renamed into place: `cacache`'s own, on
 /// the same volume as the entries.
 const TEMPORARY: &str = "tmp";
+
+/// An entry of the cache: an archive's raw snapshot, by what its file's name says.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RawEntry {
+    /// The archive's SHA-256.
+    pub sha256: ContentId,
+    /// The raw reading's version it was read at.
+    pub version: u32,
+    /// The first sixteen hex digits of the SHA-256 of the caps it was read under, as JSON.
+    pub caps_hash: String,
+    /// The bytes of the blobs it names that the store holds, each blob once.
+    pub bytes: u64,
+}
+
+impl RawEntry {
+    /// The entry a file's name gives: `<sha256>-<version>-<caps16>.json`, as [`RawCache::entry`]
+    /// names it. None for a name of another shape.
+    fn named(name: &str) -> Option<Self> {
+        let stem = name.strip_suffix(".json")?;
+        let mut parts = stem.split('-');
+        let (sha256, version, caps) = (parts.next()?, parts.next()?, parts.next()?);
+        let caps_hex = caps.len() == 16 && caps.bytes().all(|b| b.is_ascii_hexdigit());
+        if parts.next().is_some() || !caps_hex {
+            return None;
+        }
+        Some(Self {
+            sha256: ContentId::parse(sha256)?,
+            version: version.parse().ok()?,
+            caps_hash: caps.to_string(),
+            bytes: 0,
+        })
+    }
+}
+
+/// What a clear of the cache removed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Cleared {
+    /// The entries removed.
+    pub entries: usize,
+    /// The blobs removed: those no entry left names.
+    pub blobs: usize,
+    /// The bytes of those blobs.
+    pub bytes: u64,
+}
 
 /// The raw snapshots of archives, with their bytes in an ingest store.
 #[derive(Debug, Clone)]
@@ -80,6 +128,88 @@ impl RawCache {
         let raw = from_json::<RawSnapshot>(&json).ok()?;
         let fits = raw.version == RAW_VERSION && raw.caps == *caps && raw.meta.sha256 == sha256;
         (fits && raw.ids().all(|id| self.store.contains(id))).then_some(raw)
+    }
+
+    /// Every entry the cache holds, sorted by archive, reading and caps, each with the bytes
+    /// of the blobs it names. A file in the entries' directory whose name is no entry's is not
+    /// listed.
+    pub fn entries(&self) -> Vec<RawEntry> {
+        let mut entries: Vec<RawEntry> = self
+            .entry_files()
+            .into_iter()
+            .map(|(name, path)| RawEntry {
+                bytes: self.bytes_of(&self.named(&path)),
+                ..name
+            })
+            .collect();
+        entries.sort();
+        entries
+    }
+
+    /// Removes every entry of the archive with this SHA-256, at any reading and caps, and the
+    /// blobs they name that no other entry names, with their facts (#ADR-0093, #ADR-0096).
+    pub fn clear(&self, sha256: ContentId) -> std::io::Result<Cleared> {
+        self.clear_where(|entry| entry == sha256)
+    }
+
+    /// Removes every entry of an archive whose SHA-256 is not in `keep`, and the blobs they
+    /// name that no kept entry names, with their facts.
+    pub fn clear_unnamed(&self, keep: &[ContentId]) -> std::io::Result<Cleared> {
+        self.clear_where(|entry| !keep.contains(&entry))
+    }
+
+    /// Removes the entries whose archive `cleared` picks, then the blobs they name that no
+    /// entry left names. Every entry left is read first, as the mark: an entry that does not
+    /// read names nothing, as a get takes it for a miss.
+    fn clear_where(&self, cleared: impl Fn(ContentId) -> bool) -> std::io::Result<Cleared> {
+        let (gone, left): (Vec<_>, Vec<_>) = self
+            .entry_files()
+            .into_iter()
+            .partition(|(name, _)| cleared(name.sha256));
+        let marked: BTreeSet<ContentId> =
+            left.iter().flat_map(|(_, path)| self.named(path)).collect();
+        let mut named = BTreeSet::new();
+        for (_, path) in &gone {
+            named.extend(self.named(path));
+            fs::remove_file(path)?;
+        }
+        let unmarked: Vec<ContentId> = named.difference(&marked).copied().collect();
+        let bytes = self.bytes_of(&unmarked);
+        for &id in &unmarked {
+            self.store.remove(id)?;
+        }
+        self.facts.remove(&unmarked);
+        Ok(Cleared {
+            entries: gone.len(),
+            blobs: unmarked.len(),
+            bytes,
+        })
+    }
+
+    /// Each entry file, by what its name says, with its path.
+    fn entry_files(&self) -> Vec<(RawEntry, Utf8PathBuf)> {
+        let Ok(files) = fs::read_dir(self.dir.join(ENTRIES)) else {
+            return Vec::new();
+        };
+        let named = files.flatten().filter_map(|file| {
+            let path = Utf8PathBuf::from_path_buf(file.path()).ok()?;
+            let entry = RawEntry::named(path.file_name()?)?;
+            Some((entry, path))
+        });
+        named.collect()
+    }
+
+    /// The ids an entry's snapshot names, each once. None for an entry that does not read.
+    fn named(&self, entry: &Utf8Path) -> BTreeSet<ContentId> {
+        let json = fs::read_to_string(entry).ok();
+        let raw = json.and_then(|json| from_json::<RawSnapshot>(&json).ok());
+        raw.map(|raw| raw.ids().collect()).unwrap_or_default()
+    }
+
+    /// The bytes of these blobs in the store: none for one it lacks.
+    fn bytes_of<'i>(&self, ids: impl IntoIterator<Item = &'i ContentId>) -> u64 {
+        let size = |&id| self.store.get_head(id, 0).map_or(0, |head| head.size);
+        ids.into_iter().map(size).sum()
     }
 
     /// Keeps a raw snapshot whose bytes are in the store, under its archive, reading and caps.

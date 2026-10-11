@@ -1,7 +1,9 @@
 //! The raw snapshot as a cache (#ADR-0095): a run that finds its archive's raw snapshot in the
 //! cache takes it in place of `read`, and one that does not reads the archive into the cache.
-//! Either way the run's report is the report of a run with no cache. The game is
-//! `reforge_testkit::skins`.
+//! Either way the run's report is the report of a run with no cache. The cache is cleared by
+//! archive. The game is `reforge_testkit::skins`.
+
+use std::collections::BTreeSet;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use reforge::Porter;
@@ -9,8 +11,8 @@ use reforge::archive::{Caps, RAW_VERSION, RawSnapshot};
 use reforge::diag::Stage;
 use reforge::env::Env;
 use reforge::history::NoHistory;
-use reforge::model::ContentId;
-use reforge::snapshot::{RawCache, to_json};
+use reforge::model::{ContentId, FactAccess};
+use reforge::snapshot::{Cleared, RawCache, to_json};
 use reforge::store::BlobStore;
 use reforge_testkit::bins::{bin, blob, entry, particle, resolver_with};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -226,4 +228,112 @@ fn a_run_started_from_the_raw_snapshot_the_cache_holds_by_hash_reports_as_one_th
     assert_eq!(run.report().to_json(), report);
     let absent = ContentId::of(b"no archive the cache read");
     assert_eq!(cache.get(absent, porter.settings().caps()), None);
+}
+
+/// [`own_mod`] with a file of its own beside the ones every such mod has.
+fn mod_with(own: &str) -> Vec<u8> {
+    let objects = vec![entry(SKIN0, &own_skin("a", GRAPH0, RESOURCES0))];
+    let mut files = own_files("a");
+    files.push((skin_bin("test", 0), bin(objects)));
+    let path = format!("assets/mod/a/{own}.tex");
+    archive(&files).file(WAD, &path, blob(own)).build()
+}
+
+/// The raw snapshot of an archive loaded through the cache, which keeps it and the facts of
+/// its blobs.
+fn ingested(porter: &Porter<'_>, cache: &RawCache, bytes: &[u8]) -> RawSnapshot {
+    let mut run = porter.run().in_cache(cache.clone());
+    let raw = run
+        .read(bytes, FILE_NAME)
+        .expect("the archive reads")
+        .clone();
+    run.load().expect("the mod loads");
+    raw
+}
+
+/// The bytes of the blobs a raw snapshot names, each once.
+fn bytes_named(cache: &RawCache, ids: &BTreeSet<ContentId>) -> u64 {
+    let size = |&id| cache.store().get(id).map_or(0, |bytes| bytes.len() as u64);
+    ids.iter().map(size).sum()
+}
+
+#[test]
+fn clearing_one_of_two_archives_that_share_a_blob_keeps_the_shared_blob_and_the_other() {
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let (_scratch, cache) = scratch();
+    let (first, second) = (mod_with("first"), mod_with("second"));
+    let first_raw = ingested(&porter, &cache, &first);
+    let second_raw = ingested(&porter, &cache, &second);
+    let first_ids: BTreeSet<ContentId> = first_raw.ids().collect();
+    let second_ids: BTreeSet<ContentId> = second_raw.ids().collect();
+    let shared: BTreeSet<ContentId> = first_ids.intersection(&second_ids).copied().collect();
+    let own: Vec<ContentId> = first_ids.difference(&second_ids).copied().collect();
+    assert!(!shared.is_empty() && !own.is_empty());
+    let facts = cache.facts();
+    assert!(
+        own.iter().any(|&id| facts.row(id).is_some()),
+        "load kept facts"
+    );
+
+    let entries = cache.entries();
+    let mut listed = vec![
+        (first_raw.meta.sha256, bytes_named(&cache, &first_ids)),
+        (second_raw.meta.sha256, bytes_named(&cache, &second_ids)),
+    ];
+    listed.sort();
+    let found: Vec<(ContentId, u64)> = entries.iter().map(|e| (e.sha256, e.bytes)).collect();
+    assert_eq!(found, listed);
+    assert!(
+        entries
+            .iter()
+            .all(|e| e.version == RAW_VERSION && e.caps_hash.len() == 16)
+    );
+    let own_bytes = bytes_named(&cache, &own.iter().copied().collect());
+
+    let cleared = cache
+        .clear(first_raw.meta.sha256)
+        .expect("the cache clears");
+
+    assert_eq!(cleared.entries, 1);
+    assert_eq!(cleared.blobs, own.len());
+    assert_eq!(cleared.bytes, own_bytes);
+    assert!(own.iter().all(|&id| !cache.store().contains(id)));
+    assert!(
+        own.iter().all(|&id| facts.row(id).is_none()),
+        "the facts go with them"
+    );
+    assert!(shared.iter().all(|&id| cache.store().contains(id)));
+    let caps = Caps::default();
+    assert_eq!(cache.get(first_raw.meta.sha256, &caps), None);
+    assert_eq!(
+        cache.get(second_raw.meta.sha256, &caps),
+        Some(second_raw.clone())
+    );
+    let left: Vec<ContentId> = cache.entries().iter().map(|e| e.sha256).collect();
+    assert_eq!(left, [second_raw.meta.sha256]);
+    assert_eq!(
+        cache.clear(first_raw.meta.sha256).unwrap(),
+        Cleared::default()
+    );
+}
+
+#[test]
+fn clearing_the_archives_not_kept_leaves_the_kept_ones() {
+    let env = game_env();
+    let porter = Porter::new(&env);
+    let (_scratch, cache) = scratch();
+    let first = ingested(&porter, &cache, &mod_with("first"));
+    let second = ingested(&porter, &cache, &mod_with("second"));
+
+    let cleared = cache
+        .clear_unnamed(&[second.meta.sha256])
+        .expect("the cache clears");
+
+    assert_eq!(cleared.entries, 1);
+    let caps = Caps::default();
+    assert_eq!(cache.get(first.meta.sha256, &caps), None);
+    assert_eq!(cache.get(second.meta.sha256, &caps), Some(second.clone()));
+    let left: Vec<ContentId> = cache.entries().iter().map(|e| e.sha256).collect();
+    assert_eq!(left, [second.meta.sha256]);
 }

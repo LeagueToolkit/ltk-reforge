@@ -73,6 +73,15 @@ impl IngestStore {
         id == ContentId::EMPTY || cacache::exists_sync(&self.dir, &integrity(id))
     }
 
+    /// Removes the blob under an id, and gives back its space at once (#ADR-0093). An id it
+    /// lacks is removed already.
+    pub fn remove(&self, id: ContentId) -> io::Result<()> {
+        if !self.contains(id) {
+            return Ok(());
+        }
+        cacache::remove_hash_sync(&self.dir, &integrity(id)).map_err(io::Error::other)
+    }
+
     /// The file `cacache` 13.0 keeps a blob in: `content-v2/sha256/` and the id's hex digits,
     /// split after the second and the fourth. `cacache` reads a blob only through a check of
     /// its hash, so an unchecked read names the file itself.

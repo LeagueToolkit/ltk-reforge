@@ -122,6 +122,43 @@ impl FactTable {
         transaction.commit()
     }
 
+    /// Deletes the rows of these blobs, in one transaction: the facts of blobs the store no
+    /// longer holds. A file absent holds none; a write the lock keeps out is tried again as a
+    /// keep is, and one that never gets it is logged and leaves its rows, which name blobs no
+    /// entry names.
+    pub fn remove(&self, ids: &[ContentId]) {
+        if ids.is_empty() || !self.path.is_file() {
+            return;
+        }
+        for _ in 0..TRIES {
+            match self.delete_rows(ids) {
+                Ok(()) => return,
+                Err(error) if busy(&error) => {}
+                Err(error) => {
+                    tracing::warn!(path = %self.path, %error, "the facts of blobs are not removed");
+                    return;
+                }
+            }
+        }
+        tracing::warn!(path = %self.path, "the facts of blobs are not removed: the file stays locked");
+    }
+
+    fn delete_rows(&self, ids: &[ContentId]) -> rusqlite::Result<()> {
+        let mut write = self.write.lock().unwrap_or_else(PoisonError::into_inner);
+        let db = match &mut *write {
+            Some(db) => db,
+            None => write.insert(self.open_for_writes()?),
+        };
+        let transaction = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        {
+            let mut delete = transaction.prepare_cached("DELETE FROM blob_facts WHERE id = ?1")?;
+            for id in ids {
+                delete.execute(params![&id.0[..]])?;
+            }
+        }
+        transaction.commit()
+    }
+
     fn open_for_writes(&self) -> rusqlite::Result<Connection> {
         if let Some(dir) = self.path.parent() {
             let _ = fs_err::create_dir_all(dir);

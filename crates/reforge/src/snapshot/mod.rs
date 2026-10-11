@@ -35,7 +35,7 @@ pub use self::decide::{DecideSettings, DecideSnapshot};
 pub use self::facts::{FactsSettings, FactsSnapshot};
 pub use self::fix::{FixInputs, FixSettings, FixSnapshot};
 pub use self::plan::{PlanSettings, PlanSnapshot};
-pub use self::raw::RawCache;
+pub use self::raw::{Cleared, RawCache, RawEntry};
 use crate::archive::{Caps, RawExtra, RawImage, RawSnapshot};
 use crate::diag::{Input, Logged, Stage, UnknownCode};
 use crate::env::Env;
