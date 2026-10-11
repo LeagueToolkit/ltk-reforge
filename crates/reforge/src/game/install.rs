@@ -341,6 +341,16 @@ impl Install {
         })
     }
 
+    /// The build of the install at `root`, read as [`open`](Self::open) reads it, without
+    /// reading a WAD. `None` when the install does not say its build.
+    /// [`InstallError::NoData`] when `root` is no install.
+    pub fn peek_build(root: &Utf8Path) -> Result<Option<Build>, InstallError> {
+        Self::find_data(root).ok_or_else(|| InstallError::NoData {
+            root: root.to_owned(),
+        })?;
+        Ok(Self::read_build(root).ok())
+    }
+
     /// `DATA/FINAL` for a root that is the install directory, its `Game` directory or
     /// `DATA/FINAL` itself.
     fn find_data(root: &Utf8Path) -> Option<Utf8PathBuf> {

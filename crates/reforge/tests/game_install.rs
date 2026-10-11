@@ -197,6 +197,38 @@ fn the_install_directory_its_game_directory_and_its_data_directory_open_the_same
 }
 
 #[test]
+fn an_install_says_its_build_without_being_opened() {
+    let fixture = Fixture::standard();
+    for root in [fixture.root.clone(), fixture.root.join("Game")] {
+        let build = Install::peek_build(&root).unwrap();
+        assert_eq!(build.as_ref().map(Build::as_str), Some("16.19.8207193"));
+    }
+}
+
+#[test]
+fn a_folder_with_no_data_is_no_install_to_peek_at() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(dir.path()).unwrap();
+    fs::write(
+        root.join("content-metadata.json"),
+        r#"{ "version": "16.19.1" }"#,
+    )
+    .unwrap();
+    let error = Install::peek_build(root).unwrap_err();
+    assert!(
+        matches!(&error, InstallError::NoData { root: named } if named == root),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_peeked_install_with_a_malformed_version_has_no_build() {
+    let fixture = Fixture::standard();
+    fixture.version("live");
+    assert_eq!(Install::peek_build(&fixture.root).unwrap(), None);
+}
+
+#[test]
 fn a_directory_with_no_champions_is_no_install() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8Path::from_path(dir.path()).unwrap();
