@@ -7,6 +7,7 @@ import type { FileRow, FileView } from "@/lib/bindings.gen";
 
 import { useRunFile } from "../api/runs";
 import { sizeLabel } from "../tree";
+import { kindGroup } from "./FileTree";
 
 const preClass =
   "max-h-[60vh] overflow-auto rounded-lg border border-surface-700/50 bg-surface-950/40 p-3 font-mono text-xs whitespace-pre text-surface-200";
@@ -62,10 +63,17 @@ export function FileViewer({ id, row }: FileViewerProps) {
           {m.runs_file_read_only()}
         </span>
         <span className="min-w-0 font-mono break-all text-surface-100">{row.path ?? row.hash}</span>
-        <span className="text-surface-300">{row.kind}</span>
+        <Tooltip content={<span className="font-mono text-xs">{row.kind}</span>}>
+          <span className="text-surface-300">
+            {m[`runs_file_kind.${kindGroup(row.kind)}.label`]()}
+          </span>
+        </Tooltip>
         <span className="text-surface-300 tabular-nums">{sizeLabel(row.size)}</span>
         <Tooltip content={<span className="font-mono text-xs">{row.content}</span>}>
-          <span className="font-mono text-surface-400">{row.content.slice(0, 12)}</span>
+          <span className="text-surface-400">
+            {m.runs_file_content_label()}{" "}
+            <span className="font-mono">{row.content.slice(0, 12)}</span>
+          </span>
         </Tooltip>
       </div>
       {view.isPending && <Spinner />}

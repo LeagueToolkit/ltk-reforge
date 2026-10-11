@@ -33,28 +33,55 @@ const MODEL_KINDS = [
 const AUDIO_KINDS = ["wwise-bank", "wwise-package", "wav", "wem", "ogg"];
 const TEXT_KINDS = ["text", "json", "xml", "ini", "troy", "markdown", "script"];
 
-/** The icon of a file's kind, as `reforge-magic` names kinds. */
-function kindIcon(kind: string): ReactNode {
-  const className = "h-3.5 w-3.5 shrink-0 text-surface-400";
+/** What a person calls a file of a kind: the group of kinds it falls in. */
+export type KindGroup = "missing" | "bin" | "image" | "model" | "audio" | "text" | "other";
+
+/** The group of a file's kind, as `reforge-magic` names kinds. */
+export function kindGroup(kind: string): KindGroup {
   if (kind === "missing") {
-    return <FileXIcon weight="bold" className={twMerge(className, "text-danger-text")} />;
+    return "missing";
   }
   if (BIN_KINDS.includes(kind)) {
-    return <FileCodeIcon weight="bold" className={className} />;
+    return "bin";
   }
   if (IMAGE_KINDS.includes(kind)) {
-    return <ImageIcon weight="bold" className={className} />;
+    return "image";
   }
   if (MODEL_KINDS.includes(kind)) {
-    return <CubeIcon weight="bold" className={className} />;
+    return "model";
   }
   if (AUDIO_KINDS.includes(kind)) {
-    return <SpeakerHighIcon weight="bold" className={className} />;
+    return "audio";
   }
   if (TEXT_KINDS.includes(kind)) {
-    return <FileTextIcon weight="bold" className={className} />;
+    return "text";
   }
-  return <FileIcon weight="bold" className={className} />;
+  return "other";
+}
+
+const groupIcons: Record<KindGroup, typeof FileIcon> = {
+  missing: FileXIcon,
+  bin: FileCodeIcon,
+  image: ImageIcon,
+  model: CubeIcon,
+  audio: SpeakerHighIcon,
+  text: FileTextIcon,
+  other: FileIcon,
+};
+
+/** The icon of a file's kind. */
+function kindIcon(kind: string): ReactNode {
+  const group = kindGroup(kind);
+  const Icon = groupIcons[group];
+  return (
+    <Icon
+      weight="bold"
+      className={twMerge(
+        "h-3.5 w-3.5 shrink-0 text-surface-400",
+        group === "missing" && "text-danger-text",
+      )}
+    />
+  );
 }
 
 const markClass: Record<Exclude<Mark, "same">, string> = {

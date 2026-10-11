@@ -57,14 +57,25 @@ function aspectLabel(aspect: string): string {
     : aspect;
 }
 
+/** A unit's target and its reason as one sentence; none when the reason is unknown. */
+export function reasonTitle(
+  reason: string,
+  character: string,
+  target: number | null,
+): string | null {
+  if (!REASONS.includes(reason as Reason)) {
+    return null;
+  }
+  return m[`decide.reason.${reason as Reason}.title`]({ character, chosen: slotLabel(target) });
+}
+
 /** The decision as one sentence, from its reason; the bare move when the reason is unknown. */
 function decisionTitle(decision: DecisionView): string {
   const character = decision.character_name || decision.character;
-  const chosen = slotLabel(decision.chosen);
-  if (REASONS.includes(decision.reason as Reason)) {
-    return m[`decide.reason.${decision.reason as Reason}.title`]({ character, chosen });
-  }
-  return m.decide_unit_title({ character, source: decision.source, chosen });
+  return (
+    reasonTitle(decision.reason, character, decision.chosen) ??
+    m.decide_unit_title({ character, source: decision.source, chosen: slotLabel(decision.chosen) })
+  );
 }
 
 /** A check's outcome, from the mark the library writes (`fits`, `fix`, `NO`, `?`). */

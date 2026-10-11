@@ -29,7 +29,7 @@ import { ComparePicker } from "./ComparePicker";
 import { CompareView } from "./CompareView";
 import { FilesTab, heldStages } from "./FilesTab";
 import { RemoveMenu } from "./RemoveMenu";
-import { runName } from "./RunList";
+import { ClearedBadge, runName } from "./RunList";
 
 /** The tabs of a run. */
 type Tab = "result" | "files" | "report";
@@ -103,7 +103,16 @@ function OriginBadge({ row }: { row: RunRow }) {
     </span>
   );
   return row.opened_from ? (
-    <Tooltip content={m.runs_origin_from({ path: row.opened_from })}>{badge}</Tooltip>
+    <Tooltip
+      content={
+        // A path is one word as long as itself: unbroken, it runs past the window.
+        <span className="block max-w-md break-all">
+          {m.runs_origin_from({ path: row.opened_from })}
+        </span>
+      }
+    >
+      {badge}
+    </Tooltip>
   ) : (
     badge
   );
@@ -223,6 +232,7 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
           <p className="flex items-center gap-2 text-base font-semibold text-surface-50">
             <span className="min-w-0 truncate">{name}</span>
             <OriginBadge row={row} />
+            <ClearedBadge row={row} />
           </p>
           {(row.author || row.version) && (
             <p className="text-xs text-surface-300">

@@ -61,6 +61,24 @@ export function RunWhen({ madeAt, now }: { madeAt: string; now: Date }) {
   );
 }
 
+/** The badge of a run whose archive data the ingest tier lacks. None for any other run. */
+export function ClearedBadge({ row }: { row: RunRow }) {
+  // A package opened never had archive data to clear.
+  if (row.archive_ingested || row.origin === "package") {
+    return null;
+  }
+  return (
+    <Tooltip content={m.runs_ingest_cleared_hint()}>
+      <span
+        className="shrink-0 rounded-full border border-surface-600 px-2 py-0.5 text-[11px] font-normal text-surface-300 select-none"
+        data-ui="RunList:cleared"
+      >
+        {m.runs_ingest_cleared_label()}
+      </span>
+    </Tooltip>
+  );
+}
+
 /** A run as the list draws it: its name and marks, then its kind, author and when. */
 export function RunLine({ row, now }: { row: RunRow; now: Date }) {
   return (
@@ -80,17 +98,7 @@ export function RunLine({ row, now }: { row: RunRow; now: Date }) {
       </span>
       <span className="flex min-w-0 items-center gap-2 text-xs text-surface-400">
         <KindBadge kind={row.kind} />
-        {/* A package opened never had archive data to clear. */}
-        {!row.archive_ingested && row.origin !== "package" && (
-          <Tooltip content={m.runs_ingest_cleared_hint()}>
-            <span
-              className="shrink-0 rounded-full border border-surface-600 px-2 py-0.5 text-[11px] text-surface-300 select-none"
-              data-ui="RunList:cleared"
-            >
-              {m.runs_ingest_cleared_label()}
-            </span>
-          </Tooltip>
-        )}
+        <ClearedBadge row={row} />
         {row.author && (
           <span className="min-w-0 truncate">{m.runs_by_label({ author: row.author })}</span>
         )}
@@ -121,8 +129,9 @@ export function RunList({ runs, selected, onSelect, now, actions, note, classNam
   const shown = runs.filter((row) => matches(row, filter));
   return (
     <div className={twMerge("flex flex-col gap-3", className)} data-ui="RunList">
-      <div className="flex items-center gap-2">
-        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-surface-600 bg-surface-950/40 px-2 focus-within:outline-2 focus-within:outline-accent-500">
+      {/* A narrow list puts the actions under the box, which stays wide enough to read. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex min-w-40 flex-1 items-center gap-2 rounded-md border border-surface-600 bg-surface-950/40 px-2 focus-within:outline-2 focus-within:outline-accent-500">
           <MagnifyingGlassIcon className="h-3.5 w-3.5 shrink-0 text-surface-400" />
           <input
             type="search"

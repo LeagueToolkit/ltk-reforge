@@ -18,6 +18,7 @@ import type {
 import { FindingChanges, isFixupFinding } from "@/modules/changes";
 import { FindingList } from "@/modules/findings";
 import { useFixupCatalog } from "@/modules/fixups";
+import { reasonTitle } from "@/modules/repair";
 import { twMerge } from "@/utils";
 
 import { useCompare, useCompareFiles, useRunView } from "../api/runs";
@@ -25,7 +26,9 @@ import { differingFirst, isDiffKey, SWITCH_KEYS } from "../compare";
 import { FilesBrowser, heldStages } from "./FilesTab";
 import { KindBadge, RunWhen } from "./RunList";
 
-const tableClass = "w-full text-left text-xs";
+// Fixed columns: a long value wraps in its own column and leaves the other run's its width.
+const tableClass = "w-full table-fixed text-left text-xs";
+const keyColumn = "w-1/4";
 const headClass = "pb-2 font-medium text-surface-400 select-none";
 const cellClass = "py-1.5 pr-3 align-top";
 
@@ -67,7 +70,75 @@ function diffValue(key: string, value: string): string {
   if (isDiffKey(key) && SWITCH_KEYS.includes(key)) {
     return value === "true" ? m.compare_value_on() : m.compare_value_off();
   }
+  if (key === "names") {
+    return tablesLabel(value) ?? value;
+  }
   return value;
+}
+
+/** A hash table as the load snapshot names it. */
+interface TableStamp {
+  table: string;
+  version: string;
+  sha256?: string;
+}
+
+function isTableStamp(value: unknown): value is TableStamp {
+  const stamp = value as TableStamp;
+  return typeof stamp?.table === "string" && typeof stamp.version === "string";
+}
+
+/**
+ * The hash tables a run read, one a line: its name, version and the start of its SHA-256,
+ * which tells two copies of one version apart. None when the value is not the tables' JSON.
+ */
+function tablesLabel(value: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  const lists = Object.values(parsed as Record<string, unknown>).filter(Array.isArray);
+  const stamps = lists.flat().filter(isTableStamp);
+  if (stamps.length === 0) {
+    return null;
+  }
+  return stamps
+    .map((stamp) =>
+      [stamp.table, stamp.version, stamp.sha256?.slice(0, 8)].filter(Boolean).join(" "),
+    )
+    .join("\n");
+}
+
+/** The fixups a value lists, by title, each with its id. */
+function FixupsValue({ value, titles }: { value: string; titles: Map<string, string> }) {
+  return (
+    <span className="flex flex-col gap-1">
+      {value.split(", ").map((id) => (
+        <span key={id} className="flex flex-col">
+          <span className="font-sans text-surface-100">{titles.get(id) ?? id}</span>
+          <span className="text-surface-400">{id}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** One run's value of a setting or an input. */
+function DiffValue({
+  name,
+  value,
+  titles,
+}: {
+  name: string;
+  value: string;
+  titles: Map<string, string>;
+}) {
+  if (value !== "" && (name === "fixups_off" || name === "fixups_on")) {
+    return <FixupsValue value={value} titles={titles} />;
+  }
+  return <>{diffValue(name, value)}</>;
 }
 
 /** The name of a setting or an input; the key itself for one the window does not know. */
@@ -76,6 +147,12 @@ function diffLabel(key: string): string {
 }
 
 function SettingsSection({ rows }: { rows: Diff[] }) {
+  const catalog = useFixupCatalog();
+  const titles = new Map(catalog.data?.map((entry) => [entry.id, entry.title]));
+  const valueClass = twMerge(
+    cellClass,
+    "font-mono wrap-anywhere whitespace-pre-line text-surface-100",
+  );
   return (
     <SectionCard title={m.compare_settings_title()} description={m.compare_settings_description()}>
       {rows.length === 0 ? (
@@ -84,7 +161,7 @@ function SettingsSection({ rows }: { rows: Diff[] }) {
         <table className={tableClass} data-ui="CompareView:settings">
           <thead>
             <tr>
-              <th className={headClass}>{m.compare_column_what()}</th>
+              <th className={twMerge(headClass, keyColumn)}>{m.compare_column_what()}</th>
               <th className={headClass}>{m.compare_side_a()}</th>
               <th className={headClass}>{m.compare_side_b()}</th>
             </tr>
@@ -93,11 +170,11 @@ function SettingsSection({ rows }: { rows: Diff[] }) {
             {rows.map((row) => (
               <tr key={row.key}>
                 <td className={twMerge(cellClass, "text-surface-200")}>{diffLabel(row.key)}</td>
-                <td className={twMerge(cellClass, "font-mono break-all text-surface-100")}>
-                  {diffValue(row.key, row.a)}
+                <td className={valueClass}>
+                  <DiffValue name={row.key} value={row.a} titles={titles} />
                 </td>
-                <td className={twMerge(cellClass, "font-mono break-all text-surface-100")}>
-                  {diffValue(row.key, row.b)}
+                <td className={valueClass}>
+                  <DiffValue name={row.key} value={row.b} titles={titles} />
                 </td>
               </tr>
             ))}
@@ -188,25 +265,38 @@ function FindingsSection({
   );
 }
 
-/** A unit's target in one run, and why. */
-function TargetCell({ chosen, reason }: { chosen: number | null; reason: string }) {
+/** A unit's target in one run, and why, as the run page says it. */
+function TargetCell({
+  chosen,
+  reason,
+  character,
+}: {
+  chosen: number | null;
+  reason: string;
+  character: string;
+}) {
   if (reason === "") {
     return <span className="text-surface-500">{m.compare_value_absent()}</span>;
   }
+  const why = reasonTitle(reason, character, chosen);
   return (
     <span className="flex flex-col">
       <span className="text-surface-100">
         {chosen == null ? m.decide_left_to_game_label() : m.decide_skin_label({ slot: chosen })}
       </span>
-      <span className="font-mono text-surface-400">{reason}</span>
+      {why ? (
+        <span className="text-surface-400">{why}</span>
+      ) : (
+        <span className="font-mono text-surface-400">{reason}</span>
+      )}
     </span>
   );
 }
 
-/** A row's mark when it differs between the runs. */
+/** A row's mark when it differs between the runs; its room kept on a row that does not. */
 function DiffersDot({ differs }: { differs: boolean }) {
   if (!differs) {
-    return null;
+    return <span aria-hidden className="mr-2 inline-block h-2 w-2 shrink-0" />;
   }
   return (
     <span
@@ -227,7 +317,7 @@ function TargetsSection({ targets }: { targets: TargetDiff[] }) {
         <table className={tableClass} data-ui="CompareView:targets">
           <thead>
             <tr>
-              <th className={headClass}>{m.compare_column_unit()}</th>
+              <th className={twMerge(headClass, keyColumn)}>{m.compare_column_unit()}</th>
               <th className={headClass}>{m.compare_side_a()}</th>
               <th className={headClass}>{m.compare_side_b()}</th>
             </tr>
@@ -236,14 +326,24 @@ function TargetsSection({ targets }: { targets: TargetDiff[] }) {
             {differingFirst(targets).map((target) => (
               <tr key={target.unit}>
                 <td className={twMerge(cellClass, "text-surface-200")}>
-                  <DiffersDot differs={target.differs} />
-                  {target.unit}
+                  <span className="flex items-start">
+                    <DiffersDot differs={target.differs} />
+                    <span>{target.unit}</span>
+                  </span>
                 </td>
                 <td className={cellClass}>
-                  <TargetCell chosen={target.a} reason={target.a_reason} />
+                  <TargetCell
+                    chosen={target.a}
+                    reason={target.a_reason}
+                    character={target.character_name}
+                  />
                 </td>
                 <td className={cellClass}>
-                  <TargetCell chosen={target.b} reason={target.b_reason} />
+                  <TargetCell
+                    chosen={target.b}
+                    reason={target.b_reason}
+                    character={target.character_name}
+                  />
                 </td>
               </tr>
             ))}
@@ -283,7 +383,7 @@ function FixupsSection({ changes }: { changes: ChangeDiff[] }) {
         <table className={tableClass} data-ui="CompareView:fixups">
           <thead>
             <tr>
-              <th className={headClass}>{m.compare_column_fixup()}</th>
+              <th className={twMerge(headClass, "w-1/2")}>{m.compare_column_fixup()}</th>
               <th className={headClass}>{m.compare_side_a()}</th>
               <th className={headClass}>{m.compare_side_b()}</th>
             </tr>

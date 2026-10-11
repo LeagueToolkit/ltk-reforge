@@ -94,9 +94,17 @@
   "runs_export_description": "Writes this run, its snapshots and the mod's bytes as one project file",
   "runs_export_filter": "Reforge project",
   "runs_export_package": "A run opened from a package has no snapshots or files to export",
+  "runs_file_content_label": "content id",
   "runs_file_cut": "… the file holds more than is shown",
   "runs_file_image_alt": "The texture's largest mip",
   "runs_file_image_label": "{width} × {height}, {format}",
+  "runs_file_kind.audio.label": "Audio",
+  "runs_file_kind.bin.label": "Bin",
+  "runs_file_kind.image.label": "Image",
+  "runs_file_kind.missing.label": "Not held",
+  "runs_file_kind.model.label": "Model",
+  "runs_file_kind.other.label": "Other",
+  "runs_file_kind.text.label": "Text",
   "runs_file_more": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
