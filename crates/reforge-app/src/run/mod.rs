@@ -33,7 +33,7 @@ pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
 use crate::selection::FixupChoice;
-use crate::store::{AppStore, Saved, load_key};
+use crate::store::{AppStore, KeptRun, Saved, load_key};
 use crate::view::Finding;
 
 /// A stage of a run, in the order they run.
@@ -443,19 +443,51 @@ const STARTS: [Stage; 7] = [
     Stage::Load,
 ];
 
-/// The start after `stage` from a kept run's snapshots, when they hold its snapshot.
-fn start_after(snapshots: &Snapshots, stage: Stage) -> Option<Start> {
-    let all = || Box::new(snapshots.clone());
+/// Whether a kept run's snapshots hold the one after `stage`.
+fn kept_after(snapshots: &Snapshots, stage: Stage) -> bool {
     match stage {
-        Stage::Load => Some(Start::Load(Box::new(snapshots.load.clone()))),
-        Stage::Fix => snapshots.fix.as_ref().map(|_| Start::Fix(all())),
-        Stage::Facts => snapshots.facts.as_ref().map(|_| Start::Facts(all())),
-        Stage::Decide => snapshots.decide.as_ref().map(|_| Start::Decide(all())),
-        Stage::Plan => snapshots.plan.as_ref().map(|_| Start::Plan(all())),
-        Stage::Build => snapshots.build.as_ref().map(|_| Start::Build(all())),
-        Stage::Check => snapshots.check.as_ref().map(|_| Start::Check(all())),
-        Stage::Read | Stage::Write => None,
+        Stage::Load => true,
+        Stage::Fix => snapshots.fix.is_some(),
+        Stage::Facts => snapshots.facts.is_some(),
+        Stage::Decide => snapshots.decide.is_some(),
+        Stage::Plan => snapshots.plan.is_some(),
+        Stage::Build => snapshots.build.is_some(),
+        Stage::Check => snapshots.check.is_some(),
+        Stage::Read | Stage::Write => false,
     }
+}
+
+/// The start after `stage`, a stage of [`STARTS`], from a kept run's snapshots.
+fn start_after(snapshots: Snapshots, stage: Stage) -> Start {
+    let all = Box::new(snapshots);
+    match stage {
+        Stage::Fix => Start::Fix(all),
+        Stage::Facts => Start::Facts(all),
+        Stage::Decide => Start::Decide(all),
+        Stage::Plan => Start::Plan(all),
+        Stage::Build => Start::Build(all),
+        Stage::Check => Start::Check(all),
+        Stage::Load | Stage::Read | Stage::Write => Start::Load(Box::new(all.load)),
+    }
+}
+
+/// The stage a run starts after from a kept run's snapshots: the latest they hold at or
+/// before `through` whose start `run` holds, so a resume never runs past the request. None
+/// when no start holds. Nothing is read from the store (`Run::start_holds_at`); each start
+/// refused, by a setting, an input or the program that differs, is logged at debug.
+pub fn kept_start(run: &Run<'_>, kept: &KeptRun, through: StageName) -> Option<Stage> {
+    let starts = STARTS.into_iter();
+    let mut starts = starts.filter(|&stage| StageName::of(stage) <= through);
+    starts.find(|&stage| {
+        if !kept_after(&kept.snapshots, stage) {
+            return false;
+        }
+        let holds = run.start_holds_at(&kept.snapshots, stage);
+        if let Err(error) = &holds {
+            tracing::debug!(run = kept.id, %stage, %error, "a kept run does not resume");
+        }
+        holds.is_ok()
+    })
 }
 
 /// A run of an archive the ingest tier holds, resumed from the newest kept run of the
@@ -480,12 +512,9 @@ fn resumed<'m>(
 }
 
 /// A run resumed from the newest kept run of the request's kind whose load is the one this
-/// run would make: of the same raw snapshot, program, load inputs and load settings. None
-/// when the store keeps none, or every start is refused.
-///
-/// The start is the latest stage the snapshots hold that is at or before the request's
-/// `through`, so a resume never runs past the request; each start refused, by a setting, an
-/// input or the program that differs, falls back to the one before it, down to `load`.
+/// run would make: of the same raw snapshot, program, load inputs and load settings, from the
+/// start [`kept_start`] finds. None when the store keeps none, no start holds, or the store
+/// lacks a byte the start names.
 fn from_kept<'m>(
     maker: &'m Maker<'_>,
     inputs: &Inputs,
@@ -506,20 +535,16 @@ fn from_kept<'m>(
         .ok()?;
     // A repair's snapshots do not resume a port.
     let newest = kept.into_iter().find(|kept| kept.kind == request.kind)?;
-    let starts = STARTS.into_iter();
-    let starts = starts.filter(|&stage| StageName::of(stage) <= request.through);
-    for stage in starts {
-        let Some(start) = start_after(&newest.snapshots, stage) else {
-            continue;
-        };
-        match maker.start(inputs, Some(store), watch).resume(start) {
-            Ok(run) => return Some(run),
-            Err(error) => {
-                tracing::debug!(run = newest.id, %stage, %error, "a kept run does not resume");
-            }
+    let run = maker.start(inputs, Some(store), watch);
+    let stage = kept_start(&run, &newest, request.through)?;
+    let id = newest.id;
+    match run.resume(start_after(newest.snapshots, stage)) {
+        Ok(run) => Some(run),
+        Err(error) => {
+            tracing::debug!(run = id, %stage, %error, "a kept run does not resume");
+            None
         }
     }
-    None
 }
 
 /// What a run that wrote its package keeps beside the run itself.

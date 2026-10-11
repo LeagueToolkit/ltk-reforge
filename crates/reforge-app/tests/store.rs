@@ -1,15 +1,20 @@
 //! The app's store (#ADR-0096): the run tier's blobs by content id, the rows, and the runs the
 //! app keeps. The game is `reforge_testkit::skins`.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use camino::{Utf8Path, Utf8PathBuf};
 use fjall::{Database, KeyspaceCreateOptions};
 use fs_err as fs;
 use reforge::archive::Caps;
+use reforge::diag::Stage;
 use reforge::fixups::{FixupSelection, FixupSet};
 use reforge::history::NoHistory;
-use reforge::model::{ByteView, ContentId};
+use reforge::model::{ByteView, ContentId, Head};
 use reforge::snapshot::{self, BuildSnapshot, CheckSnapshot, LoadSnapshot, StageSnapshot};
 use reforge::store::BlobStore;
+use reforge::{Porter, Start};
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
@@ -522,6 +527,74 @@ fn a_rerun_resumes_from_the_latest_stage_its_settings_leave_as_the_kept_run_had_
     assert_eq!(resumed(&from_archive), []);
     let straight_report = straight.store.report(1).unwrap();
     assert_eq!(reports(3), straight_report.expect("the report"));
+}
+
+/// The run tier, counting the reads of a blob or its head.
+struct Counted {
+    tier: RunTier,
+    reads: Arc<AtomicUsize>,
+}
+
+impl BlobStore for Counted {
+    fn get(&self, id: ContentId) -> Option<ByteView> {
+        self.reads.fetch_add(1, Ordering::Relaxed);
+        self.tier.get(id)
+    }
+
+    fn get_unchecked(&self, id: ContentId) -> Option<ByteView> {
+        self.reads.fetch_add(1, Ordering::Relaxed);
+        self.tier.get_unchecked(id)
+    }
+
+    fn get_head(&self, id: ContentId, len: usize) -> Option<Head> {
+        self.reads.fetch_add(1, Ordering::Relaxed);
+        self.tier.get_head(id, len)
+    }
+
+    fn contains(&self, id: ContentId) -> bool {
+        self.tier.contains(id)
+    }
+
+    fn put(&self, bytes: ByteView) -> ContentId {
+        self.tier.put(bytes)
+    }
+}
+
+#[test]
+fn a_rerun_with_a_fixup_off_reads_no_blob_before_it_resumes_from_the_load() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+    let key: String = bench
+        .rows()
+        .query_row("SELECT key FROM load", [], |row| row.get(0))
+        .unwrap();
+    let kept = bench.store.kept_runs_of(&key).unwrap().remove(0);
+    let selection = FixupSelection::standard().without(a_bin_fixup().as_str());
+    let porter = Porter::new(bench.inputs.env()).fixups(FixupSet::from(&selection));
+    let reads = Arc::new(AtomicUsize::new(0));
+    let counted = Counted {
+        tier: bench.store.tier().clone(),
+        reads: Arc::clone(&reads),
+    };
+    let run = porter
+        .run()
+        .in_store(counted)
+        .in_cache(bench.store.ingest().clone());
+
+    let stage = run::kept_start(&run, &kept, StageName::Write);
+
+    assert_eq!(stage, Some(Stage::Load), "the fix settings differ");
+    assert_eq!(
+        reads.load(Ordering::Relaxed),
+        0,
+        "the reads before the resume"
+    );
+    let start = Start::Load(Box::new(kept.snapshots.load));
+    run.resume(start).expect("the run resumes");
+    assert!(
+        reads.load(Ordering::Relaxed) > 0,
+        "the resume reads the bins"
+    );
 }
 
 /// What a watch heard of a run: each stage's events, and how many parts.
