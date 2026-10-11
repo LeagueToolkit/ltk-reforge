@@ -290,6 +290,14 @@ pub async fn export_project(app: AppHandle, id: u64, path: String) -> IpcResult<
     off_thread(move || store?.export_project(id, Utf8Path::new(&path))).await
 }
 
+/// Imports a project file as a kept run (#ADR-0096), and answers its number.
+#[tauri::command]
+#[specta::specta]
+pub async fn import_project(app: AppHandle, path: String) -> IpcResult<u64> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.import_project(Utf8Path::new(&path))).await
+}
+
 /// Marks a kept run so that the store's bound does not remove it, or unmarks it.
 #[tauri::command]
 #[specta::specta]

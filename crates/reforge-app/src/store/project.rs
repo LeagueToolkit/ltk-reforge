@@ -24,6 +24,8 @@ use serde_json::Value;
 use zip::CompressionMethod;
 use zip::write::{SimpleFileOptions, ZipWriter};
 
+mod import;
+
 use super::read::Origin;
 use super::{AppStore, failed, unpack};
 use crate::error::AppError;

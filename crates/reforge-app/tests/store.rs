@@ -10,12 +10,13 @@ use reforge::history::NoHistory;
 use reforge::model::{ByteView, ContentId};
 use reforge::snapshot::{self, BuildSnapshot, CheckSnapshot, LoadSnapshot, StageSnapshot};
 use reforge::store::BlobStore;
+use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
     self, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent, StageName, StageState,
     Unwatched, Watch,
 };
-use reforge_app::store::{AppStore, FORMAT, KEYSPACE, Origin, ROWS_FILE, RunTier};
+use reforge_app::store::{AppStore, FORMAT, FileView, KEYSPACE, Origin, ROWS_FILE, RunTier};
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -870,6 +871,211 @@ fn a_port_exported_holds_its_json_and_one_stored_blob_per_id() {
         .collect();
     assert_eq!(left, Vec::<String>::new(), "a temporary file is left");
     assert_eq!(bench.store.export_project(id + 1, &path), Ok(None));
+}
+
+/// A port of [`own_mod`] kept and exported: the bench and the project file's path.
+fn exported_port() -> (Bench, u64, Utf8PathBuf) {
+    let bench = Bench::new();
+    let id = bench.port(&own_mod(), "mod.fantome").saved.unwrap();
+    let path = bench.folder.root.join("mod.reforge-project");
+    bench
+        .store
+        .export_project(id, &path)
+        .unwrap()
+        .expect("the run");
+    (bench, id, path)
+}
+
+/// A copy of a zip at `to`, each entry through `edit`, which renames it, changes its bytes or
+/// drops it, then `extra` added.
+fn rewritten(
+    from: &Utf8Path,
+    to: &Utf8Path,
+    edit: impl Fn(&str, Vec<u8>) -> Option<(String, Vec<u8>)>,
+    extra: &[(&str, &[u8])],
+) {
+    let mut zip = zip::ZipArchive::new(fs::File::open(from).unwrap()).unwrap();
+    let mut out = zip::ZipWriter::new(fs::File::create(to).unwrap());
+    let options = zip::write::SimpleFileOptions::default();
+    let mut write = |name: &str, bytes: &[u8]| {
+        out.start_file(name, options).unwrap();
+        std::io::Write::write_all(&mut out, bytes).unwrap();
+    };
+    for at in 0..zip.len() {
+        let mut entry = zip.by_index(at).unwrap();
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut entry, &mut bytes).unwrap();
+        let name = entry.name().to_string();
+        drop(entry);
+        if let Some((name, bytes)) = edit(&name, bytes) {
+            write(&name, &bytes);
+        }
+    }
+    for (name, bytes) in extra {
+        write(name, bytes);
+    }
+    out.finish().unwrap();
+}
+
+/// `project.json`'s value edited.
+fn json_edited(bytes: &[u8], edit: impl FnOnce(&mut serde_json::Value)) -> Vec<u8> {
+    let mut json: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+    edit(&mut json);
+    serde_json::to_vec(&json).unwrap()
+}
+
+#[test]
+fn a_project_imported_into_another_store_reads_as_the_run_it_was() {
+    let (bench, id, path) = exported_port();
+    let other = Bench::new();
+
+    let imported = other.store.import_project(&path).unwrap();
+
+    let listed = other.store.list().unwrap();
+    assert_eq!(listed.len(), 1);
+    let row = &listed[0];
+    assert_eq!(row.id, imported);
+    assert_eq!(row.origin, Origin::Project);
+    assert!(row.kept);
+    assert_eq!(row.opened_from.as_deref(), Some(path.as_str()));
+    assert!(row.archive_ingested);
+    let first = bench.store.list().unwrap().remove(0);
+    assert_eq!(
+        (&row.sha256, &row.made_at, &row.reached),
+        (&first.sha256, &first.made_at, &first.reached)
+    );
+    let view = |store: &AppStore, id| {
+        let mut view = store.run_view(id).unwrap().expect("the view");
+        view.saved = None;
+        view
+    };
+    assert_eq!(view(&other.store, imported), view(&bench.store, id));
+    let mut bins = Vec::new();
+    for &stage in &first.reached {
+        let files = bench.store.stage_files(id, stage);
+        let files = files.map(|files| files.expect("the run"));
+        if let Ok(files) = &files {
+            let rows = files.wads.iter().flat_map(|wad| &wad.files);
+            bins.extend(rows.filter(|row| row.kind == "property-bin").cloned());
+        }
+        assert_eq!(
+            other.store.stage_files(imported, stage).map(Option::unwrap),
+            files,
+            "{stage:?}"
+        );
+    }
+    assert!(!bins.is_empty());
+    for bin in bins {
+        let content = ContentId::parse(&bin.content).unwrap();
+        let shown = other.store.file_view(imported, content, None);
+        assert!(
+            matches!(shown, Ok(FileView::Bin { .. })),
+            "{}: {shown:?}",
+            bin.content
+        );
+    }
+}
+
+#[test]
+fn a_project_whose_blob_is_not_the_content_its_name_spells_is_refused_and_nothing_inserted() {
+    let (bench, _, path) = exported_port();
+    let other = Bench::new();
+    let zip = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
+    // The last blob, so that a put of the blobs before it would leave them behind.
+    let last = zip.file_names().filter(|n| n.starts_with("blobs/")).max();
+    let last = last.unwrap().to_string();
+    let renamed = bench.folder.root.join("renamed.reforge-project");
+    let forged = format!("blobs/{}", ContentId::of(b"other bytes").hex());
+    rewritten(
+        &path,
+        &renamed,
+        |name, bytes| match name == last {
+            true => Some((forged.clone(), bytes)),
+            false => Some((name.to_string(), bytes)),
+        },
+        &[],
+    );
+    let flipped = bench.folder.root.join("flipped.reforge-project");
+    rewritten(
+        &path,
+        &flipped,
+        |name, mut bytes| {
+            if name == last {
+                bytes[0] ^= 0xff;
+            }
+            Some((name.to_string(), bytes))
+        },
+        &[],
+    );
+
+    let renamed = other.store.import_project(&renamed);
+    let flipped = other.store.import_project(&flipped);
+
+    assert!(
+        matches!(&renamed, Err(AppError::ProjectMalformed { detail }) if detail.contains("not listed")),
+        "{renamed:?}"
+    );
+    assert!(
+        matches!(&flipped, Err(AppError::ProjectMalformed { detail }) if detail.contains("not its content")),
+        "{flipped:?}"
+    );
+    for table in ["raw", "load", "run", "run_blob"] {
+        assert_eq!(other.count(table), 0, "{table}");
+    }
+    assert_eq!(other.store.tier().ids().unwrap(), []);
+    assert_eq!(other.store.ingest().entries(), []);
+    let blobs = other
+        .folder
+        .root
+        .join("store")
+        .join("ingest")
+        .join("content-v2");
+    assert!(!blobs.exists(), "a blob reached the ingest tier");
+}
+
+#[test]
+fn a_project_with_a_stray_entry_is_refused() {
+    let (bench, _, path) = exported_port();
+    let other = Bench::new();
+    let edited = bench.folder.root.join("edited.reforge-project");
+    rewritten(
+        &path,
+        &edited,
+        |name, bytes| Some((name.to_string(), bytes)),
+        &[("../readme.txt", b"a stray entry")],
+    );
+
+    let refused = other.store.import_project(&edited);
+
+    assert!(
+        matches!(refused, Err(AppError::ProjectMalformed { .. })),
+        "{refused:?}"
+    );
+    assert_eq!(other.count("run"), 0);
+}
+
+#[test]
+fn a_project_of_another_format_is_refused() {
+    let (bench, _, path) = exported_port();
+    let other = Bench::new();
+    let edited = bench.folder.root.join("edited.reforge-project");
+    rewritten(
+        &path,
+        &edited,
+        |name, bytes| match name {
+            "project.json" => Some((
+                name.to_string(),
+                json_edited(&bytes, |json| json["format"] = 2.into()),
+            )),
+            _ => Some((name.to_string(), bytes)),
+        },
+        &[],
+    );
+
+    let refused = other.store.import_project(&edited);
+
+    assert_eq!(refused, Err(AppError::ProjectFormat { found: 2 }));
+    assert_eq!(other.count("run"), 0);
 }
 
 #[test]

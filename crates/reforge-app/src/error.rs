@@ -132,6 +132,13 @@ pub enum AppError {
     /// A kept run opened from a package has no snapshots and no bytes to export as a project.
     #[error("run {id} was opened from a package and has no project")]
     NoProjectOf { id: u64 },
+    /// A project file is of another format than this version reads.
+    #[error("the project file is of format {found}")]
+    ProjectFormat { found: u64 },
+    /// A project file does not read, or holds what a project does not: an entry of another
+    /// name, a blob whose bytes are not the content its name spells, a value over a cap.
+    #[error("the project file does not read: {detail}")]
+    ProjectMalformed { detail: String },
     /// A folder of the app's did not go when the user asked for it removed.
     #[error("{path} could not be removed: {detail}")]
     NotRemoved { path: String, detail: String },

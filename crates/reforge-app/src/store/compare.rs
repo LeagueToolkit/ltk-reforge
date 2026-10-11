@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use camino::Utf8Path;
+use reforge::model::clean;
 use reforge::snapshot::LoadSnapshot;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
@@ -271,15 +272,16 @@ fn input_rows(load: &LoadSnapshot, schema_build: Option<&str>) -> Vec<(&'static 
     ]
 }
 
-/// The rows whose values differ, in the order of the keys.
+/// The rows whose values differ, in the order of the keys, their text cleaned: a project
+/// imported brings another person's settings and program (#ADR-0096).
 fn differing(a: Vec<(&'static str, String)>, b: Vec<(&'static str, String)>) -> Vec<Diff> {
     let pairs = a.into_iter().zip(b);
     let differ = pairs.filter(|((_, a), (_, b))| a != b);
     differ
         .map(|((key, a), (_, b))| Diff {
             key: key.to_string(),
-            a,
-            b,
+            a: clean(&a).into_owned(),
+            b: clean(&b).into_owned(),
         })
         .collect()
 }

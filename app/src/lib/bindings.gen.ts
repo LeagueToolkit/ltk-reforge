@@ -77,6 +77,8 @@ export const commands = {
 	 *  None for a number no run has.
 	 */
 	exportProject: (id: number, path: string) => __TAURI_INVOKE<({ ok: true; value: number | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("export_project", { id, path }),
+	/**  Imports a project file as a kept run (#ADR-0096), and answers its number. */
+	importProject: (path: string) => __TAURI_INVOKE<({ ok: true; value: number }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("import_project", { path }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */
@@ -295,6 +297,13 @@ export type AppError =
 { code: "BLOB_MISSING"; id: string } | 
 /**  A kept run opened from a package has no snapshots and no bytes to export as a project. */
 { code: "NO_PROJECT_OF"; id: number } | 
+/**  A project file is of another format than this version reads. */
+{ code: "PROJECT_FORMAT"; found: number } | 
+/**
+ *  A project file does not read, or holds what a project does not: an entry of another
+ *  name, a blob whose bytes are not the content its name spells, a value over a cap.
+ */
+{ code: "PROJECT_MALFORMED"; detail: string } | 
 /**  A folder of the app's did not go when the user asked for it removed. */
 { code: "NOT_REMOVED"; path: string; detail: string } | 
 /**  A folder did not open in the system's file manager. */
