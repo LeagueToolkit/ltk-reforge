@@ -72,11 +72,11 @@ function RowSummary({ row, list, name }: RowProps) {
   const hex: Namer = (hash) => hash;
   return (
     <span className="flex flex-col">
-      <span className="break-all text-surface-100" title={rowText(row, list, hex)}>
+      <span className="break-words text-surface-100" title={rowText(row, list, hex)}>
         {rowText(row, list, name)}{" "}
         <span className="text-surface-400 tabular-nums">({countText(row, list)})</span>
       </span>
-      <span className="break-all text-surface-400" title={placeText(row.first, hex)}>
+      <span className="break-words text-surface-400" title={placeText(row.first, hex)}>
         {m.findings_type_first({ place: placeText(row.first, name) })}
       </span>
     </span>
@@ -117,7 +117,7 @@ function ShowButton({ show }: { show: (() => void) | null }) {
       compact
       variant="ghost"
       left={<FileMagnifyingGlassIcon weight="bold" />}
-      className="ml-2 font-sans"
+      className="shrink-0 font-sans"
       onClick={show}
     >
       {m.findings_show_in_bin_action()}
@@ -125,13 +125,16 @@ function ShowButton({ show }: { show: (() => void) | null }) {
   );
 }
 
+/** A place's line: its text wrapping at its separators, and its button beside it. */
+const placeClass = "flex items-start gap-2 text-surface-200";
+
 /** One value's place: `WAD · bin path · entry · path`, each hash by its name. */
 function PlaceLine({ place, name, show }: { place: ValuePlaceView; name: Namer; show: ShowInBin }) {
   const steps = parseFieldPath(place.at);
   const at = steps ? pathText(steps, name) : place.at;
   return (
-    <li className="break-all text-surface-200">
-      <span title={`${place.entry} · ${place.at}`}>
+    <li className={placeClass}>
+      <span className="min-w-0 flex-1 break-words" title={`${place.entry} · ${place.at}`}>
         {placeText(place, name)} · <span className="text-surface-50">{at}</span>
       </span>
       <ShowButton show={show(place)} />
@@ -165,7 +168,7 @@ function PlaceList({
           {m.findings_places_capped({ shown: places.length, count })}
         </p>
       )}
-      <ul className="flex flex-col gap-0.5">
+      <ul className="flex flex-col gap-1.5">
         {page.map((place, at) => (
           <PlaceLine key={at} place={place} name={name} show={show} />
         ))}
@@ -218,8 +221,8 @@ function RowPlaces({ run, list, index, rows, row, name }: RowPlacesProps) {
     return (
       <div className="flex flex-col gap-1">
         <p className="font-sans text-surface-400 select-none">{m.findings_places_differ()}</p>
-        <p className="break-all text-surface-200">
-          {placeText(row.first, name)}
+        <p className={placeClass}>
+          <span className="min-w-0 flex-1 break-words">{placeText(row.first, name)}</span>
           <ShowButton show={show(row.first)} />
         </p>
       </div>
