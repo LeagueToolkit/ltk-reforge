@@ -41,6 +41,7 @@ thiserror.workspace = true
 zip.workspace = true
 rusqlite.workspace = true
 zstd.workspace = true
+base64.workspace = true
 rayon.workspace = true
 fs-err.workspace = true
 camino.workspace = true

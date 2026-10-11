@@ -12,7 +12,8 @@ use reforge::model::{ContentId, NormKey, ObjectKey, name_hash, path_hash};
 use reforge::package::{
     ArchiveRef, EVIDENCE_FORMAT, EvidenceBound, EvidenceDating, EvidenceDoc, EvidenceError,
     EvidenceHistory, EvidenceInputs, EvidencePiece, EvidencePolicy, EvidencePort, EvidenceUnit,
-    MAX_README_BYTES, Made, PieceKind, Program,
+    MAX_README_BYTES, Made, PieceKind, Program, REPORT_FORMAT, Readme, ReportBlockError,
+    ReportNote, encode_report,
 };
 use reforge_testkit::bins::{bin, entry};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -63,6 +64,7 @@ fn repair_doc() -> EvidenceDoc {
         restored: vec!["test.wad.client".into()],
         fixups: vec!["legacy-formats".into(), "retype".into()],
         port: None,
+        report: ReportNote::default(),
     }
 }
 
@@ -99,7 +101,7 @@ fn readme_of(body: &str) -> String {
 
 /// The README of a document with one line of its JSON written another way.
 fn with_line(doc: &EvidenceDoc, from: &str, to: &str) -> String {
-    let readme = doc.readme();
+    let readme = doc.readme(None);
     assert!(readme.contains(from), "the README holds {from}:\n{readme}");
     readme.replace(from, to)
 }
@@ -114,11 +116,11 @@ fn field_refused(readme: &str) -> &'static str {
 #[test]
 fn a_document_reads_back_from_the_readme_it_is_written_in() {
     for doc in [repair_doc(), port_doc()] {
-        let read = EvidenceDoc::parse(&doc.readme()).expect("the README reads");
+        let read = EvidenceDoc::parse(&doc.readme(None)).expect("the README reads");
         assert_eq!(read, Some(doc));
     }
     // A README saved with the line ends of another system reads the same.
-    let crlf = repair_doc().readme().replace('\n', "\r\n");
+    let crlf = repair_doc().readme(None).replace('\n', "\r\n");
     assert_eq!(
         EvidenceDoc::parse(&crlf).expect("the README reads"),
         Some(repair_doc())
@@ -127,7 +129,7 @@ fn a_document_reads_back_from_the_readme_it_is_written_in() {
 
 #[test]
 fn the_readme_says_what_made_the_package_and_holds_the_document_in_one_block() {
-    let readme = repair_doc().readme();
+    let readme = repair_doc().readme(None);
     let expected = format!(
         "# Package made by reforge\n\
          \n\
@@ -143,11 +145,11 @@ fn the_readme_says_what_made_the_package_and_holds_the_document_in_one_block() {
     );
     assert_eq!(readme, expected);
 
-    let port = port_doc().readme();
+    let port = port_doc().readme(None);
     assert!(port.contains("made this package by a port of a mod archive"));
     let mut unstated = repair_doc();
     unstated.inputs.build = None;
-    let unstated = unstated.readme();
+    let unstated = unstated.readme(None);
     assert!(unstated.contains("for a game that does not state its build."));
 }
 
@@ -195,7 +197,7 @@ fn text_of_the_mod_is_escaped_in_the_readme_and_reads_back_as_written() {
     doc.restored = vec!["a\n```\n\u{1b}[31m\u{202e}.wad.client".into()];
     let port = doc.port.as_mut().expect("a port");
     port.units[0].character = "te\"st\u{7f}".into();
-    let readme = doc.readme();
+    let readme = doc.readme(None);
     assert!(!readme.chars().any(is_unsafe), "{readme:?}");
     assert_eq!(
         readme
@@ -255,7 +257,7 @@ fn a_block_of_another_format_is_refused() {
 
 #[test]
 fn a_readme_over_the_cap_is_refused_before_it_is_read() {
-    let mut readme = repair_doc().readme();
+    let mut readme = repair_doc().readme(None);
     readme.push_str(&" ".repeat(MAX_README_BYTES));
     let refused = EvidenceDoc::parse(&readme);
     let Err(EvidenceError::TooLarge { bytes }) = refused else {
@@ -263,7 +265,7 @@ fn a_readme_over_the_cap_is_refused_before_it_is_read() {
     };
     assert_eq!(bytes, readme.len());
 
-    let mut at_the_cap = repair_doc().readme();
+    let mut at_the_cap = repair_doc().readme(None);
     at_the_cap.push_str(&" ".repeat(MAX_README_BYTES - at_the_cap.len()));
     assert_eq!(at_the_cap.len(), MAX_README_BYTES);
     assert!(matches!(EvidenceDoc::parse(&at_the_cap), Ok(Some(_))));
@@ -320,7 +322,7 @@ fn a_field_no_reader_knows_is_ignored() {
 
 #[test]
 fn a_block_that_is_not_closed_is_refused() {
-    let readme = repair_doc().readme();
+    let readme = repair_doc().readme(None);
     let open = readme.trim_end().trim_end_matches("```");
     let refused = EvidenceDoc::parse(open);
     assert!(
@@ -331,7 +333,7 @@ fn a_block_that_is_not_closed_is_refused() {
 
 #[test]
 fn a_second_block_of_evidence_is_refused() {
-    let twice = format!("{}\n{}", repair_doc().readme(), port_doc().readme());
+    let twice = format!("{}\n{}", repair_doc().readme(None), port_doc().readme(None));
     let refused = EvidenceDoc::parse(&twice);
     assert!(
         matches!(refused, Err(EvidenceError::Repeated)),
@@ -361,7 +363,10 @@ fn a_field_that_is_not_what_it_holds_is_refused_by_its_name() {
     assert_eq!(of_repair("\"at\": 0", "\"at\": 2"), "dating.not_before.at");
     let mut no_history = repair_doc();
     no_history.inputs.history = None;
-    assert_eq!(field_refused(&no_history.readme()), "dating.not_before.at");
+    assert_eq!(
+        field_refused(&no_history.readme(None)),
+        "dating.not_before.at"
+    );
     // A file's hash is sixteen digits and an object's eight.
     assert_eq!(
         of_repair("0123456789abcdef", "89abcdef"),
@@ -382,6 +387,134 @@ fn a_field_that_is_not_what_it_holds_is_refused_by_its_name() {
     // A slot the policy names is a target.
     let fixed = with_line(&port_doc(), "\"auto\"", "\"7\"");
     assert!(matches!(EvidenceDoc::parse(&fixed), Ok(Some(_))));
+}
+
+/// The report of a run, as `Report::to_json` writes one.
+const REPORT: &str = "{\n  \"schema\": \"reforge.report/1\"\n}\n";
+
+/// A document as a README with [`REPORT`] gives it back: its note says the report is
+/// embedded (#ADR-0102).
+fn noted(doc: EvidenceDoc) -> EvidenceDoc {
+    EvidenceDoc {
+        report: ReportNote {
+            embedded: true,
+            json_bytes: REPORT.len() as u64,
+        },
+        ..doc
+    }
+}
+
+#[test]
+fn a_readme_with_the_report_reads_back_to_the_evidence_and_the_report() {
+    for doc in [repair_doc(), port_doc()] {
+        let readme = doc.readme(Some(REPORT));
+        let read = Readme::parse(&readme).expect("the README reads");
+        let both = Readme {
+            evidence: Some(noted(doc.clone())),
+            report: Some(REPORT.into()),
+        };
+        assert_eq!(read, both);
+        // The evidence alone reads as it is written.
+        assert_eq!(
+            EvidenceDoc::parse(&readme).expect("the evidence reads"),
+            Some(noted(doc))
+        );
+        let crlf = readme.replace('\n', "\r\n");
+        assert_eq!(Readme::parse(&crlf).expect("the README reads"), both);
+    }
+}
+
+#[test]
+fn the_report_follows_the_evidence_after_a_line_for_a_person() {
+    let readme = repair_doc().readme(Some(REPORT));
+    let body = encode_report(REPORT).expect("the report fits");
+    let block = format!(
+        "```\n\
+         \n\
+         The block below holds the run's report, compressed and encoded; a program reads it.\n\
+         \n\
+         ```{REPORT_FORMAT}\n\
+         {body}\n\
+         ```\n"
+    );
+    assert!(readme.ends_with(&block), "{readme}");
+    let note = format!(
+        "  \"report\": {{\n    \"embedded\": true,\n    \"json_bytes\": {}\n  }}\n}}\n```",
+        REPORT.len()
+    );
+    assert!(readme.contains(&note), "{readme}");
+    // A README with no report states no note: the document reads in an earlier program.
+    assert!(!repair_doc().readme(None).contains("\"report\""));
+    assert!(!noted(repair_doc()).readme(None).contains("\"report\""));
+}
+
+#[test]
+fn a_report_with_no_evidence_beside_it_is_no_report() {
+    let body = encode_report(REPORT).expect("the report fits");
+    let alone = format!("# A package\n\n```{REPORT_FORMAT}\n{body}\n```\n");
+    assert_eq!(Readme::parse(&alone).expect("it reads"), Readme::default());
+    // A report of another format is a block of another language.
+    let later = repair_doc()
+        .readme(Some(REPORT))
+        .replace(REPORT_FORMAT, "reforge.report+zstd/2");
+    let read = Readme::parse(&later).expect("the README reads");
+    assert_eq!(read.report, None);
+    assert_eq!(read.evidence, Some(noted(repair_doc())));
+}
+
+#[test]
+fn a_second_block_of_the_report_and_one_not_closed_are_refused() {
+    let readme = repair_doc().readme(Some(REPORT));
+    let at = readme
+        .find(&format!("```{REPORT_FORMAT}"))
+        .expect("the block");
+    let twice = format!("{readme}\n{}", &readme[at..]);
+    for refused in [
+        Readme::parse(&twice).map(|_| ()),
+        EvidenceDoc::parse(&twice).map(|_| ()),
+    ] {
+        assert!(
+            matches!(refused, Err(EvidenceError::ReportRepeated)),
+            "{refused:?}"
+        );
+    }
+    let open = readme.trim_end().trim_end_matches("```");
+    let refused = Readme::parse(open);
+    assert!(
+        matches!(refused, Err(EvidenceError::ReportUnclosed)),
+        "{refused:?}"
+    );
+}
+
+#[test]
+fn a_report_that_does_not_decode_or_that_the_note_does_not_state_is_refused() {
+    let readme = repair_doc().readme(Some(REPORT));
+    let body = encode_report(REPORT).expect("the report fits");
+    let broken = readme.replace(&body, "not base64 at all");
+    let refused = Readme::parse(&broken);
+    assert!(
+        matches!(
+            refused,
+            Err(EvidenceError::Report(ReportBlockError::Base64(_)))
+        ),
+        "{refused:?}"
+    );
+    // The evidence alone does not decode the report.
+    assert!(matches!(EvidenceDoc::parse(&broken), Ok(Some(_))));
+
+    let other = encode_report("{}\n").expect("it fits");
+    let swapped = readme.replace(&body, &other);
+    let refused = Readme::parse(&swapped);
+    assert!(
+        matches!(refused, Err(EvidenceError::Field("report.json_bytes"))),
+        "{refused:?}"
+    );
+    let unstated = readme.replace("\"embedded\": true", "\"embedded\": false");
+    let refused = Readme::parse(&unstated);
+    assert!(
+        matches!(refused, Err(EvidenceError::Field("report.embedded"))),
+        "{refused:?}"
+    );
 }
 
 /// Bytes the game shipped at the base texture's path at the first build, large enough to
@@ -467,7 +600,7 @@ fn the_evidence_of_a_repair_names_the_archive_the_inputs_the_dating_and_the_rest
     assert!(!doc.fixups.is_empty());
     assert_eq!(doc.port, None);
     assert_eq!(
-        EvidenceDoc::parse(&doc.readme()).expect("it reads"),
+        EvidenceDoc::parse(&doc.readme(None)).expect("it reads"),
         Some(doc)
     );
 }
@@ -512,7 +645,7 @@ fn an_object_that_dates_the_mod_is_named_by_its_entry_hash_and_the_digest_of_its
     assert_eq!(doc.dating.not_before, Some(bound));
     assert_eq!(doc.restored, Vec::<String>::new());
     assert_eq!(
-        EvidenceDoc::parse(&doc.readme()).expect("it reads"),
+        EvidenceDoc::parse(&doc.readme(None)).expect("it reads"),
         Some(doc)
     );
 }
@@ -533,7 +666,7 @@ fn a_mod_no_history_dates_has_a_dating_with_no_bound_and_no_piece() {
     assert_eq!(doc.dating, dating);
     assert_eq!(doc.restored, Vec::<String>::new());
     assert_eq!(
-        EvidenceDoc::parse(&doc.readme()).expect("it reads"),
+        EvidenceDoc::parse(&doc.readme(None)).expect("it reads"),
         Some(doc)
     );
 }
@@ -573,7 +706,7 @@ fn the_evidence_of_a_port_holds_the_policy_and_each_unit_that_ships_with_its_tar
     };
     assert_eq!(doc.port, Some(port));
     assert_eq!(
-        EvidenceDoc::parse(&doc.readme()).expect("it reads"),
+        EvidenceDoc::parse(&doc.readme(None)).expect("it reads"),
         Some(doc)
     );
 }

@@ -18,8 +18,9 @@
 //! written is under the output directory, made of a project name, a [`WadName`] and the parts
 //! of a [`ChunkPath`].
 //!
-//! `README.md` holds the evidence of the run that built the package (#ADR-0041), and is
-//! written for a package that has it. The packer packs it as the `.modpkg`'s readme.
+//! `README.md` holds the evidence of the run that built the package (#ADR-0041) and the run's
+//! report (#ADR-0102), and is written for a package that has the evidence. The packer packs it
+//! as the `.modpkg`'s readme. The report's file beside the package holds the same text.
 //! `thumbnail.webp` is the mod's image (#ADR-0051), written for a package that has one and
 //! named in the config. The packer packs it as the `.modpkg`'s thumbnail.
 
@@ -112,8 +113,9 @@ pub trait PackageWriter {
     /// What it writes.
     fn kind(&self) -> WriterKind;
 
-    /// Writes the package and, beside it, the report's text. What comes back is what was
-    /// written, for the caller to raise.
+    /// Writes the package and, beside it, the report's text, which the README of a package
+    /// with evidence embeds (#ADR-0102). What comes back is what was written, for the caller
+    /// to raise.
     fn write(&self, package: &Package, report: &str) -> Result<Written, WriteError>;
 }
 
@@ -158,9 +160,10 @@ struct Tally {
     bytes: u64,
 }
 
-/// A package as the files of a mod project, under one directory.
+/// A package as the files of a mod project, under one directory, with the run's report.
 struct Tree<'a> {
     package: &'a Package,
+    report: &'a str,
     root: &'a Utf8Path,
 }
 
@@ -229,7 +232,8 @@ impl Tree<'_> {
             self.file(&[THUMBNAIL_FILE], thumbnail.bytes())?;
         }
         if let Some(evidence) = &self.package.evidence {
-            self.file(&[README_FILE], evidence.readme().as_bytes())?;
+            let readme = evidence.readme(Some(self.report));
+            self.file(&[README_FILE], readme.as_bytes())?;
         }
         Ok(tally)
     }
@@ -312,6 +316,7 @@ impl PackageWriter for ProjectDir {
         let staging = Staging::new(self.out.join(format!("{name}.partial")))?;
         let tree = Tree {
             package,
+            report,
             root: &staging.path,
         };
         let tally = tree.write()?;
@@ -375,6 +380,7 @@ impl PackageWriter for Modpkg {
         let project = staging.path.join("project");
         let tree = Tree {
             package,
+            report,
             root: &project,
         };
         let tally = tree.write()?;

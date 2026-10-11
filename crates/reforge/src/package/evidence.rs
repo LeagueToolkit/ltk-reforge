@@ -4,7 +4,8 @@
 //! A `.modpkg` holds one meta chunk of free text that a packer copies byte for byte, the
 //! readme, and a packer takes it from the project's `README.md`. So the document sits in that
 //! file: a few lines for a person, then one fenced block whose info string is the document's
-//! format and whose body is the document as JSON.
+//! format and whose body is the document as JSON. A second block after it holds the run's
+//! report, compressed and encoded (#ADR-0102, `report_block`).
 //!
 //! The document holds no id of a run's mod: a file is named by its path hash and an object by
 //! its entry hash, as a later run finds them. Nothing in it is a clock or a path of the
@@ -17,6 +18,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use super::config::Made;
+use super::report_block::{REPORT_FORMAT, ReportBlockError, decode_report, encode_report};
 use crate::env::Env;
 use crate::game::Build;
 use crate::load::Dating;
@@ -36,7 +38,8 @@ const FORMAT_FAMILY: &str = "reforge.evidence/";
 pub const README_FILE: &str = "README.md";
 
 /// The largest README the reader takes. A document holds a row per fixup, per restoring WAD
-/// and per unit that ships, which is far below it.
+/// and per unit that ships, which is far below it. The report's block is held under it by
+/// its own bound (#ADR-0102).
 pub const MAX_README_BYTES: usize = 1 << 20;
 
 /// The line that opens and closes a fenced block.
@@ -74,6 +77,15 @@ pub enum EvidenceError {
     /// build that is no build, a count above its total.
     #[error("the evidence's {0} is not what the field holds")]
     Field(&'static str),
+    /// The block of the report opens and no line closes it.
+    #[error("the block of the report is not closed")]
+    ReportUnclosed,
+    /// The README holds more than one block of the report.
+    #[error("the README holds more than one block of the report")]
+    ReportRepeated,
+    /// The block of the report does not decode.
+    #[error(transparent)]
+    Report(#[from] ReportBlockError),
 }
 
 /// The program that made a package.
@@ -228,6 +240,22 @@ pub struct EvidencePort {
     pub units: Vec<EvidenceUnit>,
 }
 
+/// Whether a README holds the run's report (#ADR-0102).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportNote {
+    /// Whether the report's block follows the evidence's.
+    pub embedded: bool,
+    /// The bytes of the report's JSON, embedded or not.
+    pub json_bytes: u64,
+}
+
+impl ReportNote {
+    /// Whether no README set the note: a document a run holds before its write.
+    pub fn is_unset(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
 /// What a run established of a mod and its package does not show again (#ADR-0041), with what
 /// made the package and against what.
 ///
@@ -254,6 +282,10 @@ pub struct EvidenceDoc {
     /// What a port decided. None for a repair.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port: Option<EvidencePort>,
+    /// Whether the README holds the run's report. Set by [`EvidenceDoc::readme`], and unset
+    /// and not written in the document a run holds and its report's part.
+    #[serde(default, skip_serializing_if = "ReportNote::is_unset")]
+    pub report: ReportNote,
 }
 
 /// Whether a text is this many lowercase hex digits.
@@ -300,6 +332,7 @@ impl EvidenceDoc {
             restored: restored.into_iter().collect(),
             fixups: Vec::new(),
             port: None,
+            report: ReportNote::default(),
         }
     }
 
@@ -347,8 +380,32 @@ impl EvidenceDoc {
     }
 
     /// The README of a package: what made it, from which archive and for which build, then
-    /// the block that holds the document. No text of the mod is outside the block.
-    pub fn readme(&self) -> String {
+    /// the block that holds the document, then the block of `report`, the run's report as its
+    /// JSON (#ADR-0102). No text of the mod is outside the blocks.
+    ///
+    /// The report's block is left out when its body passes its bound or the README would pass
+    /// [`MAX_README_BYTES`]. The document's note says which, with the report's bytes, and is
+    /// unset without a report.
+    pub fn readme(&self, report: Option<&str>) -> String {
+        let mut doc = self.clone();
+        doc.report = ReportNote::default();
+        let Some(report) = report else {
+            return doc.text(None);
+        };
+        doc.report.json_bytes = report.len() as u64;
+        if let Some(body) = encode_report(report) {
+            doc.report.embedded = true;
+            let readme = doc.text(Some(&body));
+            if readme.len() <= MAX_README_BYTES {
+                return readme;
+            }
+            doc.report.embedded = false;
+        }
+        doc.text(None)
+    }
+
+    /// The README's text, with the report's block when there is its body.
+    fn text(&self, report: Option<&str>) -> String {
         let (name, version) = (clean(&self.program.name), clean(&self.program.version));
         let run = match self.run {
             Made::Repaired => "a repair",
@@ -358,7 +415,7 @@ impl EvidenceDoc {
             Some(build) => format!("the game build {}", clean(build)),
             None => "a game that does not state its build".to_string(),
         };
-        format!(
+        let mut readme = format!(
             "# Package made by {name}\n\
              \n\
              {name} {version} made this package by {run} of a mod archive, for {build}.\n\
@@ -371,7 +428,19 @@ impl EvidenceDoc {
              {FENCE}\n",
             sha256 = clean(&self.archive.sha256),
             json = self.to_json(),
-        )
+        );
+        if let Some(body) = report {
+            readme.push_str(&format!(
+                "\n\
+                 The block below holds the run's report, compressed and encoded; a program \
+                 reads it.\n\
+                 \n\
+                 {FENCE}{REPORT_FORMAT}\n\
+                 {body}\n\
+                 {FENCE}\n"
+            ));
+        }
+        readme
     }
 
     /// The document a README holds. None for a README with no block of evidence: a package
@@ -380,53 +449,10 @@ impl EvidenceDoc {
     /// The block is a line of three backticks and the format, the JSON, and a line of three
     /// backticks. The README is untrusted: it is read up to [`MAX_README_BYTES`], a block of
     /// another format, a second block and a body that is no document are refused, and each
-    /// field is held to what it holds.
+    /// field is held to what it holds. The report's block is held to its shape and not
+    /// decoded: [`Readme::parse`] reads both.
     pub fn parse(readme: &str) -> Result<Option<Self>, EvidenceError> {
-        if readme.len() > MAX_README_BYTES {
-            return Err(EvidenceError::TooLarge {
-                bytes: readme.len(),
-            });
-        }
-        let mut found: Option<String> = None;
-        let mut lines = readme.lines();
-        while let Some(line) = lines.next() {
-            let Some(info) = line.trim_end().strip_prefix(FENCE) else {
-                continue;
-            };
-            let ours = info.starts_with(FORMAT_FAMILY);
-            // The body of any block runs to its closing line: a fence inside the block of
-            // another language opens nothing.
-            let mut body = String::new();
-            let mut closed = false;
-            for inner in lines.by_ref() {
-                if inner.trim_end() == FENCE {
-                    closed = true;
-                    break;
-                }
-                if ours {
-                    body.push_str(inner);
-                    body.push('\n');
-                }
-            }
-            if !ours {
-                continue;
-            }
-            if info != EVIDENCE_FORMAT {
-                return Err(Self::other_format(info));
-            }
-            if !closed {
-                return Err(EvidenceError::Unclosed);
-            }
-            if found.replace(body).is_some() {
-                return Err(EvidenceError::Repeated);
-            }
-        }
-        let Some(body) = found else {
-            return Ok(None);
-        };
-        let doc: Self = serde_json::from_str(&body)?;
-        doc.check()?;
-        Ok(Some(doc))
+        Blocks::scan(readme)?.evidence()
     }
 
     fn other_format(found: &str) -> EvidenceError {
@@ -476,5 +502,118 @@ impl EvidenceDoc {
             held(anim_reuse, "port.policy.anim_reuse")?;
         }
         Ok(())
+    }
+}
+
+/// What a README holds of the run that made its package: the evidence (#ADR-0041), and the
+/// report when its block is there (#ADR-0102).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Readme {
+    /// The document. None for a README with no block of evidence.
+    pub evidence: Option<EvidenceDoc>,
+    /// The report's JSON, as the writer wrote it beside the package. None without its block,
+    /// and without the evidence: a report alone is not trusted to say what made the package.
+    pub report: Option<String>,
+}
+
+impl Readme {
+    /// The evidence and the report a README holds, read in one pass.
+    ///
+    /// The evidence is read as [`EvidenceDoc::parse`] reads it. A second block of the report,
+    /// one that is not closed and a body that does not decode are refused, as is a report
+    /// whose bytes the document's note does not state.
+    pub fn parse(readme: &str) -> Result<Self, EvidenceError> {
+        let blocks = Blocks::scan(readme)?;
+        let Some(evidence) = blocks.evidence()? else {
+            return Ok(Self::default());
+        };
+        let Some(body) = blocks.report else {
+            return Ok(Self {
+                evidence: Some(evidence),
+                report: None,
+            });
+        };
+        let json = decode_report(&body)?;
+        held(evidence.report.embedded, "report.embedded")?;
+        let stated = evidence.report.json_bytes == json.len() as u64;
+        held(stated, "report.json_bytes")?;
+        Ok(Self {
+            evidence: Some(evidence),
+            report: Some(json),
+        })
+    }
+}
+
+/// The bodies of the blocks a README holds of a run, each held to its shape.
+#[derive(Debug, Default)]
+struct Blocks {
+    evidence: Option<String>,
+    report: Option<String>,
+}
+
+impl Blocks {
+    /// The bodies of the README's blocks of evidence and of the report. The README is
+    /// untrusted: it is read up to [`MAX_README_BYTES`], and a block of evidence of another
+    /// format, a block that is not closed and a second block of either are refused.
+    fn scan(readme: &str) -> Result<Self, EvidenceError> {
+        if readme.len() > MAX_README_BYTES {
+            return Err(EvidenceError::TooLarge {
+                bytes: readme.len(),
+            });
+        }
+        let mut blocks = Self::default();
+        let mut lines = readme.lines();
+        while let Some(line) = lines.next() {
+            let Some(info) = line.trim_end().strip_prefix(FENCE) else {
+                continue;
+            };
+            let evidence = info.starts_with(FORMAT_FAMILY);
+            // A report of another format is a block of another language: the evidence beside
+            // it still reads.
+            let report = info == REPORT_FORMAT;
+            // The body of any block runs to its closing line: a fence inside the block of
+            // another language opens nothing.
+            let mut body = String::new();
+            let mut closed = false;
+            for inner in lines.by_ref() {
+                if inner.trim_end() == FENCE {
+                    closed = true;
+                    break;
+                }
+                if evidence || report {
+                    body.push_str(inner);
+                    body.push('\n');
+                }
+            }
+            if evidence {
+                if info != EVIDENCE_FORMAT {
+                    return Err(EvidenceDoc::other_format(info));
+                }
+                if !closed {
+                    return Err(EvidenceError::Unclosed);
+                }
+                if blocks.evidence.replace(body).is_some() {
+                    return Err(EvidenceError::Repeated);
+                }
+            } else if report {
+                if !closed {
+                    return Err(EvidenceError::ReportUnclosed);
+                }
+                if blocks.report.replace(body).is_some() {
+                    return Err(EvidenceError::ReportRepeated);
+                }
+            }
+        }
+        Ok(blocks)
+    }
+
+    /// The document the block of evidence holds, each field held to what it holds.
+    fn evidence(&self) -> Result<Option<EvidenceDoc>, EvidenceError> {
+        let Some(body) = &self.evidence else {
+            return Ok(None);
+        };
+        let doc: EvidenceDoc = serde_json::from_str(body)?;
+        doc.check()?;
+        Ok(Some(doc))
     }
 }

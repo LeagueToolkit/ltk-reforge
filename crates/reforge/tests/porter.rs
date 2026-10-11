@@ -23,7 +23,7 @@ use reforge::model::{ContentId, path_hash};
 use reforge::package::{
     Blocked, CheckSet, EVIDENCE_FORMAT, EvidenceBound, EvidenceDoc, EvidencePiece, EvidencePolicy,
     EvidenceUnit, MAX_OVERLAY_BINS, Made, Modpkg, OverlayCapped, PackageWriter, PieceKind, Ported,
-    ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written, dds_to_tex,
+    ProjectDir, README_FILE, REPORT_FILE, ReportNote, WriteError, WriterKind, Written, dds_to_tex,
 };
 use reforge::port::{AnimReuse, PlanError, Policy, Reason, TargetPolicy, UnitTarget};
 use reforge::report::Report;
@@ -783,6 +783,18 @@ fn written_readme(run: &mut Run<'_>, out: &Utf8Path) -> String {
     fs_err::read_to_string(readme).expect("the README of the project")
 }
 
+/// The document a README holds, with its note on the run's report (#ADR-0102) set aside: what
+/// the run held before its write. The note says the report is embedded.
+fn unnoted(doc: Option<EvidenceDoc>) -> Option<EvidenceDoc> {
+    doc.map(|doc| {
+        assert!(doc.report.embedded, "the report is embedded: {doc:?}");
+        EvidenceDoc {
+            report: ReportNote::default(),
+            ..doc
+        }
+    })
+}
+
 /// #ADR-0041: the package of a repair holds what a second run cannot judge again from it.
 #[test]
 fn a_repair_embeds_the_evidence_of_its_run_in_the_package_it_writes() {
@@ -796,8 +808,13 @@ fn a_repair_embeds_the_evidence_of_its_run_in_the_package_it_writes() {
 
     let (_guard, out) = scratch();
     let readme = written_readme(&mut run, &out);
-    assert_eq!(readme, held.readme());
-    let doc = EvidenceDoc::parse(&readme).expect("the evidence reads");
+    let report = run
+        .package()
+        .map(|package| ProjectDir::new(&out).path_of(package));
+    let report = report.expect("a package").join(REPORT_FILE);
+    let report = fs_err::read_to_string(report).expect("the report beside the package");
+    assert_eq!(readme, held.readme(Some(&report)));
+    let doc = unnoted(EvidenceDoc::parse(&readme).expect("the evidence reads"));
     let doc = doc.expect("the README holds the evidence");
     assert_eq!(doc, held);
 
@@ -859,7 +876,7 @@ fn a_port_embeds_its_policy_and_targets_and_the_modpkg_holds_them() {
     let held = package.evidence.clone().expect("the evidence");
     let readme = project.path_of(package).join(README_FILE);
     let readme = fs_err::read_to_string(readme).expect("the README of the project");
-    let doc = EvidenceDoc::parse(&readme).expect("the evidence reads");
+    let doc = unnoted(EvidenceDoc::parse(&readme).expect("the evidence reads"));
     assert_eq!(doc.as_ref(), Some(&held));
 
     assert_eq!(held.run, Made::Ported);
@@ -928,7 +945,7 @@ fn a_readme_of_the_mods_own_does_not_reach_the_packages_readme() {
     };
     let (readme, held) = readme_of(&with_readme.build());
     assert!(!readme.contains("Theirs"), "{readme}");
-    let doc = EvidenceDoc::parse(&readme).expect("the evidence reads");
+    let doc = unnoted(EvidenceDoc::parse(&readme).expect("the evidence reads"));
     assert_eq!(doc, held);
     let doc = doc.expect("the run's evidence");
     assert_eq!(doc.restored, Vec::<String>::new());

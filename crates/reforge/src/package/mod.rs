@@ -6,7 +6,7 @@
 //! reads both and raises what it finds. A [`PackageWriter`] puts the package on disk. Nothing
 //! a check finds stops the write (#ADR-0003): a caller's [`permit`] does, when its policy
 //! says so. An [`EvidenceDoc`] is what the run established of the mod, which a writer embeds
-//! in the package (#ADR-0041).
+//! in the package (#ADR-0041) with the run's report (#ADR-0102).
 //!
 //! `docs/design/ARCHITECTURE.md`, "Package".
 
@@ -18,6 +18,7 @@ mod inplace;
 mod overlay;
 mod port;
 mod ptch;
+mod report_block;
 mod shaders;
 mod texture;
 mod thumbnail;
@@ -36,7 +37,7 @@ pub use self::config::{Made, ProjectConfig};
 pub use self::evidence::{
     ArchiveRef, EVIDENCE_FORMAT, EvidenceBound, EvidenceDating, EvidenceDoc, EvidenceError,
     EvidenceHistory, EvidenceInputs, EvidencePiece, EvidencePolicy, EvidencePort, EvidenceUnit,
-    MAX_README_BYTES, PieceKind, Program, README_FILE,
+    MAX_README_BYTES, PieceKind, Program, README_FILE, Readme, ReportNote,
 };
 pub use self::findings::{
     Against, ApplyFailed, Blocked, ClassRow, ClassUndeclared, Coverage, Done, Empty, EntryWhole,
@@ -52,6 +53,10 @@ pub use self::overlay::{
 };
 pub use self::port::PortBuilder;
 pub use self::ptch::{PtchBuilder, Unnamed};
+pub use self::report_block::{
+    MAX_REPORT_BLOCK_BYTES, MAX_REPORT_JSON_BYTES, REPORT_FORMAT, REPORT_LINE, REPORT_ZSTD_LEVEL,
+    ReportBlockError, decode_report, encode_report,
+};
 pub use self::texture::{TexContainer, TexRefusal, dds_to_tex};
 pub use self::thumbnail::{THUMBNAIL_FILE, Thumbnail, ThumbnailRefusal};
 pub use self::wired::{LeftBehind, LeftOut, Wired};

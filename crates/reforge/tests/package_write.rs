@@ -12,7 +12,7 @@ use reforge::model::{ByteView, ChunkPath, Spelled, WadName, path_hash};
 use reforge::package::{
     ArchiveRef, Chunk, ChunkKey, EVIDENCE_FORMAT, EvidenceDating, EvidenceDoc, EvidenceInputs,
     Layer, MAX_NAME_BYTES, Made, Modpkg, Origin, Package, PackageWriter, Program, ProjectConfig,
-    ProjectDir, README_FILE, REPORT_FILE, WriteError, WriterKind, Written,
+    ProjectDir, README_FILE, REPORT_FILE, ReportNote, WriteError, WriterKind, Written,
 };
 use reforge_testkit::bins::{bin, blob, object, text};
 use reforge_testkit::skins::WAD;
@@ -86,6 +86,18 @@ fn evidence() -> EvidenceDoc {
         restored: Vec::new(),
         fixups: vec!["retype".into()],
         port: None,
+        report: ReportNote::default(),
+    }
+}
+
+/// [`evidence`] as a README read back holds it: with [`REPORT`] embedded (#ADR-0102).
+fn evidence_with_report() -> EvidenceDoc {
+    EvidenceDoc {
+        report: ReportNote {
+            embedded: true,
+            json_bytes: REPORT.len() as u64,
+        },
+        ..evidence()
     }
 }
 
@@ -370,14 +382,14 @@ fn a_project_of_a_package_with_evidence_holds_it_as_its_readme() {
         tree(&project)
     );
     let readme = fs::read_to_string(project.join(README_FILE)).expect("the README reads");
-    assert_eq!(readme, evidence().readme());
+    assert_eq!(readme, evidence().readme(Some(REPORT)));
     assert!(
         !readme.contains('\r'),
         "the README's lines end in a line feed"
     );
     assert_eq!(
         EvidenceDoc::parse(&readme).expect("the evidence reads"),
-        Some(evidence())
+        Some(evidence_with_report())
     );
 }
 
@@ -392,11 +404,11 @@ fn a_modpkg_of_a_package_with_evidence_holds_it_as_its_readme() {
     let bytes = fs::read(writer.path_of(&package)).expect("the package reads");
     let mut packed = Packed::mount_from_reader(Cursor::new(bytes)).expect("the package mounts");
     let readme = packed.load_readme().expect("the package has a readme");
-    assert_eq!(readme, evidence().readme().into_bytes());
+    assert_eq!(readme, evidence().readme(Some(REPORT)).into_bytes());
     let readme = String::from_utf8(readme).expect("the readme is text");
     assert_eq!(
         EvidenceDoc::parse(&readme).expect("the evidence reads"),
-        Some(evidence())
+        Some(evidence_with_report())
     );
     // The chunks the client loads are the package's own, with none added for the readme.
     let chunks = read_back(&writer.path_of(&package));
