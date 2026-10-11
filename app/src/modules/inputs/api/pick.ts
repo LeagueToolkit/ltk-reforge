@@ -6,9 +6,16 @@ export async function pickFolder(): Promise<string | null> {
   return typeof picked === "string" ? picked : null;
 }
 
-/** A path the user picks to save a file at, or null when they cancel. */
-export async function pickSavePath(extensions: string[], name: string): Promise<string | null> {
-  return await save({ filters: [{ name, extensions }] });
+/**
+ * A path the user picks to save a file at, or null when they cancel. The dialog starts at
+ * `defaultPath` when one is given: a file name, or a path.
+ */
+export async function pickSavePath(
+  extensions: string[],
+  name: string,
+  defaultPath?: string,
+): Promise<string | null> {
+  return await save({ filters: [{ name, extensions }], defaultPath });
 }
 
 /** A file the user picks, or null when they cancel. */

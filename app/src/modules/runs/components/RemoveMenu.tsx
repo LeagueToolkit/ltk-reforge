@@ -12,7 +12,8 @@ import { useClearModIngest, useModIngestBytes, useRemoveModRuns, useRemoveRun } 
 /** What the menu asks about before it removes. */
 type Asking = "run" | "mod" | "ingest" | null;
 
-const itemClass =
+/** An item of a menu of the Runs page. */
+export const itemClass =
   "flex cursor-pointer items-center rounded-md px-3 py-1.5 text-sm text-surface-100 outline-none select-none data-[disabled]:cursor-default data-[disabled]:text-surface-500 data-[highlighted]:bg-surface-700";
 
 interface RemoveMenuProps {

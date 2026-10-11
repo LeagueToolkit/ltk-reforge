@@ -2,7 +2,9 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 
 import { commands, type StageName } from "@/lib/bindings.gen";
 import { runsKey } from "@/lib/query";
-import { mutationFn, queryFn } from "@/utils";
+import { mutationFn, queryFn, type Result } from "@/utils";
+
+import type { Opened } from "./drop";
 
 /** The query keys of the store of runs, all under `runsKey`. */
 export const runsKeys = {
@@ -112,7 +114,7 @@ export function useStoreView() {
 }
 
 /** A change of the store, which asks every read of it again. */
-function useStoreChange<V>(change: (variables: V) => ReturnType<typeof commands.keepRun>) {
+function useStoreChange<V, T = null>(change: (variables: V) => Promise<Result<T>>) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: mutationFn(change),
@@ -164,6 +166,22 @@ export function useModIngestBytes(sha256: string, enabled: boolean) {
 /** Removes every kept run. */
 export function useRemoveAllRuns() {
   return useStoreChange<void>(() => commands.removeAllRuns());
+}
+
+/** Opens a project file or a package's evidence as a kept run, and answers its number. */
+export function useOpenRun() {
+  return useStoreChange(({ kind, path }: Opened) =>
+    kind === "project" ? commands.importProject(path) : commands.openPackage(path),
+  );
+}
+
+/** Writes a kept run as a project file at a path, and answers the file's size. */
+export function useExportProject() {
+  return useMutation({
+    mutationFn: mutationFn(({ id, path }: { id: number; path: string }) =>
+      commands.exportProject(id, path),
+    ),
+  });
 }
 
 /** Shows the package a kept run wrote in its folder. */

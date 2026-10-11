@@ -1,6 +1,7 @@
 import {
   ArrowClockwiseIcon,
   ArrowsLeftRightIcon,
+  ExportIcon,
   FolderOpenIcon,
   PushPinIcon,
 } from "@phosphor-icons/react";
@@ -10,10 +11,13 @@ import { useState } from "react";
 import { Button, FailureNote, Spinner, TabPanel, Tabs, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { RunRow, RunView, StageName } from "@/lib/bindings.gen";
+import { pickSavePath } from "@/modules/inputs";
 import { endedResults, RunResults, StageStrip, useRepairStore } from "@/modules/repair";
 import { twMerge } from "@/utils";
 
+import { PROJECT_EXTENSION } from "../api/drop";
 import {
+  useExportProject,
   useKeepRun,
   useRevealRun,
   useRunAgain,
@@ -75,11 +79,47 @@ function ResultTab({ view, onFiles }: { view: RunView; onFiles: (stage: StageNam
   );
 }
 
+/** The line a tab of a run opened from a package shows: it has no snapshots. */
+function NoSnapshots() {
+  return (
+    <p className="text-sm text-surface-400 select-none" data-ui="RunDetail:no-snapshots">
+      {m.runs_no_snapshots()}
+    </p>
+  );
+}
+
+/** Where a run came from, when not from a run of the app's, with the path it was opened from. */
+function OriginBadge({ row }: { row: RunRow }) {
+  if (row.origin === "run") {
+    return null;
+  }
+  const label = row.origin === "project" ? m.runs_origin_project() : m.runs_origin_package();
+  const badge = (
+    <span
+      className="shrink-0 rounded-full border border-surface-600 px-2 py-0.5 text-[11px] font-normal text-surface-300 select-none"
+      data-ui="RunDetail:origin"
+    >
+      {label}
+    </span>
+  );
+  return row.opened_from ? (
+    <Tooltip content={m.runs_origin_from({ path: row.opened_from })}>{badge}</Tooltip>
+  ) : (
+    badge
+  );
+}
+
+/** A file name without its last extension. */
+function stemOf(fileName: string): string {
+  return fileName.replace(/\.[^.]+$/, "");
+}
+
 /** The report the package embeds, as the store keeps it. */
-function ReportTab({ id }: { id: number }) {
+function ReportTab({ id, opened }: { id: number; opened: boolean }) {
   const report = useRunReport(id);
   return (
     <div className="flex flex-col gap-2" data-ui="ReportTab">
+      {opened && <NoSnapshots />}
       <p className="text-xs text-surface-400 select-none">{m.runs_report_note()}</p>
       {report.isPending && <Spinner />}
       {report.isError && <FailureNote failure={report.error} />}
@@ -117,26 +157,30 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
   const [filesStage, setFilesStage] = useState<StageName | null>(null);
   const [picking, setPicking] = useState(false);
   const [against, setAgainst] = useState<number | null>(null);
+  const exportProject = useExportProject();
   const name = runName(row);
+  // A package opened has no snapshots, no settings and no bytes (#ADR-0096).
+  const opened = row.origin === "package";
   const held = view.data ? heldStages(view.data) : [];
   const tabs = [
     { value: "result" as const, label: m.runs_tab_result() },
-    ...(held.length > 0 ? [{ value: "files" as const, label: m.runs_tab_files() }] : []),
+    ...(held.length > 0 || opened ? [{ value: "files" as const, label: m.runs_tab_files() }] : []),
     { value: "report" as const, label: m.runs_tab_report() },
   ];
   const openFiles = (stage: StageName) => {
     setFilesStage(stage);
     setTab("files");
   };
-  const failure = keep.error ?? reveal.error ?? again.error;
+  const failure = keep.error ?? reveal.error ?? again.error ?? exportProject.error;
+  const canRunAgain = !opened && again.data?.archive_present;
   const againButton = (
     <Button
       size="sm"
       variant="outline"
       left={<ArrowClockwiseIcon weight="bold" />}
-      disabled={!again.data?.archive_present}
+      disabled={!canRunAgain}
       loading={again.isPending}
-      title={again.data?.archive_present ? m.runs_again_description() : undefined}
+      title={canRunAgain ? m.runs_again_description() : undefined}
       onClick={() => {
         if (again.data) {
           takeRun(again.data);
@@ -147,13 +191,39 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
       {m.runs_again_action()}
     </Button>
   );
+  const exportTo = async () => {
+    const path = await pickSavePath(
+      [PROJECT_EXTENSION],
+      m.runs_export_filter(),
+      `${stemOf(row.file_name)}.${PROJECT_EXTENSION}`,
+    );
+    if (path) {
+      exportProject.mutate({ id: row.id, path });
+    }
+  };
+  const exportButton = (
+    <Button
+      size="sm"
+      variant="outline"
+      left={<ExportIcon weight="bold" />}
+      disabled={opened}
+      loading={exportProject.isPending}
+      title={opened ? undefined : m.runs_export_description()}
+      onClick={() => void exportTo()}
+    >
+      {m.runs_export_action()}
+    </Button>
+  );
 
   return (
     <div className="flex flex-col gap-6" data-ui="RunDetail">
       <div className="flex items-start gap-4">
         <Thumbnail src={view.data?.package?.thumbnail} name={name} />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <p className="text-base font-semibold text-surface-50">{name}</p>
+          <p className="flex items-center gap-2 text-base font-semibold text-surface-50">
+            <span className="min-w-0 truncate">{name}</span>
+            <OriginBadge row={row} />
+          </p>
           {(row.author || row.version) && (
             <p className="text-xs text-surface-300">
               {[
@@ -189,13 +259,20 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
         >
           {m.runs_reveal_action()}
         </Button>
-        {again.data && !again.data.archive_present ? (
+        {opened || (again.data && !again.data.archive_present) ? (
           // A disabled button hears no pointer, so the note is on what holds it.
-          <Tooltip content={m.runs_again_missing()}>
+          <Tooltip content={opened ? m.runs_again_package() : m.runs_again_missing()}>
             <span>{againButton}</span>
           </Tooltip>
         ) : (
           againButton
+        )}
+        {opened ? (
+          <Tooltip content={m.runs_export_package()}>
+            <span>{exportButton}</span>
+          </Tooltip>
+        ) : (
+          exportButton
         )}
         <Button
           size="sm"
@@ -245,8 +322,13 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
               />
             </TabPanel>
           )}
+          {held.length === 0 && opened && (
+            <TabPanel value="files">
+              <NoSnapshots />
+            </TabPanel>
+          )}
           <TabPanel value="report">
-            <ReportTab id={row.id} />
+            <ReportTab id={row.id} opened={opened} />
           </TabPanel>
         </Tabs>
       )}

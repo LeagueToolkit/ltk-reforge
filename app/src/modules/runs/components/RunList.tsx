@@ -1,5 +1,5 @@
 import { MagnifyingGlassIcon, PackageIcon, PushPinIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { match } from "ts-pattern";
 
 import { Tooltip } from "@/components";
@@ -80,7 +80,8 @@ export function RunLine({ row, now }: { row: RunRow; now: Date }) {
       </span>
       <span className="flex min-w-0 items-center gap-2 text-xs text-surface-400">
         <KindBadge kind={row.kind} />
-        {!row.archive_ingested && (
+        {/* A package opened never had archive data to clear. */}
+        {!row.archive_ingested && row.origin !== "package" && (
           <Tooltip content={m.runs_ingest_cleared_hint()}>
             <span
               className="shrink-0 rounded-full border border-surface-600 px-2 py-0.5 text-[11px] text-surface-300 select-none"
@@ -107,26 +108,34 @@ interface RunListProps {
   onSelect: (id: number) => void;
   /** The time the ages are counted to. */
   now: Date;
+  /** What sits beside the filter. */
+  actions?: ReactNode;
+  /** What sits under the filter: a note on what the actions did. */
+  note?: ReactNode;
   className?: string;
 }
 
 /** The runs kept, newest first, filtered by name and author, one marked as selected. */
-export function RunList({ runs, selected, onSelect, now, className }: RunListProps) {
+export function RunList({ runs, selected, onSelect, now, actions, note, className }: RunListProps) {
   const [filter, setFilter] = useState("");
   const shown = runs.filter((row) => matches(row, filter));
   return (
     <div className={twMerge("flex flex-col gap-3", className)} data-ui="RunList">
-      <label className="flex items-center gap-2 rounded-md border border-surface-600 bg-surface-950/40 px-2 focus-within:outline-2 focus-within:outline-accent-500">
-        <MagnifyingGlassIcon className="h-3.5 w-3.5 shrink-0 text-surface-400" />
-        <input
-          type="search"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-          placeholder={m.runs_filter_placeholder()}
-          aria-label={m.runs_filter_label()}
-          className="h-8 min-w-0 flex-1 bg-transparent text-xs text-surface-100 outline-none placeholder:text-surface-500"
-        />
-      </label>
+      <div className="flex items-center gap-2">
+        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-surface-600 bg-surface-950/40 px-2 focus-within:outline-2 focus-within:outline-accent-500">
+          <MagnifyingGlassIcon className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+          <input
+            type="search"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={m.runs_filter_placeholder()}
+            aria-label={m.runs_filter_label()}
+            className="h-8 min-w-0 flex-1 bg-transparent text-xs text-surface-100 outline-none placeholder:text-surface-500"
+          />
+        </label>
+        {actions}
+      </div>
+      {note}
       {shown.length === 0 && (
         <p className="text-sm text-surface-400 select-none">{m.runs_none_match()}</p>
       )}
