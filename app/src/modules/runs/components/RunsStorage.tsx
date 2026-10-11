@@ -1,23 +1,33 @@
-import { BroomIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, BroomIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { Button, FailureNote } from "@/components";
 import { m } from "@/i18n";
+import type { StoreState } from "@/lib/bindings.gen";
+import { useStoreState } from "@/lib/storeState";
 import { ConfirmRemove, diskSize } from "@/modules/inputs";
 
-import { useClearUnusedIngest, useRemoveAllRuns, useStoreView } from "../api/runs";
+import { useClearUnusedIngest, useRemoveAllRuns, useResetStore, useStoreView } from "../api/runs";
 
 /** What the storage group asks about before it removes. */
-type Asking = "runs" | "unused" | null;
+type Asking = "runs" | "unused" | "reset" | null;
 
-/** The store of runs as the settings page's storage group shows it: its counts, its bytes. */
+/**
+ * The store of runs as the settings page's storage group shows it: its counts and its bytes
+ * while it is open; what a reset loses while another build's rows keep it closed; why it did
+ * not open otherwise. A reset is offered in every state, asked about first.
+ */
 export function RunsStorage() {
-  const view = useStoreView();
+  const state = useStoreState();
+  const open = state.data?.state === "open";
+  const view = useStoreView(open);
   const remove = useRemoveAllRuns();
   const clearUnused = useClearUnusedIngest();
+  const reset = useResetStore();
   const [asking, setAsking] = useState<Asking>(null);
-  const store = view.data;
-  const failure = remove.error ?? clearUnused.error;
+  const store = open ? view.data : undefined;
+  const failure = remove.error ?? clearUnused.error ?? reset.error;
+  const askReset = () => setAsking("reset");
 
   return (
     // The buttons sit under the counts: beside them, the counts break inside a size.
@@ -42,31 +52,47 @@ export function RunsStorage() {
             <p className="text-xs text-surface-500">{m.runs_storage_tier_hint()}</p>
           </>
         )}
-        {view.isError && <FailureNote failure={view.error} />}
+        {state.isError && <FailureNote failure={state.error} />}
+        {open && view.isError && <FailureNote failure={view.error} />}
         {failure && <FailureNote failure={failure} />}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          left={<BroomIcon weight="bold" />}
-          disabled={!store || store.ingest_unused_bytes === 0}
-          loading={clearUnused.isPending}
-          onClick={() => setAsking("unused")}
-        >
-          {m.runs_storage_clear_unused_action()}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          left={<TrashIcon weight="bold" />}
-          disabled={!store || store.runs === 0}
-          loading={remove.isPending}
-          onClick={() => setAsking("runs")}
-        >
-          {m.runs_storage_remove_action()}
-        </Button>
-      </div>
+      {state.data && state.data.state !== "open" && (
+        <ClosedStore state={state.data} resetting={reset.isPending} onReset={askReset} />
+      )}
+      {open && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            left={<BroomIcon weight="bold" />}
+            disabled={!store || store.ingest_unused_bytes === 0}
+            loading={clearUnused.isPending}
+            onClick={() => setAsking("unused")}
+          >
+            {m.runs_storage_clear_unused_action()}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            left={<TrashIcon weight="bold" />}
+            disabled={!store || store.runs === 0}
+            loading={remove.isPending}
+            onClick={() => setAsking("runs")}
+          >
+            {m.runs_storage_remove_action()}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            left={<ArrowCounterClockwiseIcon weight="bold" />}
+            loading={reset.isPending}
+            onClick={askReset}
+          >
+            {m.runs_storage_reset_action()}
+          </Button>
+        </div>
+      )}
       <ConfirmRemove
         open={asking === "runs"}
         onClose={() => setAsking(null)}
@@ -83,6 +109,59 @@ export function RunsStorage() {
         })}
         onConfirm={() => clearUnused.mutate()}
       />
+      <ConfirmRemove
+        open={asking === "reset"}
+        onClose={() => setAsking(null)}
+        title={m.runs_storage_reset_title()}
+        description={
+          open ? m.runs_storage_reset_open_description() : m.runs_storage_reset_description()
+        }
+        onConfirm={() => reset.mutate()}
+      />
+    </div>
+  );
+}
+
+interface ClosedStoreProps {
+  state: Exclude<StoreState, { state: "open" }>;
+  resetting: boolean;
+  onReset: () => void;
+}
+
+/**
+ * A store that is not open: what a reset of another build's rows loses, or why it failed,
+ * with the reset that opens it anew.
+ */
+function ClosedStore({ state, resetting, onReset }: ClosedStoreProps) {
+  const outdated = state.state === "outdated";
+  return (
+    <div
+      className="flex flex-col items-start gap-3 rounded-md border border-warning/40 bg-warning/10 p-3"
+      data-ui="RunsStorage:closed"
+    >
+      {state.state === "outdated" ? (
+        <p className="text-xs text-surface-200 select-none">
+          {m.runs_storage_outdated({
+            runs: state.runs,
+            kept: state.kept,
+            bytes: diskSize(state.rows_bytes + state.tier_bytes),
+          })}
+        </p>
+      ) : (
+        <div className="min-w-0">
+          <p className="text-xs text-surface-200 select-none">{m.runs_storage_failed()}</p>
+          <p className="font-mono text-xs break-words text-surface-400">{state.detail}</p>
+        </div>
+      )}
+      <Button
+        size="sm"
+        variant="danger"
+        left={<ArrowCounterClockwiseIcon weight="bold" />}
+        loading={resetting}
+        onClick={onReset}
+      >
+        {outdated ? m.runs_storage_reset_action() : m.runs_storage_retry_action()}
+      </Button>
     </div>
   );
 }

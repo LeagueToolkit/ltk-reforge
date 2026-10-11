@@ -1,6 +1,6 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { commands, type StageName } from "@/lib/bindings.gen";
+import { commands, type StageName, type StoreState } from "@/lib/bindings.gen";
 import { runsKey } from "@/lib/query";
 import { mutationFn, queryFn, type Result } from "@/utils";
 
@@ -101,10 +101,10 @@ export const runFileQuery = (id: number, content: string): FileQuery => ({
   queryFn: queryFn(() => commands.runFile(id, content)),
 });
 
-/** What the store holds and its bytes on disk. */
-export function useStoreView() {
+/** What the store holds and its bytes on disk. Asked only while `enabled`: the store is open. */
+export function useStoreView(enabled: boolean) {
   return useQuery(
-    queryOptions({ queryKey: runsKeys.store(), queryFn: queryFn(commands.storeView) }),
+    queryOptions({ queryKey: runsKeys.store(), queryFn: queryFn(commands.storeView), enabled }),
   );
 }
 
@@ -161,6 +161,11 @@ export function useModIngestBytes(sha256: string, enabled: boolean) {
 /** Removes every kept run. */
 export function useRemoveAllRuns() {
   return useStoreChange<void>(() => commands.removeAllRuns());
+}
+
+/** Removes the store's rows and opens it anew, and answers its state. */
+export function useResetStore() {
+  return useStoreChange<void, StoreState>(() => commands.resetStore());
 }
 
 /** Opens a project file or a package's evidence as a kept run, and answers its number. */

@@ -2,6 +2,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 
 import { FailureNote, Spinner } from "@/components";
 import { m } from "@/i18n";
+import { useStoreState } from "@/lib/storeState";
 
 import { type Opened, useOpenDrop } from "../api/drop";
 import { useOpenRun, useRuns } from "../api/runs";
@@ -31,6 +32,27 @@ export function RunsPage() {
   const over = useOpenDrop(open);
   const menu = <OpenMenu onOpen={open} pending={openRun.isPending} />;
   const refusal = openRun.error && <FailureNote failure={openRun.error} />;
+  const state = useStoreState().data;
+
+  if (state && state.state !== "open") {
+    return (
+      <div className="flex flex-col gap-6" data-ui="RunsPage">
+        <h1 className="font-display text-xl font-semibold text-surface-50">
+          {m.runs_page_title()}
+        </h1>
+        <p className="text-sm text-surface-400 select-none" data-ui="RunsPage:closed">
+          {state.state === "outdated"
+            ? m.runs_closed_outdated()
+            : m.runs_closed_failed({ detail: state.detail })}{" "}
+          <Link to="/settings" className="text-accent-300 underline-offset-2 hover:underline">
+            {state.state === "outdated"
+              ? m.runs_closed_outdated_link()
+              : m.runs_closed_failed_link()}
+          </Link>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6" data-ui="RunsPage">

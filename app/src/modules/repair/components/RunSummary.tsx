@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Button, FailureNote, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import { commands, type RunView } from "@/lib/bindings.gen";
+import { useStoreState } from "@/lib/storeState";
 import { countBySeverity } from "@/modules/findings";
 import { mutationFn, twMerge } from "@/utils";
 
@@ -93,6 +94,9 @@ export function RunSummary({ view, onWriteAnyway, writing }: RunSummaryProps) {
   const banner = bannerOf(view);
   const counts = countBySeverity(view.findings);
   const reveal = useMutation({ mutationFn: mutationFn(commands.revealPlace) });
+  const store = useStoreState().data;
+  // A run that wrote is kept unless the store is closed: then it says so, once.
+  const unkept = view.written != null && view.saved == null && store && store.state !== "open";
   const detail = banner.detail ? (
     <p className="font-mono text-xs break-all text-surface-300">{banner.detail}</p>
   ) : null;
@@ -117,6 +121,9 @@ export function RunSummary({ view, onWriteAnyway, writing }: RunSummaryProps) {
           })}{" "}
           {m.repair_summary_time_label({ seconds: (view.millis / 1000).toFixed(1) })}
         </p>
+        {unkept && (
+          <p className="text-xs text-surface-500 select-none">{m.repair_status_unkept()}</p>
+        )}
       </div>
       {view.written && (
         <Button

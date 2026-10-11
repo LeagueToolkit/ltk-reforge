@@ -27,6 +27,7 @@
   "repair_status_refused_title": "Not written: the run found {count} errors",
   "repair_status_stopped_title": "Ran through {stage}",
   "repair_status_written_title": "Written",
+  "repair_status_unkept": "The run was not kept: the store of runs cannot be read.",
   "repair_summary_counts_label": "{errors} errors, {warnings} warnings, {notes} notes",
   "repair_summary_time_label": "in {seconds} s",
   "repair_write_anyway_action": "Write anyway",
