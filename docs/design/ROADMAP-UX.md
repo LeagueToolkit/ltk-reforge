@@ -196,7 +196,8 @@ the page says so. Once explored, three tabs:
   their kind, WAD, unit count and a mark when every skin bin is the game's; the units with
   their character, slot and skin bin, the slot the entry's name spells when it differs, and
   how many bins load for them; the WADs with their role, layout, files, named files, locale and
-  a mark for a restoration; the files per kind, from the inventory, in the kind's order; and
+  a mark for a restoration; the files per kind, from the inventory, in the kind's order, each
+  kind in a word with the library's name of it on hover; and
   the files per provenance fact (the install's bytes, earlier builds', the mod's own), in the
   order the library declares the facts. Every text is the report's, read through `clean`.
 - **Files**: the Runs page's files browser over the files at `load` (`explore_files`), each
@@ -872,6 +873,21 @@ than its row. Left: the schema's build reads as the schema's number for a run of
 as the install's build for a package opened, which the comparison shows as a difference; live
 findings name objects by hash until the run ends; and the detail's six actions wrap at the
 default window.
+
+A review of the five pages and the guided view the second version added (2026-10-11,
+screenshots of every state over the inputs of a run, three mods and an archive that does not
+read, a batch with a row of every outcome, questions of every kind and a run stopped in `fix`)
+found and fixed: the Mod page's files per kind named by the library's ids, its units'
+character in lower case, an overview of empty cards for a read that halted, and its card's
+actions squeezing the archive's path in a narrow window; the History page's Escape emptying the
+search box, a content id out of line with its row, and its description apart from its title;
+the Records page's list running past the window's bottom, its filter scrolling out of view, its
+titles a word a line in a narrow window, their Markdown backticks shown, and a code linked in
+the text broken at its hyphen; the Batch page's summary running its two sentences together, a
+stopped batch said to have stopped before the last mod alone, its table's counts and times out
+of line with their rows, and its description apart from its title; and "Guide me" broken onto
+two lines. Left: a unit question's facts give each candidate in the library's words (its reason
+id, the check's aspect and fit), since they are the sentences `guided_questions` answers.
 
 Each library change is one rule with its test (#ADR-0045), made before the page that needs it.
 
