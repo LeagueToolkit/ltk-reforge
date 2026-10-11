@@ -511,9 +511,11 @@ A bin asked for at an object's entry (`run_file`, `last_file` and `explore_file`
 `entry`, eight hex digits) shows that object first, between two lines that hold the record
 separator alone (`ENTRY_FENCE`): a control the dump escapes, so no object's text holds it.
 The other objects follow in the bin's order under the same cap, and `entry_found` says
-whether the bin holds the entry. The viewer marks the object, scrolls to it and names the
-entry in its badge row, by the name the finding's detail spelled, the hash on hover; a bin
-without the entry says so above its objects. Bytes no tier
+whether the bin holds the entry. The viewer marks the object, brings its own top to the top
+of the page (the object may stand taller than the page) and names the entry in its badge row,
+by the name the finding's detail spelled, the hash on hover; a bin without the entry says so
+above its objects. A page's tabs keep their panels mounted, so what a person opened in the
+result is as they left it when they come back from the files. Bytes no tier
 holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSING`.
 
 **The settings page** has a storage group with a row for the store: its runs, kept runs and

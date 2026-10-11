@@ -77,10 +77,17 @@ export interface TabPanelProps<T extends string> {
   className?: string;
 }
 
-/** One tab's panel, rendered while its tab is active. */
+/**
+ * One tab's panel, shown while its tab is active and kept mounted behind the others: what a
+ * person opened in it is as they left it when they come back.
+ */
 export function TabPanel<T extends string>({ value, children, className }: TabPanelProps<T>) {
   return (
-    <BaseTabs.Panel value={value} className={twMerge("flex flex-col gap-6", className)}>
+    <BaseTabs.Panel
+      value={value}
+      keepMounted
+      className={twMerge("flex flex-col gap-6", className)}
+    >
       {children}
     </BaseTabs.Panel>
   );
