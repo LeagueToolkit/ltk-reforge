@@ -34,7 +34,8 @@ export function StageStrip({ stages, findings, selected, onSelect }: StageStripP
         const counts = countBySeverity(findings.filter((f) => f.stage === stage.stage));
         const errors = counts.error + counts.fatal;
         return (
-          <li key={stage.stage}>
+          // Each box takes its row's height, a stage with more marks or not.
+          <li key={stage.stage} className="flex">
             <button
               type="button"
               onClick={() => onSelect(stage.stage)}
@@ -47,11 +48,12 @@ export function StageStrip({ stages, findings, selected, onSelect }: StageStripP
             >
               <span className="text-sm font-medium">{stageLabel(stage.stage)}</span>
               <span className="text-xs text-surface-400">
-                {m[`stage_state.${stage.state}.label`]()}
+                {stage.resumed === true
+                  ? m.run_stage_resumed_state_label({
+                      state: m[`stage_state.${stage.state}.label`](),
+                    })
+                  : m[`stage_state.${stage.state}.label`]()}
               </span>
-              {stage.resumed === true && (
-                <span className="text-[10px] text-surface-500">{m.run_stage_resumed_label()}</span>
-              )}
               <span className="flex gap-2 text-xs">
                 {errors > 0 && (
                   <span className="flex items-center gap-0.5 text-danger-text">
