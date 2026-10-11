@@ -1044,6 +1044,10 @@ object takes a name of its own, which every link to it follows.
 - A mod's text reaches a terminal only through the `Speller` and `clean`.
 - A package's README is a file anyone can edit, so the evidence in it is read as a mod's input
   is: under a size cap, with a typed error for every refusal and no panic.
+- The app's project file (#ADR-0096) carries a mod's bytes and is untrusted input as an archive
+  is: its entries counted, its JSON and each blob read under the caps, a blob refused when its
+  bytes are not the content its name spells, and nothing extracted under its names
+  (`docs/design/ROADMAP-UX.md`, "The app's store").
 - A writer takes `ChunkPath` and `WadName`, never a string.
 
 ## Code shape

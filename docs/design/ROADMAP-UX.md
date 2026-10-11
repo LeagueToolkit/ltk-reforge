@@ -86,9 +86,10 @@ show it where it shows the fixup.
 - **The report's types as TypeScript.** The parts of a `Report` are Rust types with `Serialize`
   only; the app's bindings are generated from its own views of them.
 - **The app's store, its pages and its project.** The app keeps runs ("The app's store") and
-  shows them ("The Runs page"), a rerun resumes from a kept run's snapshots and the ingest
-  tier is cleared by mod; two runs compared, a package's evidence read and the project file
-  of #ADR-0096 are left.
+  shows them ("The Runs page"), a rerun resumes from a kept run's snapshots, the ingest tier
+  is cleared by mod, two runs are compared, a project file is exported and imported, and a
+  package's evidence opens as a run. The reader of the embedded evidence that opens a
+  package is the app's, and draws a view; it starts no run.
 - **A summary for a person.** The report is JSON. What a person reads of a run is the app's to
   render.
 - **A run over several mods.** A `Run` takes one archive. The caches of an `Env` grow with
@@ -180,7 +181,7 @@ The rows are three groups after #ADR-0094's, each naming the one before it by ke
 |---|---|---|
 | `raw` | the archive's SHA-256 | the reading's version and the caps, so the ingest tier's entry is named; the path and file name of the last read; the mod's name, author and version as the archive spells them |
 | `load` | the hex of a SHA-256 over the JSON of the archive's SHA-256, the reading's version, the caps, the program, the load inputs and the load settings, each as the load snapshot holds it | the load snapshot |
-| `run` | a number, in the order written | the load it starts from, the kind, the request's settings, the schema's build, the program, the package written, whether a person marked it kept, the time the store wrote it, the snapshot of each later stage reached, the report and the view the run ended with |
+| `run` | a number, in the order written | the load it starts from, none for a package opened; the archive's SHA-256, so the listing and the sweep reach its `raw` row without a load; where it came from (`origin`: `run`, `project` or `package`) and the path a project or a package was opened from; the kind, the request's settings, the schema's build, the program, the package written, whether a person marked it kept, the time the store wrote it, the snapshot of each later stage reached, the report and the view the run ended with |
 | `run_blob` | a run and a content id | the ids of the run's memory layer and every id its snapshots name, so a run resumed from an older one keeps the older one's bytes from its sweep |
 
 A snapshot, the report and the view are their JSON in one zstd frame. The raw snapshot is not a row:
@@ -228,15 +229,74 @@ numbers go first. A run marked kept is not counted.
 
 **The sweep.** A save, a removal of a run, of every run of a mod or of every run, and a change
 of a run's mark each cut the bound and delete, in the same transaction, the loads no run
-refers to and the raw rows no load refers to. When a run went, the run tier's blobs no
+refers to and the raw rows no load and no run refers to. When a run went, the run tier's blobs no
 `run_blob` row lists are removed after the commit, and the tier compacts its tables, which
 gives back its value log's space. Opening the store sweeps the run tier too, for a rows file
 moved aside or a save a crash ended between its flush and its rows. The rows and the run tier
 are behind one lock, so a sweep never runs while a save flushes. The ingest tier is not swept.
 
+**The project file** (#ADR-0096) is a kept run with its load, its raw snapshot and the bytes
+they name, as one zip with the extension `.reforge-project`:
+
+| entry | holds | stored |
+|---|---|---|
+| `project.json` | `format` (1); the `raw` row (SHA-256, reading, caps, path, file name, name, author, version); the raw snapshot's JSON; the load snapshot's JSON or null; the `run` row (kind, settings, schema build, program, package, origin, the time the store wrote it, each later snapshot, the report and the view, as their JSON or null); and `blobs`, each blob's id and size | deflated |
+| `blobs/<64 hex>` | one blob, its bytes under the content id the name spells | stored: a mod's bytes are compressed textures and zstd chunks already |
+
+`AppStore::export_project` writes one: its blobs are the ids the run's `run_blob` rows list
+and the ids its raw snapshot names, each once, fetched from the run tier, else the ingest
+tier. One that neither holds refuses the export (`BLOB_MISSING`) before anything is written,
+and the file is written under a temporary name in its folder and renamed into place when
+whole. A run opened from a package has no snapshots and no bytes and is refused
+(`NO_PROJECT_OF`); a run imported from a project exports as a run of the app's does.
+
+`AppStore::import_project` reads a project as a mod archive is read, since it is untrusted
+input: its entries are counted and refused past the caps' `entries`; `project.json` is read up
+to the caps' `entry_bytes` and its `format` must be 1 (`PROJECT_FORMAT` otherwise); every
+other entry's name is `blobs/` and 64 lowercase hex digits, listed once in `blobs`, its size
+as its header says within the caps' `chunk_bytes` and all of them within `total_bytes`, and
+it is read whole and hashed; any other name, a name twice, an entry the list does not name or
+names at another size, a listed blob no entry holds and bytes whose hash is not the name are
+refused (`PROJECT_MALFORMED`). The snapshots are read by the library as a cache entry is: a
+raw snapshot of another reading, or one of another archive or caps than the `raw` row, and a
+snapshot of another format are refused, as is a snapshot that names a blob the list lacks.
+The entries are read twice, once to check every blob and once to put them, so a refused file
+leaves nothing in either tier. The blobs the raw snapshot names go into the ingest tier and
+the raw snapshot into its cache; the rest go into the run tier, under the store's lock with
+the rows, flushed before them as a save is. The rows are the `raw` row unless one is there,
+its path the project's own (the archive may be elsewhere on this machine: Run again then
+says it is not at its path), the load unless one of its key is there, the run with the origin
+`project`, the file's path and the mark kept, and `run_blob` as a save writes it. The time
+the store wrote the run is the exporting store's: an import makes no run. The settings and
+the program of an imported run reach the comparison through `clean`.
+
+**A package opened** (#ADR-0041, #ADR-0096) is a kept run with no load and no snapshots.
+`AppStore::open_package` bounds the file by the caps' `archive_bytes`, holds the counts the
+`.modpkg`'s header declares to its bytes before `ltk_modpkg` reserves room for them, and
+mounts it where its panic is caught. The metadata gives the name, the author and the version,
+and the readme (`_meta_/readme.md`, read up to the evidence's own cap) gives the evidence
+through `EvidenceDoc::parse`; a package with no readme or no evidence in it is refused
+(`NO_EVIDENCE`), and one that does not read answers `MOD_UNREADABLE`. The report the writer
+put beside the package, `<stem>.reforge-report.json`, is the run's report when it reads within
+the caps' `entry_bytes` and its evidence names the package's archive; its view is drawn from
+the report alone (`Drawn::of_report`): the mod, the findings, the decisions, what the fixups
+changed with no class or field and the outcome from what a change left, no objects, and the
+package without a thumbnail. The report file holds no `write.written`: the writer writes it
+before the write raises that. Without the report, the run's report is the evidence wrapped as
+`{"schema": "reforge.evidence-only/1", "evidence": …}` and its view the mod from the archive's
+SHA-256 and the metadata and, for a port, each unit the evidence names with its slot and
+reason. Either view lists every stage of the kind as not run. The rows are a `raw` row unless
+one is there (its version 0, caps `{}`, path empty, file name the package's, since the
+evidence names the archive by its SHA-256 alone; `archive_ingested` is false) and the run
+with the origin `package`, the package's path as where it was opened from and as its package,
+the mark kept, the kind and the program from the evidence, the build the evidence's inputs
+name as its schema build, and the default settings, since an opened package was asked for by
+no request.
+
 The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
 `run_view` (the view the run ended with, its number set), `run_files`, `run_file`,
-`run_settings`, `compare_runs` and `compare_files` ("The Runs page"), `keep_run`,
+`run_settings`, `compare_runs` and `compare_files` ("The Runs page"), `export_project`,
+`import_project`, `open_package`, `keep_run`,
 `remove_run`, `remove_mod_runs`, `remove_all_runs`, `mod_ingest_bytes`, `clear_mod_ingest`,
 `clear_unused_ingest` and `store_view` (each tier's bytes, and the ingest bytes no run's
 archive names, for the settings page). A removal or a clear while a run is under way is refused. A
@@ -254,12 +314,21 @@ right. It takes the window's whole width, which the route asks of the shell (`st
 the author, the kind (Repair or Port), when the store wrote it as a relative time ("3 min
 ago", "yesterday", the date beyond a week) with the full time on hover, a pin when a person
 marked it kept and a package when it wrote one. A run whose archive data the ingest tier
-lacks has a badge "archive data cleared" (`RunRow::archive_ingested`). A box above it
-filters by name and author. With no run kept, the page says none has written a package and
-links to the run page.
+lacks has a badge "archive data cleared" (`RunRow::archive_ingested`); a package opened,
+which never had any, has none. A box above it filters by name and author. With no run kept,
+the page says none has written a package and links to the run page.
+
+**Open…**, a menu beside the box (and under the empty page's line), opens a file as a kept
+run: "Import project" picks a `.reforge-project` (`import_project`), "Open package" a
+`.modpkg` (`open_package`), and the run opened is selected. A project file or a package
+dropped on the page does the same, routed by its extension as the run page takes a dropped
+archive, with a line saying so while it is held over the window. A refusal shows under the
+list's head.
 
 **The detail** has a header with the package's thumbnail (the first letter of the name when
-there is none), the name, the version, the author and the file name, and five actions:
+there is none), the name, the version, the author and the file name. A run imported has a
+badge "imported", and a package opened "from package", each with the path it was opened
+from on hover. Six actions follow:
 
 - **Keep** (`keep_run`).
 - **Show package** (`reveal_place` with the place `run`, which names the run and never a path),
@@ -267,7 +336,11 @@ there is none), the name, the version, the author and the file name, and five ac
 - **Run again**: the run's kind, archive path and settings (`run_settings`) set in the run
   page's store as if picked and typed, the advanced view shown and the page opened; nothing
   runs until the person presses Run. Off, with a note saying so, when no file is at the
-  archive's path. A run whose archive data was cleared runs again from the archive.
+  archive's path, and for a package opened, which has no settings. A run whose archive data
+  was cleared runs again from the archive.
+- **Export project…**: a path picked in a save dialog that starts at the mod's file stem with
+  the extension `.reforge-project`, then `export_project` ("The project file"). Off, with a
+  note saying so, for a package opened.
 - **Compare…**: a dialog of the other kept runs, those of the same mod first under a heading
   of their own, then the rest, each drawn as the list draws it. The run picked is compared
   with this one ("The comparison"). Off while the store keeps no other run.
@@ -290,6 +363,11 @@ Under them are three tabs:
   hides the files that are the same. A WAD opens at first and a folder closed, so a WAD of
   thousands of files draws its rows as they are opened. The file picked opens below the tree.
 - **Report**: the report the package embeds (`run_report`), as its JSON.
+
+For a package opened, the Files tab is one line saying the run has no snapshots, and the
+Report tab starts with that line above the report. Its comparison with another run is over
+the views, as any run's; its files compare with none, so the comparison's Files card shows
+its empty line.
 
 **The comparison** (#ADR-0091) takes the tabs' place in the detail, with a Back button that
 gives them back. It is a diff of what the two runs answered (`compare_runs`), and adds no rule
@@ -541,8 +619,9 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    or a finding. Built: the store, its sweep and the Runs page, with a run's result, its files
    at each stage and one file opened, and the store's row in the settings; a rerun resumed
    from a kept run's snapshots, a kept run run again from the Runs page, the ingest tier
-   cleared by mod and of what no run names, and two runs compared. Left: a package's evidence
-   read, the project file, and the records.
+   cleared by mod and of what no run names, two runs compared, the project file exported and
+   imported, and a package's evidence opened as a kept run with no snapshots. Left: the
+   records.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
 
 Each library change is one rule with its test (#ADR-0045), made before the page that needs it.
