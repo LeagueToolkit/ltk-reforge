@@ -1,0 +1,97 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "bin_absent_label": "absent",
+  "bin_collapse_all_action": "Collapse all",
+  "bin_collapse_all_hint": "Collapse all (Ctrl+←)",
+  "bin_deleted_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} object deleted",
+        "countPlural=other": "{count} objects deleted"
+      }
+    }
+  ],
+  "bin_dependencies_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} dependency",
+        "countPlural=other": "{count} dependencies"
+      }
+    }
+  ],
+  "bin_empty_label": "empty",
+  "bin_entries_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} entry",
+        "countPlural=other": "{count} entries"
+      }
+    }
+  ],
+  "bin_gradient_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} color stop",
+        "countPlural=other": "{count} color stops"
+      }
+    }
+  ],
+  "bin_items_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} item",
+        "countPlural=other": "{count} items"
+      }
+    }
+  ],
+  "bin_matrix_label": "4×4 matrix",
+  "bin_more_label": "{loaded} of {total}",
+  "bin_none_label": "none",
+  "bin_null_label": "null",
+  "bin_object_property_count_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} property",
+        "countPlural=other": "{count} properties"
+      }
+    }
+  ],
+  "bin_objects_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} object",
+        "countPlural=other": "{count} objects"
+      }
+    }
+  ],
+  "bin_patch_label": "PTCH",
+  "bin_present_label": "present",
+  "bin_records_label": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} patch record",
+        "countPlural=other": "{count} patch records"
+      }
+    }
+  ],
+  "bin_repeated_key_hint": "Repeats the key of an earlier entry",
+  "bin_tree_label": "The bin's objects",
+  "bin_undrawn_label": "Not drawn by this viewer",
+  "bin_version_label": "Version {version}"
+}

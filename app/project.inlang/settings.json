@@ -7,6 +7,7 @@
     "pathPattern": [
       "./messages/{locale}/advanced.json",
       "./messages/{locale}/batch.json",
+      "./messages/{locale}/bin.json",
       "./messages/{locale}/changes.json",
       "./messages/{locale}/decide.json",
       "./messages/{locale}/errors.json",

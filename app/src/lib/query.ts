@@ -1,5 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 
+import type { RunRef } from "./bindings.gen";
+
 /**
  * Every read of the store of runs. A run that is kept, a keep and a removal ask them all again:
  * the run page writes runs and the runs page reads them, and neither module imports the other.
@@ -23,6 +25,21 @@ export const lastKey = ["last"] as const;
  * an explore ends, and a finding's detail asks under them.
  */
 export const exploreKey = ["explore"] as const;
+
+/**
+ * The key a run's reads are kept under: the next run or explore resets the last run's and the
+ * explored mod's, and a kept run's stay until the store is reset.
+ */
+export function runRefKey(run: RunRef): readonly unknown[] {
+  switch (run.of) {
+    case "kept":
+      return [...keptRunKey, run.id];
+    case "last":
+      return lastKey;
+    case "explored":
+      return exploreKey;
+  }
+}
 
 /**
  * The mutations of the backend's run job, which runs one at a time: the run page's run and a

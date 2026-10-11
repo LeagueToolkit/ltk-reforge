@@ -2,7 +2,7 @@ import { queryOptions, useQuery } from "@tanstack/react-query";
 import { createContext, useContext, useMemo } from "react";
 
 import { commands, type RunRef } from "@/lib/bindings.gen";
-import { exploreKey, keptRunKey, lastKey } from "@/lib/query";
+import { runRefKey } from "@/lib/query";
 import { queryFn } from "@/utils";
 
 /**
@@ -26,21 +26,6 @@ export const EXPLORED: RunRef = { of: "explored" };
 /** A kept run, by its number. */
 export function keptRun(id: number): RunRef {
   return { of: "kept", id };
-}
-
-/**
- * The key a run's reads are kept under: the next run or explore resets the last run's and the
- * explored mod's, and a kept run's stay until the store is reset.
- */
-export function runRefKey(run: RunRef): readonly unknown[] {
-  switch (run.of) {
-    case "kept":
-      return [...keptRunKey, run.id];
-    case "last":
-      return lastKey;
-    case "explored":
-      return exploreKey;
-  }
 }
 
 /** The most hashes one ask spells, as the backend's `places::MAX_SPELLED` bounds it. */
