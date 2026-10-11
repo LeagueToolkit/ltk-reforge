@@ -7,8 +7,8 @@
 //! a read the file does not answer at once answers nothing, so the blob's head is read
 //! instead. A run writes the rows it learnt in one transaction at the end of `load`, so runs
 //! side by side contend once each; a write that does not get the lock within the busy timeout
-//! is tried again, and one that never does is logged and loses its rows, which the next run
-//! reads again.
+//! is tried again after a pause, and one that never does is logged and loses its rows, which
+//! the next run reads again.
 
 use std::collections::BTreeMap;
 use std::sync::{Mutex, PoisonError, RwLock};
@@ -28,6 +28,17 @@ const BUSY: Duration = Duration::from_secs(5);
 /// How many times a write is tried. With [`BUSY`] it waits 40 s at most, well past the few
 /// milliseconds one run's rows take to write.
 const TRIES: usize = 8;
+
+/// The pause before the first try again, doubled at each: 2.5 s over [`TRIES`].
+const PAUSE: Duration = Duration::from_millis(10);
+
+/// Waits before a write is tried again. SQLite answers busy at once, without the busy
+/// handler, where waiting in it could deadlock: a connection opening the file while another
+/// writes meets that at the switch to WAL and at the table's creation. The pause is the wait
+/// the handler did not make; without it the tries are spent in the time one write takes.
+fn pause(tried: usize) {
+    std::thread::sleep(PAUSE * (1 << tried));
+}
 
 /// A table of facts in memory: the run's, beside a store in memory.
 #[derive(Debug, Default)]
@@ -130,10 +141,10 @@ impl FactTable {
         if ids.is_empty() || !self.path.is_file() {
             return;
         }
-        for _ in 0..TRIES {
+        for tried in 0..TRIES {
             match self.delete_rows(ids) {
                 Ok(()) => return,
-                Err(error) if busy(&error) => {}
+                Err(error) if busy(&error) => pause(tried),
                 Err(error) => {
                     tracing::warn!(path = %self.path, %error, "the facts of blobs are not removed");
                     return;
@@ -207,10 +218,10 @@ impl FactAccess for FactTable {
     }
 
     fn keep_rows(&self, rows: &[(ContentId, FactRow)]) {
-        for _ in 0..TRIES {
+        for tried in 0..TRIES {
             match self.write_rows(rows) {
                 Ok(()) => return,
-                Err(error) if busy(&error) => {}
+                Err(error) if busy(&error) => pause(tried),
                 Err(error) => {
                     tracing::warn!(path = %self.path, %error, "the facts of blobs are not kept");
                     return;
