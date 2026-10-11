@@ -77,6 +77,19 @@ export const commands = {
 	 */
 	lastFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_file", { content }),
 	/**
+	 *  A name for each hash a run's names or the inputs' tables spell, by the hash as asked
+	 *  (#ADR-0103): eight hex digits an entry, a field or a class, sixteen a path. A hash none
+	 *  spells is left out. Refused past `places::MAX_SPELLED` hashes.
+	 */
+	spellHashes: (run: RunRef, hashes: string[]) => __TAURI_INVOKE<({ ok: true; value: { [key in string]: string } }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("spell_hashes", { run, hashes }),
+	/**
+	 *  Every value the type check counts in a run's package, with its place (#ADR-0103): the run
+	 *  resumed after `build` against the inputs the settings choose, and the check's walk run
+	 *  again. Takes seconds on a large port, so the window asks only when a person opens a row's
+	 *  places.
+	 */
+	typePlaces: (run: RunRef) => __TAURI_INVOKE<({ ok: true; value: TypePlacesView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("type_places", { run }),
+	/**
 	 *  A mod archive read alone: what it says of itself, its characters and its thumbnail, for
 	 *  the window to show when the mod is picked.
 	 */
@@ -408,6 +421,16 @@ export type AppError =
  *  cleared from the ingest tier.
  */
 { code: "BLOB_MISSING"; id: string } | 
+/**
+ *  A run holds no package to read again: it did not end `build`, it was opened from a
+ *  package, or it is a mod explored.
+ */
+{ code: "NO_PACKAGE_HELD" } | 
+/**
+ *  A run does not resume from its snapshots against the inputs as they stand: an input or
+ *  the program changed since it ran.
+ */
+{ code: "NOT_RESUMED"; detail: string } | 
 /**  A kept run opened from a package has no snapshots and no bytes to export as a project. */
 { code: "NO_PROJECT_OF"; id: number } | 
 /**
@@ -1535,6 +1558,15 @@ export type RecordView = {
 	cited_by: string[],
 };
 
+/**
+ *  The places of the values one row of a type check's finding counts, in the order found, up
+ *  to the library's `MAX_ROW_PLACES`.
+ */
+export type RowPlaces = {
+	/**  The places. */
+	places: ValuePlaceView[],
+};
+
 /**  What a rule does in the structs of its class. */
 export type RuleOp = 
 /**  Removes fields the target's class does not declare. */
@@ -1621,6 +1653,17 @@ export type RunPart = {
 	/**  The part. */
 	part: PartView,
 };
+
+/**  A run the window asks about. */
+export type RunRef = 
+/**  A run the store keeps, by its number. */
+{ of: "kept"; 
+/**  Its number. */
+id: number } | 
+/**  The run page's last run. */
+{ of: "last" } | 
+/**  The mod explored. */
+{ of: "explored" };
 
 /**  What the front end asks a run to do. */
 export type RunRequest = {
@@ -2031,6 +2074,19 @@ export type Theme =
 "light";
 
 /**
+ *  The places of every row of the type check's three findings, each list in its finding's
+ *  order of rows (#ADR-0103).
+ */
+export type TypePlacesView = {
+	/**  The rows of `check.type-mismatch`. */
+	mismatched: RowPlaces[],
+	/**  The rows of `check.field-undeclared`. */
+	undeclared: RowPlaces[],
+	/**  The rows of `check.class-undeclared`. */
+	classes: RowPlaces[],
+};
+
+/**
  *  A target given to one unit (#ADR-0098): the unit by its character and the slot the mod
  *  ships it at, and the slot it ships to.
  */
@@ -2075,6 +2131,22 @@ done: number;
 of: number; 
 /**  The build appended last. */
 build: string };
+
+/**
+ *  Where one value a type check counts is, every string cleaned: the WAD, the bin's path, the
+ *  object's entry as eight hex digits, and the value's path from the object's root in the hash
+ *  form (`.` between fields, `[i]` an index, `{key}` a map entry, a field as eight hex digits).
+ */
+export type ValuePlaceView = {
+	/**  The WAD's name. */
+	wad: string,
+	/**  The bin's path. */
+	path: string,
+	/**  The object's entry hash. */
+	entry: string,
+	/**  The value's path in the object. */
+	at: string,
+};
 
 /**  A value on one line, with its kind. */
 export type ValueView = {

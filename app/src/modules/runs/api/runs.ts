@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { commands, type StageName, type StoreState } from "@/lib/bindings.gen";
-import { runsKey } from "@/lib/query";
+import { keptRunKey, runsKey } from "@/lib/query";
 import type { FileQuery } from "@/modules/files";
 import { mutationFn, queryFn, type Result } from "@/utils";
 
@@ -165,7 +165,12 @@ export function useRemoveAllRuns() {
 
 /** Removes the store's rows and opens it anew, and answers its state. */
 export function useResetStore() {
-  return useStoreChange<void, StoreState>(() => commands.resetStore());
+  const queryClient = useQueryClient();
+  return useStoreChange<void, StoreState>(async () => {
+    const reset = await commands.resetStore();
+    queryClient.removeQueries({ queryKey: keptRunKey });
+    return reset;
+  });
 }
 
 /** Opens a project file or a package's evidence as a kept run, and answers its number. */

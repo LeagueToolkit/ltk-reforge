@@ -7,7 +7,7 @@ import { Button, FailureNote, SectionCard, Spinner, TabPanel, Tabs } from "@/com
 import { m } from "@/i18n";
 import type { ExploreView } from "@/lib/bindings.gen";
 import { FilesBrowser } from "@/modules/files";
-import { FindingList, worstFirst } from "@/modules/findings";
+import { EXPLORED, FindingList, RunRefContext, worstFirst } from "@/modules/findings";
 import { StaleInputsLink } from "@/modules/inputs";
 import {
   chooseArchive,
@@ -81,11 +81,13 @@ function Explored({ view }: { view: ExploreView }) {
         </TabPanel>
       )}
       <TabPanel value="findings">
-        <FindingList
-          findings={worstFirst(view.findings)}
-          empty={m.mod_findings_empty()}
-          names={view.names}
-        />
+        <RunRefContext value={EXPLORED}>
+          <FindingList
+            findings={worstFirst(view.findings)}
+            empty={m.mod_findings_empty()}
+            names={view.names}
+          />
+        </RunRefContext>
       </TabPanel>
     </Tabs>
   );

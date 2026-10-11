@@ -791,7 +791,23 @@ user picks another policy and runs again.
 - Every finding opens to its details. A fixup's `fixup.*` finding opens to the values it
   counts, object by object, each with its path and its value before and after. Another
   finding opens to its fields, and an id among them (`%f12`) shows the name the report's
-  tables give it.
+  tables give it. A hash among them, under a key that names one (`class`, `field`, `entry`,
+  `hash`, `held`, a field of `held_by`), shows the name the run's load names or the inputs'
+  tables spell, the hash on hover; the report keeps hex (#ADR-0103). `spell_hashes` spells
+  them for a run named as a `RunRef`: a kept run by its number, the last run, or the mod
+  explored. Eight hex digits are tried as an entry, a field and a class, sixteen as a path,
+  at most 4096 hashes an ask.
+- The type check's three findings (`check.type-mismatch`, `check.field-undeclared`,
+  `check.class-undeclared`) open to a row per class and field: `Class.field`, the two shapes
+  as the message writes them (`Pointer<Class>`, `Map<Hash, Embed<Class>>`), the count, and the
+  first place as `WAD · bin path · entry`. A row opens to the place of each of its values,
+  `WAD · bin path · entry · path`, the path's fields spelled. `type_places` resumes the run
+  after `build` from its snapshots against the inputs as they stand and runs the check's walk
+  again (#ADR-0103): asked once per run, when a row first opens, with a line saying the package
+  is read again. A run the inputs or the program no longer resume says so (`NOT_RESUMED`). The
+  rows are matched by their index, which the library keeps; when the package read again gives
+  another count of rows, each row shows its first place alone. A run under way and the
+  comparison of two runs name no run to ask, and their rows do not open.
 - "What changed" holds every value the fixups changed, by fixup or by object, filtered by a
   word of its object, field, path or value and by outcome. A change carries its class and
   field and its outcome from the run's own `Changes`, which the report lists in the same

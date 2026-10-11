@@ -142,6 +142,14 @@ pub enum AppError {
     /// cleared from the ingest tier.
     #[error("no tier holds the bytes under {id}")]
     BlobMissing { id: String },
+    /// A run holds no package to read again: it did not end `build`, it was opened from a
+    /// package, or it is a mod explored.
+    #[error("the run holds no package")]
+    NoPackageHeld,
+    /// A run does not resume from its snapshots against the inputs as they stand: an input or
+    /// the program changed since it ran.
+    #[error("the run does not resume: {detail}")]
+    NotResumed { detail: String },
     /// A kept run opened from a package has no snapshots and no bytes to export as a project.
     #[error("run {id} was opened from a package and has no project")]
     NoProjectOf { id: u64 },

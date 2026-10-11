@@ -2,6 +2,7 @@
 //! [`IpcResult`], and the work is in the module it calls. Work that reads the disk or a mod
 //! runs through [`off_thread`].
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -25,10 +26,11 @@ use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, We
 use crate::inputs::{Choice, InputsView};
 use crate::installs::{self, InstallView};
 use crate::lookup::{HistoryBuilds, HistoryObjectView, Lookup, LookupView};
+use crate::places::{self, RunRef, TypePlacesView};
 use crate::records::{self, RecordHead, RecordView};
 use crate::reveal::{self, Place};
 use crate::run::{
-    self, ModPeek, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch,
+    self, HeldRun, ModPeek, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch,
 };
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
@@ -376,6 +378,89 @@ fn content_of(hex: &str) -> Result<ContentId, AppError> {
     ContentId::parse(hex).ok_or_else(|| AppError::Internal {
         detail: format!("{hex:?} is no content id"),
     })
+}
+
+/// A name for each hash a run's names or the inputs' tables spell, by the hash as asked
+/// (#ADR-0103): eight hex digits an entry, a field or a class, sixteen a path. A hash none
+/// spells is left out. Refused past `places::MAX_SPELLED` hashes.
+#[tauri::command]
+#[specta::specta]
+pub async fn spell_hashes(
+    app: AppHandle,
+    run: RunRef,
+    hashes: Vec<String>,
+) -> IpcResult<BTreeMap<String, String>> {
+    let store = app.state::<RunStore>().get().ok();
+    let last = app.state::<Arc<LastRun>>().get();
+    let explored = Arc::clone(&app.state::<Arc<Explored>>());
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let book = match run {
+            RunRef::Kept { id } => match &store {
+                Some(store) => store.kept_snapshots(id)?.and_then(|kept| kept.load),
+                None => None,
+            }
+            .map(|load| load.names().clone()),
+            RunRef::Last => last
+                .as_deref()
+                .and_then(HeldRun::snapshots)
+                .map(|snapshots| snapshots.load.names().clone()),
+            RunRef::Explored => {
+                explored.with(|e| e.and_then(ExploredMod::load).map(|l| l.names().clone()))
+            }
+        };
+        // Inputs that do not open leave the run's own names.
+        let inputs = open.get(&choice).ok();
+        let names = inputs.as_deref().map(|inputs| inputs.env().names());
+        places::spell(&hashes, &book.unwrap_or_default(), names)
+    })
+    .await
+}
+
+/// Every value the type check counts in a run's package, with its place (#ADR-0103): the run
+/// resumed after `build` against the inputs the settings choose, and the check's walk run
+/// again. Takes seconds on a large port, so the window asks only when a person opens a row's
+/// places.
+#[tauri::command]
+#[specta::specta]
+pub async fn type_places(app: AppHandle, run: RunRef) -> IpcResult<TypePlacesView> {
+    let store = app.state::<RunStore>().get();
+    let last = app.state::<Arc<LastRun>>().get();
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let inputs = open.get(&choice)?;
+        match run {
+            RunRef::Kept { id } => {
+                let store = store?;
+                let (Some(kept), Some(again)) = (store.kept_run(id)?, store.run_again(id)?) else {
+                    return Err(AppError::NoPackageHeld);
+                };
+                let held = places::Held {
+                    kind: again.kind,
+                    settings: &again.settings,
+                    snapshots: kept.snapshots,
+                    layer: None,
+                };
+                places::type_places(&inputs, Some(&store), held)
+            }
+            RunRef::Last => {
+                let last = last.ok_or(AppError::NoPackageHeld)?;
+                let snapshots = last.snapshots().cloned().ok_or(AppError::NoPackageHeld)?;
+                let request = last.request();
+                let held = places::Held {
+                    kind: request.kind,
+                    settings: &request.settings,
+                    snapshots,
+                    layer: Some(Arc::clone(last.layer())),
+                };
+                places::type_places(&inputs, store.ok().as_deref(), held)
+            }
+            RunRef::Explored => Err(AppError::NoPackageHeld),
+        }
+    })
+    .await
 }
 
 /// What a kept run was run on and with, for the run page to run it again. None for a number

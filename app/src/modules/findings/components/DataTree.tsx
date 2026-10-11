@@ -1,6 +1,9 @@
-import { Fragment, type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
 
 import { m } from "@/i18n";
+
+import { useRunRef, useSpelled } from "../api/run";
+import { hashesIn, spellsAt } from "../hashes";
 
 /** How many items of a list are drawn at first, and added by each "show more". */
 const PAGE = 20;
@@ -25,9 +28,23 @@ export function hasFields(data: unknown): boolean {
   return isRecord(data) && Object.keys(data).length > 0;
 }
 
-function Leaf({ value, names }: { value: unknown; names: IdNames }) {
+/** What a node of the tree draws with: the run's names of ids, and the hashes spelled. */
+interface Spelling {
+  names: IdNames;
+  /** A name for each hash the run's names or the tables spell. */
+  spelled: Record<string, string>;
+}
+
+/** Where a node is: the key it is under, and the key of the record holding it. */
+interface At {
+  key?: string;
+  parent?: string;
+}
+
+function Leaf({ value, spelling, at }: { value: unknown; spelling: Spelling; at: At }) {
   if (typeof value === "string") {
-    const name = names[value];
+    const hashed = spellsAt(value, at.key, at.parent) ? spelling.spelled[value] : undefined;
+    const name = hashed ?? spelling.names[value];
     return name === undefined ? (
       <span className="break-all text-surface-200">{value}</span>
     ) : (
@@ -71,17 +88,22 @@ function Items({
   );
 }
 
-function Node({ value, names }: { value: unknown; names: IdNames }) {
+function Node({ value, spelling, at }: { value: unknown; spelling: Spelling; at: At }) {
   if (Array.isArray(value)) {
     const items: unknown[] = value;
     if (items.length === 0) {
       return <span className="text-surface-500">{"[]"}</span>;
     }
+    // A list's items are under the list's key.
     if (items.every((item) => !isRecord(item) && !Array.isArray(item))) {
       return (
         <span className="flex flex-col">
           <Items items={items}>
-            {(shown) => shown.map((item, at) => <Leaf key={at} value={item} names={names} />)}
+            {(shown) =>
+              shown.map((item, index) => (
+                <Leaf key={index} value={item} spelling={spelling} at={at} />
+              ))
+            }
           </Items>
         </span>
       );
@@ -90,10 +112,10 @@ function Node({ value, names }: { value: unknown; names: IdNames }) {
       <ol className="flex flex-col gap-1 border-l border-surface-700 pl-3">
         <Items items={items}>
           {(shown) =>
-            shown.map((item, at) => (
-              <li key={at} className="flex gap-2">
-                <span className="text-surface-500">{at}</span>
-                <Node value={item} names={names} />
+            shown.map((item, index) => (
+              <li key={index} className="flex gap-2">
+                <span className="text-surface-500">{index}</span>
+                <Node value={item} spelling={spelling} at={at} />
               </li>
             ))
           }
@@ -108,24 +130,28 @@ function Node({ value, names }: { value: unknown; names: IdNames }) {
           <Fragment key={key}>
             <dt className="text-surface-400">{key}</dt>
             <dd className="min-w-0">
-              <Node value={field} names={names} />
+              <Node value={field} spelling={spelling} at={{ key, parent: at.key }} />
             </dd>
           </Fragment>
         ))}
       </dl>
     );
   }
-  return <Leaf value={value} names={names} />;
+  return <Leaf value={value} spelling={spelling} at={at} />;
 }
 
 /**
  * A finding's fields as the library wrote them, each key beside its value or its fields. An id
- * the run names shows its name, the id as its title.
+ * the run names shows its name, and a hash its names or the tables spell shows that name
+ * (#ADR-0103), each with the id or the hash as its title.
  */
 export function DataTree({ value, names = {} }: { value: unknown; names?: IdNames }) {
+  const run = useRunRef();
+  const hashes = useMemo(() => hashesIn(value), [value]);
+  const spelled = useSpelled(run, hashes);
   return (
     <div className="font-mono text-xs" data-ui="DataTree">
-      <Node value={value} names={names} />
+      <Node value={value} spelling={{ names, spelled }} at={{}} />
     </div>
   );
 }

@@ -15,6 +15,7 @@ mod peek;
 mod views;
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -27,6 +28,7 @@ use reforge::model::{ByteView, ContentId, Slot, Spelled};
 use reforge::package::{CheckSelection, CheckSet, EvidenceDoc, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy, UnitTarget};
 use reforge::snapshot::{LoadInputs, Program, Snapshots, StageSettings};
+use reforge::store::{Layered, MemoryStore};
 use reforge::{Porter, Repairer, Run, RunError, Settings, Start};
 use serde::{Deserialize, Serialize};
 
@@ -336,6 +338,46 @@ pub(crate) enum Maker<'a> {
     Port(Porter<'a>),
 }
 
+impl<'a> Maker<'a> {
+    /// The repairer or the porter of a run of `kind` with `settings`, against the inputs.
+    /// Refused for settings the library does not take.
+    pub(crate) fn of(
+        inputs: &'a Inputs,
+        kind: RunKind,
+        settings: &RunSettings,
+    ) -> Result<Self, AppError> {
+        let fixups = settings.fixups()?;
+        let checks = settings.checks()?;
+        let policy = settings.policy()?;
+        let unit_targets = settings.unit_targets()?;
+        let kept_files = settings.kept_files()?;
+        let env = inputs.env();
+        Ok(match kind {
+            RunKind::Repair => Maker::Repair(
+                Repairer::new(env)
+                    .fixups(fixups)
+                    .checks(checks)
+                    .keep_stale(settings.keep_stale)
+                    .keep_files(kept_files)
+                    .keep_dds(settings.keep_dds),
+            ),
+            RunKind::Port => Maker::Port(
+                Porter::new(env)
+                    .policy(policy)
+                    .unit_targets(unit_targets)
+                    .compare(policy.other_levels())
+                    .fixups(fixups)
+                    .checks(checks)
+                    .keep_stale(settings.keep_stale)
+                    .keep_files(kept_files)
+                    .game_events_only(settings.game_events_only)
+                    .keep_other_slots(settings.keep_other_slots)
+                    .keep_dds(settings.keep_dds),
+            ),
+        })
+    }
+}
+
 impl Maker<'_> {
     /// The maker with `cancel` handed to each of its runs.
     fn cancel(self, cancel: &Cancel) -> Self {
@@ -360,21 +402,43 @@ impl Maker<'_> {
         store: Option<&AppStore>,
         watch: &mut dyn Watch,
     ) -> Run<'_> {
-        let mut log = inputs.log();
-        if let Some(mut listener) = watch.findings() {
-            log.listen(move |diagnostic| listener(Finding::of(diagnostic, &Render::plain())));
-        }
-        let run = match self {
-            Maker::Repair(repairer) => repairer.run(),
-            Maker::Port(porter) => porter.run(),
-        }
-        .log_from(log);
+        let run = self.bare(inputs, watch);
         match store {
             None => run,
             Some(store) => run
                 .in_store(store.tier().clone())
                 .in_cache(store.ingest().clone()),
         }
+    }
+
+    /// A new run as [`Maker::start`] makes one, reading through `layer`, a held run's bytes,
+    /// over the store's tiers. Nothing hears it.
+    pub(crate) fn start_over(
+        &self,
+        inputs: &Inputs,
+        store: Option<&AppStore>,
+        layer: Arc<MemoryStore>,
+    ) -> Run<'_> {
+        let run = self.bare(inputs, &mut Unwatched);
+        match store {
+            None => run.in_store(layer),
+            Some(store) => run
+                .in_store(Layered::new(layer, store.tier().clone()))
+                .in_cache(store.ingest().clone()),
+        }
+    }
+
+    /// A new run, its log the inputs' with `watch` listening, over a store of its own.
+    fn bare(&self, inputs: &Inputs, watch: &mut dyn Watch) -> Run<'_> {
+        let mut log = inputs.log();
+        if let Some(mut listener) = watch.findings() {
+            log.listen(move |diagnostic| listener(Finding::of(diagnostic, &Render::plain())));
+        }
+        match self {
+            Maker::Repair(repairer) => repairer.run(),
+            Maker::Port(porter) => porter.run(),
+        }
+        .log_from(log)
     }
 }
 
@@ -428,13 +492,8 @@ fn run_with(
     cancel: Option<&Cancel>,
     hold: bool,
 ) -> Result<(RunView, HeldRun), AppError> {
-    let settings = &request.settings;
-    let fixups = settings.fixups()?;
-    let checks = settings.checks()?;
-    let blocking = settings.blocking()?;
-    let policy = settings.policy()?;
-    let unit_targets = settings.unit_targets()?;
-    let kept_files = settings.kept_files()?;
+    let blocking = request.settings.blocking()?;
+    let maker = Maker::of(inputs, request.kind, &request.settings)?;
     let out = match (request.through, &request.out) {
         (StageName::Write, None) => return Err(AppError::NoOutput),
         (StageName::Write, Some(out)) => Some(Utf8PathBuf::from(out)),
@@ -442,30 +501,6 @@ fn run_with(
     };
 
     let started = Instant::now();
-    let env = inputs.env();
-    let maker = match request.kind {
-        RunKind::Repair => Maker::Repair(
-            Repairer::new(env)
-                .fixups(fixups)
-                .checks(checks)
-                .keep_stale(settings.keep_stale)
-                .keep_files(kept_files)
-                .keep_dds(settings.keep_dds),
-        ),
-        RunKind::Port => Maker::Port(
-            Porter::new(env)
-                .policy(policy)
-                .unit_targets(unit_targets)
-                .compare(policy.other_levels())
-                .fixups(fixups)
-                .checks(checks)
-                .keep_stale(settings.keep_stale)
-                .keep_files(kept_files)
-                .game_events_only(settings.game_events_only)
-                .keep_other_slots(settings.keep_other_slots)
-                .keep_dds(settings.keep_dds),
-        ),
-    };
     let maker = match cancel {
         Some(cancel) => maker.cancel(cancel),
         None => maker,

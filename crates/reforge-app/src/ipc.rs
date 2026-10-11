@@ -44,6 +44,8 @@ pub fn builder() -> Builder<Wry> {
             commands::cancel_run,
             commands::last_files,
             commands::last_file,
+            commands::spell_hashes,
+            commands::type_places,
             commands::peek_mod,
             commands::list_archives,
             commands::explore_mod,

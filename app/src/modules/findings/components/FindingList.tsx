@@ -8,7 +8,9 @@ import type { Finding, Severity } from "@/lib/bindings.gen";
 import { RecordLink } from "@/modules/records";
 import { twMerge } from "@/utils";
 
+import { typeFinding } from "../types";
 import { DataTree, hasFields, type IdNames, subjectName } from "./DataTree";
+import { TypeDetail } from "./TypeDetail";
 
 function severityIcon(severity: Severity): ReactNode {
   return match(severity)
@@ -56,6 +58,12 @@ function FindingHead({ finding, folds, names }: FindingHeadProps) {
   );
 }
 
+/** A finding's fields: a type check's rows as their own detail, another's as their tree. */
+function FieldsOf({ finding, names }: { finding: Finding; names: IdNames | undefined }) {
+  const found = typeFinding(finding);
+  return found ? <TypeDetail found={found} /> : <DataTree value={finding.data} names={names} />;
+}
+
 interface FindingRowProps {
   finding: Finding;
   detail: ReactNode;
@@ -78,7 +86,7 @@ function FindingRow({ finding, detail, names }: FindingRowProps) {
         summaryClassName="py-2"
         panelClassName="pb-3 pl-12"
       >
-        {detail ?? <DataTree value={finding.data} names={names} />}
+        {detail ?? <FieldsOf finding={finding} names={names} />}
       </Disclosure>
     </li>
   );

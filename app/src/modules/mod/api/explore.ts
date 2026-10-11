@@ -1,13 +1,11 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { commands } from "@/lib/bindings.gen";
+import { exploreKey } from "@/lib/query";
 import type { FileQuery } from "@/modules/files";
 import { unwrap } from "@/utils";
 
 import { useModStore } from "../state/modStore";
-
-/** Every read of the mod explored, which the next explore replaces. */
-const exploreKey = ["explore"] as const;
 
 /**
  * Explores the archive picked through `load`, and keeps the view as the page's. The reads of

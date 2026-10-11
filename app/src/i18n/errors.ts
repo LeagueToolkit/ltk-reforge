@@ -155,6 +155,15 @@ export function describeError(error: AppError): ErrorCopy {
       description: m["error.BLOB_MISSING.description"](),
       detail: id,
     }))
+    .with({ code: "NO_PACKAGE_HELD" }, () => ({
+      title: m["error.NO_PACKAGE_HELD.title"](),
+      description: m["error.NO_PACKAGE_HELD.description"](),
+    }))
+    .with({ code: "NOT_RESUMED" }, ({ detail }) => ({
+      title: m["error.NOT_RESUMED.title"](),
+      description: m["error.NOT_RESUMED.description"](),
+      detail,
+    }))
     .with({ code: "NO_PROJECT_OF" }, () => ({
       title: m["error.NO_PROJECT_OF.title"](),
       description: m["error.NO_PROJECT_OF.description"](),

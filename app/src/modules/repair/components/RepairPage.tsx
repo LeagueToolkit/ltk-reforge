@@ -1,5 +1,6 @@
 import { SegmentedControl } from "@/components";
 import { m } from "@/i18n";
+import { LAST_RUN, RunRefContext } from "@/modules/findings";
 import { StaleInputsLink } from "@/modules/inputs";
 
 import { useRunEvents } from "../api/run";
@@ -16,6 +17,8 @@ import { SimpleRepair } from "./SimpleRepair";
 export function RepairPage() {
   const mode = useRepairStore((state) => state.mode);
   const setMode = useRepairStore((state) => state.setMode);
+  // The backend holds the run that ended last; a run under way is not yet it.
+  const ended = useRepairStore((state) => state.last != null && state.live == null);
   useRunEvents();
 
   const modes: { value: RepairMode; label: string }[] = [
@@ -41,9 +44,11 @@ export function RepairPage() {
         />
       </div>
       <ModCard />
-      {mode === "simple" && <SimpleRepair />}
-      {mode === "guided" && <GuidedRepair />}
-      {mode === "advanced" && <AdvancedRepair />}
+      <RunRefContext value={ended ? LAST_RUN : null}>
+        {mode === "simple" && <SimpleRepair />}
+        {mode === "guided" && <GuidedRepair />}
+        {mode === "advanced" && <AdvancedRepair />}
+      </RunRefContext>
     </div>
   );
 }

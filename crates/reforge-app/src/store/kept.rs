@@ -1,5 +1,6 @@
 //! The kept run a rerun resumes from (#ADR-0094, #ADR-0096): the newest run of one load and
-//! kind, with the snapshots its row holds.
+//! kind, with the snapshots its row holds; and a kept run by its number, which a read of its
+//! package resumes (#ADR-0103).
 
 use reforge::snapshot::Snapshots;
 use rusqlite::OptionalExtension;
@@ -41,20 +42,40 @@ impl AppStore {
             let rows = self.rows.lock();
             let mut statement = rows.prepare(query)?;
             statement
-                .query_row([key, kind_text(kind)], |row| {
-                    let later = [3, 4, 5, 6, 7, 8].map(|at| row.get(at));
-                    let [fix, facts, decide, plan, build, check] = later;
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        [fix?, facts?, decide?, plan?, build?, check?],
-                    ))
-                })
+                .query_row([key, kind_text(kind)], columns_of)
                 .optional()?
         };
         columns.map(kept_run).transpose()
     }
+
+    /// A kept run by its number, its snapshots unpacked. None for a number no run has, and
+    /// for a run opened from a package, which has no snapshots.
+    pub fn kept_run(&self, id: u64) -> Result<Option<KeptRun>, AppError> {
+        let Ok(id) = i64::try_from(id) else {
+            return Ok(None);
+        };
+        let query = "SELECT run.id, run.kind, load.json, run.fix, run.facts, run.decide,
+               run.plan, run.build, run.\"check\"
+             FROM run JOIN load ON load.id = run.load_id WHERE run.id = ?1";
+        let columns: Option<Columns> = {
+            let rows = self.rows.lock();
+            let mut statement = rows.prepare(query)?;
+            statement.query_row([id], columns_of).optional()?
+        };
+        columns.map(kept_run).transpose()
+    }
+}
+
+/// A run's row as [`Columns`].
+fn columns_of(row: &rusqlite::Row<'_>) -> rusqlite::Result<Columns> {
+    let later = [3, 4, 5, 6, 7, 8].map(|at| row.get(at));
+    let [fix, facts, decide, plan, build, check] = later;
+    Ok((
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        [fix?, facts?, decide?, plan?, build?, check?],
+    ))
 }
 
 /// A kept run from its row's columns.

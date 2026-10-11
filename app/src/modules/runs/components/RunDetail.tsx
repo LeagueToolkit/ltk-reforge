@@ -12,6 +12,7 @@ import { Button, FailureNote, Spinner, TabPanel, Tabs, Tooltip } from "@/compone
 import { m } from "@/i18n";
 import type { RunRow, RunView, StageName } from "@/lib/bindings.gen";
 import { heldStages } from "@/modules/files";
+import { keptRun, RunRefContext } from "@/modules/findings";
 import { pickSavePath } from "@/modules/inputs";
 import { endedResults, RunResults, StageStrip, useRepairStore } from "@/modules/repair";
 import { twMerge } from "@/utils";
@@ -321,29 +322,31 @@ export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
       {against == null && view.isPending && <Spinner />}
       {against == null && view.isError && <FailureNote failure={view.error} />}
       {against == null && view.data && (
-        <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.runs_tabs_label()}>
-          <TabPanel value="result">
-            <ResultTab view={view.data} onFiles={openFiles} />
-          </TabPanel>
-          {held.length > 0 && (
-            <TabPanel value="files">
-              <FilesTab
-                id={row.id}
-                stages={held}
-                stage={filesStage ?? held[held.length - 1]}
-                onStage={setFilesStage}
-              />
+        <RunRefContext value={keptRun(row.id)}>
+          <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.runs_tabs_label()}>
+            <TabPanel value="result">
+              <ResultTab view={view.data} onFiles={openFiles} />
             </TabPanel>
-          )}
-          {held.length === 0 && opened && (
-            <TabPanel value="files">
-              <NoSnapshots />
+            {held.length > 0 && (
+              <TabPanel value="files">
+                <FilesTab
+                  id={row.id}
+                  stages={held}
+                  stage={filesStage ?? held[held.length - 1]}
+                  onStage={setFilesStage}
+                />
+              </TabPanel>
+            )}
+            {held.length === 0 && opened && (
+              <TabPanel value="files">
+                <NoSnapshots />
+              </TabPanel>
+            )}
+            <TabPanel value="report">
+              <ReportTab id={row.id} opened={opened} />
             </TabPanel>
-          )}
-          <TabPanel value="report">
-            <ReportTab id={row.id} opened={opened} />
-          </TabPanel>
-        </Tabs>
+          </Tabs>
+        </RunRefContext>
       )}
     </div>
   );

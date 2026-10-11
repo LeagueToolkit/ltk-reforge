@@ -16,7 +16,7 @@ import {
   type StageEvent,
   type StageName,
 } from "@/lib/bindings.gen";
-import { jobKey, runsKey } from "@/lib/query";
+import { jobKey, lastKey, runsKey } from "@/lib/query";
 import type { FileQuery } from "@/modules/files";
 import { queryFn, unwrap } from "@/utils";
 
@@ -50,9 +50,6 @@ export function useRunRunning(): boolean {
 export function useJobRunning(): boolean {
   return useIsMutating({ mutationKey: jobKey }) > 0;
 }
-
-/** Every read of the last run, which the next run replaces. */
-const lastKey = ["last"] as const;
 
 /**
  * Runs a mod as a request asks, and keeps its answer as the page's last run. A run the store

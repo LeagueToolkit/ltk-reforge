@@ -2,6 +2,33 @@
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "findings_by_label": "by {by}",
   "findings_more_action": "Show {count} more",
+  "findings_places_capped": "The first {shown} of {count} places",
+  "findings_places_differ": "The package read again gives other rows than this finding, so each row shows its first place alone.",
+  "findings_places_reading": "Reading the package again to find each value. A large port takes a few seconds.",
+  "findings_type_class_held_row": "{field} holds {held}",
+  "findings_type_class_object_row": "{held} as an object",
+  "findings_type_first": "first at {place}",
+  "findings_type_mismatched_row": "{field} holds {found}, the build reads {wants}",
+  "findings_type_structs": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} struct",
+        "countPlural=other": "{count} structs"
+      }
+    }
+  ],
+  "findings_type_values": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} value",
+        "countPlural=other": "{count} values"
+      }
+    }
+  ],
   "severity.error.label": "Error",
   "severity.fatal.label": "Fatal",
   "severity.note.label": "Note",
