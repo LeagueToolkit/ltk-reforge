@@ -76,7 +76,7 @@ fn the_riot_clients_list_gives_its_live_and_pbe_installs_with_a_game() {
     .unwrap();
 
     let mut found = riot_client_installs(&file);
-    found.sort_by(|a, b| a.source.cmp(&b.source));
+    found.sort_by_key(|found| found.source);
     assert_eq!(
         found,
         [
