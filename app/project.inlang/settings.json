@@ -17,6 +17,7 @@
       "./messages/{locale}/repair.json",
       "./messages/{locale}/rules.json",
       "./messages/{locale}/run.json",
+      "./messages/{locale}/runs.json",
       "./messages/{locale}/settings.json",
       "./messages/{locale}/shell.json",
       "./messages/{locale}/stages.json",

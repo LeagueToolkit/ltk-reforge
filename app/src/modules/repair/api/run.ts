@@ -1,4 +1,10 @@
-import { queryOptions, useIsMutating, useMutation, useQuery } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect } from "react";
 
 import {
@@ -8,6 +14,7 @@ import {
   type RunRequest,
   type StageName,
 } from "@/lib/bindings.gen";
+import { runsKey } from "@/lib/query";
 import { queryFn, unwrap } from "@/utils";
 
 import { startedRun, useRepairStore, withPart } from "../state/repairStore";
@@ -36,17 +43,26 @@ export function useRunRunning(): boolean {
   return useIsMutating({ mutationKey: runKey }) > 0;
 }
 
-/** Runs a mod as a request asks, and keeps its answer as the page's last run. */
+/**
+ * Runs a mod as a request asks, and keeps its answer as the page's last run. A run the store
+ * kept asks the store's reads again.
+ */
 export function useRunMod() {
   const setLast = useRepairStore((state) => state.setLast);
   const setLive = useRepairStore((state) => state.setLive);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationKey: runKey,
     mutationFn: async (request: RunRequest) => {
       setLive(() => startedRun());
       return unwrap(await commands.runMod(request));
     },
-    onSuccess: (view) => setLast(view),
+    onSuccess: (view) => {
+      setLast(view);
+      if (view.saved != null) {
+        void queryClient.invalidateQueries({ queryKey: runsKey });
+      }
+    },
     onSettled: () => setLive(() => null),
   });
 }

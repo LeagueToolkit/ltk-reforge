@@ -1,0 +1,49 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "runs_ago_days": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} day ago",
+        "countPlural=other": "{count} days ago"
+      }
+    }
+  ],
+  "runs_ago_hours": "{count} h ago",
+  "runs_ago_minutes": "{count} min ago",
+  "runs_ago_now": "just now",
+  "runs_ago_yesterday": "yesterday",
+  "runs_by_label": "by {author}",
+  "runs_empty": "No run has written a package yet. A run that writes one is kept here.",
+  "runs_empty_link": "Run a mod",
+  "runs_filter_label": "Filter runs",
+  "runs_filter_placeholder": "Filter by name or author",
+  "runs_keep_action": "Keep",
+  "runs_keep_description": "A kept run is never removed to make room for new ones",
+  "runs_kept_label": "Kept",
+  "runs_kind.port.label": "Port",
+  "runs_kind.repair.label": "Repair",
+  "runs_list_label": "Kept runs",
+  "runs_none_match": "No run matches the filter",
+  "runs_package_label": "Wrote a package",
+  "runs_page_title": "Runs",
+  "runs_pick_hint": "Pick a run to see what it did",
+  "runs_remove_action": "Remove",
+  "runs_remove_description": "Its rows and the bytes no other run names are removed. The package it wrote stays where it is.",
+  "runs_remove_title": "Remove this run?",
+  "runs_report_note": "The report the package embeds, as JSON.",
+  "runs_reveal_action": "Show package",
+  "runs_storage_bytes": "Rows {rows} · run tier {tier} · ingest tier {ingest}",
+  "runs_storage_counts": "{runs} runs, {kept} kept, of {mods} mods",
+  "runs_storage_label": "Runs",
+  "runs_storage_remove_action": "Remove all",
+  "runs_storage_remove_description": "Every run and the bytes only runs name are removed. The ingest tier and the packages written stay.",
+  "runs_storage_remove_title": "Remove every run?",
+  "runs_storage_tier_hint": "The run tier reserves 64 MB for its journal, so it is never smaller.",
+  "runs_tab_report": "Report",
+  "runs_tab_result": "Result",
+  "runs_tabs_label": "The run",
+  "runs_thumbnail_alt": "The package's thumbnail",
+  "runs_version_label": "version {version}"
+}

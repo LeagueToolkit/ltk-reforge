@@ -1,8 +1,14 @@
-import { GearSixIcon, StackIcon, WrenchIcon } from "@phosphor-icons/react";
+import {
+  ClockCounterClockwiseIcon,
+  GearSixIcon,
+  StackIcon,
+  WrenchIcon,
+} from "@phosphor-icons/react";
 import { Link, type LinkProps } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { m } from "@/i18n";
+import { twMerge } from "@/utils";
 
 function NavLink({
   to,
@@ -27,11 +33,16 @@ function NavLink({
 interface ShellProps {
   /** A mark beside the inputs page's name, for inputs that call for it. */
   inputsMark?: ReactNode;
+  /**
+   * The page takes the window's whole width, for a page of panes side by side. A route sets
+   * it through its `staticData`.
+   */
+  wide?: boolean;
   children: ReactNode;
 }
 
 /** The app's frame: the pages on the left, the page beside them. */
-export function Shell({ inputsMark, children }: ShellProps) {
+export function Shell({ inputsMark, wide = false, children }: ShellProps) {
   return (
     <div className="flex h-screen bg-surface-950 text-surface-100" data-ui="Shell">
       <nav
@@ -46,6 +57,10 @@ export function Shell({ inputsMark, children }: ShellProps) {
           <WrenchIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_repair_label()}
         </NavLink>
+        <NavLink to="/runs">
+          <ClockCounterClockwiseIcon weight="bold" className="h-4 w-4" />
+          {m.shell_nav_runs_label()}
+        </NavLink>
         <NavLink to="/inputs">
           <StackIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_inputs_label()}
@@ -59,7 +74,7 @@ export function Shell({ inputsMark, children }: ShellProps) {
       <main className="min-w-0 flex-1 overflow-y-auto p-8" data-ui="Shell:main">
         {/* The width the pages are drawn at by the default window. A wider window buys
             margins, as LTK Manager's pages do: lines past it read worse, not better. */}
-        <div className="mx-auto w-full max-w-4xl" data-ui="Shell:page">
+        <div className={twMerge("mx-auto w-full", !wide && "max-w-4xl")} data-ui="Shell:page">
           {children}
         </div>
       </main>

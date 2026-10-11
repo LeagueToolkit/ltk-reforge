@@ -1,5 +1,6 @@
 // The inputs module's picker is behind a barrel that reads the settings: a cycle.
 import { open } from "@tauri-apps/plugin-dialog";
+import type { ReactNode } from "react";
 
 import { Button, FailureNote, SectionCard, SegmentedControl, Spinner } from "@/components";
 import { m } from "@/i18n";
@@ -9,8 +10,16 @@ import { useSaveSettings, useSettings } from "../api/settings";
 
 const THEMES: Theme[] = ["system", "dark", "light"];
 
+interface SettingsPageProps {
+  /**
+   * The rows of the storage group: what the app keeps on disk. Modules that read the settings
+   * give them, through the route, so this module imports none of them.
+   */
+  storage?: ReactNode;
+}
+
 /** The settings, a section per domain. */
-export function SettingsPage() {
+export function SettingsPage({ storage }: SettingsPageProps) {
   const settings = useSettings();
   const save = useSaveSettings();
 
@@ -76,6 +85,7 @@ export function SettingsPage() {
           </div>
         </div>
       </SectionCard>
+      {storage && <SectionCard title={m.settings_storage_title()}>{storage}</SectionCard>}
       {save.isError && <FailureNote failure={save.error} />}
     </div>
   );
