@@ -235,11 +235,11 @@ moved aside or a save a crash ended between its flush and its rows. The rows and
 are behind one lock, so a sweep never runs while a save flushes. The ingest tier is not swept.
 
 The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
-`run_view` (the view the run ended with, its number set), `run_files`, `run_file` and
-`run_settings` ("The Runs page"), `keep_run`, `remove_run`, `remove_mod_runs`,
-`remove_all_runs`, `mod_ingest_bytes`, `clear_mod_ingest`, `clear_unused_ingest` and
-`store_view` (each tier's bytes, and the ingest bytes no run's archive names, for the
-settings page). A removal or a clear while a run is under way is refused. A
+`run_view` (the view the run ended with, its number set), `run_files`, `run_file`,
+`run_settings`, `compare_runs` and `compare_files` ("The Runs page"), `keep_run`,
+`remove_run`, `remove_mod_runs`, `remove_all_runs`, `mod_ingest_bytes`, `clear_mod_ingest`,
+`clear_unused_ingest` and `store_view` (each tier's bytes, and the ingest bytes no run's
+archive names, for the settings page). A removal or a clear while a run is under way is refused. A
 store that does not open at start, such as one another instance of the app holds, leaves the
 runs unkept, and its commands answer why.
 
@@ -259,7 +259,7 @@ filters by name and author. With no run kept, the page says none has written a p
 links to the run page.
 
 **The detail** has a header with the package's thumbnail (the first letter of the name when
-there is none), the name, the version, the author and the file name, and four actions:
+there is none), the name, the version, the author and the file name, and five actions:
 
 - **Keep** (`keep_run`).
 - **Show package** (`reveal_place` with the place `run`, which names the run and never a path),
@@ -268,6 +268,9 @@ there is none), the name, the version, the author and the file name, and four ac
   page's store as if picked and typed, the advanced view shown and the page opened; nothing
   runs until the person presses Run. Off, with a note saying so, when no file is at the
   archive's path. A run whose archive data was cleared runs again from the archive.
+- **Compare…**: a dialog of the other kept runs, those of the same mod first under a heading
+  of their own, then the rest, each drawn as the list draws it. The run picked is compared
+  with this one ("The comparison"). Off while the store keeps no other run.
 - **Remove**, a menu of three, each asked about first with what it frees: this run
   (`remove_run`), every run of this mod (`remove_mod_runs`, with how many), and this mod's
   archive data (`clear_mod_ingest`, with the bytes `mod_ingest_bytes` gives, at most what it
@@ -287,6 +290,30 @@ Under them are three tabs:
   hides the files that are the same. A WAD opens at first and a folder closed, so a WAD of
   thousands of files draws its rows as they are opened. The file picked opens below the tree.
 - **Report**: the report the package embeds (`run_report`), as its JSON.
+
+**The comparison** (#ADR-0091) takes the tabs' place in the detail, with a Back button that
+gives them back. It is a diff of what the two runs answered (`compare_runs`), and adds no rule
+about a mod. Its header has two columns, the run that was open on the left and the one picked
+on the right, each with its name, kind, when and package file name, and a note when the two
+are of different archives by their SHA-256. Under it, one card each, an empty one saying so:
+
+- **Settings and inputs**: the request's settings that differ, then what the runs were judged
+  under that differs: the program and the install's build, the history's newest build and
+  head and the hash tables, as the load snapshots hold them, and the schema's build. A key per
+  row the window names; a value in mono, a switch as on or off.
+- **Findings**: how many are in both, then the left run's findings the right lacks, marked
+  with a minus, beside the right run's the left lacks, marked with a plus, each opening to its
+  details as on the run page. A finding is matched by its code, its subject and its message,
+  not its id, which another setting shifts.
+- **Targets**, when both runs are ports: each unit of either, matched by its character and
+  slot, with each run's skin and reason; the rows that differ first, marked.
+- **Fixups**: each fixup that changed something in either run, with each run's counts by
+  outcome; the rows that differ first, marked.
+- **Package**: the two packages side by side, each with its thumbnail and what it holds.
+- **Files**: the Files tab over the stages both runs hold files for, the right run's files
+  marked against the left run's at the same stage (`compare_files`), "Changed only" on at
+  first, a mark's word saying it is against the other run. A run that lacks the stage answers
+  `NO_FILES_AT_STAGE`.
 
 **The marks.** A stage's files are marked against the nearest earlier stage the run holds files
 for: `fix` against `load`, `plan` against `fix`, and `build` against `plan` in a port and
@@ -513,8 +540,8 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    compared, a run removed and the store swept; the records bundled and opened from a fixup
    or a finding. Built: the store, its sweep and the Runs page, with a run's result, its files
    at each stage and one file opened, and the store's row in the settings; a rerun resumed
-   from a kept run's snapshots, a kept run run again from the Runs page, and the ingest tier
-   cleared by mod and of what no run names. Left: two runs compared, a package's evidence
+   from a kept run's snapshots, a kept run run again from the Runs page, the ingest tier
+   cleared by mod and of what no run names, and two runs compared. Left: a package's evidence
    read, the project file, and the records.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
 
