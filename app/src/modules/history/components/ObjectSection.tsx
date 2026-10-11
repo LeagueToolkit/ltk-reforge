@@ -183,7 +183,10 @@ export function ObjectSection({
             </label>
           </div>
           {other == null || other === at.position ? (
-            <pre className={twMerge(preClass, "text-surface-200")}>{object.data.text}</pre>
+            <pre className={twMerge(preClass, "text-surface-200")}>
+              {object.data.text}
+              {object.data.cut && `\n${m.history_object_cut()}`}
+            </pre>
           ) : (
             <Compare asked={asked} at={at} object={object.data} other={other} builds={builds} />
           )}

@@ -61,6 +61,7 @@
   "history_no_index": "No history index is chosen.",
   "history_no_index_link": "Choose one on the Inputs page",
   "history_object_bin_label": "Bin",
+  "history_object_cut": "… the object holds more than is shown",
   "history_object_description": "An object of a bin at {version}, its names spelled through the hash tables",
   "history_object_entry_label": "Entry",
   "history_object_hint": "Pick an entry of the bin or an object that names the path, or type a bin and an entry",

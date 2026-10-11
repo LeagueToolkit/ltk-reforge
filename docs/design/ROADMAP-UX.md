@@ -536,8 +536,10 @@ three characters or more (`Names::first_paths_with_prefix`, which reads the hash
 further than it needs: collecting every path of a three-letter prefix took 4.4 s on this
 machine, 2026-10-11). `history_object` takes a bin, a path or a hash, an entry, a name or
 eight hex digits, and a build, and answers the object as text: `History::object_bytes`,
-`model::bin::read_stored`, then `dump_object` with the tables' names. A build that holds no
-such object answers none, and bytes that do not read are `HISTORY_OBJECT_UNREADABLE`.
+`model::bin::read_stored`, then `dump_object` with the tables' names. The text is capped at
+the file viewer's bound for a bin's text (`MAX_BIN_TEXT`), cut at a line end and said to be
+cut. A build that holds no such object answers none, and bytes that do not read are
+`HISTORY_OBJECT_UNREADABLE`.
 
 **The page.** A search box takes a path or a hash and lists the suggestions under it as the
 person types, picked with a click or with Enter; a select picks the build, newest first, the
@@ -547,7 +549,8 @@ WADs with the content id shortened and whole on hover; Named by, each object a l
 opens it below; and Bin, when the path is a bin at the build, with its WAD, its links as chips
 that look the linked path up at the same build, and its entries in a table with a filter,
 each entry a link that opens it. The Object card holds the bin and the entry, filled by those
-links or typed, and shows the object's text with its class, its WAD and its life. "Compare
+links or typed, and shows the object's text with its class, its WAD and its life, a cut text
+ending in a line that says so, as the file viewer's does. "Compare
 with" picks another build: the object at that build is asked for and the card shows a unified
 line diff of the two texts in place of the text, removed lines in the danger tone, added
 lines in the success tone, the rest dimmed.

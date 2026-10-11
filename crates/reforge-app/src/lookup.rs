@@ -11,6 +11,7 @@ use reforge::model::{BinHash, WadHash, clean, name_hash, path_hash};
 use serde::Serialize;
 
 use crate::error::{AppError, chain};
+use crate::store::MAX_BIN_TEXT;
 
 /// The most objects naming a path a lookup answers: a page's table, and the rest said to be
 /// left out.
@@ -197,8 +198,11 @@ impl EntryQuery {
 /// A game object at a build, as text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct HistoryObjectView {
-    /// The object as text, its hashes spelled where the tables spell them.
+    /// The object as text, its hashes spelled where the tables spell them, up to
+    /// [`MAX_BIN_TEXT`] cut at a line end.
     pub text: String,
+    /// Whether the object's text holds more than is shown.
+    pub cut: bool,
     /// Its class, spelled, else its hash.
     pub class: String,
     /// The WAD whose bin held it: the first in the census history's order.
@@ -217,6 +221,21 @@ fn hex_digits(text: &str, digits: usize) -> Option<u64> {
     all_hex
         .then(|| u64::from_str_radix(bare, 16).ok())
         .flatten()
+}
+
+/// Text up to [`MAX_BIN_TEXT`] bytes, as the file viewer shows a bin's, cut after the last line
+/// end within the bound, else at a character; and whether it was cut.
+fn capped(mut text: String) -> (String, bool) {
+    if text.len() <= MAX_BIN_TEXT {
+        return (text, false);
+    }
+    let within = &text.as_bytes()[..MAX_BIN_TEXT];
+    let end = match within.iter().rposition(|&byte| byte == b'\n') {
+        Some(at) => at + 1,
+        None => text.floor_char_boundary(MAX_BIN_TEXT),
+    };
+    text.truncate(end);
+    (text, true)
 }
 
 fn unanswered(error: HistoryError) -> AppError {
@@ -363,8 +382,10 @@ impl<'a> Lookup<'a> {
         })?;
         let book = NameBook::new();
         let speller = Speller::new(&book, self.names);
+        let (text, cut) = capped(dump_object(&object, &speller));
         Ok(Some(HistoryObjectView {
-            text: dump_object(&object, &speller),
+            text,
+            cut,
             class: self.class_name(stored.class),
             wad: clean(&stored.wad).into_owned(),
             life: self.life(stored.life),

@@ -26,7 +26,8 @@ use crate::error::AppError;
 /// two, and well past the largest texture or bin a skin ships.
 pub const MAX_DECODED: u64 = 64 << 20;
 
-/// The most text of a bin's objects shown: whole objects up to it.
+/// The most text of a bin's objects shown: whole objects up to it, and one object of the history
+/// cut at a line end.
 pub const MAX_BIN_TEXT: usize = 2 << 20;
 
 /// The most text of a text file shown.

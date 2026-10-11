@@ -1019,8 +1019,13 @@ export type HistoryBuilds = {
 
 /**  A game object at a build, as text. */
 export type HistoryObjectView = {
-	/**  The object as text, its hashes spelled where the tables spell them. */
+	/**
+	 *  The object as text, its hashes spelled where the tables spell them, up to
+	 *  [`MAX_BIN_TEXT`] cut at a line end.
+	 */
 	text: string,
+	/**  Whether the object's text holds more than is shown. */
+	cut: boolean,
 	/**  Its class, spelled, else its hash. */
 	class: string,
 	/**  The WAD whose bin held it: the first in the census history's order. */

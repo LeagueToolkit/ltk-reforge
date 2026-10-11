@@ -12,6 +12,7 @@ use reforge::history::{BinEntry, NoHistory};
 use reforge::model::{BinHash, NormKey, ObjectKey, WadHash, name_hash, path_hash};
 use reforge_app::error::AppError;
 use reforge_app::lookup::{BuildView, EntryQuery, Lookup, MAX_NAMED_BY, PathQuery};
+use reforge_app::store::MAX_BIN_TEXT;
 use reforge_testkit::history::{MemoryHistory, file_key};
 use tempfile::TempDir;
 
@@ -318,11 +319,38 @@ fn an_object_at_a_build_is_its_text_with_names_spelled() {
             .starts_with(&format!("{SKIN_ENTRY} = {SKIN_CLASS} {{"))
     );
     assert!(first.text.contains(SKIN_NAME_FIELD) && first.text.contains("\"Lux\""));
+    assert!(!first.cut);
 
     let bin = format!("{:016x}", path_hash(SKIN).0);
     let entry = format!("0x{:08x}", name_hash(SKIN_ENTRY).0);
     let later = lookup.object(&bin, &entry, 3).unwrap().unwrap();
     assert!(later.text.contains("\"Luxanna\""));
+}
+
+#[test]
+fn an_object_whose_text_passes_the_bound_is_cut_at_a_line_end() {
+    // A bin string holds at most a u16's length, so the text passes the bound over many fields.
+    let long = "x".repeat(60_000);
+    let fields = MAX_BIN_TEXT / long.len() + 2;
+    let mut object = BinObject::builder(name_hash(SKIN_ENTRY), name_hash(SKIN_CLASS));
+    for field in 0..fields {
+        let name = format!("field{field}");
+        object = object.property(name_hash(&name), values::String::from(long.as_str()));
+    }
+    let mut out = Cursor::new(Vec::new());
+    object.build().to_writer(&mut out).unwrap();
+    let stored = out.into_inner().split_off(4);
+    let names = Names::default();
+    let history =
+        history().with_object_bytes(CHAMPION_WAD, (SKIN_ENTRY, SKIN_CLASS, SKIN), stored, 0..=3);
+    let lookup = Lookup::new(&history, &names).unwrap();
+
+    let found = lookup.object(SKIN, SKIN_ENTRY, 0).unwrap().unwrap();
+
+    assert!(found.cut);
+    assert!(found.text.len() <= MAX_BIN_TEXT, "{}", found.text.len());
+    assert!(found.text.ends_with('\n'));
+    assert!(found.text.len() > MAX_BIN_TEXT - long.len() - 64);
 }
 
 #[test]
