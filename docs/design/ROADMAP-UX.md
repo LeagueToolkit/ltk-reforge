@@ -35,7 +35,8 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   Manager's lint rules apply as its own, so the warnings it gives on its components are given
   here too.
 - The pages share one column, centred, at the width the default window draws them at. A wider
-  window buys margins, as LTK Manager's pages do (its `docs/ux/HOME.md`, "Layout").
+  window buys margins, as LTK Manager's pages do (its `docs/ux/HOME.md`, "Layout"). A page of
+  panes side by side, the Runs page, takes the whole width.
 - The crate's modules: `inputs` opens the inputs once and raises what they found into every
   run's log, as the command raises it when it opens them; `state` holds them open for the
   settings as they stand; `run` takes a request (the kind, the archive, the last stage, the
@@ -83,9 +84,9 @@ show it where it shows the fixup.
 
 - **The report's types as TypeScript.** The parts of a `Report` are Rust types with `Serialize`
   only; the app's bindings are generated from its own views of them.
-- **The app's store, its pages and its project.** The app keeps runs ("The app's store");
-  the Runs page, a run reopened and resumed from its snapshots, the project file of
-  #ADR-0096 and the ingest tier cleared by mod are left.
+- **The app's store, its pages and its project.** The app keeps runs ("The app's store") and
+  shows them ("The Runs page"); a run reopened and resumed from its snapshots, two runs
+  compared, the project file of #ADR-0096 and the ingest tier cleared by mod are left.
 - **A summary for a person.** The report is JSON. What a person reads of a run is the app's to
   render.
 - **A run over several mods.** A `Run` takes one archive. The caches of an `Env` grow with
@@ -135,7 +136,8 @@ A row holds, in this order:
    checked, or not opening.
 2. The path read, with a button that shows the folder in the system's file manager
    (`reveal_place`, which takes the name of a place and never a path; the places are the
-   inputs' folders and the package the last run wrote, which the run state remembers).
+   inputs' folders, the package the last run wrote, which the run state remembers, and the
+   package a kept run wrote, which its row names).
 3. Short facts: whether the folder is the shared one or one the user chose, the build, the
    tables, the bytes on disk.
 4. An offer for each thing the user can have done, as a box with what it does, what it costs
@@ -196,10 +198,74 @@ moved aside or a save a crash ended between its flush and its rows. The rows and
 are behind one lock, so a sweep never runs while a save flushes. The ingest tier is not swept.
 
 The commands are `list_runs` (newest first, a mod's text through `clean`), `run_report`,
-`run_view` (the view the run ended with, its number set), `keep_run`, `remove_run`, `remove_mod_runs`, `remove_all_runs` and `store_view` (each tier's
-bytes, for the settings page). A removal while a run is under way is refused. A store that
-does not open at start, such as one another instance of the app holds, leaves the runs
-unkept, and its commands answer why.
+`run_view` (the view the run ended with, its number set), `run_files` and `run_file` ("The
+Runs page"), `keep_run`, `remove_run`, `remove_mod_runs`, `remove_all_runs` and `store_view`
+(each tier's bytes, for the settings page). A removal while a run is under way is refused. A
+store that does not open at start, such as one another instance of the app holds, leaves the
+runs unkept, and its commands answer why.
+
+## The Runs page
+
+#ADR-0091, #ADR-0096. The page lists the runs the store keeps and shows one, in two panes as
+LTK Manager's Mods page: the list on the left, a third of the width, and the run picked on the
+right. It takes the window's whole width, which the route asks of the shell (`staticData`'s
+`wide`). The page adds no rule about a mod (#ADR-0046): it renders what the commands answer.
+
+**The list** has a row per run, newest first: the mod's name, else the archive's file name,
+the author, the kind (Repair or Port), when the store wrote it as a relative time ("3 min
+ago", "yesterday", the date beyond a week) with the full time on hover, a pin when a person
+marked it kept and a package when it wrote one. A box above it filters by name and author. With
+no run kept, the page says none has written a package and links to the run page.
+
+**The detail** has a header with the package's thumbnail (the first letter of the name when
+there is none), the name, the version, the author and the file name, and three actions: Keep
+(`keep_run`), Show package (`reveal_place` with the place `run`, which names the run and never
+a path, off when the run wrote none) and Remove (`remove_run`, asked about first). Under them
+are three tabs:
+
+- **Result**: the run page's result over the view the run ended with (`run_view`): the stage
+  strip and the findings, the decisions and what the fixups changed. Picking a stage that holds
+  files opens the Files tab at it.
+- **Files**: the files at each stage the run holds them for, `load`, `fix`, `plan` and
+  `build` (`run_files`), picked in a row of the stages. Each WAD is a root with its file count
+  and bytes, a folder per part of the paths with a count, and the files named by their hash
+  alone under a last folder `?`, as LTK Manager's Workshop shows them. A file has its name, an
+  icon of its kind, its size and its mark: a dot coloured for changed, added or removed, the
+  word on hover, a removed file struck through. A box filters by path and kind, and a switch
+  hides the files that are the same. A WAD opens at first and a folder closed, so a WAD of
+  thousands of files draws its rows as they are opened. The file picked opens below the tree.
+- **Report**: the report the package embeds (`run_report`), as its JSON.
+
+**The marks.** A stage's files are marked against the nearest earlier stage the run holds files
+for: `fix` against `load`, `plan` against `fix`, and `build` against `plan` in a port and
+`fix` in a repair; `load`'s are all the same. `load` and `fix` name a file by its WAD and path
+hash; `plan` and `build` by the path it is placed at, whose hash is the one compared, so a file
+a port moves is removed at its old path and added at its new one. A WAD of a layer other than
+the base one is named under it (`hud/Ahri.wad.client`). A chunk placed at its hash is read as
+that hash (#MOD-ARTIFACT-0007). A file's size and kind come from the ingest tier's table of
+facts where it holds the blob, else from the blob's first bytes and `reforge-magic`; a blob no
+tier holds has the kind `missing`.
+
+**The viewer** (`run_file`) fetches the file's bytes by their id from the run tier over the
+ingest tier, and shows them by the kind their first bytes give, under a read-only badge with
+the path, the kind, the size and the content id:
+
+| kind | shown as | cap |
+|---|---|---|
+| a bin | its objects as text (`model::dump::dump_object`), names spelled through the run's load snapshot and the inputs' tables | 2 MB of whole objects, then how many follow |
+| a texture, TEX or DDS | its largest mip decoded by the app and written as a PNG, its side at most 1024 pixels, with its size and format | a side up to 8192 pixels |
+| text | the text through `clean` | 1 MB |
+| anything else | the first 256 bytes as hex, sixteen to a line | |
+
+A file over 64 MB, and a texture that does not decode, shows as hex. A mod's bytes reach the
+window only as text through `clean` or as a PNG the app encoded (#ADR-0093). Bytes no tier
+holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSING`.
+
+**The settings page** has a storage group with a row for the store: its runs, kept runs and
+mods, the bytes of the rows, the run tier and the ingest tier, and Remove all
+(`remove_all_runs`, asked about first). The run tier reserves 64 MB for its journal, which the
+row says. A keep, a removal and a run kept ask the list, the views and the store's counts
+again.
 
 ## The history index
 
@@ -392,7 +458,10 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
 4. **Runs** and **Records** (#ADR-0091): the runs kept in the app's store with their
    snapshots and bytes (#ADR-0096), reopened and resumed, a package's evidence read, two runs
    compared, a run removed and the store swept; the records bundled and opened from a fixup
-   or a finding.
+   or a finding. Built: the store, its sweep and the Runs page, with a run's result, its files
+   at each stage and one file opened, and the store's row in the settings. Left: a run resumed
+   from its snapshots, two runs compared, a package's evidence read, the project file, the
+   ingest tier cleared by mod, and the records.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
 
 Each library change is one rule with its test (#ADR-0045), made before the page that needs it.
