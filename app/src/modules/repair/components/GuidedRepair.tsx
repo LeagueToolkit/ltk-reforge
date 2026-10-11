@@ -224,6 +224,8 @@ export function GuidedRepair() {
               variant="filled"
               left={<CompassIcon weight="bold" />}
               disabled={disabled}
+              // The start's description beside it would squeeze it onto two lines.
+              className="shrink-0"
               onClick={guide}
             >
               {m.guided_start_action()}
