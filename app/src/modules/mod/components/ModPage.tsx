@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { Button, FailureNote, SectionCard, Spinner, TabPanel, Tabs } from "@/components";
 import { m } from "@/i18n";
 import type { ExploreView } from "@/lib/bindings.gen";
+import { FilesBrowser } from "@/modules/files";
 import { FindingList, worstFirst } from "@/modules/findings";
 import { StaleInputsLink } from "@/modules/inputs";
 import {
@@ -17,7 +18,6 @@ import {
   useRunRunning,
   useTakeArchive,
 } from "@/modules/repair";
-import { FilesBrowser } from "@/modules/runs";
 
 import { exploreFileQuery, useExploreFiles, useExploreMod, useExploreRun } from "../api/explore";
 import { haltingFinding } from "../model";

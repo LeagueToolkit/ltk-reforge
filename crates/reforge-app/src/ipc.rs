@@ -42,6 +42,8 @@ pub fn builder() -> Builder<Wry> {
             commands::run_mod,
             commands::run_batch,
             commands::cancel_run,
+            commands::last_files,
+            commands::last_file,
             commands::peek_mod,
             commands::list_archives,
             commands::explore_mod,

@@ -1,5 +1,5 @@
 import type { ExploreView, Finding, KindCount, SourceCount, UnitView } from "@/lib/bindings.gen";
-import { bySourceFact } from "@/modules/runs";
+import { bySourceFact } from "@/modules/files";
 
 /** A row of a count by kind or by provenance fact. */
 export interface CountRow {

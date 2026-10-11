@@ -33,6 +33,7 @@ import {
   useRepairStore,
 } from "../state/repairStore";
 import { Candidate } from "./DecisionsView";
+import { EndedTabs } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { resultsOf, RunResults } from "./RunResults";
@@ -312,7 +313,11 @@ export function GuidedRepair() {
           </Button>
         </div>
       )}
-      {guided.step !== "asking" && results && <RunResults {...results} />}
+      {guided.step !== "asking" && results && (
+        <EndedTabs view={live ? null : last}>
+          <RunResults {...results} />
+        </EndedTabs>
+      )}
     </div>
   );
 }

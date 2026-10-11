@@ -1,7 +1,7 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { commands } from "@/lib/bindings.gen";
-import type { FileQuery } from "@/modules/runs";
+import type { FileQuery } from "@/modules/files";
 import { unwrap } from "@/utils";
 
 import { useModStore } from "../state/modStore";

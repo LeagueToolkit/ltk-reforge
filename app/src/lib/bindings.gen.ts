@@ -67,6 +67,16 @@ export const commands = {
 	 */
 	cancelRun: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("cancel_run"),
 	/**
+	 *  The last run's files at a stage: `load`, `fix`, `plan` or `build`, kept or not. None when no
+	 *  run ended since the app started, or the last did not end `load`.
+	 */
+	lastFiles: (stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_files", { stage }),
+	/**
+	 *  One file of the last run, by the id of its bytes as 64 hex digits, shown by its kind. A
+	 *  bin's names are spelled through the run's names and the inputs' tables, when they open.
+	 */
+	lastFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_file", { content }),
+	/**
 	 *  A mod archive read alone: what it says of itself, its characters and its thumbnail, for
 	 *  the window to show when the mod is picked.
 	 */

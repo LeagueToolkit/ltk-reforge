@@ -1,15 +1,10 @@
 import { InfoIcon, WarningIcon, XCircleIcon } from "@phosphor-icons/react";
 import { match } from "ts-pattern";
 
-import { m } from "@/i18n";
+import { m, stageLabel } from "@/i18n";
 import type { Finding, StageName, StageView } from "@/lib/bindings.gen";
 import { countBySeverity } from "@/modules/findings";
 import { twMerge } from "@/utils";
-
-/** A stage's name for a person. */
-export function stageLabel(stage: StageName): string {
-  return m[`stage.${stage}.label`]();
-}
 
 function stateClass(stage: StageView): string {
   return match(stage.state)

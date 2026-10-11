@@ -33,7 +33,9 @@ use crate::run::{
 use crate::schema::{self, SchemaCheck, Wiki};
 use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
-use crate::state::{Explored, HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
+use crate::state::{
+    Explored, HashesJob, IndexJob, LastRun, OpenInputs, RunJob, RunStore, SchemaJob,
+};
 use crate::storage::StorageView;
 use crate::store::{
     AppStore, CompareView, FileView, RunAgain, RunRow, StageFiles, StoreState, StoreView,
@@ -204,9 +206,10 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
     off_thread(move || {
         let job = Arc::clone(&app.state::<Arc<RunJob>>());
         let cancel = job.start().ok_or(AppError::RunBusy)?;
+        let last = Arc::clone(&app.state::<Arc<LastRun>>());
         let ran = open.get(&choice).and_then(|inputs| {
             let mut watch = Window(app);
-            run::run(
+            run::run_held(
                 &inputs,
                 &request,
                 store.as_deref(),
@@ -214,11 +217,46 @@ pub async fn run_mod(app: AppHandle, request: RunRequest) -> IpcResult<RunView> 
                 Some(&cancel),
             )
         });
-        if let Ok(view) = &ran {
+        let ran = ran.map(|(view, held)| {
             job.set_written(view.written.as_deref().map(Utf8PathBuf::from));
-        }
+            last.set(held);
+            view
+        });
         job.run.end();
         ran
+    })
+    .await
+}
+
+/// The last run's files at a stage: `load`, `fix`, `plan` or `build`, kept or not. None when no
+/// run ended since the app started, or the last did not end `load`.
+#[tauri::command]
+#[specta::specta]
+pub async fn last_files(app: AppHandle, stage: StageName) -> IpcResult<Option<StageFiles>> {
+    let store = app.state::<RunStore>().get().ok();
+    let last = app.state::<Arc<LastRun>>().get();
+    off_thread(move || match last {
+        Some(held) => held.files(store.as_deref(), stage),
+        None => Ok(None),
+    })
+    .await
+}
+
+/// One file of the last run, by the id of its bytes as 64 hex digits, shown by its kind. A
+/// bin's names are spelled through the run's names and the inputs' tables, when they open.
+#[tauri::command]
+#[specta::specta]
+pub async fn last_file(app: AppHandle, content: String) -> IpcResult<FileView> {
+    let store = app.state::<RunStore>().get().ok();
+    let last = app.state::<Arc<LastRun>>().get();
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let content = content_of(&content)?;
+        // Inputs that do not open leave the run's own names.
+        let inputs = open.get(&choice).ok();
+        let names = inputs.as_deref().map(|inputs| inputs.env().names());
+        run::held_file(last.as_deref(), store.as_deref(), content, names)
     })
     .await
 }

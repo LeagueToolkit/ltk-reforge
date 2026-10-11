@@ -3,13 +3,14 @@
 //! request is a new `Run`: resumed from a kept run's snapshots where one of its load holds,
 //! else from the raw snapshot the app's store holds of the archive, else from the archive; a
 //! run is kept in the store when it writes its package, or when its request asks to keep it
-//! (#ADR-0094, #ADR-0096).
+//! (#ADR-0094, #ADR-0096). The run page's run is held in memory until the next ([`HeldRun`]).
 //!
 //! The stages are run one at a time, as `Run::through` runs them, so a [`Watch`] hears each
 //! one start and end, or taken from a kept run, each finding as it is raised, and what each
 //! stage gave as it ends.
 
 mod drawn;
+mod held;
 mod peek;
 mod views;
 
@@ -22,7 +23,7 @@ use reforge::archive::{Caps, RawSnapshot, file_name_of};
 use reforge::diag::{Action, Cancel, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
 use reforge::load::KeptFile;
-use reforge::model::{ContentId, Slot, Spelled};
+use reforge::model::{ByteView, ContentId, Slot, Spelled};
 use reforge::package::{CheckSelection, CheckSet, EvidenceDoc, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy, UnitTarget};
 use reforge::snapshot::{LoadInputs, Program, Snapshots, StageSettings};
@@ -31,6 +32,7 @@ use serde::{Deserialize, Serialize};
 
 use self::drawn::Drawn;
 pub(crate) use self::drawn::data_url;
+pub use self::held::{HeldRun, held_file};
 pub use self::peek::{CharacterPeek, ModPeek, peek};
 pub(crate) use self::views::ReportParts;
 pub use self::views::*;
@@ -401,6 +403,31 @@ pub fn run(
     watch: &mut dyn Watch,
     cancel: Option<&Cancel>,
 ) -> Result<RunView, AppError> {
+    run_with(inputs, request, store, watch, cancel, false).map(|(view, _)| view)
+}
+
+/// [`run`], and the run held for the run page until the next: its snapshots, and the bytes of
+/// its layer when the store did not keep it.
+pub fn run_held(
+    inputs: &Inputs,
+    request: &RunRequest,
+    store: Option<&AppStore>,
+    watch: &mut dyn Watch,
+    cancel: Option<&Cancel>,
+) -> Result<(RunView, HeldRun), AppError> {
+    run_with(inputs, request, store, watch, cancel, true)
+}
+
+/// [`run`], and the run as it ended. Its layer is held only when `hold` asks: putting a run's
+/// bytes into a store of the app's reads each of them again.
+fn run_with(
+    inputs: &Inputs,
+    request: &RunRequest,
+    store: Option<&AppStore>,
+    watch: &mut dyn Watch,
+    cancel: Option<&Cancel>,
+    hold: bool,
+) -> Result<(RunView, HeldRun), AppError> {
     let settings = &request.settings;
     let fixups = settings.fixups()?;
     let checks = settings.checks()?;
@@ -525,17 +552,28 @@ pub fn run(
         millis,
     };
     let keeps = view.written.is_some() || (request.keep && reached(&view, request.through));
-    if let Some(store) = store.filter(|_| keeps) {
-        let package = view.written.clone();
-        let kept = Kept {
-            request,
-            raw,
-            package: package.as_deref(),
-            view: &view,
-        };
-        view.saved = save(store, run, inputs, kept);
+    let snapshots = hold.then(|| run.snapshots()).flatten();
+    let mut layer = BTreeMap::new();
+    match store.filter(|_| keeps) {
+        Some(store) => {
+            let package = view.written.clone();
+            let kept = Kept {
+                request,
+                raw,
+                package: package.as_deref(),
+                view: &view,
+            };
+            match save(store, run, inputs, kept) {
+                Ok(id) => view.saved = Some(id),
+                Err(left) if hold => layer = left,
+                Err(_) => {}
+            }
+        }
+        None if hold => layer = run.into_layer(),
+        None => {}
     }
-    Ok(view)
+    let held = HeldRun::new(request.clone(), snapshots, layer);
+    Ok((view, held))
 }
 
 /// Whether a run ended at `through` with that stage run: not halted, stopped or faulted.
@@ -689,21 +727,29 @@ struct Kept<'a> {
 /// Keeps a run that wrote its package, or one the request asks to keep, in the store with the
 /// view it ended with, and answers its number. A run with no snapshots, one judged with an
 /// earlier run's evidence, is not kept. A store that does not write leaves the run as it ran,
-/// unkept, and says so in the log.
-fn save(store: &AppStore, run: Run<'_>, inputs: &Inputs, kept: Kept<'_>) -> Option<u64> {
+/// unkept, and says so in the log. A run not kept answers the bytes of its layer.
+fn save(
+    store: &AppStore,
+    run: Run<'_>,
+    inputs: &Inputs,
+    kept: Kept<'_>,
+) -> Result<u64, BTreeMap<ContentId, ByteView>> {
     let Kept {
         request,
         raw,
         package,
         view,
     } = kept;
-    let snapshots = run.snapshots()?;
-    let raw = run.archive().cloned().or(raw)?;
+    let (Some(snapshots), Some(raw)) = (run.snapshots(), run.archive().cloned().or(raw)) else {
+        return Err(run.into_layer());
+    };
+    let report = run.report();
+    let layer = run.into_layer();
     let saved = Saved {
         raw,
         path: Utf8PathBuf::from(&request.archive),
         snapshots,
-        report: run.report(),
+        report,
         view: view.clone(),
         kind: request.kind,
         settings: request.settings.clone(),
@@ -712,11 +758,13 @@ fn save(store: &AppStore, run: Run<'_>, inputs: &Inputs, kept: Kept<'_>) -> Opti
             .schema()
             .map(|schema| schema.latest().to_string()),
         package: package.map(str::to_string),
-        layer: run.into_layer(),
+        // A view's clone shares its bytes.
+        layer: layer.clone(),
     };
-    let kept = store.save(saved);
-    kept.inspect_err(|error| tracing::warn!(%error, "a run is not kept"))
-        .ok()
+    store.save(saved).map_err(|error| {
+        tracing::warn!(%error, "a run is not kept");
+        layer
+    })
 }
 
 /// Runs one stage. `read` reads the archive from its path, unless the run started from its

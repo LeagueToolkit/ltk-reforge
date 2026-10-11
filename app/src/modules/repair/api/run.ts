@@ -17,6 +17,7 @@ import {
   type StageName,
 } from "@/lib/bindings.gen";
 import { jobKey, runsKey } from "@/lib/query";
+import type { FileQuery } from "@/modules/files";
 import { queryFn, unwrap } from "@/utils";
 
 import { type LiveStage, startedRun, useRepairStore, withPart } from "../state/repairStore";
@@ -50,6 +51,9 @@ export function useJobRunning(): boolean {
   return useIsMutating({ mutationKey: jobKey }) > 0;
 }
 
+/** Every read of the last run, which the next run replaces. */
+const lastKey = ["last"] as const;
+
 /**
  * Runs a mod as a request asks, and keeps its answer as the page's last run. A run the store
  * kept asks the store's reads again.
@@ -66,6 +70,8 @@ export function useRunMod() {
     },
     onSuccess: (view) => {
       setLast(view);
+      // The backend holds this run in place of the last.
+      void queryClient.resetQueries({ queryKey: lastKey });
       if (view.saved != null) {
         void queryClient.invalidateQueries({ queryKey: runsKey });
       }
@@ -73,6 +79,23 @@ export function useRunMod() {
     onSettled: () => setLive(() => null),
   });
 }
+
+/** The last run's files at a stage, each marked against the stage before. */
+export function useLastFiles(stage: StageName) {
+  return useQuery(
+    queryOptions({
+      queryKey: [...lastKey, "files", stage],
+      queryFn: queryFn(() => commands.lastFiles(stage)),
+      staleTime: Infinity,
+    }),
+  );
+}
+
+/** One file of the last run, by the id of its bytes, shown by its kind. */
+export const lastFileQuery = (content: string): FileQuery => ({
+  queryKey: [...lastKey, "file", content],
+  queryFn: queryFn(() => commands.lastFile(content)),
+});
 
 /**
  * Stops the run under way: the stage under way ends after its step (#ADR-0097), and the run

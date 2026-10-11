@@ -1,5 +1,6 @@
 //! What the app holds while it runs, beside its settings: the inputs opened for the settings
-//! as they stand, the downloads under way, the store of runs and the last mod explored.
+//! as they stand, the downloads under way, the store of runs, the run page's last run and the
+//! last mod explored.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,6 +13,7 @@ use crate::archive::Clones;
 use crate::error::AppError;
 use crate::explore::ExploredMod;
 use crate::inputs::{Choice, Inputs};
+use crate::run::HeldRun;
 use crate::storage::Storage;
 use crate::store::{AppStore, StoreOpen, StoreState, remove_rows};
 
@@ -159,6 +161,23 @@ impl Explored {
     /// What `read` gives of the mod held, or of none.
     pub fn with<T>(&self, read: impl FnOnce(Option<&ExploredMod>) -> T) -> T {
         read(self.0.lock().as_ref())
+    }
+}
+
+/// The run page's last run, replaced by the next. A command reading it takes its own handle,
+/// so a slow read holds no lock while the next run replaces it.
+#[derive(Default)]
+pub struct LastRun(Mutex<Option<Arc<HeldRun>>>);
+
+impl LastRun {
+    /// Holds a run that ended in place of the one held.
+    pub fn set(&self, held: HeldRun) {
+        *self.0.lock() = Some(Arc::new(held));
+    }
+
+    /// The run held, if any.
+    pub fn get(&self) -> Option<Arc<HeldRun>> {
+        self.0.lock().clone()
     }
 }
 

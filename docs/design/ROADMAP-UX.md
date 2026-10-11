@@ -766,6 +766,15 @@ user picks another policy and runs again.
   Settings, as a link to Settings, where the folder is chosen.
 - A written package is named in the result by its file name, its path on hover, with a button
   that shows it in its folder (`reveal_place` with the place `written`).
+- A run that ended has a Files tab beside its result once it holds files: the Runs page's
+  files browser over the stages it holds files for, `load`, `fix`, `plan` and `build`, a stage
+  picked in a row, each file marked against the stage before. The app holds the last run of
+  `run_mod` in memory (`state::LastRun`, `run::HeldRun`) until the next replaces it: its
+  snapshots, and the bytes of its memory layer the store did not take, as the Mod page holds
+  the mod explored. `last_files` lists a stage through the function a kept run's files go
+  through, over that layer and the store's tiers, so a run the store did not keep, one that
+  halted or did not write, is browsed as a kept one is; `last_file` opens a file in the Runs
+  page's viewer, a bin's names spelled through the run's load names.
 - The app runs the stages one at a time, as `Run::through` does, and tells the window as each
   starts and ends, and each finding as it is raised. A stage that gives a part sends it as it
   ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the

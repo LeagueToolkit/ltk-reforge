@@ -9,7 +9,10 @@ import type { FileRow, FileView } from "@/lib/bindings.gen";
 import { sizeLabel } from "../tree";
 import { kindGroup } from "./FileTree";
 
-/** The read of one file's bytes as the app shows them: a kept run's, or an explored mod's. */
+/**
+ * The read of one file's bytes as the app shows them: a kept run's, the last run's, or an
+ * explored mod's.
+ */
 export interface FileQuery {
   queryKey: QueryKey;
   queryFn: () => Promise<FileView>;

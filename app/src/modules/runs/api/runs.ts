@@ -2,9 +2,9 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from "@tanstack/r
 
 import { commands, type StageName, type StoreState } from "@/lib/bindings.gen";
 import { runsKey } from "@/lib/query";
+import type { FileQuery } from "@/modules/files";
 import { mutationFn, queryFn, type Result } from "@/utils";
 
-import type { FileQuery } from "../components/FileViewer";
 import type { Opened } from "./drop";
 
 /** The query keys of the store of runs, all under `runsKey`. */

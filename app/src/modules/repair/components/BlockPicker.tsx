@@ -1,8 +1,7 @@
 import { Checkbox, Disclosure } from "@/components";
-import { m } from "@/i18n";
+import { m, stageLabel } from "@/i18n";
 
 import { AREA_GROUPS, AREAS, hasLine, SEVERITIES, severityLine, withLine } from "./blockLines";
-import { stageLabel } from "./StageStrip";
 
 export interface BlockPickerProps {
   /** The filter lines, the one source: a checkbox reads and writes its line in them. */

@@ -11,6 +11,7 @@ import { useState } from "react";
 import { Button, FailureNote, Spinner, TabPanel, Tabs, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { RunRow, RunView, StageName } from "@/lib/bindings.gen";
+import { heldStages } from "@/modules/files";
 import { pickSavePath } from "@/modules/inputs";
 import { endedResults, RunResults, StageStrip, useRepairStore } from "@/modules/repair";
 import { twMerge } from "@/utils";
@@ -27,7 +28,7 @@ import {
 } from "../api/runs";
 import { ComparePicker } from "./ComparePicker";
 import { CompareView } from "./CompareView";
-import { FilesTab, heldStages } from "./FilesTab";
+import { FilesTab } from "./FilesTab";
 import { RemoveMenu } from "./RemoveMenu";
 import { ClearedBadge, runName } from "./RunList";
 

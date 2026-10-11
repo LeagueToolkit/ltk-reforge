@@ -7,6 +7,7 @@ import { useInputs, useInputsGate } from "@/modules/inputs";
 
 import { useJobRunning, useRunMod, useRunRunning, useRunStages } from "../api/run";
 import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
+import { EndedTabs } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { resultsOf, RunResults } from "./RunResults";
@@ -74,7 +75,11 @@ export function SimpleRepair() {
       {last && !live && (
         <RunSummary view={last} onWriteAnyway={() => start([])} writing={running} />
       )}
-      {results && <RunResults {...results} />}
+      {results && (
+        <EndedTabs view={live ? null : last}>
+          <RunResults {...results} />
+        </EndedTabs>
+      )}
     </div>
   );
 }

@@ -1,13 +1,12 @@
 import { CheckIcon, CircleNotchIcon } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 
-import { m } from "@/i18n";
+import { m, stageLabel } from "@/i18n";
 import type { StageName } from "@/lib/bindings.gen";
 import { countBySeverity } from "@/modules/findings";
 import { twMerge } from "@/utils";
 
 import type { LiveRun } from "../state/repairStore";
-import { stageLabel } from "./StageStrip";
 
 /** Seconds since a moment, ticking while shown. */
 function useElapsed(since: number): number {

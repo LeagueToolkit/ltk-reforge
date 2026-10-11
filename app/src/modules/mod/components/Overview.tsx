@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { SectionCard, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { DatingView, ExploreView } from "@/lib/bindings.gen";
-import { kindGroup, sizeLabel, sourceLabel } from "@/modules/runs";
+import { kindGroup, sizeLabel, sourceLabel } from "@/modules/files";
 import { twMerge } from "@/utils";
 
 import {

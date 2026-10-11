@@ -16,6 +16,7 @@ import type {
   TargetDiff,
 } from "@/lib/bindings.gen";
 import { FindingChanges, isFixupFinding } from "@/modules/changes";
+import { FilesBrowser, heldStages } from "@/modules/files";
 import { FindingList } from "@/modules/findings";
 import { useFixupCatalog } from "@/modules/fixups";
 import { reasonTitle } from "@/modules/repair";
@@ -23,7 +24,6 @@ import { twMerge } from "@/utils";
 
 import { runFileQuery, useCompare, useCompareFiles, useRunView } from "../api/runs";
 import { differingFirst, isDiffKey, SWITCH_KEYS } from "../compare";
-import { FilesBrowser, heldStages } from "./FilesTab";
 import { KindBadge, RunWhen } from "./RunList";
 
 // Fixed columns: a long value wraps in its own column and leaves the other run's its width.

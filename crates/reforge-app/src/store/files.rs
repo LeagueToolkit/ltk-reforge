@@ -2,7 +2,8 @@
 //! each with its bytes' size and kind, and a mark against the nearest earlier stage the run
 //! holds files for, or against another run's files at the same stage. The Runs page renders it
 //! and adds no rule of its own (#ADR-0046). The Mod page lists an explored mod's files at
-//! `load` through the same listing, over that run's own layer above the store's tiers.
+//! `load`, and the run page its last run's at each stage, through the same listing, over that
+//! run's own layer above the store's tiers.
 //!
 //! `load` and `fix` name a file by its WAD and path hash. `plan` and `build` name it by the
 //! path it is placed at, whose hash is the one compared, so a file a port moves is removed at
@@ -13,7 +14,7 @@ use std::collections::BTreeMap;
 use reforge::model::entity::{FileId, WadId};
 use reforge::model::hash::wad_hash_of_hex;
 use reforge::model::{ByteView, ChunkPath, ContentId, FactAccess, Head, Layer, clean};
-use reforge::snapshot::{self, BuildSnapshot, FixSnapshot, LoadSnapshot, PlanSnapshot};
+use reforge::snapshot::{self, BuildSnapshot, FixSnapshot, LoadSnapshot, PlanSnapshot, Snapshots};
 use reforge::store::BlobStore;
 use reforge_magic::{GENERATION, HEAD_LEN, HeadKind, Kind};
 use rusqlite::OptionalExtension;
@@ -100,6 +101,27 @@ pub struct KeptSnapshots {
 }
 
 impl KeptSnapshots {
+    /// The snapshots that name files of a run's snapshots from `load` on.
+    pub fn of(snapshots: &Snapshots) -> Self {
+        Self {
+            load: Some(snapshots.load.clone()),
+            fix: snapshots.fix.clone(),
+            plan: snapshots.plan.clone(),
+            build: snapshots.build.clone(),
+        }
+    }
+
+    /// The files at a stage, each marked against the nearest earlier stage the run holds files
+    /// for, with their sizes and kinds from `tiers`. Refused for a stage whose snapshot names
+    /// no files, or one the run did not reach.
+    pub fn files(&self, stage: StageName, tiers: &Tiers<'_>) -> Result<StageFiles, AppError> {
+        let current = self.held_listing(stage)?;
+        let held = self.stages();
+        let before = held.iter().rev().find(|&&earlier| earlier < stage);
+        let before = before.and_then(|&earlier| self.listing(earlier));
+        Ok(marked(tiers, stage, &current, before.as_ref()))
+    }
+
     /// The stages of [`FILE_STAGES`] the run holds a snapshot of.
     pub fn stages(&self) -> Vec<StageName> {
         let held = [
@@ -402,16 +424,7 @@ impl AppStore {
         let Some(kept) = self.kept_snapshots(id)? else {
             return Ok(None);
         };
-        let current = kept.held_listing(stage)?;
-        let held = kept.stages();
-        let before = held.iter().rev().find(|&&earlier| earlier < stage);
-        let before = before.and_then(|&earlier| kept.listing(earlier));
-        Ok(Some(marked(
-            &Tiers::of(self),
-            stage,
-            &current,
-            before.as_ref(),
-        )))
+        kept.files(stage, &Tiers::of(self)).map(Some)
     }
 
     /// The files of kept run `b` at a stage, each marked against kept run `a`'s at the same

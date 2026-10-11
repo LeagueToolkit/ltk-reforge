@@ -10,9 +10,10 @@ import {
   TabPanel,
   Tabs,
 } from "@/components";
-import { m } from "@/i18n";
+import { m, stageLabel } from "@/i18n";
 import type { PolicyView, RunView, StageName } from "@/lib/bindings.gen";
 import { ChangesExplorer } from "@/modules/changes";
+import { heldStages } from "@/modules/files";
 import { FindingList, worstFirst } from "@/modules/findings";
 import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
 import { useInputs, useInputsGate } from "@/modules/inputs";
@@ -22,6 +23,7 @@ import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state
 import { BlockPicker } from "./BlockPicker";
 import { DecisionsView } from "./DecisionsView";
 import { GuidedSettingsCard } from "./GuidedSettingsCard";
+import { LastRunFiles } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
 import { PolicyCard } from "./PolicyCard";
@@ -29,12 +31,12 @@ import { RulesCard } from "./RulesCard";
 import { fixupDetail } from "./RunFindings";
 import { liveResults, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
-import { StageStrip, stageLabel } from "./StageStrip";
+import { StageStrip } from "./StageStrip";
 import { StopButton } from "./StopButton";
 import { type ToggleItem, ToggleList } from "./ToggleList";
 
 /** The advanced view's tabs. */
-type Tab = "result" | "settings" | "toggles" | "rules";
+type Tab = "result" | "files" | "settings" | "toggles" | "rules";
 
 /** The run bar: the last stage, the presets, and the one Run button every tab shares. */
 function RunBar({
@@ -284,8 +286,11 @@ export function AdvancedRepair() {
   const togglesChanged =
     advanced.fixupsOff.length + advanced.fixupsOn.length + advanced.checksOff.length;
 
+  // The run under way holds no files yet.
+  const held = live ? [] : heldStages(last);
   const tabs = [
     { value: "result" as const, label: m.advanced_tab_result() },
+    ...(held.length > 0 ? [{ value: "files" as const, label: m.runs_tab_files() }] : []),
     { value: "settings" as const, label: m.advanced_tab_settings() },
     { value: "toggles" as const, label: m.advanced_tab_toggles(), count: togglesChanged },
     { value: "rules" as const, label: m.advanced_tab_rules(), count: advanced.rules.length },
@@ -318,6 +323,11 @@ export function AdvancedRepair() {
             </p>
           )}
         </TabPanel>
+        {held.length > 0 && (
+          <TabPanel value="files">
+            <LastRunFiles stages={held} />
+          </TabPanel>
+        )}
         <TabPanel value="settings">
           <SettingsCard />
           {kind === "port" && <PolicyCard />}
