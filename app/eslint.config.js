@@ -35,6 +35,45 @@ const RESTRICTED = [
   TAILWIND_MERGE,
 ];
 
+/** A name that holds class strings: `preClass`, `sizeClasses`, `className`. */
+const CLASS_NAME = /[cC]lass(es|Name)?$/;
+
+/** Whether a literal sits in a constant or a function whose name holds class strings, with no
+ * JSX between: text in JSX stays reported wherever it is. */
+function inClassDeclaration(node) {
+  for (let at = node.parent; at != null; at = at.parent) {
+    if (at.type === "JSXElement" || at.type === "JSXFragment") {
+      return false;
+    }
+    const named = at.type === "VariableDeclarator" || at.type === "FunctionDeclaration";
+    if (named && at.id?.type === "Identifier" && CLASS_NAME.test(at.id.name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* The rule has no option for a declaration's name, so its reports are filtered here. Its id
+   stays `i18next/no-literal-string`. */
+const noLiteralString = i18next.rules["no-literal-string"];
+const i18nextPlugin = {
+  ...i18next,
+  rules: {
+    ...i18next.rules,
+    "no-literal-string": {
+      ...noLiteralString,
+      create(context) {
+        const report = (descriptor) => {
+          if (!inClassDeclaration(descriptor.node)) {
+            context.report(descriptor);
+          }
+        };
+        return noLiteralString.create(Object.create(context, { report: { value: report } }));
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -76,7 +115,7 @@ export default tseslint.config(
     // Every sentence a person reads is in `messages/`.
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/**/*.test.{ts,tsx}", ...GENERATED],
-    plugins: { i18next },
+    plugins: { i18next: i18nextPlugin },
     languageOptions: {
       parserOptions: {
         // Type information lets the rule skip a literal whose type is a string union.
@@ -103,6 +142,8 @@ export default tseslint.config(
               "size",
               "weight",
               "key",
+              // A `data-ui` passed down.
+              "ui",
             ],
           },
           callees: {
@@ -114,17 +155,22 @@ export default tseslint.config(
               "console\\..*",
               "getElementById",
               ".*lastIndexOf",
+              "querySelector(All)?",
+              "replace(All)?",
+              // Class strings merged.
+              "twMerge",
+              "clsx",
             ],
           },
           "object-properties": {
-            exclude: ["to", "search", "key", "id", "className", "data-ui"],
+            exclude: ["to", "search", "key", "id", "className", "data-ui", "displayName"],
           },
           words: {
             exclude: [
               // Ids, paths and class tokens: copy has a capital or a space.
               "^[a-z0-9_./:-]+$",
-              // Punctuation around a value the code interpolates.
-              "^[\\s(){}\\[\\]<>,.:;/|·–—-]+$",
+              // Punctuation around a value the code interpolates, a diff's marks, a placeholder.
+              "^[\\s(){}\\[\\]<>,.:;/|·–—+…-]+$",
             ],
           },
         },
