@@ -5,7 +5,7 @@ import { m } from "@/i18n";
 import type { RunRequest } from "@/lib/bindings.gen";
 import { useInputs, useInputsGate } from "@/modules/inputs";
 
-import { useRunMod, useRunRunning, useRunStages } from "../api/run";
+import { useJobRunning, useRunMod, useRunRunning, useRunStages } from "../api/run";
 import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder } from "./ModCard";
@@ -31,6 +31,8 @@ export function SimpleRepair() {
   const inputs = useInputs();
   const run = useRunMod();
   const running = useRunRunning();
+  // A batch under way holds the run job.
+  const busy = useJobRunning();
   const { gate, dialog } = useInputsGate();
 
   const start = (block: string[]) => {
@@ -59,7 +61,7 @@ export function SimpleRepair() {
           <Button
             variant="filled"
             left={<WrenchIcon weight="bold" />}
-            disabled={!archive || !out || inputs.isPending}
+            disabled={!archive || !out || inputs.isPending || busy}
             onClick={() => start(ERRORS_BLOCK)}
           >
             {m.run_kind_port_label()}

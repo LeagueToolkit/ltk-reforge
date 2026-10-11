@@ -80,10 +80,11 @@ export function ModCard() {
       await takeMod(picked);
     }
   };
+  // The run page runs one mod: the first archive dropped.
   const onDrop = useCallback(
-    (dropped: string) => {
-      if (!running) {
-        void takeMod(dropped);
+    ([first]: string[]) => {
+      if (!running && first) {
+        void takeMod(first);
       }
     },
     [running, takeMod],

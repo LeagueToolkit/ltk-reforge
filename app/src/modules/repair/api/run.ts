@@ -16,7 +16,7 @@ import {
   type StageEvent,
   type StageName,
 } from "@/lib/bindings.gen";
-import { runsKey } from "@/lib/query";
+import { jobKey, runsKey } from "@/lib/query";
 import { queryFn, unwrap } from "@/utils";
 
 import { type LiveStage, startedRun, useRepairStore, withPart } from "../state/repairStore";
@@ -38,11 +38,16 @@ export function useRunStages(kind: RunKind): StageName[] {
  * The run of a mod, a mutation under this key. The backend runs one at a time, and the two
  * views share it: the one switched to mid-run shows the run under way.
  */
-const runKey = ["run", "mod"] as const;
+const runKey = [...jobKey, "mod"] as const;
 
 /** Whether a run is under way, from either view. */
 export function useRunRunning(): boolean {
   return useIsMutating({ mutationKey: runKey }) > 0;
+}
+
+/** Whether the run job is busy: a run of this page's or a batch is under way. */
+export function useJobRunning(): boolean {
+  return useIsMutating({ mutationKey: jobKey }) > 0;
 }
 
 /**

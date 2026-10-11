@@ -17,7 +17,7 @@ import { FindingList, worstFirst } from "@/modules/findings";
 import { useCheckCatalog, useFixupCatalog } from "@/modules/fixups";
 import { useInputs, useInputsGate } from "@/modules/inputs";
 
-import { useRunMod, useRunRunning, useRunStages } from "../api/run";
+import { useJobRunning, useRunMod, useRunRunning, useRunStages } from "../api/run";
 import { REPAIR, runSettings, STANDARD, toggled, useRepairStore } from "../state/repairStore";
 import { BlockPicker } from "./BlockPicker";
 import { DecisionsView } from "./DecisionsView";
@@ -50,6 +50,8 @@ function RunBar({
   const applyPreset = useRepairStore((state) => state.applyPreset);
   const archive = useRepairStore((state) => state.archive);
   const inputs = useInputs();
+  // A batch under way holds the run job.
+  const busy = useJobRunning();
   const options = stages.map((stage) => ({ value: stage, label: stageLabel(stage) }));
   const through = stages.includes(advanced.through) ? advanced.through : "write";
 
@@ -61,7 +63,7 @@ function RunBar({
         <Button
           variant="filled"
           left={<PlayIcon weight="bold" />}
-          disabled={!archive || inputs.isPending}
+          disabled={!archive || inputs.isPending || busy}
           onClick={onRun}
         >
           {m.advanced_run_action()}

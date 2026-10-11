@@ -18,6 +18,12 @@ export async function pickSavePath(
   return await save({ filters: [{ name, extensions }], defaultPath });
 }
 
+/** The files the user picks, none when they cancel. */
+export async function pickFiles(extensions: string[], name: string): Promise<string[]> {
+  const picked = await open({ multiple: true, filters: [{ name, extensions }] });
+  return picked ?? [];
+}
+
 /** A file the user picks, or null when they cancel. */
 export async function pickFile(extensions: string[], name: string): Promise<string | null> {
   const picked = await open({ multiple: false, filters: [{ name, extensions }] });

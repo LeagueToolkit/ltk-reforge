@@ -1,5 +1,4 @@
-import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 
 import { FailureNote, Spinner } from "@/components";
 import { m } from "@/i18n";
@@ -19,7 +18,11 @@ import { RunList } from "./RunList";
 export function RunsPage() {
   const runs = useRuns();
   const openRun = useOpenRun();
-  const [selected, setSelected] = useState<number | null>(null);
+  // The run selected is the route's, so a link elsewhere opens the page at a run.
+  const { run: selected = null } = useSearch({ from: "/runs" });
+  const navigate = useNavigate({ from: "/runs" });
+  const setSelected = (id: number | null) =>
+    void navigate({ search: id == null ? {} : { run: id }, replace: true });
   const rows = runs.data ?? [];
   const chosen = rows.find((row) => row.id === selected) ?? null;
   // The ages are counted to when the list was last read.

@@ -6,6 +6,13 @@ import { QueryClient } from "@tanstack/react-query";
  */
 export const runsKey = ["runs"] as const;
 
+/**
+ * The mutations of the backend's run job, which runs one at a time: the run page's run and a
+ * batch. Each page asks whether either is under way by this prefix, and neither module imports
+ * the other's key.
+ */
+export const jobKey = ["job"] as const;
+
 /** The client every page shares. */
 export const queryClient = new QueryClient({
   defaultOptions: {

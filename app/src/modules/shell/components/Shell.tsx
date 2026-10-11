@@ -2,6 +2,7 @@ import {
   BookOpenTextIcon,
   ClockCounterClockwiseIcon,
   GearSixIcon,
+  QueueIcon,
   StackIcon,
   WrenchIcon,
 } from "@phosphor-icons/react";
@@ -65,6 +66,10 @@ export function Shell({ inputsMark, wide = false, children }: ShellProps) {
         <NavLink to="/records">
           <BookOpenTextIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_records_label()}
+        </NavLink>
+        <NavLink to="/batch">
+          <QueueIcon weight="bold" className="h-4 w-4" />
+          {m.shell_nav_batch_label()}
         </NavLink>
         <NavLink to="/inputs">
           <StackIcon weight="bold" className="h-4 w-4" />

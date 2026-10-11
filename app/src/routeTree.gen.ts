@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BatchRouteImport } from './routes/batch'
 import { Route as InputsRouteImport } from './routes/inputs'
 import { Route as RecordsRouteImport } from './routes/records'
 import { Route as RunsRouteImport } from './routes/runs'
@@ -20,6 +21,11 @@ import { Route as RecordsCodeRouteImport } from './routes/records.$code'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BatchRoute = BatchRouteImport.update({
+  id: '/batch',
+  path: '/batch',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InputsRoute = InputsRouteImport.update({
@@ -55,6 +61,7 @@ const RecordsCodeRoute = RecordsCodeRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/batch': typeof BatchRoute
   '/inputs': typeof InputsRoute
   '/records': typeof RecordsRouteWithChildren
   '/runs': typeof RunsRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/batch': typeof BatchRoute
   '/inputs': typeof InputsRoute
   '/runs': typeof RunsRoute
   '/settings': typeof SettingsRoute
@@ -73,6 +81,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/batch': typeof BatchRoute
   '/inputs': typeof InputsRoute
   '/records': typeof RecordsRouteWithChildren
   '/runs': typeof RunsRoute
@@ -84,6 +93,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/batch'
     | '/inputs'
     | '/records'
     | '/runs'
@@ -91,10 +101,18 @@ export interface FileRouteTypes {
     | '/records/$code'
     | '/records/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inputs' | '/runs' | '/settings' | '/records/$code' | '/records'
+  to:
+    | '/'
+    | '/batch'
+    | '/inputs'
+    | '/runs'
+    | '/settings'
+    | '/records/$code'
+    | '/records'
   id:
     | '__root__'
     | '/'
+    | '/batch'
     | '/inputs'
     | '/records'
     | '/runs'
@@ -105,6 +123,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BatchRoute: typeof BatchRoute
   InputsRoute: typeof InputsRoute
   RecordsRoute: typeof RecordsRouteWithChildren
   RunsRoute: typeof RunsRoute
@@ -118,6 +137,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/batch': {
+      id: '/batch'
+      path: '/batch'
+      fullPath: '/batch'
+      preLoaderRoute: typeof BatchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/inputs': {
@@ -180,6 +206,7 @@ const RecordsRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BatchRoute: BatchRoute,
   InputsRoute: InputsRoute,
   RecordsRoute: RecordsRouteWithChildren,
   RunsRoute: RunsRoute,

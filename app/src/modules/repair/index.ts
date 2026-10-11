@@ -1,3 +1,4 @@
+export { ARCHIVE_EXTENSIONS, useArchiveDrop } from "./api/drop";
 export * from "./api/run";
 export { reasonTitle } from "./components/DecisionsView";
 export * from "./components/RepairPage";
