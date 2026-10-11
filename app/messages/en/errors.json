@@ -17,6 +17,7 @@
   "error.HASHES_BUSY.description": "Another program, such as LTK Manager, is updating them. Try again when it ends.",
   "error.HASHES_BUSY.title": "The hash tables are being updated already",
   "error.HASHES_FETCH.title": "The hash tables did not download",
+  "error.HISTORY_OBJECT_UNREADABLE.title": "The object's bytes in the history index do not read",
   "error.INDEX_APPEND.title": "The new builds did not add to the index",
   "error.INDEX_BUSY.title": "The index is downloading or updating already",
   "error.INDEX_DIGEST.description": "Nothing of the download was kept. Try again.",

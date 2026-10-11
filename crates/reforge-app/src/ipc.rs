@@ -38,6 +38,7 @@ pub fn builder() -> Builder<Wry> {
             commands::history_builds,
             commands::history_lookup,
             commands::history_suggest,
+            commands::history_object,
             commands::run_mod,
             commands::run_batch,
             commands::cancel_run,

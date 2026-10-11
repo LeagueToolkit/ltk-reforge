@@ -1,13 +1,17 @@
 //! The questions the History page asks: each the library's answer over a history in memory,
 //! its hashes spelled through text tables made for the test.
 
+use std::io::Cursor;
+
 use camino::Utf8PathBuf;
 use fs_err as fs;
+use ltk_meta::BinObject;
+use ltk_meta::property::values;
 use reforge::game::Names;
 use reforge::history::{BinEntry, NoHistory};
-use reforge::model::{NormKey, ObjectKey, WadHash, name_hash, path_hash};
+use reforge::model::{BinHash, NormKey, ObjectKey, WadHash, name_hash, path_hash};
 use reforge_app::error::AppError;
-use reforge_app::lookup::{BuildView, Lookup, MAX_NAMED_BY, PathQuery};
+use reforge_app::lookup::{BuildView, EntryQuery, Lookup, MAX_NAMED_BY, PathQuery};
 use reforge_testkit::history::{MemoryHistory, file_key};
 use tempfile::TempDir;
 
@@ -18,9 +22,21 @@ const RESOLVER: &str = "Characters/Lux/Skins/Skin0/Resources";
 const SKIN_CLASS: &str = "SkinCharacterDataProperties";
 const CHAMPION_WAD: &str = "DATA/FINAL/Champions/Lux.wad.client";
 const LOCALE_WAD: &str = "DATA/FINAL/Champions/Lux.en_US.wad.client";
+const SKIN_NAME_FIELD: &str = "championSkinName";
 
 fn history() -> MemoryHistory {
     MemoryHistory::new(&["14.1.1", "14.2.1", "14.1.2", "14.3.1"])
+}
+
+/// The skin object naming the skin `skin_name`, as the index stores it: from its entry hash
+/// on, with no size before it.
+fn stored_skin(skin_name: &str) -> Vec<u8> {
+    let object = BinObject::builder(name_hash(SKIN_ENTRY), name_hash(SKIN_CLASS))
+        .property(name_hash(SKIN_NAME_FIELD), values::String::from(skin_name))
+        .build();
+    let mut out = Cursor::new(Vec::new());
+    object.to_writer(&mut out).unwrap();
+    out.into_inner().split_off(4)
 }
 
 /// Text tables that spell the test's paths, entries and classes.
@@ -48,6 +64,11 @@ fn names() -> (TempDir, Names) {
     fs::write(
         root.join("hashes.bintypes.txt"),
         lines(&[SKIN_CLASS, "ResourceResolver"], &entry),
+    )
+    .unwrap();
+    fs::write(
+        root.join("hashes.binfields.txt"),
+        lines(&[SKIN_NAME_FIELD], &entry),
     )
     .unwrap();
     let names = Names::builder().text_tables(&root).build().unwrap();
@@ -252,4 +273,86 @@ fn paths_are_suggested_from_three_characters_on_lowercased_and_in_order() {
         [SKIN, "data/characters/lux/skins/skin1.bin"]
     );
     assert_eq!(lookup.suggest("dat").len(), 3);
+}
+
+#[test]
+fn a_query_of_eight_hex_digits_is_an_entry_hash_and_anything_else_a_name() {
+    assert_eq!(
+        EntryQuery::parse("0x0000ABCD"),
+        EntryQuery::Hash(BinHash(0xabcd))
+    );
+    assert_eq!(
+        EntryQuery::parse("deadbeef"),
+        EntryQuery::Hash(BinHash(0xdead_beef))
+    );
+    let name = EntryQuery::parse(" Characters/Lux/Skins/Skin0 ");
+    assert_eq!(name, EntryQuery::Name(SKIN_ENTRY.into()));
+    assert_eq!(name.hash(), name_hash(SKIN_ENTRY));
+}
+
+#[test]
+fn an_object_at_a_build_is_its_text_with_names_spelled() {
+    let (_tables, names) = names();
+    let history = history()
+        .with_object_bytes(
+            CHAMPION_WAD,
+            (SKIN_ENTRY, SKIN_CLASS, SKIN),
+            stored_skin("Lux"),
+            0..=1,
+        )
+        .with_object_bytes(
+            CHAMPION_WAD,
+            (SKIN_ENTRY, SKIN_CLASS, SKIN),
+            stored_skin("Luxanna"),
+            2..=3,
+        );
+    let lookup = Lookup::new(&history, &names).unwrap();
+
+    let first = lookup.object(SKIN, SKIN_ENTRY, 1).unwrap().unwrap();
+    assert_eq!(first.class, SKIN_CLASS);
+    assert_eq!(first.wad, CHAMPION_WAD);
+    assert_eq!(first.life.last.version, "14.2.1");
+    assert!(
+        first
+            .text
+            .starts_with(&format!("{SKIN_ENTRY} = {SKIN_CLASS} {{"))
+    );
+    assert!(first.text.contains(SKIN_NAME_FIELD) && first.text.contains("\"Lux\""));
+
+    let bin = format!("{:016x}", path_hash(SKIN).0);
+    let entry = format!("0x{:08x}", name_hash(SKIN_ENTRY).0);
+    let later = lookup.object(&bin, &entry, 3).unwrap().unwrap();
+    assert!(later.text.contains("\"Luxanna\""));
+}
+
+#[test]
+fn a_build_that_holds_no_such_object_answers_none() {
+    let names = Names::default();
+    let history = history().with_object_bytes(
+        CHAMPION_WAD,
+        (SKIN_ENTRY, SKIN_CLASS, SKIN),
+        stored_skin("Lux"),
+        1..=1,
+    );
+    let lookup = Lookup::new(&history, &names).unwrap();
+
+    assert_eq!(lookup.object(SKIN, SKIN_ENTRY, 0).unwrap(), None);
+    assert_eq!(lookup.object(SKIN, RESOLVER, 1).unwrap(), None);
+}
+
+#[test]
+fn bytes_that_are_no_object_are_refused_with_the_object_named() {
+    let (_tables, names) = names();
+    let mut cut = stored_skin("Lux");
+    cut.truncate(cut.len() - 2);
+    let history =
+        history().with_object_bytes(CHAMPION_WAD, (SKIN_ENTRY, SKIN_CLASS, SKIN), cut, 0..=3);
+    let lookup = Lookup::new(&history, &names).unwrap();
+
+    match lookup.object(SKIN, SKIN_ENTRY, 0) {
+        Err(AppError::HistoryObjectUnreadable { bin, entry, .. }) => {
+            assert_eq!((bin.as_str(), entry.as_str()), (SKIN, SKIN_ENTRY));
+        }
+        other => panic!("the cut object answered {other:?}"),
+    }
 }

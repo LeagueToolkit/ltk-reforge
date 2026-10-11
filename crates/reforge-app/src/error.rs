@@ -79,6 +79,13 @@ pub enum AppError {
     /// No history index is chosen to update.
     #[error("no history index is chosen")]
     NoIndex,
+    /// An object's bytes in the history index do not read as an object.
+    #[error("the object {entry} of {bin} does not read: {detail}")]
+    HistoryObjectUnreadable {
+        bin: String,
+        entry: String,
+        detail: String,
+    },
     /// The census history did not fetch.
     #[error("the census history did not fetch: {detail}")]
     CensusFetch { detail: String },

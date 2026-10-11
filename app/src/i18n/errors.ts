@@ -83,6 +83,10 @@ export function describeError(error: AppError): ErrorCopy {
     .with({ code: "INDEX_BUSY" }, () => ({ title: m["error.INDEX_BUSY.title"]() }))
     .with({ code: "NO_INDEX_RELEASE" }, () => ({ title: m["error.NO_INDEX_RELEASE.title"]() }))
     .with({ code: "NO_INDEX" }, () => ({ title: m["error.NO_INDEX.title"]() }))
+    .with({ code: "HISTORY_OBJECT_UNREADABLE" }, ({ bin, entry, detail }) => ({
+      title: m["error.HISTORY_OBJECT_UNREADABLE.title"](),
+      detail: `${bin} › ${entry}: ${detail}`,
+    }))
     .with({ code: "CENSUS_FETCH" }, ({ detail }) => ({
       title: m["error.CENSUS_FETCH.title"](),
       detail,

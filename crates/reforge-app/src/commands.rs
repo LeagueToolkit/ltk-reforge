@@ -24,7 +24,7 @@ use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{Choice, InputsView};
 use crate::installs::{self, InstallView};
-use crate::lookup::{HistoryBuilds, Lookup, LookupView};
+use crate::lookup::{HistoryBuilds, HistoryObjectView, Lookup, LookupView};
 use crate::records::{self, RecordHead, RecordView};
 use crate::reveal::{self, Place};
 use crate::run::{
@@ -1017,4 +1017,18 @@ pub async fn history_lookup(
 #[specta::specta]
 pub async fn history_suggest(app: AppHandle, prefix: String) -> IpcResult<Vec<String>> {
     ask_history(&app, move |lookup| Ok(lookup.suggest(&prefix))).await
+}
+
+/// An object of the history the settings choose at the build at position `at`, as text with
+/// its names spelled: `bin` is a path or sixteen hex digits, `entry` a name or eight hex
+/// digits. None when the build holds no such object.
+#[tauri::command]
+#[specta::specta]
+pub async fn history_object(
+    app: AppHandle,
+    bin: String,
+    entry: String,
+    at: u16,
+) -> IpcResult<Option<HistoryObjectView>> {
+    ask_history(&app, move |lookup| lookup.object(&bin, &entry, at)).await
 }

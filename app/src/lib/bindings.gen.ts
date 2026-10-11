@@ -44,6 +44,12 @@ export const commands = {
 	/**  The paths the hash tables spell that start with a prefix, for the History page's search. */
 	historySuggest: (prefix: string) => __TAURI_INVOKE<({ ok: true; value: string[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("history_suggest", { prefix }),
 	/**
+	 *  An object of the history the settings choose at the build at position `at`, as text with
+	 *  its names spelled: `bin` is a path or sixteen hex digits, `entry` a name or eight hex
+	 *  digits. None when the build holds no such object.
+	 */
+	historyObject: (bin: string, entry: string, at: number) => __TAURI_INVOKE<({ ok: true; value: HistoryObjectView | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("history_object", { bin, entry, at }),
+	/**
 	 *  A repair or a port of a mod, as far as the request asks, against the inputs the settings
 	 *  choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunPart`
 	 *  events.
@@ -337,6 +343,8 @@ export type AppError =
 { code: "NO_INDEX_RELEASE" } | 
 /**  No history index is chosen to update. */
 { code: "NO_INDEX" } | 
+/**  An object's bytes in the history index do not read as an object. */
+{ code: "HISTORY_OBJECT_UNREADABLE"; bin: string; entry: string; detail: string } | 
 /**  The census history did not fetch. */
 { code: "CENSUS_FETCH"; detail: string } | 
 /**  The index's head is no commit of the census history: it was built from another. */
@@ -1007,6 +1015,18 @@ export type HistoryBuilds = {
 	head: number,
 	/**  Every build, in position order. */
 	builds: BuildView[],
+};
+
+/**  A game object at a build, as text. */
+export type HistoryObjectView = {
+	/**  The object as text, its hashes spelled where the tables spell them. */
+	text: string,
+	/**  Its class, spelled, else its hash. */
+	class: string,
+	/**  The WAD whose bin held it: the first in the census history's order. */
+	wad: string,
+	/**  The builds that WAD's bin held the object's text without a break. */
+	life: LifeView,
 };
 
 /**  The history index as read. */

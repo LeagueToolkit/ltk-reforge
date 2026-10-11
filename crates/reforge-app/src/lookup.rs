@@ -3,9 +3,11 @@
 //! rule (#ADR-0046). `docs/design/ROADMAP-UX.md`, "The History page".
 
 use reforge::env::Env;
-use reforge::game::Names;
+use reforge::game::{NameBook, Names, Speller};
 use reforge::history::{History, HistoryError, Life, Position};
-use reforge::model::{BinHash, WadHash, clean, path_hash};
+use reforge::model::bin::read_stored;
+use reforge::model::dump::dump_object;
+use reforge::model::{BinHash, WadHash, clean, name_hash, path_hash};
 use serde::Serialize;
 
 use crate::error::{AppError, chain};
@@ -162,6 +164,49 @@ impl PathQuery {
     }
 }
 
+/// An entry as the page takes it: its name, or its entry hash as eight hex digits with or
+/// without `0x`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryQuery {
+    /// An entry name.
+    Name(String),
+    /// An entry hash.
+    Hash(BinHash),
+}
+
+impl EntryQuery {
+    /// The query a text asks.
+    pub fn parse(text: &str) -> Self {
+        let text = text.trim();
+        let hash = hex_digits(text, 8).and_then(|hash| u32::try_from(hash).ok());
+        match hash {
+            Some(hash) => EntryQuery::Hash(BinHash(hash)),
+            None => EntryQuery::Name(text.to_string()),
+        }
+    }
+
+    /// The entry hash asked about.
+    pub fn hash(&self) -> BinHash {
+        match self {
+            EntryQuery::Name(name) => name_hash(name),
+            EntryQuery::Hash(hash) => *hash,
+        }
+    }
+}
+
+/// A game object at a build, as text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+pub struct HistoryObjectView {
+    /// The object as text, its hashes spelled where the tables spell them.
+    pub text: String,
+    /// Its class, spelled, else its hash.
+    pub class: String,
+    /// The WAD whose bin held it: the first in the census history's order.
+    pub wad: String,
+    /// The builds that WAD's bin held the object's text without a break.
+    pub life: LifeView,
+}
+
 /// A number written as exactly `digits` hex digits, with or without `0x`.
 fn hex_digits(text: &str, digits: usize) -> Option<u64> {
     let bare = text
@@ -288,6 +333,42 @@ impl<'a> Lookup<'a> {
         }
         let paths = self.names.first_paths_with_prefix(&prefix, MAX_SUGGESTED);
         paths.iter().map(|path| clean(path).into_owned()).collect()
+    }
+
+    /// The object `entry`, a name or eight hex digits, of the bin at `bin`, a path or sixteen
+    /// hex digits, at the build at position `at`, as text with its names spelled. None when
+    /// the build holds no such object, or the index holds no bytes of it.
+    pub fn object(
+        &self,
+        bin: &str,
+        entry: &str,
+        at: u16,
+    ) -> Result<Option<HistoryObjectView>, AppError> {
+        let bin = PathQuery::parse(bin).hash();
+        let entry = EntryQuery::parse(entry).hash();
+        let at = self.position(Some(at))?;
+        let Some(stored) = self
+            .history
+            .object_bytes(bin, entry, at)
+            .map_err(unanswered)?
+        else {
+            return Ok(None);
+        };
+        let object = read_stored(stored.class, &stored.bytes).map_err(|error| {
+            AppError::HistoryObjectUnreadable {
+                bin: self.path_name(bin),
+                entry: self.entry_name(entry),
+                detail: error.to_string(),
+            }
+        })?;
+        let book = NameBook::new();
+        let speller = Speller::new(&book, self.names);
+        Ok(Some(HistoryObjectView {
+            text: dump_object(&object, &speller),
+            class: self.class_name(stored.class),
+            wad: clean(&stored.wad).into_owned(),
+            life: self.life(stored.life),
+        }))
     }
 
     /// The position asked for, the head when none is. Refused for a position no build has.
