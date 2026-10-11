@@ -109,27 +109,28 @@ how it is recognised, why it is there and what the repair is.
 
 ## Compared with other fixers
 
-| | **reforge** | Hematite | Topaz / cslol-go | LtMAO | Mod-Repather |
+| | reforge | Hematite | Topaz / cslol-go | LtMAO | Mod-Repather |
 |:--|:--:|:--:|:--:|:--:|:--:|
-| **Knows every past patch** | ✅ | ❌ | ⚠️ | ❌ | ❌ |
-| **Dates the mod** | ✅ | ❌ | ⚠️ | ❌ | ❌ |
+| **Knows every past patch** | ✅ | ❌ | partial | ❌ | ❌ |
+| **Dates the mod** | ✅ | ❌ | partial | ❌ | ❌ |
 | **Tells stale game files from the author's** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Field types from a schema** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Riot's own conversions** | ✅ | ⚠️ | ⚠️ | ❌ | ❌ |
+| **Riot's own conversions** | ✅ | partial | partial | ❌ | ❌ |
 | **Ports to the right skin** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Voice and HUD as toggles** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Safe by construction** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Never extracts to disk** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Every change recorded** | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| **Every change recorded** | ✅ | partial | partial | partial | partial |
 | **New patch without a maintainer** | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Rules are data** | ✅ | ✅ | ⚠️ | ❌ | ❌ |
-| **.modpkg output** | ✅ | ⚠️ | ❌ | ❌ | ❌ |
+| **Rules are data** | ✅ | ✅ | partial | ❌ | ❌ |
+| **.modpkg output** | ✅ | partial | ❌ | ❌ | ❌ |
 | **Platform** | Windows, Linux | Windows | Windows | Windows | Windows |
-| **One-time download** | ~1.7 GB | small | small | small | ~220 MB |
-| **Maturity** | released, 0.1.4 | released | released | released | released |
+| **Download, on disk** | 1.7 GB, 4.8 GB | small | small | small | 220 MB |
+| **Maturity** | 0.1.4, 2026 | released | released | released | released |
 
 The rows come from the other tools' sources and READMEs, read on 2026-10-06, not from running
-them. The names are those of the tools; nothing here is a claim about their authors.
+them: a ❌ is a feature those do not mention. The names are those of the tools; nothing here is
+a claim about their authors.
 
 The difference is the history. The other tools see the mod against one build, the current
 one, and are told by hand what changed in between. reforge sees the mod against every build
