@@ -1,6 +1,7 @@
 //! A package's embedded evidence (#ADR-0041) opened as a kept run (#ADR-0096): a run with no
-//! load and no snapshots. Its report is the one the writer put beside the package when that
-//! reads and is of the package's archive, else the evidence alone.
+//! load and no snapshots. Its report is the one its readme embeds (#ADR-0102), else the one
+//! the writer put beside the package, each when it reads and is of the package's archive,
+//! else the evidence alone.
 //!
 //! The package is untrusted input (`docs/design/ARCHITECTURE.md`, "Untrusted input"): its size
 //! is bounded, the counts its header declares are held to its bytes before `ltk_modpkg`
@@ -15,7 +16,7 @@ use fs_err as fs;
 use ltk_modpkg::{METADATA_CHUNK_PATH, Modpkg, ModpkgChunk, README_CHUNK_PATH};
 use reforge::archive::Caps;
 use reforge::model::{ContentId, clean, clean_json};
-use reforge::package::{EvidenceDoc, MAX_README_BYTES, Made, REPORT_FILE};
+use reforge::package::{EvidenceDoc, MAX_README_BYTES, Made, REPORT_FILE, Readme};
 use rusqlite::params;
 use serde_json::{Value, json};
 
@@ -40,6 +41,8 @@ struct Packaged {
     version: Option<String>,
     description: Option<String>,
     evidence: EvidenceDoc,
+    /// The report's JSON the readme embeds.
+    report: Option<String>,
 }
 
 /// A package that does not read, with why.
@@ -154,8 +157,8 @@ fn packaged(path: &Utf8Path, caps: &Caps) -> Result<Packaged, AppError> {
     };
     let readme = readme.ok_or_else(no_evidence)?;
     let readme = String::from_utf8(readme).map_err(|e| unreadable(path, e))?;
-    let evidence = EvidenceDoc::parse(&readme).map_err(|e| unreadable(path, e))?;
-    let evidence = evidence.ok_or_else(no_evidence)?;
+    let readme = Readme::parse(&readme).map_err(|e| unreadable(path, e))?;
+    let evidence = readme.evidence.ok_or_else(no_evidence)?;
     let text = |text: &str| (!text.is_empty()).then(|| text.to_string());
     let name = text(metadata.display_name()).or_else(|| text(metadata.name()));
     let authors: Vec<&str> = metadata.authors().iter().map(|a| a.name()).collect();
@@ -165,40 +168,40 @@ fn packaged(path: &Utf8Path, caps: &Caps) -> Result<Packaged, AppError> {
         version: Some(metadata.version().to_string()),
         description: metadata.description().and_then(text),
         evidence,
+        report: readme.report,
     })
 }
 
-/// The report the writer put beside the package, `<stem>.reforge-report.json`, with the view
-/// it gives. None when it is absent, over the cap, does not read, or is of another archive
-/// than the package's evidence names.
-fn report_beside(
-    path: &Utf8Path,
-    kind: RunKind,
-    sha256: &str,
-    caps: &Caps,
-) -> Option<(String, RunView)> {
+/// The text of the report the writer put beside the package, `<stem>.reforge-report.json`.
+/// None when it is absent, over the cap or does not read.
+fn report_beside(path: &Utf8Path, caps: &Caps) -> Option<String> {
     let stem = path.file_stem()?;
     let report = path.with_file_name(format!("{stem}.{REPORT_FILE}"));
     let len = fs::metadata(&report).ok()?.len();
     if len > caps.entry_bytes {
         return None;
     }
-    let text = fs::read_to_string(&report).ok()?;
-    let value: Value = serde_json::from_str(&text).ok()?;
+    fs::read_to_string(&report).ok()
+}
+
+/// A report's text, cleaned, with the view it gives. None when it is no report, or is of
+/// another archive than the package's evidence names.
+fn report_view(kind: RunKind, sha256: &str, text: &str) -> Option<(String, RunView)> {
+    let value: Value = serde_json::from_str(text).ok()?;
     let archive = &value["evidence"]["archive"]["sha256"];
     if archive.as_str() != Some(sha256) {
         return None;
     }
-    let view = run::view_of_report(kind, &text)?;
-    Some((clean_json(&text).into_owned(), view))
+    let view = run::view_of_report(kind, text)?;
+    Some((clean_json(text).into_owned(), view))
 }
 
 impl AppStore {
     /// Opens a package's embedded evidence as a kept run, and answers its number (#ADR-0096).
     ///
-    /// The run has no load and no snapshots: its report is the one beside the package when it
-    /// reads, else the evidence wrapped as `reforge.evidence-only/1`, and its view what that
-    /// gives. Its settings are the default but for the fixups, which are the ones the evidence
+    /// The run has no load and no snapshots: its report is the one the readme embeds, else the
+    /// one beside the package, when it reads, else the evidence wrapped as
+    /// `reforge.evidence-only/1`, and its view what that gives. Its settings are the default but for the fixups, which are the ones the evidence
     /// names: the evidence holds no other setting, and a package opened was asked for by no
     /// request here. It has no schema build: the evidence names the game's build, not the
     /// schema database's. Refused for a package that does not read and for one with no
@@ -218,8 +221,16 @@ impl AppStore {
             ..RunSettings::default()
         };
         let file_name = path.file_name().unwrap_or(path.as_str()).to_string();
-        let (report, view) = match report_beside(path, kind, &evidence.archive.sha256, &caps) {
-            Some(beside) => beside,
+        let archive = evidence.archive.sha256.as_str();
+        let embedded = packaged.report.as_deref();
+        let embedded = embedded.and_then(|text| report_view(kind, archive, text));
+        // The file beside the package is read only when the readme embeds no report.
+        let found = embedded.or_else(|| {
+            let text = report_beside(path, &caps)?;
+            report_view(kind, archive, &text)
+        });
+        let (report, view) = match found {
+            Some(found) => found,
             None => {
                 let meta = ModView {
                     file_name: file_name.clone(),

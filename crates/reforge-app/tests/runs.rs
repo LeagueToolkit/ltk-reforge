@@ -2,7 +2,7 @@
 //! kinds, one file opened by its kind, and two runs compared. The game is
 //! `reforge_testkit::skins`.
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use ltk_meta::BinObject;
 use reforge::env::Env;
@@ -11,6 +11,7 @@ use reforge::model::entity::FileId;
 use reforge::model::{BinHash, ByteView, ChunkPath, ContentId, Spelled, WadName, name_hash};
 use reforge::package::{
     Chunk, ChunkKey, Layer, Modpkg, Origin as ChunkOrigin, Package, PackageWriter, ProjectConfig,
+    REPORT_FORMAT,
 };
 use reforge::store::BlobStore;
 use reforge_app::error::AppError;
@@ -638,14 +639,57 @@ fn a_package_opened_carries_the_fixups_its_run_turned_off() {
     assert!(!keys.contains(&"fixups_off"), "{:?}", compared.settings);
 }
 
+/// The report the writer put beside a package.
+fn report_beside(package: &Utf8Path) -> Utf8PathBuf {
+    let stem = package.file_stem().unwrap();
+    package.with_file_name(format!("{stem}.reforge-report.json"))
+}
+
+/// Turns the report's block of a `.modpkg`'s readme to spaces, in place (#ADR-0102). The
+/// readme chunk is stored as it is given, and its reader checks no checksum.
+fn without_report_block(package: &Utf8Path) {
+    let find = |bytes: &[u8], what: &[u8]| bytes.windows(what.len()).position(|w| w == what);
+    let mut bytes = fs::read(package).unwrap();
+    let open = format!("```{REPORT_FORMAT}\n");
+    let start = find(&bytes, open.as_bytes()).expect("the report's block");
+    let body = start + open.len();
+    let end = body + find(&bytes[body..], b"\n```\n").expect("its closing line") + 5;
+    bytes[start..end].fill(b' ');
+    fs::write(package, bytes).unwrap();
+}
+
 #[test]
-fn a_package_opened_with_no_report_beside_it_reads_from_its_evidence() {
+fn a_package_opened_with_its_report_file_deleted_reads_from_the_report_it_embeds() {
     let bench = Bench::new();
     let (view, fresh) = ported_and_fresh(&bench);
     let package = Utf8PathBuf::from(view.written.clone().expect("the package"));
-    let stem = package.file_stem().unwrap();
-    fs::remove_file(package.with_file_name(format!("{stem}.reforge-report.json"))).unwrap();
+    fs::remove_file(report_beside(&package)).unwrap();
 
+    let id = fresh.open_package(&package).unwrap();
+
+    let opened = fresh.run_view(id).unwrap().expect("the view");
+    assert_eq!(decided(&opened), decided(&view));
+    assert_eq!(opened.findings, before_write(&view));
+    assert!(!opened.findings.is_empty());
+    let report: serde_json::Value =
+        serde_json::from_str(&fresh.report(id).unwrap().expect("the report")).unwrap();
+    assert_eq!(report["schema"], "reforge.report/1");
+}
+
+#[test]
+fn a_package_with_no_report_in_its_readme_reads_from_the_file_then_from_its_evidence() {
+    let bench = Bench::new();
+    let (view, fresh) = ported_and_fresh(&bench);
+    let package = Utf8PathBuf::from(view.written.clone().expect("the package"));
+    without_report_block(&package);
+
+    let beside = fresh.open_package(&package).unwrap();
+
+    let opened = fresh.run_view(beside).unwrap().expect("the view");
+    assert_eq!(decided(&opened), decided(&view));
+    assert_eq!(opened.findings, before_write(&view));
+
+    fs::remove_file(report_beside(&package)).unwrap();
     let id = fresh.open_package(&package).unwrap();
 
     let opened = fresh.run_view(id).unwrap().expect("the view");

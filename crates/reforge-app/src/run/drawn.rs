@@ -62,10 +62,10 @@ impl Drawn {
         }
     }
 
-    /// What a report alone gives the views, with no run behind it: the report beside a
-    /// package opened (#ADR-0096). A change has no class or field, no object is drawn, and
-    /// the package has no thumbnail. None for a report the views do not read: the file is
-    /// any text beside the package.
+    /// What a report alone gives the views, with no run behind it: the report a package
+    /// opened embeds (#ADR-0102) or has beside it (#ADR-0096). A change has no class or
+    /// field, no object is drawn, and the package has no thumbnail. None for a report the
+    /// views do not read: the text is any text the package's readme or the file holds.
     pub fn of_report(report: &str) -> Option<Self> {
         let mut value: serde_json::Value = serde_json::from_str(report).ok()?;
         clean_strings(&mut value);
