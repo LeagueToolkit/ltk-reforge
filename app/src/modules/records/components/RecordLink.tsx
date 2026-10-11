@@ -24,7 +24,8 @@ export function RecordLink({ code, children, className }: RecordLinkProps) {
       params={{ code: routeCode(code) }}
       onClick={(event) => event.stopPropagation()}
       className={twMerge(
-        "font-mono text-accent-300 underline-offset-2 hover:underline focus-visible:underline",
+        // A code breaks at its hyphen otherwise, half of it on each line.
+        "font-mono whitespace-nowrap text-accent-300 underline-offset-2 hover:underline focus-visible:underline",
         className,
       )}
       data-ui="RecordLink"

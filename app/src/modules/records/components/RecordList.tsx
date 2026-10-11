@@ -8,6 +8,7 @@ import { twMerge } from "@/utils";
 
 import { matches, SERIES, statusWord } from "../heads";
 import { routeCode } from "../links";
+import { RecordTitle } from "./RecordTitle";
 
 /**
  * A record's line: its code and title, and its status when it is not accepted. The line of the
@@ -17,8 +18,17 @@ function RecordLine({ head, active }: { head: RecordHead; active: boolean }) {
   const status = statusWord(head);
   const line = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
-    if (active) {
-      line.current?.scrollIntoView({ block: "nearest" });
+    // The list alone scrolls, to the line's middle: scrolling the page too would move the
+    // sticky list under it, and the record opened scrolls the page back to its top.
+    const shown = line.current;
+    const list = shown?.closest("nav");
+    if (!active || !shown || !list) {
+      return;
+    }
+    const box = list.getBoundingClientRect();
+    const at = shown.getBoundingClientRect();
+    if (at.top < box.top || at.bottom > box.bottom) {
+      list.scrollTop += at.top - box.top - (box.height - at.height) / 2;
     }
   }, [active]);
   return (
@@ -26,11 +36,14 @@ function RecordLine({ head, active }: { head: RecordHead; active: boolean }) {
       ref={line}
       to="/records/$code"
       params={{ code: routeCode(head.code) }}
-      className="flex w-full items-baseline gap-2 rounded-md px-3 py-1.5 text-left select-none hover:bg-surface-veil data-[status=active]:bg-accent-500/10 data-[status=active]:ring-1 data-[status=active]:ring-accent-500/35 data-[status=active]:ring-inset"
+      // In a narrow list the title goes under the code rather than a word a line beside it.
+      className="flex w-full flex-wrap items-baseline gap-x-2 rounded-md px-3 py-1.5 text-left select-none hover:bg-surface-veil data-[status=active]:bg-accent-500/10 data-[status=active]:ring-1 data-[status=active]:ring-accent-500/35 data-[status=active]:ring-inset"
       data-ui="RecordList:row"
     >
       <span className="shrink-0 font-mono text-xs text-surface-400">{routeCode(head.code)}</span>
-      <span className="min-w-0 flex-1 text-sm text-surface-100">{head.title}</span>
+      <span className="min-w-40 flex-1 text-sm text-surface-100">
+        <RecordTitle title={head.title} />
+      </span>
       {status && <span className="shrink-0 text-xs text-surface-500">{status}</span>}
     </Link>
   );
@@ -113,7 +126,11 @@ export function RecordList({ heads, className }: RecordListProps) {
       {shown.length === 0 && (
         <p className="text-sm text-surface-400 select-none">{m.records_none_match()}</p>
       )}
-      <nav aria-label={m.records_list_label()} className="flex flex-col gap-3">
+      {/* The list scrolls under the filter, which stays in view. */}
+      <nav
+        aria-label={m.records_list_label()}
+        className="flex min-h-0 flex-col gap-3 overflow-x-hidden overflow-y-auto"
+      >
         {SERIES.map((series) => {
           const group = shown.filter((head) => head.series === series);
           return (

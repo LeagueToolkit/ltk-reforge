@@ -24,7 +24,8 @@ export function RecordsPage() {
         <div className="flex items-start gap-6">
           <RecordList
             heads={records.data}
-            className="sticky top-0 max-h-[calc(100vh-4rem)] w-1/3 shrink-0 overflow-y-auto"
+            // The window less the shell's padding and the page's title above the list.
+            className="sticky top-0 max-h-[calc(100vh-8rem)] w-1/3 min-w-56 shrink-0"
           />
           <div className="min-w-0 flex-1">
             <Outlet />

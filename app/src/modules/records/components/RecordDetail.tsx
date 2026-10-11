@@ -8,6 +8,7 @@ import { useRecord, useRecords } from "../api/records";
 import { routeCode } from "../links";
 import { RecordLink } from "./RecordLink";
 import { RecordMarkdown } from "./RecordMarkdown";
+import { RecordTitle } from "./RecordTitle";
 
 /** A record's series, in a word. */
 function SeriesBadge({ series }: { series: Series }) {
@@ -92,7 +93,9 @@ function RecordBody({ code }: { code: string }) {
   return (
     <article className="flex flex-col gap-6" data-ui="RecordDetail">
       <header className="flex flex-col gap-2">
-        <h2 className="font-display text-xl font-semibold text-surface-50">{view.head.title}</h2>
+        <h2 className="font-display text-xl font-semibold text-surface-50">
+          <RecordTitle title={view.head.title} />
+        </h2>
         <p className="flex items-center gap-2 text-xs text-surface-400">
           <span className="font-mono">{routeCode(view.head.code)}</span>
           <SeriesBadge series={view.head.series} />

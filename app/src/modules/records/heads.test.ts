@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { RecordHead } from "@/lib/bindings.gen";
 
-import { matches, statusWord } from "./heads";
+import { matches, statusWord, titleParts } from "./heads";
 
 function adr(status: string | null): RecordHead {
   return { code: "#ADR-0044", series: "adr", number: 44, title: "Forge is retired", status };
@@ -31,5 +31,24 @@ describe("matches", () => {
     expect(matches(adr(null), "RETIRED")).toBe(true);
     expect(matches(adr(null), "census")).toBe(false);
     expect(matches(adr(null), "  ")).toBe(true);
+  });
+});
+
+describe("titleParts", () => {
+  it("splits a title at its code spans", () => {
+    expect(titleParts("A `_base` suffix on the base mesh")).toEqual([
+      { text: "A ", code: false },
+      { text: "_base", code: true },
+      { text: " suffix on the base mesh", code: false },
+    ]);
+    expect(titleParts("Static meshes as `.scb`")).toEqual([
+      { text: "Static meshes as ", code: false },
+      { text: ".scb", code: true },
+    ]);
+  });
+
+  it("keeps a title with no span, and a lone backtick, as prose", () => {
+    expect(titleParts("Champion reworks")).toEqual([{ text: "Champion reworks", code: false }]);
+    expect(titleParts("A ` alone")).toEqual([{ text: "A ` alone", code: false }]);
   });
 });
