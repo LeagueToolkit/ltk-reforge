@@ -9,7 +9,8 @@ entry's object bytes, so a run needs no clone), #ADR-0059 (the League Toolkit ca
 when asked and marked when behind), #ADR-0061 (what the app downloaded removed when asked),
 #ADR-0101 (the game installs listed, detected and added, one chosen),
 #ADR-0049 (an AI agent as a caller, proposed),
-#ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
+#ADR-0050 (two views of one run), #ADR-0090 (a third view, the guided one) and #ADR-0052 (the
+app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
 [ROADMAP.md](ROADMAP.md).
 
@@ -544,7 +545,8 @@ count and Clear: "Choose folder" adds a folder's `.fantome` and `.zip` files, no
 subfolders', sorted by name (`list_archives`); "Add files" adds the files picked; every
 archive dropped on the window is added. A card "Settings" picks the kind (Repair, Port), says
 where the packages go with a link to Settings, and says the standard settings are used, with a
-switch that takes the run page's advanced settings in their place. Start is off with no
+switch that takes the run page's advanced settings in their place, less the targets given to
+units and the files kept, which name one mod's. Start is off with no
 archives and while a run or a batch is under way, and is Stop while the batch runs, over a line
 "3 of 12 · <archive>" and a bar. The table fills in as the archives end: the file name, the
 mod's name, the outcome as a badge (written in the success tone; refused and halted, with the
@@ -623,10 +625,13 @@ the inputs page. On the inputs page the input's row says it with its badge and i
 
 ## Two views of one run
 
-#ADR-0050. The simple view ports the mod through every stage with the standard settings and
-writes the `.modpkg`. The advanced view shows the stages in order, each with whether it ran,
-its result and its findings, and runs up to a stage the user chooses. It ports too, and a
-repair is a preset of it beside the standard settings (#ADR-0052).
+#ADR-0050, #ADR-0090. The run page has three views of one run, switched as Simple, Guided and
+Advanced. The simple view ports the mod through every stage with the standard settings and
+writes the `.modpkg`. The guided view ports it as far as the plan, asks about each choice the
+run made by a default, and writes it with the answers ("The guided view"). The advanced view
+shows the stages in order, each with whether it ran, its result and its findings, and runs up
+to a stage the user chooses. It ports too, and a repair is a preset of it beside the standard
+settings (#ADR-0052).
 
 The settings a run takes, each where the library keeps it, and nothing beside them:
 
@@ -640,6 +645,7 @@ The settings a run takes, each where the library keeps it, and nothing beside th
 | keep one stale copy, by its WAD and path (#ADR-0098) | `KeptFile` | yes | yes |
 | keep each DDS as it is, out of TEX's container (#ADR-0055) | `Repairer`, `Porter` | yes | yes |
 | cut events from the game's bank only | `Porter` | | yes |
+| ship the units at slots other than the target too (#ADR-0082) | `Porter` | | yes |
 | which findings block the write | `DiagnosticPolicy` | yes | yes |
 
 The decide stage gives, per unit, the chosen skin, the reason, every candidate with its checks,
@@ -698,6 +704,46 @@ user picks another policy and runs again.
   index, hash tables or schema it says what is judged with less and offers their downloads,
   until the user tells it not to ask (`prompts.runWithLess`).
 
+**The guided view.** #ADR-0090, #ADR-0098, #ADR-0099. "Guide me" ports the mod with the
+standard settings and an empty block list through `plan`, with the live progress the simple
+view shows. A run that halts shows the simple view's banner. The questions are the app
+crate's (`reforge_app::guided`, the command `guided_questions`), derived from the view the
+window holds, so the rule of what is asked is one place and the front end renders it. One
+question is asked for each finding of a kind the library decided by a default, in this order,
+and none when the finding is absent:
+
+| finding | the choices | the default | the setting |
+|---|---|---|---|
+| `file.stale` | leave them out; keep every one; keep one file, offered by file up to 16 files | leave them out | `keep_stale`, `kept_files` |
+| `target.infeasible`, `target.unjudged`, `target.sub-left`, `target.pre-rework` | each slot of the decision's candidates the unit fits; the slot the run chose when it fits none of them, for `unjudged` as the slot it stays at; the game's own skin | the run's target | `unit_targets` |
+| `target.conflict` | one unit of the conflict takes the slot and the others leave it; each leaves it | each leaves it | `unit_targets` |
+| `unit.left` with a unit at a slot the port does not change | the target slot only; every slot | the target slot only | `keep_other_slots` |
+| `audio.carried` with a bank whose events are cut from the mod's own events bank (#ADR-0030) | that bank; the game's bank alone | that bank | `game_events_only` |
+| `rework.restoration`, when the champion has more than one unit | as the skins it is made for; one skin, every unit of the champion but the first left to the game | as the skins it is made for | `unit_targets` |
+| every finding of severity `error` | refuse the write; write with what the finding says is lost | refuse the write | `block` |
+
+The stale question comes first, since its answer runs `load` again (#ADR-0099), and the errors
+come last, one by one, in place of the simple view's one button (#ADR-0003). A question names
+its subject and the mod's facts from the finding's data and the decision's candidates: the
+finding's message, the files that are older bytes, each candidate slot with its checks, the
+units at other slots with their own work from `unit.left-with-work`, the banks and their
+events. Its default is what the run did and gives no setting, but for an error's, which blocks
+it by its code and subject. An answer is a patch of the run's settings; the window merges the
+answers into the standard settings in question order, a list appended to and a switch set, and
+runs through `write`. A run with nothing to ask goes on to the write with the same settings.
+The result shows as the simple view's, with the answers kept: "Change answers" derives the
+questions of the run that wrote, keeps an answer where a question's id and its choice's id
+match, and keeps a question that run no longer asks while its answer is not the default, since
+that answer is why its finding went. A written run is kept, so each run from changed answers
+resumes from it as "The rerun" says, from its load at worst; the run through `plan` is not
+kept, so the first write resumes from the raw snapshot. The advanced view's settings show the
+targets given to units, the files kept and the other slots shipped that the last guided run
+set, read only under the policy, each with Clear; they name one mod's units and files, so
+picking another mod clears them and a batch leaves them out.
+
+An events bank that gives way to the game's (#ADR-0084) is asked nothing: no setting changes
+which bank its events are cut from.
+
 ## The first version
 
 1. The shell of the app: the crate, the front end, the typed commands, the settings.
@@ -749,7 +795,9 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    names, and the library's read of an archive alone and its spelled history queries. Built:
    the Mod page ("The Mod page"). Left: the History page.
 3. **The guided view** (#ADR-0090), its answers the library's settings, a unit's own target
-   and a file kept among them (#ADR-0098).
+   and a file kept among them (#ADR-0098). Built: the targets given to units, the files kept
+   and the other slots shipped in a run's request, the questions derived from a run's view,
+   and the guided view between the simple and the advanced ("The guided view").
 4. **Runs** and **Records** (#ADR-0091): the runs kept in the app's store with their
    snapshots and bytes (#ADR-0096), reopened and resumed, a package's evidence read, two runs
    compared, a run removed and the store swept; the records bundled and opened from a fixup
