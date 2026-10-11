@@ -24,6 +24,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # The container has no git when actions/checkout runs, so it downloads a tarball with no
+  # `.git`. The build script takes the commit from here instead (#ADR-0094).
+  REFORGE_COMMIT: ${{ github.sha }}
 
 jobs:
   check:

@@ -1,5 +1,7 @@
 //! The commit the program is built from, as `REFORGE_COMMIT`, for the snapshots a run writes
-//! (#ADR-0094). A build outside a git checkout has none.
+//! (#ADR-0094). A `REFORGE_COMMIT` in the build's environment is taken as given: CI builds a
+//! tarball of the commit, with no `.git` to ask. Else git says, and a build outside a git
+//! checkout has none.
 
 use std::path::Path;
 use std::process::Command;
@@ -12,6 +14,14 @@ fn git(args: &[&str]) -> Option<String> {
 }
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=REFORGE_COMMIT");
+    if let Ok(commit) = std::env::var("REFORGE_COMMIT") {
+        let commit = commit.trim();
+        if !commit.is_empty() {
+            println!("cargo:rustc-env=REFORGE_COMMIT={commit}");
+            return;
+        }
+    }
     // A file that does not exist would run this script on every build.
     let watch = |name: &str| {
         let path = git(&["rev-parse", "--git-path", name])?;

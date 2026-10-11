@@ -175,9 +175,10 @@ let report = run.report();
   read no bytes are `Run::start_holds`, which `resume` makes before it reopens anything, so
   a start refused by a setting reads nothing from the store. The
   caller then starts from an earlier
-  snapshot. The commit is the one the build script reads from git. A build outside a
-  checkout has none, and a snapshot it wrote is refused (`Uncommitted`): its version alone
-  does not say which code wrote it. Each stage declares what it reads, and its snapshot
+  snapshot. The commit is `REFORGE_COMMIT` in the build's environment when set (CI builds
+  a tarball of the commit, with no `.git`), else the one the build script reads from git. A
+  build with neither has none, and a snapshot it wrote is refused (`Uncommitted`): its
+  version alone does not say which code wrote it. Each stage declares what it reads, and its snapshot
   holds exactly that:
 
   | stage | snapshot | inputs | settings |
