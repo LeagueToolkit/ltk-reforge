@@ -19,10 +19,13 @@ pub struct Settings {
     /// The colour scheme.
     #[serde(rename = "appearance.theme")]
     pub theme: Theme,
-    /// The game install a run is judged against: its folder, its `Game` folder or
-    /// `DATA/FINAL`. None until it is found or picked.
+    /// The game install a run is judged against, one of the installs listed (#ADR-0101): its
+    /// folder, its `Game` folder or `DATA/FINAL`. None until one is found or added.
     #[serde(rename = "inputs.game")]
     pub game: Option<String>,
+    /// The game installs added by hand, beside the ones detected (#ADR-0101).
+    #[serde(rename = "inputs.installs")]
+    pub installs: Vec<String>,
     /// The hash cache's folder. None: the one the League Toolkit programs share on this machine
     /// (#ADR-0059).
     #[serde(rename = "inputs.hashes")]

@@ -4948,6 +4948,7 @@ dependencies = [
  "sha2",
  "specta",
  "specta-typescript",
+ "sysinfo",
  "tar",
  "tauri",
  "tauri-build",

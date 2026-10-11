@@ -11,6 +11,7 @@ pub mod error;
 pub mod hashes;
 pub mod index;
 pub mod inputs;
+pub mod installs;
 pub mod ipc;
 pub mod reveal;
 pub mod run;

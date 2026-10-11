@@ -20,6 +20,7 @@ use crate::error::{AppError, IpcResult};
 use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{self, Choice, InputsView};
+use crate::installs::{self, InstallView};
 use crate::reveal::{self, Place};
 use crate::run::{
     self, ModPeek, PartView, RunKind, RunRequest, RunView, StageEvent, StageName, Watch,
@@ -82,6 +83,43 @@ pub fn check_catalog() -> IpcResult<Vec<CheckEntry>> {
 #[specta::specta]
 pub async fn find_game() -> IpcResult<Option<String>> {
     off_thread(|| Ok(inputs::find_game())).await
+}
+
+/// The game installs detected on this machine and the ones added, the chosen one first
+/// (#ADR-0101).
+#[tauri::command]
+#[specta::specta]
+pub async fn installs(app: AppHandle) -> IpcResult<Vec<InstallView>> {
+    off_thread(move || {
+        let settings = app.state::<SettingsStore>().get();
+        Ok(installs::list(installs::detect(), &settings))
+    })
+    .await
+}
+
+/// Adds a folder to the installs, chosen when none is, and answers the list. Refused for a
+/// folder that is no install.
+#[tauri::command]
+#[specta::specta]
+pub async fn add_install(app: AppHandle, path: String) -> IpcResult<Vec<InstallView>> {
+    off_thread(move || installs::add(&app.state::<SettingsStore>(), installs::detect(), &path))
+        .await
+}
+
+/// Takes an added install off the list, and answers the list. A detected install stays.
+#[tauri::command]
+#[specta::specta]
+pub async fn remove_install(app: AppHandle, path: String) -> IpcResult<Vec<InstallView>> {
+    off_thread(move || installs::remove(&app.state::<SettingsStore>(), installs::detect(), &path))
+        .await
+}
+
+/// Chooses a listed install as the one a run reads, and answers the settings as saved.
+#[tauri::command]
+#[specta::specta]
+pub async fn choose_install(app: AppHandle, path: String) -> IpcResult<Settings> {
+    off_thread(move || installs::choose(&app.state::<SettingsStore>(), installs::detect(), &path))
+        .await
 }
 
 /// A stage of the run under way starting or ending.

@@ -105,6 +105,9 @@ tauri-build = "2"
 tauri-plugin-dialog = "2"
 # How LTK Manager finds the game install on a machine.
 ltk_mod_core = "0.1.1"
+# The drives searched for the usual install folders, as `ltk_mod_core` lists them, at the
+# version it builds with (#ADR-0101).
+sysinfo = "0.32"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }

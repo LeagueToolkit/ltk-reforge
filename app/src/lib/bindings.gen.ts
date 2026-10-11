@@ -15,6 +15,20 @@ export const commands = {
 	checkCatalog: () => __TAURI_INVOKE<({ ok: true; value: CheckEntry[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("check_catalog"),
 	/**  The game install on this machine, found as LTK Manager finds it. None when none is found. */
 	findGame: () => __TAURI_INVOKE<({ ok: true; value: string | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("find_game"),
+	/**
+	 *  The game installs detected on this machine and the ones added, the chosen one first
+	 *  (#ADR-0101).
+	 */
+	installs: () => __TAURI_INVOKE<({ ok: true; value: InstallView[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("installs"),
+	/**
+	 *  Adds a folder to the installs, chosen when none is, and answers the list. Refused for a
+	 *  folder that is no install.
+	 */
+	addInstall: (path: string) => __TAURI_INVOKE<({ ok: true; value: InstallView[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("add_install", { path }),
+	/**  Takes an added install off the list, and answers the list. A detected install stays. */
+	removeInstall: (path: string) => __TAURI_INVOKE<({ ok: true; value: InstallView[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_install", { path }),
+	/**  Chooses a listed install as the one a run reads, and answers the settings as saved. */
+	chooseInstall: (path: string) => __TAURI_INVOKE<({ ok: true; value: Settings }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("choose_install", { path }),
 	/**  The inputs the settings choose, opened, and what opening them found. */
 	openInputs: () => __TAURI_INVOKE<({ ok: true; value: InputsView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("open_inputs"),
 	/**
@@ -630,6 +644,17 @@ export type InstallProgress = {
 	total: number,
 };
 
+/**  Where an install was found, in the order the list shows them. */
+export type InstallSource = 
+/**  The live game, in the Riot client's list or the usual folders. */
+"live" | 
+/**  The PBE, in the Riot client's list or the usual folders. */
+"pbe" | 
+/**  The install of a running client, in a folder of another name. */
+"running" | 
+/**  A folder a person added. */
+"added";
+
 /**  What a download of a release is doing. */
 export type InstallStep = 
 /**
@@ -641,6 +666,20 @@ export type InstallStep =
 "download" | 
 /**  What was downloaded is unpacking. */
 "unpack";
+
+/**  One install as the list shows it. */
+export type InstallView = {
+	/**  The install's root, as the settings hold it. */
+	path: string,
+	/**  Where it was found. */
+	source: InstallSource,
+	/**  The build it says it is. None when it does not open or does not say. */
+	build: string | null,
+	/**  Whether it is an install: its data folder is there. */
+	readable: boolean,
+	/**  Whether it is the install a run reads. */
+	chosen: boolean,
+};
 
 /**  An index the app installed that the settings do not choose. */
 export type KeptIndex = {
@@ -1016,10 +1055,12 @@ export type Settings = {
 	/**  The colour scheme. */
 	"appearance.theme"?: Theme,
 	/**
-	 *  The game install a run is judged against: its folder, its `Game` folder or
-	 *  `DATA/FINAL`. None until it is found or picked.
+	 *  The game install a run is judged against, one of the installs listed (#ADR-0101): its
+	 *  folder, its `Game` folder or `DATA/FINAL`. None until one is found or added.
 	 */
 	"inputs.game"?: string | null,
+	/**  The game installs added by hand, beside the ones detected (#ADR-0101). */
+	"inputs.installs"?: string[],
 	/**
 	 *  The hash cache's folder. None: the one the League Toolkit programs share on this machine
 	 *  (#ADR-0059).
