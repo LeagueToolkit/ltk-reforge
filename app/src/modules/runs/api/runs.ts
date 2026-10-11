@@ -11,6 +11,7 @@ export const runsKeys = {
   files: (id: number, stage: StageName) => [...runsKey, "files", id, stage] as const,
   file: (id: number, content: string) => [...runsKey, "file", id, content] as const,
   report: (id: number) => [...runsKey, "report", id] as const,
+  again: (id: number) => [...runsKey, "again", id] as const,
   store: () => [...runsKey, "store"] as const,
 };
 
@@ -37,6 +38,19 @@ export function useRunReport(id: number) {
       queryKey: runsKeys.report(id),
       queryFn: queryFn(() => commands.runReport(id)),
       staleTime: Infinity,
+    }),
+  );
+}
+
+/**
+ * What a kept run was run on and with, for the run page to run it again. Asked again each time
+ * it is shown: the archive may have left its path since.
+ */
+export function useRunAgain(id: number) {
+  return useQuery(
+    queryOptions({
+      queryKey: runsKeys.again(id),
+      queryFn: queryFn(() => commands.runSettings(id)),
     }),
   );
 }

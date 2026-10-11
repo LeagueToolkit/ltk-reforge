@@ -29,7 +29,7 @@ use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
 use crate::storage::StorageView;
-use crate::store::{AppStore, FileView, RunRow, StageFiles, StoreView};
+use crate::store::{AppStore, FileView, RunAgain, RunRow, StageFiles, StoreView};
 use crate::view::Finding;
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
@@ -210,6 +210,15 @@ pub async fn run_file(app: AppHandle, id: u64, content: String) -> IpcResult<Fil
         store.file_view(id, content, names)
     })
     .await
+}
+
+/// What a kept run was run on and with, for the run page to run it again. None for a number
+/// no run has.
+#[tauri::command]
+#[specta::specta]
+pub async fn run_settings(app: AppHandle, id: u64) -> IpcResult<Option<RunAgain>> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || store?.run_again(id)).await
 }
 
 /// Marks a kept run so that the store's bound does not remove it, or unmarks it.

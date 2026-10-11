@@ -573,6 +573,31 @@ fn a_watch_hears_the_stages_a_rerun_takes_from_a_kept_run_with_their_parts() {
 }
 
 #[test]
+fn a_kept_run_gives_its_archive_and_settings_to_run_again() {
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), "mod.fantome", StageName::Write);
+    request.kind = RunKind::Port;
+    request.settings.fixups.off = vec![a_bin_fixup()];
+    let id = bench.run(&request).saved.unwrap();
+
+    let again = bench.store.run_again(id).unwrap().expect("the run");
+
+    assert_eq!(again.kind, RunKind::Port);
+    assert_eq!(again.archive, request.archive);
+    assert_eq!(again.settings, request.settings);
+    assert!(again.archive_present);
+    assert_eq!(bench.store.run_again(id + 1).unwrap(), None);
+
+    fs::remove_file(&request.archive).unwrap();
+
+    let again = bench.store.run_again(id).unwrap().expect("the run");
+    assert!(
+        !again.archive_present,
+        "the archive is no longer at its path"
+    );
+}
+
+#[test]
 fn a_rerun_through_a_stage_resumes_no_later_than_it() {
     use StageName::*;
     let bench = Bench::new();

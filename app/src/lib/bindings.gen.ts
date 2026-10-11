@@ -46,6 +46,11 @@ export const commands = {
 	 *  bin's names are spelled through the run's names and the inputs' tables, when they open.
 	 */
 	runFile: (id: number, content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_file", { id, content }),
+	/**
+	 *  What a kept run was run on and with, for the run page to run it again. None for a number
+	 *  no run has.
+	 */
+	runSettings: (id: number) => __TAURI_INVOKE<({ ok: true; value: RunAgain | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_settings", { id }),
 	/**  Marks a kept run so that the store's bound does not remove it, or unmarks it. */
 	keepRun: (id: number, kept: boolean) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("keep_run", { id, kept }),
 	/**  Removes a kept run, and what no other run names. */
@@ -818,6 +823,21 @@ export type RuleSpec = {
 	class: string,
 	/**  What it does. */
 	op: RuleOp,
+};
+
+/**  What a kept run was run on and with: what the run page takes to run it again. */
+export type RunAgain = {
+	/**  A repair or a port. */
+	kind: RunKind,
+	/**
+	 *  The path the archive was last read from, as the person picked it: not cleaned, since
+	 *  the run reads the file at it.
+	 */
+	archive: string,
+	/**  The settings the request gave. */
+	settings: RunSettings,
+	/**  Whether a file is at the path. */
+	archive_present: boolean,
 };
 
 /**  A finding of the run under way, as it is raised. */

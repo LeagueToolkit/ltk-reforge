@@ -9,6 +9,7 @@ import type {
   PackageView,
   PartView,
   RuleSpec,
+  RunAgain,
   RunKind,
   RunSettings,
   RunView,
@@ -71,6 +72,31 @@ export function runSettings(settings: AdvancedSettings): RunSettings {
     target: settings.target,
     anim_reuse: settings.animReuse,
     game_events_only: settings.gameEventsOnly,
+  };
+}
+
+/**
+ * The advanced settings a request of this kind and these settings was run with. A setting the
+ * request leaves out is the standard one, as the backend reads it.
+ */
+export function advancedSettings(
+  kind: RunKind,
+  settings: RunSettings,
+  through: StageName,
+): AdvancedSettings {
+  return {
+    kind,
+    through,
+    fixupsOff: settings.fixups?.off ?? STANDARD.fixupsOff,
+    fixupsOn: settings.fixups?.on ?? STANDARD.fixupsOn,
+    rules: settings.fixups?.rules ?? STANDARD.rules,
+    checksOff: settings.checks_off ?? STANDARD.checksOff,
+    keepStale: settings.keep_stale ?? STANDARD.keepStale,
+    keepDds: settings.keep_dds ?? STANDARD.keepDds,
+    block: settings.block ?? STANDARD.block,
+    target: settings.target ?? STANDARD.target,
+    animReuse: settings.anim_reuse ?? STANDARD.animReuse,
+    gameEventsOnly: settings.game_events_only ?? STANDARD.gameEventsOnly,
   };
 }
 
@@ -147,6 +173,11 @@ interface RepairState {
   setAdvanced: (change: Partial<AdvancedSettings>) => void;
   /** Replaces the advanced settings with a preset: `STANDARD` or `REPAIR`. */
   applyPreset: (preset: AdvancedSettings) => void;
+  /**
+   * Takes a kept run's archive, kind and settings as if picked and typed, in the advanced view
+   * where the settings show. Nothing runs until the person presses Run.
+   */
+  takeRun: (again: Pick<RunAgain, "kind" | "archive" | "settings">) => void;
 }
 
 /** The run page's state, kept while the user moves between pages. */
@@ -164,4 +195,13 @@ export const useRepairStore = create<RepairState>()((set) => ({
   setLive: (change) => set((state) => ({ live: change(state.live) })),
   setAdvanced: (change) => set((state) => ({ advanced: { ...state.advanced, ...change } })),
   applyPreset: (preset) => set({ advanced: preset }),
+  // A run is kept when it writes its package, so its request ran through `write`.
+  takeRun: ({ kind, archive, settings }) =>
+    set({
+      archive,
+      last: null,
+      peek: null,
+      mode: "advanced",
+      advanced: advancedSettings(kind, settings, "write"),
+    }),
 }));

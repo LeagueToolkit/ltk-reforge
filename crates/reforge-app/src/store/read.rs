@@ -1,13 +1,14 @@
 //! What the store's rows show: the runs kept, a run's report and drawn view, and the store's
 //! size for the settings page. A mod's text is cleaned here, as every view shows it.
 
+use camino::Utf8Path;
 use reforge::model::clean;
 use rusqlite::{OptionalExtension, Row};
 use serde::Serialize;
 
 use super::{AppStore, ROWS_FILE, failed, number, unpack};
 use crate::error::AppError;
-use crate::run::{RunKind, RunView, StageName};
+use crate::run::{RunKind, RunSettings, RunView, StageName};
 use crate::storage::bytes_of;
 use crate::view::clean_strings;
 
@@ -47,6 +48,20 @@ pub struct RunRow {
     pub package: Option<String>,
     /// The stages it keeps a snapshot of, in stage order, `load` first.
     pub reached: Vec<StageName>,
+}
+
+/// What a kept run was run on and with: what the run page takes to run it again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+pub struct RunAgain {
+    /// A repair or a port.
+    pub kind: RunKind,
+    /// The path the archive was last read from, as the person picked it: not cleaned, since
+    /// the run reads the file at it.
+    pub archive: String,
+    /// The settings the request gave.
+    pub settings: RunSettings,
+    /// Whether a file is at the path.
+    pub archive_present: bool,
 }
 
 /// What the store holds, as the settings page's storage group shows it.
@@ -112,6 +127,33 @@ impl AppStore {
         let query = "SELECT package FROM run WHERE id = ?1";
         let package = rows.query_row(query, [id], |row| row.get(0)).optional()?;
         Ok(package.flatten())
+    }
+
+    /// What a kept run was run on and with. None for a number no run has.
+    pub fn run_again(&self, id: u64) -> Result<Option<RunAgain>, AppError> {
+        let Ok(id) = i64::try_from(id) else {
+            return Ok(None);
+        };
+        let query = "SELECT run.kind, raw.path, run.settings
+             FROM run JOIN load ON load.id = run.load_id JOIN raw ON raw.sha256 = load.sha256
+             WHERE run.id = ?1";
+        let row: Option<(String, String, String)> = {
+            let rows = self.rows.lock();
+            let row = rows.query_row(query, [id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            });
+            row.optional()?
+        };
+        let Some((kind, archive, settings)) = row else {
+            return Ok(None);
+        };
+        let settings: RunSettings = serde_json::from_str(&settings).map_err(failed)?;
+        Ok(Some(RunAgain {
+            kind: kind_of(&kind)?,
+            archive_present: Utf8Path::new(&archive).is_file(),
+            archive,
+            settings,
+        }))
     }
 
     /// A packed column of a kept run's row, as JSON. None for a number no run has.

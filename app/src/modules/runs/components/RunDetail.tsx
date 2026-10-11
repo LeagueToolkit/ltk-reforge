@@ -1,14 +1,22 @@
-import { FolderOpenIcon, PushPinIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, FolderOpenIcon, PushPinIcon, TrashIcon } from "@phosphor-icons/react";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { Button, FailureNote, Spinner, TabPanel, Tabs } from "@/components";
+import { Button, FailureNote, Spinner, TabPanel, Tabs, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { RunRow, RunView, StageName } from "@/lib/bindings.gen";
 import { ConfirmRemove } from "@/modules/inputs";
-import { endedResults, RunResults, StageStrip } from "@/modules/repair";
+import { endedResults, RunResults, StageStrip, useRepairStore } from "@/modules/repair";
 import { twMerge } from "@/utils";
 
-import { useKeepRun, useRemoveRun, useRevealRun, useRunReport, useRunView } from "../api/runs";
+import {
+  useKeepRun,
+  useRemoveRun,
+  useRevealRun,
+  useRunAgain,
+  useRunReport,
+  useRunView,
+} from "../api/runs";
 import { FILE_STAGES, FilesTab } from "./FilesTab";
 import { runName } from "./RunList";
 
@@ -95,6 +103,9 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
   const keep = useKeepRun();
   const remove = useRemoveRun();
   const reveal = useRevealRun();
+  const again = useRunAgain(row.id);
+  const takeRun = useRepairStore((state) => state.takeRun);
+  const navigate = useNavigate();
   const [asking, setAsking] = useState(false);
   const [tab, setTab] = useState<Tab>("result");
   const [filesStage, setFilesStage] = useState<StageName | null>(null);
@@ -109,7 +120,25 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
     setFilesStage(stage);
     setTab("files");
   };
-  const failure = keep.error ?? remove.error ?? reveal.error;
+  const failure = keep.error ?? remove.error ?? reveal.error ?? again.error;
+  const againButton = (
+    <Button
+      size="sm"
+      variant="outline"
+      left={<ArrowClockwiseIcon weight="bold" />}
+      disabled={!again.data?.archive_present}
+      loading={again.isPending}
+      title={again.data?.archive_present ? m.runs_again_description() : undefined}
+      onClick={() => {
+        if (again.data) {
+          takeRun(again.data);
+          void navigate({ to: "/" });
+        }
+      }}
+    >
+      {m.runs_again_action()}
+    </Button>
+  );
 
   return (
     <div className="flex flex-col gap-6" data-ui="RunDetail">
@@ -152,6 +181,14 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
         >
           {m.runs_reveal_action()}
         </Button>
+        {again.data && !again.data.archive_present ? (
+          // A disabled button hears no pointer, so the note is on what holds it.
+          <Tooltip content={m.runs_again_missing()}>
+            <span>{againButton}</span>
+          </Tooltip>
+        ) : (
+          againButton
+        )}
         <Button
           size="sm"
           variant="ghost"
