@@ -19,7 +19,40 @@ import { m } from "@/i18n";
 import type { FileRow, Mark } from "@/lib/bindings.gen";
 import { twMerge } from "@/utils";
 
-import { sizeLabel, type TreeFile, type TreeFolder } from "../tree";
+import { isSourceFact, sizeLabel, type SourceFact, type TreeFile, type TreeFolder } from "../tree";
+
+/** The words for a provenance fact, the fact's own key for one the app has none for. */
+export function sourceLabel(fact: string): string {
+  return isSourceFact(fact) ? m[`mod_source.${fact}.label`]() : fact;
+}
+
+/** What a provenance fact says of a file's bytes, for its hover. */
+function sourceDescription(fact: string): string | null {
+  return isSourceFact(fact) ? m[`mod_source.${fact}.description`]() : null;
+}
+
+const sourceClass: Record<SourceFact, string> = {
+  install: "bg-surface-veil text-surface-200",
+  history: "bg-warning/10 text-warning-text",
+  own: "text-surface-400",
+};
+
+/** A file's provenance fact as a small badge, its meaning on hover. */
+export function SourceBadge({ fact }: { fact: string }) {
+  const description = sourceDescription(fact);
+  const badge = (
+    <span
+      className={twMerge(
+        "shrink-0 rounded-full px-1.5 text-[11px] select-none",
+        isSourceFact(fact) ? sourceClass[fact] : "text-surface-400",
+      )}
+      data-ui="FileTree:source"
+    >
+      {sourceLabel(fact)}
+    </span>
+  );
+  return description ? <Tooltip content={description}>{badge}</Tooltip> : badge;
+}
 
 const BIN_KINDS = ["property-bin", "property-bin-override", "ritobin-text", "ritobin-json"];
 const IMAGE_KINDS = ["texture", "texture-dds", "png", "jpeg", "gif", "bmp", "tga", "tiff", "webp"];
@@ -167,6 +200,7 @@ export function FileTree({ roots, allOpen, selected, onPick, againstRun = false 
         >
           {node.name}
         </span>
+        {node.row.source && <SourceBadge fact={node.row.source} />}
         <MarkDot mark={node.row.mark} againstRun={againstRun} />
         <span className="shrink-0 text-surface-400 tabular-nums">{sizeLabel(node.row.size)}</span>
       </button>

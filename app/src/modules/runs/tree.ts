@@ -31,16 +31,53 @@ export interface TreeFilter {
   text: string;
   /** Only the files changed, added or removed against the stage before. */
   changedOnly: boolean;
+  /** Only the files of this provenance fact, for files that carry one. */
+  source?: string | null;
+}
+
+/**
+ * The provenance facts in the order the library declares them (`BytesOrigin`): bytes the
+ * install holds, bytes the game shipped at earlier builds only, the mod's own.
+ */
+export const SOURCE_FACTS = ["install", "history", "own"] as const;
+
+/** A provenance fact the app has words for. */
+export type SourceFact = (typeof SOURCE_FACTS)[number];
+
+/** Whether a fact is one the app has words for. */
+export function isSourceFact(fact: string): fact is SourceFact {
+  return (SOURCE_FACTS as readonly string[]).includes(fact);
+}
+
+/** Orders by provenance fact as the library declares them, a fact it does not name last. */
+export function bySourceFact(a: string, b: string): number {
+  const place = (fact: string) =>
+    isSourceFact(fact) ? SOURCE_FACTS.indexOf(fact) : SOURCE_FACTS.length;
+  return place(a) - place(b) || (a < b ? -1 : a > b ? 1 : 0);
+}
+
+/** The provenance facts a stage's files carry, each once, in the facts' order. */
+export function sourcesOf(wads: WadFiles[]): string[] {
+  const facts = new Set<string>();
+  for (const row of wads.flatMap((wad) => wad.files)) {
+    if (row.source) {
+      facts.add(row.source);
+    }
+  }
+  return [...facts].sort(bySourceFact);
 }
 
 /** Whether a filter is narrowing the tree. */
 export function filtering(filter: TreeFilter): boolean {
-  return filter.changedOnly || filter.text.trim() !== "";
+  return filter.changedOnly || filter.text.trim() !== "" || filter.source != null;
 }
 
 /** Whether a file passes a filter. */
 export function shown(row: FileRow, filter: TreeFilter): boolean {
   if (filter.changedOnly && row.mark === "same") {
+    return false;
+  }
+  if (filter.source != null && row.source !== filter.source) {
     return false;
   }
   const words = filter.text.trim().toLowerCase();

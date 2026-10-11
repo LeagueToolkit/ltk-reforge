@@ -1,13 +1,19 @@
 import { LockSimpleIcon } from "@phosphor-icons/react";
+import { type QueryKey, useQuery } from "@tanstack/react-query";
 import { match } from "ts-pattern";
 
 import { FailureNote, Spinner, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { FileRow, FileView } from "@/lib/bindings.gen";
 
-import { useRunFile } from "../api/runs";
 import { sizeLabel } from "../tree";
 import { kindGroup } from "./FileTree";
+
+/** The read of one file's bytes as the app shows them: a kept run's, or an explored mod's. */
+export interface FileQuery {
+  queryKey: QueryKey;
+  queryFn: () => Promise<FileView>;
+}
 
 const preClass =
   "max-h-[60vh] overflow-auto rounded-lg border border-surface-700/50 bg-surface-950/40 p-3 font-mono text-xs whitespace-pre text-surface-200";
@@ -48,13 +54,15 @@ function Shown({ view }: { view: FileView }) {
 }
 
 interface FileViewerProps {
-  id: number;
   row: FileRow;
+  /** The read of its bytes. */
+  query: FileQuery;
 }
 
-/** One file of a kept run, read-only: what it is, and its bytes as the app shows them. */
-export function FileViewer({ id, row }: FileViewerProps) {
-  const view = useRunFile(id, row.content);
+/** One file, read-only: what it is, and its bytes as the app shows them. */
+export function FileViewer({ row, query }: FileViewerProps) {
+  // A file's bytes under their id never change, and one no tier holds is not asked again.
+  const view = useQuery({ ...query, staleTime: Infinity, retry: false });
   return (
     <div className="flex flex-col gap-3" data-ui="FileViewer">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-surface-veil-soft px-3 py-2 text-xs">

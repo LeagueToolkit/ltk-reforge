@@ -21,7 +21,7 @@ import { useFixupCatalog } from "@/modules/fixups";
 import { reasonTitle } from "@/modules/repair";
 import { twMerge } from "@/utils";
 
-import { useCompare, useCompareFiles, useRunView } from "../api/runs";
+import { runFileQuery, useCompare, useCompareFiles, useRunView } from "../api/runs";
 import { differingFirst, isDiffKey, SWITCH_KEYS } from "../compare";
 import { FilesBrowser, heldStages } from "./FilesTab";
 import { KindBadge, RunWhen } from "./RunList";
@@ -467,7 +467,7 @@ function FilesSection({ a, b, stages }: { a: number; b: number; stages: StageNam
         stage={stage}
         onStage={setStage}
         // A file removed is the first run's; every other is the second's.
-        runOf={(row) => (row.mark === "removed" ? a : b)}
+        fileQuery={(row) => runFileQuery(row.mark === "removed" ? a : b, row.content)}
         againstRun
       />
     </SectionCard>

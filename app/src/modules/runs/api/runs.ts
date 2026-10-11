@@ -4,6 +4,7 @@ import { commands, type StageName } from "@/lib/bindings.gen";
 import { runsKey } from "@/lib/query";
 import { mutationFn, queryFn, type Result } from "@/utils";
 
+import type { FileQuery } from "../components/FileViewer";
 import type { Opened } from "./drop";
 
 /** The query keys of the store of runs, all under `runsKey`. */
@@ -95,16 +96,10 @@ export function useCompareFiles(a: number, b: number, stage: StageName) {
 }
 
 /** One file of a kept run, by the id of its bytes, shown by its kind. */
-export function useRunFile(id: number, content: string) {
-  return useQuery(
-    queryOptions({
-      queryKey: runsKeys.file(id, content),
-      queryFn: queryFn(() => commands.runFile(id, content)),
-      staleTime: Infinity,
-      retry: false,
-    }),
-  );
-}
+export const runFileQuery = (id: number, content: string): FileQuery => ({
+  queryKey: runsKeys.file(id, content),
+  queryFn: queryFn(() => commands.runFile(id, content)),
+});
 
 /** What the store holds and its bytes on disk. */
 export function useStoreView() {

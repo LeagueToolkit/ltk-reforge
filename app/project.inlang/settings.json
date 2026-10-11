@@ -14,6 +14,7 @@
       "./messages/{locale}/fixups.json",
       "./messages/{locale}/gate.json",
       "./messages/{locale}/inputs.json",
+      "./messages/{locale}/mod.json",
       "./messages/{locale}/policy.json",
       "./messages/{locale}/records.json",
       "./messages/{locale}/repair.json",

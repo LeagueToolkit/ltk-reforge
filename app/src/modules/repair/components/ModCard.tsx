@@ -1,10 +1,10 @@
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect } from "react";
+import { type ReactNode, useCallback, useEffect } from "react";
 
 import { Button, FailureNote, SectionCard } from "@/components";
 import { m } from "@/i18n";
-import { commands } from "@/lib/bindings.gen";
+import { type CharacterPeek, commands, type ModView } from "@/lib/bindings.gen";
 import { pickFile } from "@/modules/inputs";
 import { useSettings } from "@/modules/settings";
 import { queryFn, twMerge } from "@/utils";
@@ -24,10 +24,11 @@ export function useOutputFolder(): string | null {
   return archive ? folderOf(archive) : null;
 }
 
-const peekKey = ["mod", "peek"] as const;
+/** The key of every read of an archive alone. */
+export const peekKey = ["mod", "peek"] as const;
 
 /** The archive read alone. The file is read once per pick. */
-const peekQuery = (archive: string | null) =>
+export const peekQuery = (archive: string | null) =>
   queryOptions({
     queryKey: [...peekKey, archive] as const,
     queryFn: queryFn(() => commands.peekMod(archive ?? "")),
@@ -47,6 +48,110 @@ function usePeek(archive: string | null) {
 }
 
 /**
+ * Takes an archive picked or dropped as the one a page shows, reading the file at the path
+ * again: it may have changed since it was last read.
+ */
+export function useTakeArchive(take: (archive: string) => void) {
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (picked: string) => {
+      await queryClient.invalidateQueries({ queryKey: peekKey });
+      take(picked);
+    },
+    [queryClient, take],
+  );
+}
+
+/** Asks for a mod archive with the system's dialog. Null when the person cancels. */
+export async function chooseArchive(): Promise<string | null> {
+  return await pickFile([...ARCHIVE_EXTENSIONS], m.repair_archive_filter_label());
+}
+
+export interface ModFaceProps {
+  /** The archive picked. */
+  archive: string | null;
+  /** The mod as its archive or a run names it. */
+  meta: ModView | null | undefined;
+  /** Its thumbnail as a `data:` URL. */
+  thumbnail: string | null | undefined;
+  /** The characters its paths name, with their slots. */
+  characters: CharacterPeek[];
+  /** Why the archive does not read alone, when it does not. */
+  failure?: unknown;
+  /** Whether a mod archive is held over the window and would be taken. */
+  over: boolean;
+  /** The actions beside the mod. */
+  actions: ReactNode;
+}
+
+/**
+ * A mod as it is picked: its thumbnail, name, author and version, the characters its paths
+ * name with their slots, and the archive's path, outlined while an archive is held over the
+ * window.
+ */
+export function ModFace({
+  archive,
+  meta,
+  thumbnail,
+  characters,
+  failure,
+  over,
+  actions,
+}: ModFaceProps) {
+  return (
+    <div
+      className={twMerge(
+        "flex items-start justify-between gap-4 rounded-md",
+        over && "outline-2 outline-offset-8 outline-accent-500 outline-dashed",
+      )}
+      data-ui="ModCard:mod"
+    >
+      {thumbnail && (
+        <img
+          src={thumbnail}
+          alt={m.repair_mod_thumbnail_alt()}
+          className="h-16 w-16 shrink-0 rounded-md border border-surface-700 object-cover"
+        />
+      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {meta?.name && <p className="text-sm text-surface-50">{meta.name}</p>}
+        {(meta?.author || meta?.version) && (
+          <p className="text-xs text-surface-300">
+            {[
+              meta.author && m.repair_mod_by_label({ author: meta.author }),
+              meta.version && m.repair_mod_version_label({ version: meta.version }),
+            ]
+              .filter(Boolean)
+              .join(", ")}
+          </p>
+        )}
+        {characters.length > 0 && (
+          <p className="text-xs text-surface-300" data-ui="ModCard:characters">
+            {characters.map((character, index) => (
+              <span key={character.name}>
+                {index > 0 && " · "}
+                {character.name}{" "}
+                <span className="text-surface-400">
+                  {m.repair_mod_skins_label({ slots: character.slots.join(", ") })}
+                </span>
+              </span>
+            ))}
+          </p>
+        )}
+        {archive && <p className="font-mono text-xs break-all text-surface-300">{archive}</p>}
+        {failure != null && <FailureNote failure={failure} />}
+        {!archive && (
+          <p className="text-sm text-surface-400 select-none">
+            {over ? m.repair_mod_drop_label() : m.repair_mod_none()}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 flex-wrap justify-end gap-2">{actions}</div>
+    </div>
+  );
+}
+
+/**
  * The mod to repair, picked with a dialog or dropped on the window: as its archive names it
  * when it is picked, as the last run named it after, and where its package goes. The mod does
  * not change during a run, whose result would otherwise be shown as the new mod's.
@@ -60,22 +165,14 @@ export function ModCard() {
     (state) => (state.live ? state.live.package : state.last?.package)?.thumbnail,
   );
   const settings = useSettings();
-  const queryClient = useQueryClient();
   const peek = usePeek(archive);
   const meta = ran ?? peek.data?.meta;
   const thumbnail = built ?? peek.data?.thumbnail;
   const chosenOut = settings.data?.["output.folder"];
 
-  const takeMod = useCallback(
-    async (picked: string) => {
-      // The file at the path may have changed since it was last read.
-      await queryClient.invalidateQueries({ queryKey: peekKey });
-      setArchive(picked);
-    },
-    [queryClient, setArchive],
-  );
+  const takeMod = useTakeArchive(setArchive);
   const chooseMod = async () => {
-    const picked = await pickFile([...ARCHIVE_EXTENSIONS], m.repair_archive_filter_label());
+    const picked = await chooseArchive();
     if (picked) {
       await takeMod(picked);
     }
@@ -93,57 +190,19 @@ export function ModCard() {
 
   return (
     <SectionCard title={m.repair_mod_title()}>
-      <div
-        className={twMerge(
-          "flex items-start justify-between gap-4 rounded-md",
-          over && !running && "outline-2 outline-offset-8 outline-accent-500 outline-dashed",
-        )}
-        data-ui="ModCard:mod"
-      >
-        {thumbnail && (
-          <img
-            src={thumbnail}
-            alt={m.repair_mod_thumbnail_alt()}
-            className="h-16 w-16 shrink-0 rounded-md border border-surface-700 object-cover"
-          />
-        )}
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          {meta?.name && <p className="text-sm text-surface-50">{meta.name}</p>}
-          {(meta?.author || meta?.version) && (
-            <p className="text-xs text-surface-300">
-              {[
-                meta.author && m.repair_mod_by_label({ author: meta.author }),
-                meta.version && m.repair_mod_version_label({ version: meta.version }),
-              ]
-                .filter(Boolean)
-                .join(", ")}
-            </p>
-          )}
-          {peek.data && peek.data.characters.length > 0 && (
-            <p className="text-xs text-surface-300" data-ui="ModCard:characters">
-              {peek.data.characters.map((character, index) => (
-                <span key={character.name}>
-                  {index > 0 && " · "}
-                  {character.name}{" "}
-                  <span className="text-surface-400">
-                    {m.repair_mod_skins_label({ slots: character.slots.join(", ") })}
-                  </span>
-                </span>
-              ))}
-            </p>
-          )}
-          {archive && <p className="font-mono text-xs break-all text-surface-300">{archive}</p>}
-          {peek.isError && <FailureNote failure={peek.error} />}
-          {!archive && (
-            <p className="text-sm text-surface-400 select-none">
-              {over && !running ? m.repair_mod_drop_label() : m.repair_mod_none()}
-            </p>
-          )}
-        </div>
-        <Button size="sm" variant="outline" disabled={running} onClick={() => void chooseMod()}>
-          {m.repair_mod_choose_action()}
-        </Button>
-      </div>
+      <ModFace
+        archive={archive}
+        meta={meta}
+        thumbnail={thumbnail}
+        characters={peek.data?.characters ?? []}
+        failure={peek.isError ? peek.error : undefined}
+        over={over && !running}
+        actions={
+          <Button size="sm" variant="outline" disabled={running} onClick={() => void chooseMod()}>
+            {m.repair_mod_choose_action()}
+          </Button>
+        }
+      />
       <Link
         to="/settings"
         className="text-xs break-all text-surface-400 underline-offset-2 hover:text-surface-200 hover:underline"

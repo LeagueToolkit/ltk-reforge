@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type { FileRow, Mark, WadFiles } from "@/lib/bindings.gen";
 
-import { buildTree, HASHED_FOLDER, sizeLabel, type TreeFolder, type TreeNode } from "./tree";
+import {
+  buildTree,
+  HASHED_FOLDER,
+  sizeLabel,
+  sourcesOf,
+  type TreeFolder,
+  type TreeNode,
+} from "./tree";
 
 function row(path: string | null, size: number, mark: Mark = "same", kind = "texture"): FileRow {
   return { hash: "0123456789abcdef", path, content: "00".repeat(32), size, kind, mark };
@@ -89,6 +96,35 @@ describe("buildTree", () => {
   it("keeps an empty WAD while nothing narrows the tree", () => {
     const empty: WadFiles = { name: "Empty.wad.client", files: [] };
     expect(buildTree([empty], all).map((root) => root.files)).toEqual([0]);
+  });
+
+  it("shows only the files of one provenance fact when asked", () => {
+    const sourced: WadFiles = {
+      name: "Ahri.wad.client",
+      files: [
+        { ...row("a/game.tex", 10), source: "install" },
+        { ...row("a/own.tex", 20), source: "own" },
+        row("a/none.tex", 30),
+      ],
+    };
+    const [root] = buildTree([sourced], { ...all, source: "install" });
+    expect(names(folderAt(root, "a"))).toEqual(["game.tex"]);
+    const [every] = buildTree([sourced], { ...all, source: null });
+    expect(names(folderAt(every, "a"))).toEqual(["game.tex", "none.tex", "own.tex"]);
+  });
+});
+
+describe("sourcesOf", () => {
+  it("lists each fact the files carry once, in the order the library declares them", () => {
+    const files = [
+      { ...row("a", 1), source: "own" },
+      { ...row("b", 1), source: "history" },
+      { ...row("c", 1), source: "own" },
+      { ...row("d", 1), source: "install" },
+      row("e", 1),
+    ];
+    expect(sourcesOf([{ name: "W.wad.client", files }])).toEqual(["install", "history", "own"]);
+    expect(sourcesOf([wad])).toEqual([]);
   });
 });
 

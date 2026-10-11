@@ -132,6 +132,8 @@
   "runs_files_filter_label": "Filter files",
   "runs_files_filter_placeholder": "Filter by path or kind",
   "runs_files_none_match": "No file matches the filter",
+  "runs_files_source_all": "All",
+  "runs_files_source_label": "Whose bytes",
   "runs_files_stage_label": "Stage",
   "runs_filter_label": "Filter runs",
   "runs_filter_placeholder": "Filter by name or author",
