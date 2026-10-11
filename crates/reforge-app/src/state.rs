@@ -13,7 +13,7 @@ use crate::error::AppError;
 use crate::explore::ExploredMod;
 use crate::inputs::{Choice, Inputs};
 use crate::storage::Storage;
-use crate::store::AppStore;
+use crate::store::{AppStore, StoreOpen, StoreState};
 
 /// Work the window starts, one at a time, and can stop.
 pub struct Job {
@@ -163,24 +163,51 @@ impl Explored {
 }
 
 /// The app's store of runs (#ADR-0096), opened at start, or why it did not open. A store that
-/// does not open, such as one another instance of the app holds, leaves the runs unkept and
-/// the app running.
-pub struct RunStore(Result<Arc<AppStore>, AppError>);
+/// does not open, such as one another instance of the app holds or one another build made,
+/// leaves the runs unkept and the app running.
+pub struct RunStore {
+    held: Mutex<Result<Arc<AppStore>, StoreOpen>>,
+}
 
 impl RunStore {
     /// The store in `dir`.
     pub fn open(dir: &Utf8Path) -> Self {
-        let opened = AppStore::open(dir).map(Arc::new);
-        if let Err(error) = &opened {
-            tracing::warn!(%dir, %error, "the store of runs does not open");
+        Self {
+            held: Mutex::new(opened(dir)),
         }
-        Self(opened)
     }
 
     /// The store, or why it did not open.
     pub fn get(&self) -> Result<Arc<AppStore>, AppError> {
-        self.0.clone()
+        match &*self.held.lock() {
+            Ok(store) => Ok(Arc::clone(store)),
+            Err(StoreOpen::Outdated(_)) => Err(AppError::StoreOutdated),
+            Err(StoreOpen::Failed(error)) => Err(error.clone()),
+        }
     }
+
+    /// Whether the store is open, and what a reset loses when it is not.
+    pub fn state(&self) -> StoreState {
+        match &*self.held.lock() {
+            Ok(_) => StoreState::Open,
+            Err(error) => StoreState::of(error),
+        }
+    }
+}
+
+/// The store in `dir`, or why it did not open, logged.
+fn opened(dir: &Utf8Path) -> Result<Arc<AppStore>, StoreOpen> {
+    let opened = AppStore::open(dir).map(Arc::new);
+    match &opened {
+        Err(StoreOpen::Failed(error)) => {
+            tracing::warn!(%dir, %error, "the store of runs does not open");
+        }
+        Err(StoreOpen::Outdated(outdated)) => {
+            tracing::warn!(%dir, ?outdated, "the store of runs is another build's");
+        }
+        Ok(_) => {}
+    }
+    opened
 }
 
 /// The inputs opened for one choice, opened again when the choice changes.

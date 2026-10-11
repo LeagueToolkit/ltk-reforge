@@ -58,6 +58,8 @@
   "error.SELECTION_UNREADABLE.title": "The selection {path} does not read or write",
   "error.SETTINGS_UNWRITABLE.title": "The settings did not save",
   "error.STORE_FAILED.title": "The store of runs did not open, read or write",
+  "error.STORE_OUTDATED.description": "Reset it under Settings, Storage, to keep runs again.",
+  "error.STORE_OUTDATED.title": "The store of runs was made by another version of reforge",
   "error.UNKNOWN_CHECK.title": "{id} is no check of this version",
   "error.UNKNOWN_FIXUP.title": "{id} is no fixup of this version",
   "error_unknown_title": "Something went wrong"

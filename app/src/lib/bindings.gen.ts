@@ -166,6 +166,8 @@ export const commands = {
 	clearUnusedIngest: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("clear_unused_ingest"),
 	/**  What the app's store holds and its bytes on disk, for the settings page. */
 	storeView: () => __TAURI_INVOKE<({ ok: true; value: StoreView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("store_view"),
+	/**  Whether the app's store is open, and what a reset loses when another build made it. */
+	storeState: () => __TAURI_INVOKE<({ ok: true; value: StoreState }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("store_state"),
 	/**  Saves a choice of fixups as a selection file the command reads with `--fixups`. */
 	saveSelection: (path: string, choice: FixupChoice) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("save_selection", { path, choice }),
 	/**  The choice of fixups a selection file holds. */
@@ -375,6 +377,8 @@ export type AppError =
 { code: "RUN_BUSY" } | 
 /**  The app's store of runs did not open, read or write. */
 { code: "STORE_FAILED"; detail: string } | 
+/**  The app's store of runs was made by another build, and stays closed until a reset. */
+{ code: "STORE_OUTDATED" } | 
 /**
  *  A kept run holds no files at the stage: its snapshot names none, or the run did not
  *  reach it.
@@ -1318,6 +1322,23 @@ export type OutcomeView =
 /**  A value with no conversion, left as it is. */
 "unconvertible";
 
+/**
+ *  A store whose rows' file another build made, and what a reset of it loses, read from the
+ *  file with queries both shapes answer.
+ */
+export type Outdated = {
+	/**  The format the file says it is of. 0 when it does not say. */
+	format: number,
+	/**  The runs it holds. 0 when they do not count. */
+	runs: number,
+	/**  The runs a person marked kept. 0 when they do not count. */
+	kept: number,
+	/**  The bytes of the rows' file. */
+	rows_bytes: number,
+	/**  The bytes of the run tier, which a reset empties. */
+	tier_bytes: number,
+};
+
 /**  The packages the two runs built. */
 export type PackageDiff = {
 	/**  The first run's. */
@@ -1888,6 +1909,19 @@ export type StorageView = {
 	/**  The bytes of the downloads kept to resume. */
 	downloads_bytes: number,
 };
+
+/**  The store's state, as the pages show it. */
+export type StoreState = 
+/**  It is open: runs are kept. */
+({ state: "open" }) & { detail?: never } | 
+/**  Its rows' file is another build's: runs are not kept until a reset. */
+{
+	state: "outdated",
+} & Outdated | 
+/**  It did not open: runs are not kept. */
+{ state: "failed"; 
+/**  Why, as the OS or SQLite says it. */
+detail: string };
 
 /**  What the store holds, as the settings page's storage group shows it. */
 export type StoreView = {

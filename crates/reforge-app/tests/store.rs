@@ -21,7 +21,9 @@ use reforge_app::run::{
     self, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent, StageName, StageState,
     Unwatched, Watch,
 };
-use reforge_app::store::{AppStore, FORMAT, FileView, KEYSPACE, Origin, ROWS_FILE, RunTier};
+use reforge_app::store::{
+    AppStore, FORMAT, FileView, KEYSPACE, Origin, Outdated, ROWS_FILE, RunTier, StoreOpen,
+};
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -247,38 +249,66 @@ fn a_store_opened_twice_keeps_its_rows_file() {
     assert!(!folder.root.join(format!("{ROWS_FILE}.unread")).exists());
 }
 
+/// What a store that opens outdated says a reset loses.
+fn outdated(root: &Utf8Path) -> Outdated {
+    match AppStore::open(root) {
+        Err(StoreOpen::Outdated(outdated)) => outdated,
+        Err(StoreOpen::Failed(error)) => panic!("the store failed: {error}"),
+        Ok(_) => panic!("the store at {root} opened"),
+    }
+}
+
 #[test]
-fn a_rows_file_of_another_format_is_moved_aside_and_a_new_one_made() {
+fn a_rows_file_of_format_1_with_the_old_run_table_opens_outdated_with_its_runs() {
     let folder = Folder::new();
     let path = folder.root.join(ROWS_FILE);
     {
         let old = Connection::open(&path).unwrap();
         let made = "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-            INSERT INTO meta (key, value) VALUES ('format', '2');
-            CREATE TABLE run (id INTEGER PRIMARY KEY);";
+            INSERT INTO meta (key, value) VALUES ('format', '1');
+            CREATE TABLE run (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL,
+              kept INTEGER NOT NULL DEFAULT 0,
+              report BLOB NOT NULL
+            );
+            INSERT INTO run (kind, kept, report) VALUES ('port', 1, x'00'), ('repair', 0, x'00');";
         old.execute_batch(made).unwrap();
     }
 
-    drop(folder.store());
+    let outdated = outdated(&folder.root);
 
-    let aside = Connection::open(folder.root.join(format!("{ROWS_FILE}.format-2"))).unwrap();
-    assert_eq!(format_of(&aside), "2");
-    assert_eq!(tables_of(&aside), ["meta", "run"]);
+    assert_eq!((outdated.format, outdated.runs, outdated.kept), (1, 2, 1));
+    assert_eq!(outdated.rows_bytes, fs::metadata(&path).unwrap().len());
     let rows = folder.rows();
-    assert_eq!(format_of(&rows), FORMAT.to_string());
-    assert!(tables_of(&rows).contains(&"run_blob".to_string()));
+    assert_eq!(format_of(&rows), "1", "the file is left as it is");
+    assert_eq!(tables_of(&rows), ["meta", "run", "sqlite_sequence"]);
 }
 
 #[test]
-fn a_rows_file_whose_format_does_not_read_is_moved_aside() {
+fn a_rows_file_of_this_format_with_a_column_dropped_opens_outdated() {
+    let folder = Folder::new();
+    drop(folder.store());
+    folder
+        .rows()
+        .execute_batch("ALTER TABLE run DROP COLUMN view")
+        .unwrap();
+
+    let outdated = outdated(&folder.root);
+
+    assert_eq!((outdated.format, outdated.runs), (FORMAT, 0));
+}
+
+#[test]
+fn a_rows_file_that_is_no_database_opens_outdated_and_stays() {
     let folder = Folder::new();
     fs::write(folder.root.join(ROWS_FILE), "no database").unwrap();
 
-    drop(folder.store());
+    let outdated = outdated(&folder.root);
 
-    let aside = folder.root.join(format!("{ROWS_FILE}.unread"));
-    assert_eq!(fs::read_to_string(aside).unwrap(), "no database");
-    assert_eq!(format_of(&folder.rows()), FORMAT.to_string());
+    assert_eq!((outdated.format, outdated.runs, outdated.kept), (0, 0, 0));
+    let kept = fs::read_to_string(folder.root.join(ROWS_FILE)).unwrap();
+    assert_eq!(kept, "no database");
 }
 
 /// A mod with its own rig at skin0.

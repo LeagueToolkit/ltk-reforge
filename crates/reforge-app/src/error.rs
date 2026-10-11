@@ -131,6 +131,9 @@ pub enum AppError {
     /// The app's store of runs did not open, read or write.
     #[error("the store of runs failed: {detail}")]
     StoreFailed { detail: String },
+    /// The app's store of runs was made by another build, and stays closed until a reset.
+    #[error("the store of runs is another build's")]
+    StoreOutdated,
     /// A kept run holds no files at the stage: its snapshot names none, or the run did not
     /// reach it.
     #[error("the run holds no files at {stage:?}")]

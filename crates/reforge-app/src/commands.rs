@@ -35,7 +35,9 @@ use crate::selection::FixupChoice;
 use crate::settings::{Settings, SettingsStore};
 use crate::state::{Explored, HashesJob, IndexJob, OpenInputs, RunJob, RunStore, SchemaJob};
 use crate::storage::StorageView;
-use crate::store::{AppStore, CompareView, FileView, RunAgain, RunRow, StageFiles, StoreView};
+use crate::store::{
+    AppStore, CompareView, FileView, RunAgain, RunRow, StageFiles, StoreState, StoreView,
+};
 use crate::view::Finding;
 
 /// Runs `work` on a blocking thread: the body of a command runs on the thread that draws the
@@ -455,6 +457,13 @@ pub async fn remove_all_runs(app: AppHandle) -> IpcResult<()> {
 pub async fn store_view(app: AppHandle) -> IpcResult<StoreView> {
     let store = app.state::<RunStore>().get();
     off_thread(move || store?.view()).await
+}
+
+/// Whether the app's store is open, and what a reset loses when another build made it.
+#[tauri::command]
+#[specta::specta]
+pub fn store_state(store: State<'_, RunStore>) -> IpcResult<StoreState> {
+    IpcResult::ok(store.state())
 }
 
 /// A mod archive read alone: what it says of itself, its characters and its thumbnail, for

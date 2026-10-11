@@ -7,13 +7,14 @@
 //!   by key.
 //!
 //! The rows and the run tier are behind one lock, so a sweep never runs while a save flushes.
-//! A rows file of another format is moved aside and a new one made, never migrated in place.
-//! A save, a removal and a change of a run's mark each cut the bound and sweep what no run
-//! names, in the transaction of the change.
+//! A rows file another build made leaves the store closed until a reset removes it, never
+//! migrated in place. A save, a removal and a change of a run's mark each cut the bound and
+//! sweep what no run names, in the transaction of the change.
 
 mod compare;
 mod files;
 mod kept;
+mod open;
 mod package;
 mod project;
 mod read;
@@ -32,7 +33,7 @@ use reforge::report::Report;
 use reforge::snapshot::{
     self, LoadInputs, LoadSettings, Program, RawCache, Snapshots, StageSnapshot,
 };
-use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use rusqlite::{Connection, Transaction, params};
 
 pub use self::compare::{
     ChangeDiff, CompareView, Counts, Diff, FindingsDiff, PackageDiff, RunHead, TargetDiff,
@@ -42,6 +43,7 @@ pub use self::files::{
     FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, Tiers, WadFiles, load_files,
 };
 pub use self::kept::KeptRun;
+pub use self::open::{Outdated, StoreOpen, StoreState};
 pub use self::package::EVIDENCE_ONLY_SCHEMA;
 pub use self::project::{PROJECT_EXTENSION, PROJECT_FORMAT};
 pub use self::read::{Origin, RunAgain, RunRow, StoreView};
@@ -50,9 +52,10 @@ pub use self::viewer::{FileView, HEX_BYTES, MAX_BIN_TEXT, MAX_DECODED, MAX_TEXT,
 use crate::error::AppError;
 use crate::run::{RunKind, RunSettings, RunView};
 
-/// The format of the rows: one number for the shape of the three groups, raised when it
-/// changes (#ADR-0096).
-pub const FORMAT: u32 = 1;
+/// The format of the rows: one number for the shape of the three groups (#ADR-0096), raised
+/// with every change of [`SCHEMA`]. A file of another format opens outdated, as does one whose
+/// columns are not the ones `SCHEMA` declares.
+pub const FORMAT: u32 = 2;
 
 /// The rows' file, in the store's folder.
 pub const ROWS_FILE: &str = "runs.sqlite3";
@@ -71,10 +74,7 @@ pub const RUN_BOUND: usize = 256;
 /// The zstd level of the rows' JSON: the library's default, fast to write on every save.
 const ZSTD_LEVEL: i32 = 3;
 
-/// The files SQLite keeps beside a database, which go where it goes.
-const SIDE_FILES: [&str; 3] = ["-journal", "-wal", "-shm"];
-
-/// The tables of format 1. `check` is a word of SQL's, so its column is always quoted. A run
+/// The tables of [`FORMAT`]. `check` is a word of SQL's, so its column is always quoted. A run
 /// names its mod's `raw` row itself, since a run opened from a package has no load
 /// (#ADR-0096).
 const SCHEMA: &str = "
@@ -158,15 +158,15 @@ pub struct Saved {
 }
 
 impl AppStore {
-    /// The store in `dir`, its folder and tables made when absent. A rows file of another
-    /// format, or one whose format does not read, is moved aside and a new one made; the
-    /// tiers stay. The run tier's blobs no row names are swept: a moved file's, and those of a
-    /// save a crash ended between its flush and its rows.
-    pub fn open(dir: &Utf8Path) -> Result<Self, AppError> {
+    /// The store in `dir`, its folder and tables made when absent. A rows file another build
+    /// made is left as it is and answered as outdated, with what a reset loses; the tiers are
+    /// not opened then. The run tier's blobs no row names are swept: those of a rows file a
+    /// reset removed, and those of a save a crash ended between its flush and its rows.
+    pub fn open(dir: &Utf8Path) -> Result<Self, StoreOpen> {
         fs::create_dir_all(dir).map_err(failed)?;
+        let rows = open::open_rows(&dir.join(ROWS_FILE), &dir.join(RUN_TIER_DIR))?;
         let ingest = RawCache::new(dir.join(INGEST_DIR));
-        let tier = RunTier::open(dir.join(RUN_TIER_DIR))?;
-        let rows = open_rows(&dir.join(ROWS_FILE))?;
+        let tier = RunTier::open(dir.join(RUN_TIER_DIR)).map_err(AppError::from)?;
         sweep::sweep_tier(&tier, &rows)?;
         Ok(Self {
             dir: dir.to_path_buf(),
@@ -332,58 +332,6 @@ fn pack(json: &str) -> Result<Vec<u8>, AppError> {
 fn unpack(column: &[u8]) -> Result<String, AppError> {
     let bytes = zstd::decode_all(column).map_err(failed)?;
     String::from_utf8(bytes).map_err(failed)
-}
-
-/// The rows' database at `path`: the one there when it is of this format, else a new one.
-fn open_rows(path: &Utf8Path) -> Result<Connection, AppError> {
-    if path.exists() {
-        let found = Connection::open(path).ok().map(|rows| {
-            let format = format_of(&rows);
-            (rows, format)
-        });
-        match found {
-            Some((rows, Some(FORMAT))) => return with_keys(rows),
-            found => {
-                // The file is renamed once no connection holds it.
-                let format = found.and_then(|(_, format)| format);
-                let suffix = format.map_or("unread".to_string(), |n| format!("format-{n}"));
-                move_aside(path, &suffix)?;
-            }
-        }
-    }
-    let rows = Connection::open(path)?;
-    rows.execute_batch(&format!(
-        "BEGIN; {SCHEMA} INSERT INTO meta (key, value) VALUES ('format', '{FORMAT}'); COMMIT;"
-    ))?;
-    with_keys(rows)
-}
-
-/// The rows' format, when their `meta` reads.
-fn format_of(rows: &Connection) -> Option<u32> {
-    let format = rows.query_row("SELECT value FROM meta WHERE key = 'format'", [], |row| {
-        row.get::<_, String>(0)
-    });
-    format.optional().ok().flatten()?.parse().ok()
-}
-
-/// The rows with their references held: a row never names a key no row holds.
-fn with_keys(rows: Connection) -> Result<Connection, AppError> {
-    rows.pragma_update(None, "foreign_keys", true)?;
-    Ok(rows)
-}
-
-/// Moves a rows file, and the files SQLite keeps beside it, to `<file>.<suffix>`.
-fn move_aside(path: &Utf8Path, suffix: &str) -> Result<(), AppError> {
-    let aside = Utf8PathBuf::from(format!("{path}.{suffix}"));
-    tracing::warn!(%path, %aside, "the store's rows are not of this format, moved aside");
-    fs::rename(path, &aside).map_err(failed)?;
-    for side in SIDE_FILES {
-        let file = Utf8PathBuf::from(format!("{path}{side}"));
-        if file.exists() {
-            fs::rename(&file, format!("{aside}{side}")).map_err(failed)?;
-        }
-    }
-    Ok(())
 }
 
 /// A failure of the store, as the front end shows it.

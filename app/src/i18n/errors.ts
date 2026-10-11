@@ -143,6 +143,10 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.STORE_FAILED.title"](),
       detail,
     }))
+    .with({ code: "STORE_OUTDATED" }, () => ({
+      title: m["error.STORE_OUTDATED.title"](),
+      description: m["error.STORE_OUTDATED.description"](),
+    }))
     .with({ code: "NO_FILES_AT_STAGE" }, ({ stage }) => ({
       title: m["error.NO_FILES_AT_STAGE.title"]({ stage: m[`stage.${stage}.label`]() }),
     }))
