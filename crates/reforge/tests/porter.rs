@@ -1936,6 +1936,57 @@ fn a_fix_snapshot_is_refused_when_the_schema_or_a_setting_fix_reads_is_not_the_r
 }
 
 #[test]
+fn a_start_is_checked_before_the_store_is_read() {
+    let env = legacy_env();
+    let porter = Porter::new(&env);
+    let mut first = porter.run().in_store(MemoryStore::new());
+    first
+        .read(&legacy_archive().build(), FILE_NAME)
+        .expect("the archive reads");
+    first.through(Stage::Check).expect("no fault");
+    let raw = first.archive().cloned().expect("the raw snapshot");
+    let snapshots = first.snapshots().expect("the snapshots");
+    let start = || Start::Check(Box::new(snapshots.clone()));
+
+    let selection = FixupSelection::standard().without("known-artifacts-value-color");
+    let other = Porter::new(&env).fixups(FixupSet::from(&selection));
+    let run = other.run().in_store(MemoryStore::new());
+    assert!(matches!(
+        run.start_holds(&start()),
+        Err(ResumeError::Setting(Setting::BinFixups))
+    ));
+    assert!(matches!(
+        run.start_holds_at(&snapshots, Stage::Check),
+        Err(ResumeError::Setting(Setting::BinFixups))
+    ));
+    // The empty store would refuse with `Store`: the refusal comes before it is read.
+    assert!(matches!(
+        run.resume(start()).map(drop),
+        Err(ResumeError::Setting(Setting::BinFixups))
+    ));
+
+    let run = porter.run().in_store(MemoryStore::new());
+    assert!(run.start_holds(&start()).is_ok());
+    assert!(run.start_holds_at(&snapshots, Stage::Check).is_ok());
+    assert!(matches!(
+        run.start_holds_at(&snapshots, Stage::Read),
+        Err(ResumeError::Missing(Stage::Read))
+    ));
+    assert!(matches!(
+        run.resume(start()).map(drop),
+        Err(ResumeError::Store(_))
+    ));
+
+    let mut other_reading = raw;
+    other_reading.version = RAW_VERSION + 1;
+    let run = porter.run().in_store(MemoryStore::new());
+    assert!(matches!(
+        run.start_holds(&other_reading.into()),
+        Err(ResumeError::Reading { .. })
+    ));
+}
+
+#[test]
 fn a_snapshot_reads_at_the_json_edge_as_its_own_stage_and_as_no_other() {
     let env = legacy_env();
     let (snapshots, _store) = legacy_snapshots(&Porter::new(&env), Stage::Check);

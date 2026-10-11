@@ -1071,32 +1071,131 @@ impl<'a> Run<'a> {
     /// own stage declares. A refused run is dropped, and the caller starts again from an
     /// earlier snapshot.
     pub fn resume(mut self, from: impl Into<Start>) -> Result<Self, ResumeError> {
-        let ended = self.log.halted().is_some() || self.log.cancelled().is_some();
-        let started = self.raw.is_some() || self.loaded.is_some() || ended;
-        if started || !matches!(self.module, Reached::Nothing) {
-            return Err(ResumeError::Started);
-        }
-        self.first = self.log.len();
         let from = from.into();
+        self.start_holds(&from)?;
+        self.first = self.log.len();
         let started = Missing::catch(|| self.start_from(from));
         started.unwrap_or_else(|Missing(id)| Err(ResumeError::Store(id)))?;
         Ok(self)
     }
 
-    /// The run as a snapshot left it, for [`Run::resume`].
+    /// Refuses a start [`Run::resume`] would refuse before it reads a byte: a run already
+    /// started, a stage the run's mode has not, a snapshot missing through the start's stage,
+    /// and a snapshot whose format, program, inputs or settings are not this run's, each
+    /// judged by what its own stage declares. What the snapshots name in the store is not
+    /// asked, so a start that holds may still be refused by `resume` with
+    /// [`ResumeError::Store`].
+    pub fn start_holds(&self, from: &Start) -> Result<(), ResumeError> {
+        self.unstarted()?;
+        match from {
+            Start::Raw(raw) => self.raw_holds(raw),
+            Start::Load(load) => self.load_holds(load),
+            Start::Fix(snapshots) => self.run_holds(snapshots, Stage::Fix),
+            Start::Facts(snapshots) => self.run_holds(snapshots, Stage::Facts),
+            Start::Decide(snapshots) => self.run_holds(snapshots, Stage::Decide),
+            Start::Plan(snapshots) => self.run_holds(snapshots, Stage::Plan),
+            Start::Build(snapshots) => self.run_holds(snapshots, Stage::Build),
+            Start::Check(snapshots) => self.run_holds(snapshots, Stage::Check),
+        }
+    }
+
+    /// [`Run::start_holds`] of the start after `stage` from `snapshots`, borrowed: a caller
+    /// trying one kept run's stages in turn builds a [`Start`] for the one that holds alone.
+    /// The snapshots hold none after `read` or `write`.
+    pub fn start_holds_at(&self, snapshots: &Snapshots, stage: Stage) -> Result<(), ResumeError> {
+        self.unstarted()?;
+        match stage {
+            Stage::Read | Stage::Write => Err(ResumeError::Missing(stage)),
+            Stage::Load => self.load_holds(&snapshots.load),
+            Stage::Fix
+            | Stage::Facts
+            | Stage::Decide
+            | Stage::Plan
+            | Stage::Build
+            | Stage::Check => self.run_holds(snapshots, stage),
+        }
+    }
+
+    /// Whether the run has read an archive, resumed, or ended.
+    fn started(&self) -> bool {
+        let ended = self.log.halted().is_some() || self.log.cancelled().is_some();
+        let reached = !matches!(self.module, Reached::Nothing);
+        self.raw.is_some() || self.loaded.is_some() || ended || reached
+    }
+
+    fn unstarted(&self) -> Result<(), ResumeError> {
+        if self.started() {
+            Err(ResumeError::Started)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn raw_holds(&self, raw: &RawSnapshot) -> Result<(), ResumeError> {
+        if raw.version != archive::RAW_VERSION {
+            return Err(ResumeError::Reading {
+                found: raw.version,
+                reads: archive::RAW_VERSION,
+            });
+        }
+        if raw.caps != self.settings.caps {
+            return Err(ResumeError::Setting(Setting::Caps));
+        }
+        Ok(())
+    }
+
+    fn load_holds(&self, load: &LoadSnapshot) -> Result<(), ResumeError> {
+        let inputs = snapshot::LoadInputs::of(self.env);
+        load.holds(&inputs, &self.settings.load_settings())
+    }
+
+    /// The checks of a start after `last`, a stage of the run group, in the order the stages
+    /// ran.
+    fn run_holds(&self, snapshots: &Snapshots, last: Stage) -> Result<(), ResumeError> {
+        let stages = self.mode.stages();
+        if !stages.contains(&last) {
+            return Err(ResumeError::NotInARepair(last));
+        }
+        // A stage the run's mode has not keeps no snapshot to resume after.
+        let through = |stage: Stage| stages.contains(&stage) && stage <= last;
+        let fix = snapshot::after(snapshots.fix.as_ref(), Stage::Fix)?;
+        let facts = snapshot::through(snapshots.facts.as_ref(), Stage::Facts, through)?;
+        let decide = snapshot::through(snapshots.decide.as_ref(), Stage::Decide, through)?;
+        let plan = snapshot::through(snapshots.plan.as_ref(), Stage::Plan, through)?;
+        let build = snapshot::through(snapshots.build.as_ref(), Stage::Build, through)?;
+        let check = snapshot::through(snapshots.check.as_ref(), Stage::Check, through)?;
+        self.load_holds(&snapshots.load)?;
+        let settings = self.settings;
+        fix.holds(&snapshot::FixInputs::of(self.env), &settings.fix_settings())?;
+        if let Some(facts) = facts {
+            facts.holds(&settings.facts_settings())?;
+        }
+        if let Some(decide) = decide {
+            decide.holds(&settings.decide_settings())?;
+        }
+        if let Some(plan) = plan {
+            plan.holds(&settings.plan_settings())?;
+        }
+        if let Some(build) = build {
+            build.holds(&settings.build_settings())?;
+            if let Some(check) = check {
+                check.holds(&settings.check_settings())?;
+                let patches = build.part().patches.len();
+                let (applied, bins) = (check.applied().len(), check.bins().len());
+                if applied != patches || bins != patches {
+                    let what = format!("{applied} outcomes and {bins} bins of {patches} patches");
+                    return Err(ResumeError::Malformed(what));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The run as a snapshot left it, for [`Run::resume`], once [`Run::start_holds`] holds.
     fn start_from(&mut self, from: Start) -> Result<(), ResumeError> {
         let codes: Vec<Code> = codes().collect();
         match from {
             Start::Raw(raw) => {
-                if raw.version != archive::RAW_VERSION {
-                    return Err(ResumeError::Reading {
-                        found: raw.version,
-                        reads: archive::RAW_VERSION,
-                    });
-                }
-                if raw.caps != self.settings.caps {
-                    return Err(ResumeError::Setting(Setting::Caps));
-                }
                 self.log.restore(&raw.findings, &codes)?;
                 self.raw = Some(*raw);
             }
@@ -1124,9 +1223,6 @@ impl<'a> Run<'a> {
         last: Stage,
         codes: &[Code],
     ) -> Result<(), ResumeError> {
-        if !self.mode.stages().contains(&last) {
-            return Err(ResumeError::NotInARepair(last));
-        }
         let Snapshots {
             load,
             fix,
@@ -1137,7 +1233,6 @@ impl<'a> Run<'a> {
             check,
         } = snapshots;
         let stages = self.mode.stages();
-        // A stage the run's mode has not keeps no snapshot to resume after.
         let through = |stage: Stage| stages.contains(&stage) && stage <= last;
         let fix = snapshot::after(fix, Stage::Fix)?;
         let facts = snapshot::through(facts, Stage::Facts, through)?;
@@ -1149,34 +1244,23 @@ impl<'a> Run<'a> {
         let fixed = self.reopen_fix(module, &load, &fix)?;
         let mut findings = fix.findings();
         if let Some(facts) = &facts {
-            facts.holds(&self.settings.facts_settings())?;
             let found = facts.found().clone();
             let reopened = Facts::reopen(&fixed, self.env, found);
             self.facts = Some(reopened.map_err(ResumeError::Facts)?);
             findings = facts.findings();
         }
         if let Some(decide) = &decide {
-            decide.holds(&self.settings.decide_settings())?;
             findings = decide.findings();
         }
         if let Some(plan) = &plan {
-            plan.holds(&self.settings.plan_settings())?;
             self.plan = Some(plan.port(&self.store)?);
             self.book = plan.names().clone();
             findings = plan.findings();
         }
         if let Some(build) = &build {
-            build.holds(&self.settings.build_settings())?;
             self.package = Some(build.package(&self.blobs)?);
             findings = build.findings();
             if let Some(check) = &check {
-                check.holds(&self.settings.check_settings())?;
-                let patches = build.part().patches.len();
-                let (applied, bins) = (check.applied().len(), check.bins().len());
-                if applied != patches || bins != patches {
-                    let what = format!("{applied} outcomes and {bins} bins of {patches} patches");
-                    return Err(ResumeError::Malformed(what));
-                }
                 // No stage reads a patched bin again, so the store is asked for each here: a
                 // run holds no snapshot naming bytes its store lacks.
                 if let Some(id) = check.ids().find(|&id| !self.store.contains(id)) {
@@ -1200,8 +1284,6 @@ impl<'a> Run<'a> {
     /// The mod as the load snapshot left it, and what the run holds once `load` ends: the
     /// names, the dating, the inventory and the file provenance.
     fn reopen_load(&mut self, load: &LoadSnapshot) -> Result<Mod, ResumeError> {
-        let inputs = snapshot::LoadInputs::of(self.env);
-        load.holds(&inputs, &self.settings.load_settings())?;
         let reopened = load.reopen(&self.blobs)?;
         self.book = reopened.names;
         self.dating = Some(reopened.dating);
@@ -1217,10 +1299,6 @@ impl<'a> Run<'a> {
         load: &LoadSnapshot,
         fix: &FixSnapshot,
     ) -> Result<FixedMod, ResumeError> {
-        fix.holds(
-            &snapshot::FixInputs::of(self.env),
-            &self.settings.fix_settings(),
-        )?;
         let rewritten = fix.rewritten(load)?.into_iter().map(|(file, content)| {
             let bytes = self.store.get(content).ok_or(ResumeError::Store(content))?;
             Ok((file, bytes))
