@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 
 import { FailureNote, SegmentedControl, Spinner, Switch } from "@/components";
 import { m } from "@/i18n";
-import type { FileRow, StageName } from "@/lib/bindings.gen";
+import type { FileRow, RunView, StageName } from "@/lib/bindings.gen";
 import { stageLabel } from "@/modules/repair";
 
 import { useRunFiles } from "../api/runs";
@@ -14,23 +14,40 @@ import { FileViewer } from "./FileViewer";
 /** The stages whose snapshot names files, as the store's `FILE_STAGES` lists them. */
 export const FILE_STAGES: readonly StageName[] = ["load", "fix", "plan", "build"];
 
-interface FilesTabProps {
-  id: number;
-  /** The stages the run holds files for, in order. */
+/** The stages a run ran that hold files, in order. None before its view is read. */
+export function heldStages(view: RunView | null | undefined): StageName[] {
+  const ran = view?.stages.filter((stage) => stage.state === "ran") ?? [];
+  return ran.map((stage) => stage.stage).filter((stage) => FILE_STAGES.includes(stage));
+}
+
+interface FilesBrowserProps {
+  /** The files at the stage, as a query of the store answers them. */
+  files: ReturnType<typeof useRunFiles>;
+  /** The stages that hold files, in order. */
   stages: StageName[];
   stage: StageName;
   onStage: (stage: StageName) => void;
+  /** The kept run a file's bytes are opened through. */
+  runOf: (row: FileRow) => number;
+  /** Whether the marks are against another run's files, not the stage before. */
+  againstRun?: boolean;
 }
 
 /**
- * The files of a kept run at each stage it holds files for: a tree of its WADs, each file
- * marked against the stage before, and the file picked opened below it.
+ * Files at a stage: a tree of their WADs, each file with its mark, and the file picked opened
+ * below it. With marks against another run, only the files that differ are shown at first.
  */
-export function FilesTab({ id, stages, stage, onStage }: FilesTabProps) {
+export function FilesBrowser({
+  files,
+  stages,
+  stage,
+  onStage,
+  runOf,
+  againstRun = false,
+}: FilesBrowserProps) {
   const [text, setText] = useState("");
-  const [changedOnly, setChangedOnly] = useState(false);
+  const [changedOnly, setChangedOnly] = useState(againstRun);
   const [picked, setPicked] = useState<FileRow | null>(null);
-  const files = useRunFiles(id, stage);
   const filter = useMemo(() => ({ text, changedOnly }), [text, changedOnly]);
   const roots = useMemo(() => buildTree(files.data?.wads ?? [], filter), [files.data, filter]);
   const options = stages.map((value) => ({ value, label: stageLabel(value) }));
@@ -84,16 +101,36 @@ export function FilesTab({ id, stages, stage, onStage }: FilesTabProps) {
             allOpen={filtering(filter)}
             selected={picked}
             onPick={setPicked}
+            againstRun={againstRun}
           />
         </div>
       )}
       {picked ? (
-        <FileViewer id={id} row={picked} />
+        <FileViewer id={runOf(picked)} row={picked} />
       ) : (
         roots.length > 0 && (
           <p className="text-sm text-surface-400 select-none">{m.runs_file_pick_hint()}</p>
         )
       )}
     </div>
+  );
+}
+
+interface FilesTabProps {
+  id: number;
+  /** The stages the run holds files for, in order. */
+  stages: StageName[];
+  stage: StageName;
+  onStage: (stage: StageName) => void;
+}
+
+/**
+ * The files of a kept run at each stage it holds files for, each file marked against the
+ * stage before.
+ */
+export function FilesTab({ id, stages, stage, onStage }: FilesTabProps) {
+  const files = useRunFiles(id, stage);
+  return (
+    <FilesBrowser files={files} stages={stages} stage={stage} onStage={onStage} runOf={() => id} />
   );
 }

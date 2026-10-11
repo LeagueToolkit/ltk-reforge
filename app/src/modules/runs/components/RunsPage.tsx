@@ -45,7 +45,12 @@ export function RunsPage() {
           />
           <div className="min-w-0 flex-1">
             {chosen ? (
-              <RunDetail key={chosen.id} row={chosen} onRemoved={() => setSelected(null)} />
+              <RunDetail
+                key={chosen.id}
+                row={chosen}
+                onRemoved={() => setSelected(null)}
+                now={now}
+              />
             ) : (
               <p className="text-sm text-surface-400 select-none">{m.runs_pick_hint()}</p>
             )}

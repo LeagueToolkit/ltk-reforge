@@ -1,4 +1,9 @@
-import { ArrowClockwiseIcon, FolderOpenIcon, PushPinIcon } from "@phosphor-icons/react";
+import {
+  ArrowClockwiseIcon,
+  ArrowsLeftRightIcon,
+  FolderOpenIcon,
+  PushPinIcon,
+} from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
@@ -16,7 +21,9 @@ import {
   useRunView,
   useRuns,
 } from "../api/runs";
-import { FILE_STAGES, FilesTab } from "./FilesTab";
+import { ComparePicker } from "./ComparePicker";
+import { CompareView } from "./CompareView";
+import { FilesTab, heldStages } from "./FilesTab";
 import { RemoveMenu } from "./RemoveMenu";
 import { runName } from "./RunList";
 
@@ -68,12 +75,6 @@ function ResultTab({ view, onFiles }: { view: RunView; onFiles: (stage: StageNam
   );
 }
 
-/** The stages a run ran that hold files, in order. */
-function heldStages(view: RunView): StageName[] {
-  const ran = view.stages.filter((stage) => stage.state === "ran").map((stage) => stage.stage);
-  return ran.filter((stage) => FILE_STAGES.includes(stage));
-}
-
 /** The report the package embeds, as the store keeps it. */
 function ReportTab({ id }: { id: number }) {
   const report = useRunReport(id);
@@ -95,10 +96,15 @@ interface RunDetailProps {
   row: RunRow;
   /** Called once the run is removed. */
   onRemoved: () => void;
+  /** The time the ages are counted to. */
+  now: Date;
 }
 
-/** A kept run: its mod and package, what can be done with it, its result, files and report. */
-export function RunDetail({ row, onRemoved }: RunDetailProps) {
+/**
+ * A kept run: its mod and package, what can be done with it, and its result, files and report,
+ * or its comparison with another run.
+ */
+export function RunDetail({ row, onRemoved, now }: RunDetailProps) {
   const view = useRunView(row.id);
   const keep = useKeepRun();
   const reveal = useRevealRun();
@@ -109,6 +115,8 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("result");
   const [filesStage, setFilesStage] = useState<StageName | null>(null);
+  const [picking, setPicking] = useState(false);
+  const [against, setAgainst] = useState<number | null>(null);
   const name = runName(row);
   const held = view.data ? heldStages(view.data) : [];
   const tabs = [
@@ -189,12 +197,40 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
         ) : (
           againButton
         )}
+        <Button
+          size="sm"
+          variant={against == null ? "outline" : "light"}
+          left={<ArrowsLeftRightIcon weight="bold" />}
+          disabled={(runs.data?.length ?? 0) < 2}
+          title={m.compare_action_description()}
+          onClick={() => setPicking(true)}
+        >
+          {m.compare_action()}
+        </Button>
         <RemoveMenu row={row} modRuns={modRuns} onRemoved={onRemoved} />
       </div>
+      <ComparePicker
+        open={picking}
+        onClose={() => setPicking(false)}
+        row={row}
+        runs={runs.data ?? []}
+        onPick={setAgainst}
+        now={now}
+      />
       {failure && <FailureNote failure={failure} />}
-      {view.isPending && <Spinner />}
-      {view.isError && <FailureNote failure={view.error} />}
-      {view.data && (
+      {against != null && (
+        <CompareView
+          // A comparison opens at its top, its files at their last stage.
+          key={against}
+          a={row.id}
+          b={against}
+          onBack={() => setAgainst(null)}
+          now={now}
+        />
+      )}
+      {against == null && view.isPending && <Spinner />}
+      {against == null && view.isError && <FailureNote failure={view.error} />}
+      {against == null && view.data && (
         <Tabs tabs={tabs} value={tab} onChange={setTab} aria-label={m.runs_tabs_label()}>
           <TabPanel value="result">
             <ResultTab view={view.data} onFiles={openFiles} />

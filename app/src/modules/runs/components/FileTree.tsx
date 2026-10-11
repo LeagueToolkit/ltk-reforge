@@ -63,16 +63,21 @@ const markClass: Record<Exclude<Mark, "same">, string> = {
   removed: "bg-danger",
 };
 
-/** A file's mark: a coloured dot, its word on hover. None for a file the same as before. */
-function MarkDot({ mark }: { mark: Mark }) {
+/**
+ * A file's mark: a coloured dot, its word on hover, and against what when that is another run.
+ * None for a file the same as before.
+ */
+function MarkDot({ mark, againstRun }: { mark: Mark; againstRun: boolean }) {
   if (mark === "same") {
     return null;
   }
+  const word = m[`runs_mark.${mark}.label`]();
+  const label = againstRun ? m.compare_mark_hint({ mark: word }) : word;
   return (
-    <Tooltip content={m[`runs_mark.${mark}.label`]()}>
+    <Tooltip content={label}>
       <span
         role="img"
-        aria-label={m[`runs_mark.${mark}.label`]()}
+        aria-label={label}
         className={twMerge("h-2 w-2 shrink-0 rounded-full", markClass[mark])}
       />
     </Tooltip>
@@ -93,6 +98,8 @@ interface FileTreeProps {
   allOpen: boolean;
   selected: FileRow | null;
   onPick: (row: FileRow) => void;
+  /** Whether the marks are against another run's files, not the stage before. */
+  againstRun?: boolean;
 }
 
 /**
@@ -100,7 +107,7 @@ interface FileTreeProps {
  * files with their kind, size and mark. A WAD opens at first and a folder closed, so a WAD of
  * thousands of files draws its rows as they are opened.
  */
-export function FileTree({ roots, allOpen, selected, onPick }: FileTreeProps) {
+export function FileTree({ roots, allOpen, selected, onPick, againstRun = false }: FileTreeProps) {
   // The keys whose open state differs from the default: a root open, a folder closed.
   const [flipped, setFlipped] = useState<Set<string>>(() => new Set());
   const isOpen = (node: TreeFolder, depth: number) =>
@@ -133,7 +140,7 @@ export function FileTree({ roots, allOpen, selected, onPick }: FileTreeProps) {
         >
           {node.name}
         </span>
-        <MarkDot mark={node.row.mark} />
+        <MarkDot mark={node.row.mark} againstRun={againstRun} />
         <span className="shrink-0 text-surface-400 tabular-nums">{sizeLabel(node.row.size)}</span>
       </button>
     </li>

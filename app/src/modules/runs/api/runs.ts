@@ -12,6 +12,9 @@ export const runsKeys = {
   file: (id: number, content: string) => [...runsKey, "file", id, content] as const,
   report: (id: number) => [...runsKey, "report", id] as const,
   again: (id: number) => [...runsKey, "again", id] as const,
+  compare: (a: number, b: number) => [...runsKey, "compare", a, b] as const,
+  compareFiles: (a: number, b: number, stage: StageName) =>
+    [...runsKey, "compare-files", a, b, stage] as const,
   ingest: (sha256: string) => [...runsKey, "ingest", sha256] as const,
   store: () => [...runsKey, "store"] as const,
 };
@@ -62,6 +65,28 @@ export function useRunFiles(id: number, stage: StageName) {
     queryOptions({
       queryKey: runsKeys.files(id, stage),
       queryFn: queryFn(() => commands.runFiles(id, stage)),
+      staleTime: Infinity,
+    }),
+  );
+}
+
+/** Two kept runs compared, `a` against `b`. Kept runs never change. */
+export function useCompare(a: number, b: number) {
+  return useQuery(
+    queryOptions({
+      queryKey: runsKeys.compare(a, b),
+      queryFn: queryFn(() => commands.compareRuns(a, b)),
+      staleTime: Infinity,
+    }),
+  );
+}
+
+/** The files of kept run `b` at a stage, each marked against kept run `a`'s. */
+export function useCompareFiles(a: number, b: number, stage: StageName) {
+  return useQuery(
+    queryOptions({
+      queryKey: runsKeys.compareFiles(a, b, stage),
+      queryFn: queryFn(() => commands.compareFiles(a, b, stage)),
       staleTime: Infinity,
     }),
   );
