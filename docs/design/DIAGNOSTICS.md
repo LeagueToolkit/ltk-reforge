@@ -209,8 +209,9 @@ In the report, `diagnostics` is an array of:
 
 `write` puts the report beside what it writes: `reforge-report.json` in a project directory,
 `<project>_<version>.reforge-report.json` beside a `.modpkg`. It is the whole report of the
-run as it stands before the write, every diagnostic in it. The report a command writes with
-`--report` is of the run after the write, so it also holds `write.written`.
+run as it stands before the write, every diagnostic in it. The package's README embeds the
+same text, compressed (#ADR-0102). The report a command writes with `--report` is of the run
+after the write, so it also holds `write.written`.
 
 A summary for a person (each unit with where it went and why, then the errors, the warnings
 and the notes counted by area) is not built.

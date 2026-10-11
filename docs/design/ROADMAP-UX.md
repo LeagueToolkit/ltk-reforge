@@ -344,15 +344,17 @@ the program of an imported run reach the comparison through `clean`.
 `AppStore::open_package` bounds the file by the caps' `archive_bytes`, holds the counts the
 `.modpkg`'s header declares to its bytes before `ltk_modpkg` reserves room for them, and
 mounts it where its panic is caught. The metadata gives the name, the author and the version,
-and the readme (`_meta_/readme.md`, read up to the evidence's own cap) gives the evidence
-through `EvidenceDoc::parse`; a package with no readme or no evidence in it is refused
-(`NO_EVIDENCE`), and one that does not read answers `MOD_UNREADABLE`. The report the writer
-put beside the package, `<stem>.reforge-report.json`, is the run's report when it reads within
-the caps' `entry_bytes` and its evidence names the package's archive; its view is drawn from
-the report alone (`Drawn::of_report`): the mod, the findings, the decisions, what the fixups
-changed with no class or field and the outcome from what a change left, no objects, and the
-package without a thumbnail. The report file holds no `write.written`: the writer writes it
-before the write raises that. Without the report, the run's report is the evidence wrapped as
+and the readme (`_meta_/readme.md`, read up to the evidence's own cap) gives the evidence and
+the report it embeds through `Readme::parse` (#ADR-0102); a package with no readme or no
+evidence in it is refused (`NO_EVIDENCE`), and one that does not read, a report's block that
+does not decode among it, answers `MOD_UNREADABLE`. The run's report comes from the package
+first: the report the readme embeds, else the one the writer put beside the package,
+`<stem>.reforge-report.json`, read within the caps' `entry_bytes` only when the readme embeds
+none; either is taken when it reads and its evidence names the package's archive. Its view is
+drawn from the report alone (`Drawn::of_report`): the mod, the findings, the decisions, what
+the fixups changed with no class or field and the outcome from what a change left, no objects,
+and the package without a thumbnail. The report holds no `write.written`: the writer writes
+it before the write raises that. Without either, the run's report is the evidence wrapped as
 `{"schema": "reforge.evidence-only/1", "evidence": …}` and its view the mod from the archive's
 SHA-256 and the metadata and, for a port, each unit the evidence names with its slot and
 reason. Either view lists every stage of the kind as not run. The rows are a `raw` row unless

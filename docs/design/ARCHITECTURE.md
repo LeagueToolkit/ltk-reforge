@@ -865,7 +865,9 @@ object takes a name of its own, which every link to it follows.
   piece that sets it by its path hash or entry hash and by the digest the history is asked
   by, and the two counts), the WADs that restore a model from before a rework, the ids of the
   fixups the run ran under, and for a port the policy and each unit that ships with its
-  character, its source slot, its target and the reason. It holds no id of the run's mod, no
+  character, its source slot, its target and the reason. In a README, a note says whether the
+  README holds the run's report and how many bytes the report's JSON has; the document a run
+  holds, and the report's part, have no note. It holds no id of the run's mod, no
   clock and no path of the machine, and no list by file or by object. `Run::build` sets it on
   the package from what the run holds. A run judged with an earlier run's evidence
   (`Run::known`) sets none: the piece of that dating is an id of the earlier run's mod.
@@ -884,12 +886,25 @@ object takes a name of its own, which every link to it follows.
   text is inside the block only, in a JSON string, with every character a terminal acts on
   escaped. An archive's own readme is an entry outside its WADs, which no package carries, so
   the README of a project is the run's alone.
+- **The report sits in the README too** (#ADR-0102), since the file beside a package is lost
+  when the package travels alone. After the evidence's block come a line for a person and a
+  second fenced block, its info string `reforge.report+zstd/1`, its body the report's text as
+  the writer writes it beside the package (`Report::to_json`), compressed as one zstd frame
+  at level 9 with its checksum and encoded as standard base64 in lines of 96 characters
+  (`package::report_block`). The block is left out when its body passes 768 KiB, or when the
+  README with it would pass the reader's 1 MiB; the evidence's note says which. The largest
+  report measured, 11.5 MB of JSON, gives a body of 544 KiB.
 - **`EvidenceDoc::parse`** reads the document back from a README's text: `None` for a README
   with no block of evidence, and an `EvidenceError` for a README over 1 MiB, a block of
   another format number, a block that is not closed, a second block, a body that is not the
   JSON of a document, and a field whose value is not what the field holds (a digest, a build,
   a position outside the history named, a count above its total, a policy). A field it does
-  not know is ignored. No stage calls it: a run reads a mod archive, and judges it by its
+  not know is ignored. It holds the report's block to its shape, one and closed, and does
+  not decode it. **`Readme::parse`** reads both in one pass: the report's body is decoded with
+  whitespace ignored, at any level and any line length, up to 64 MiB of JSON, and refused
+  when it does not decode, is no UTF-8 or is not what the note states. A report's block in a
+  README with no evidence is no report, and a block of another report format is a block of
+  another language. No stage calls either: a run reads a mod archive, and judges it by its
   bytes.
 - **`TexContainer`** puts a DDS at a `.tex` path in TEX's container where its blocks go in as
   they are (#ADR-0022), after either builder. A texture TEX does not hold as it is stays the
@@ -921,8 +936,8 @@ object takes a name of its own, which every link to it follows.
   with `reforge-report.json` in it, and `<out>/<project>_<version>.modpkg` with
   `<project>_<version>.reforge-report.json` beside it. A write that fails leaves nothing, and a
   directory that is no mod project is not replaced. The evidence of a package that has one is
-  written as `README.md` at the project's root, and the packer packs it as the `.modpkg`'s
-  readme, `_meta_/readme.md`. The thumbnail of a package that has one is written as
+  written as `README.md` at the project's root with the report's block, and the packer packs
+  it as the `.modpkg`'s readme, `_meta_/readme.md`, stored as it is. The thumbnail of a package that has one is written as
   `thumbnail.webp` at the project's root and named in the config, and the packer packs it as
   `_meta_/thumbnail.webp`. A layer's patches go under
   `content/<layer>/overrides/`, with its `game_data.yaml` beside them. A chunk with a part of its path longer
@@ -943,7 +958,8 @@ object takes a name of its own, which every link to it follows.
   shipped.
 - A caller filters by code, severity, channel, stage, subject, record and the fixup or check
   that raised it, and may set a filter to block the write. None blocks by default.
-- The report is written beside the package.
+- The report is written beside the package, and the package's README embeds it
+  ([Package](#package)).
 
 ## Report and dump
 
@@ -969,7 +985,7 @@ object takes a name of its own, which every link to it follows.
   every chunk's digest and, for a bin, the digest of each object as
   `ltk_meta` writes it, and every patch with the game bin it patches and the digest of each
   object of that bin after the patch, and as the part `evidence` the document the package
-  embeds ([Package](#package)), field for field. A run writes the package part and the
+  embeds ([Package](#package)), field for field but the README's note on the report. A run writes the package part and the
   evidence from its build snapshot, with each patch's outcome from its check snapshot
   (`AppliedRow`, `PackageRow::apply`). `reforge repair --again` adds what repairing
   the package a second time, in memory, changed.
