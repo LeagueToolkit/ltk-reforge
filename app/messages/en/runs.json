@@ -69,7 +69,7 @@
   "runs_report_note": "The report the package embeds, as JSON.",
   "runs_reveal_action": "Show package",
   "runs_storage_bytes": "Rows {rows} · run tier {tier} · ingest tier {ingest}",
-  "runs_storage_counts": "{runs} runs, {kept} kept, of {mods} mods",
+  "runs_storage_counts": "Runs {runs} · kept {kept} · mods {mods}",
   "runs_storage_label": "Runs",
   "runs_storage_remove_action": "Remove all",
   "runs_storage_remove_description": "Every run and the bytes only runs name are removed. The ingest tier and the packages written stay.",
