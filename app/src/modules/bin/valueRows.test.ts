@@ -1,7 +1,6 @@
 /**
  * Copied from LTK Manager's `src/modules/workshop/bin/values/utils/__tests__/valueRows.test.ts`.
- * Cut: the probability tables, the ranges, the curve read of a scalar, the sparkline keys and
- * Copy value's text.
+ * Cut: the probability tables, the ranges, the curve read of a scalar and the sparkline keys.
  */
 import { describe, expect, it } from "vitest";
 
@@ -15,6 +14,7 @@ import {
   constantRequests,
   dynamicsRequests,
   gradientCss,
+  markText,
   markValue,
   placeTime,
   stopRequests,
@@ -248,5 +248,34 @@ describe("colorHex and gradientCss", () => {
       "linear-gradient(to right, rgba(255, 0, 0, 0.5), rgba(255, 0, 0, 0.5))",
     );
     expect(gradientCss([])).toBe("");
+  });
+});
+
+describe("markText", () => {
+  it("copies a colour as its bytes and a scalar and a vector as they draw", () => {
+    expect(
+      markText({ family: "color", constant: vec4(1, 0.5, 0, 1), keys: [], curve: false }),
+    ).toBe("#FF8000FF");
+    expect(
+      markText({
+        family: "scalar",
+        constant: { type: "float", value: 2.5 },
+        keys: [],
+        curve: false,
+      }),
+    ).toBe("2.5");
+    expect(
+      markText({
+        family: "vector",
+        constant: { type: "vector", values: [0, 1.5, 0] },
+        keys: [],
+        curve: false,
+      }),
+    ).toBe("0, 1.5, 0");
+  });
+
+  it("copies nothing before the read lands", () => {
+    expect(markText(undefined)).toBeNull();
+    expect(markText({ family: "color", constant: null, keys: [], curve: false })).toBeNull();
   });
 });

@@ -5,8 +5,8 @@
  *
  * Copied from LTK Manager's `src/modules/workshop/bin/values/utils/valueRows.ts`. Cut: the
  * probability tables and the ranges they draw, the curve read the dock and the inspector ask
- * for, the sparkline keys and Copy value's text. A colour's curve is read, as Manager's tree
- * reads it; every other family stops at its constant.
+ * for and the sparkline keys. A colour's curve is read, as Manager's tree reads it; every other
+ * family stops at its constant.
  */
 import type { BinRow, BinRows, BinValue } from "@/lib/bindings.gen";
 
@@ -203,6 +203,23 @@ export function markValue(mark: ValueMark): BinValue | null {
 
   const [first] = key.values;
   return first === undefined ? mark.constant : { type: "float", value: first };
+}
+
+/**
+ * The value a value-family row draws, as the one string Copy value takes.
+ *
+ * Null until the read lands, so the row offers no copy of a value it is not drawing.
+ */
+export function markText(mark: ValueMark | undefined): string | null {
+  const value = mark === undefined ? null : markValue(mark);
+  if (value == null) return null;
+  if (mark?.family === "color") {
+    const rgba = channels(value);
+    return rgba === null ? null : colorHex(rgba);
+  }
+  if (value.type === "float") return String(value.value);
+  if (value.type === "vector") return value.values.join(", ");
+  return null;
 }
 
 /** The window a curve is drawn over, in the shares of a particle's life its times are. */

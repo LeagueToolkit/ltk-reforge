@@ -521,7 +521,11 @@ virtualized tree: the objects sorted by class then name, a bin of one object ope
 the kind in ritobin's words, guide lines, the arrow keys, Home and End, and `Ctrl+←` or the
 header's collapse-all button to shut every row and scroll to the top. A value-family row
 (`ValueColor`, `ValueFloat`, `ValueVector2`, `ValueVector3`) draws its constant, and a
-colour its swatch and the band of its keys. The badge row adds the bin's facts.
+colour its swatch and the band of its keys. A row's right-click menu holds LTK Manager's copies
+and nothing else: the path (the object's path, then a colon and the property path below an
+object), the name and the field hash of a property, the value where it reads as one string,
+the hash of a hash or a link, and the class name and hash of a struct. The badge row adds the
+bin's facts and a button that copies the bin's path.
 
 A jump to a place (the Show in bin button) carries its entry and its path; the tree opens
 the rows above it, asks for the pages it needs, scrolls the row to its top and marks it with

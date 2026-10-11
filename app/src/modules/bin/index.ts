@@ -5,4 +5,5 @@
 export { binOpenQuery, type BinRef } from "./api";
 export { BinTree, type BinTreeProps } from "./components/BinTree";
 export { CollapseAllButton } from "./components/CollapseAllButton";
+export { CopyPathButton } from "./components/CopyPathButton";
 export type { TreeReveal } from "./hooks/useReveal";

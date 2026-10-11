@@ -1,6 +1,7 @@
 /** The components, LTK Manager's design system's, each wrapping Base UI where one exists. */
 export * from "./Button";
 export * from "./Checkbox";
+export * from "./ContextMenu";
 export * from "./Dialog";
 export * from "./Disclosure";
 export * from "./FailureNote";

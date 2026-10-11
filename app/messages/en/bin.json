@@ -3,6 +3,14 @@
   "bin_absent_label": "absent",
   "bin_collapse_all_action": "Collapse all",
   "bin_collapse_all_hint": "Collapse all (Ctrl+←)",
+  "bin_copy_bin_path_action": "Copy the bin's path",
+  "bin_copy_class_hash_action": "Copy class hash",
+  "bin_copy_class_name_action": "Copy class name",
+  "bin_copy_field_hash_action": "Copy field hash",
+  "bin_copy_name_action": "Copy name",
+  "bin_copy_path_action": "Copy path",
+  "bin_copy_value_action": "Copy value",
+  "bin_copy_value_hash_action": "Copy value hash",
   "bin_deleted_label": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],

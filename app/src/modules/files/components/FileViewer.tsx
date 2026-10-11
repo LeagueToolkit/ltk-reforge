@@ -11,6 +11,7 @@ import {
   binOpenQuery,
   BinTree,
   CollapseAllButton,
+  CopyPathButton,
   type TreeReveal,
 } from "@/modules/bin";
 
@@ -154,7 +155,8 @@ export function FileViewer({ row, query, place = null, landing }: FileViewerProp
         </Tooltip>
         {opened.data && <BinFacts header={opened.data.header} />}
         {opened.data && (
-          <span className="ml-auto">
+          <span className="ml-auto flex items-center gap-1">
+            <CopyPathButton path={row.path ?? row.hash} />
             <CollapseAllButton
               disabled={!open}
               onCollapse={() => setCollapses((count) => count + 1)}
