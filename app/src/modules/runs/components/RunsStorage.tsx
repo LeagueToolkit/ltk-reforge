@@ -20,8 +20,9 @@ export function RunsStorage() {
   const failure = remove.error ?? clearUnused.error;
 
   return (
-    <div className="flex items-start justify-between gap-4" data-ui="RunsStorage">
-      <div className="min-w-0 flex-1">
+    // The buttons sit under the counts: beside them, the counts break inside a size.
+    <div className="flex flex-col gap-3" data-ui="RunsStorage">
+      <div className="min-w-0">
         <p className="text-sm text-surface-100">{m.runs_storage_label()}</p>
         {store && (
           <>
@@ -44,7 +45,7 @@ export function RunsStorage() {
         {view.isError && <FailureNote failure={view.error} />}
         {failure && <FailureNote failure={failure} />}
       </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
           variant="outline"
