@@ -24,6 +24,7 @@ use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{Choice, InputsView};
 use crate::installs::{self, InstallView};
+use crate::lookup::{HistoryBuilds, Lookup};
 use crate::records::{self, RecordHead, RecordView};
 use crate::reveal::{self, Place};
 use crate::run::{
@@ -973,4 +974,27 @@ pub async fn open_inputs(app: AppHandle) -> IpcResult<InputsView> {
     let choice = Choice::from(&app.state::<SettingsStore>().get());
     let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
     off_thread(move || Ok(open.get(&choice)?.view())).await
+}
+
+/// Asks the history of the inputs the settings choose, off the window's thread. Refused when
+/// they hold no history.
+async fn ask_history<T, F>(app: &AppHandle, ask: F) -> IpcResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&Lookup<'_>) -> Result<T, AppError> + Send + 'static,
+{
+    let choice = Choice::from(&app.state::<SettingsStore>().get());
+    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
+    off_thread(move || {
+        let inputs = open.get(&choice)?;
+        ask(&Lookup::of(inputs.env())?)
+    })
+    .await
+}
+
+/// The builds of the history the settings choose, in position order, and its head.
+#[tauri::command]
+#[specta::specta]
+pub async fn history_builds(app: AppHandle) -> IpcResult<HistoryBuilds> {
+    ask_history(&app, |lookup| Ok(lookup.builds())).await
 }

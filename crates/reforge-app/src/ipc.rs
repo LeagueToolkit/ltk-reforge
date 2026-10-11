@@ -35,6 +35,7 @@ pub fn builder() -> Builder<Wry> {
             commands::remove_install,
             commands::choose_install,
             commands::open_inputs,
+            commands::history_builds,
             commands::run_mod,
             commands::run_batch,
             commands::cancel_run,

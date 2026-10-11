@@ -33,6 +33,8 @@ export const commands = {
 	chooseInstall: (path: string) => __TAURI_INVOKE<({ ok: true; value: Settings }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("choose_install", { path }),
 	/**  The inputs the settings choose, opened, and what opening them found. */
 	openInputs: () => __TAURI_INVOKE<({ ok: true; value: InputsView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("open_inputs"),
+	/**  The builds of the history the settings choose, in position order, and its head. */
+	historyBuilds: () => __TAURI_INVOKE<({ ok: true; value: HistoryBuilds }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("history_builds"),
 	/**
 	 *  A repair or a port of a mod, as far as the request asks, against the inputs the settings
 	 *  choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunPart`
@@ -457,6 +459,16 @@ export type BatchView = {
 	millis: number,
 	/**  Whether a cancel stopped the batch before its last archive ran to its end. */
 	stopped: boolean,
+};
+
+/**  A build of the history. */
+export type BuildView = {
+	/**  Its position: its number in the order the builds arrived. */
+	position: number,
+	/**  Its version, `16.19.8207193`. */
+	version: string,
+	/**  The commit of the census history that holds it. */
+	commit: string,
 };
 
 /**  A slot weighed for a unit. */
@@ -957,6 +969,14 @@ export type HashesView = {
 	dir: string | null,
 	/**  The tables of it that opened. */
 	tables: string[],
+};
+
+/**  The builds of the history, in position order. */
+export type HistoryBuilds = {
+	/**  The position of the build appended last, which is not always the newest version. */
+	head: number,
+	/**  Every build, in position order. */
+	builds: BuildView[],
 };
 
 /**  The history index as read. */
