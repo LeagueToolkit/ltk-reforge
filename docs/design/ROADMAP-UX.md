@@ -7,6 +7,7 @@ Manager's stack), #ADR-0047 (the history index, distributed and grown on the use
 history bootstrapped from a released archive, superseded by #ADR-0078: the index holds every
 entry's object bytes, so a run needs no clone), #ADR-0059 (the League Toolkit caches updated
 when asked and marked when behind), #ADR-0061 (what the app downloaded removed when asked),
+#ADR-0101 (the game installs listed, detected and added, one chosen),
 #ADR-0049 (an AI agent as a caller, proposed),
 #ADR-0050 (two views of one run) and #ADR-0052 (the app ports, a repair is a preset).
 The library's design is in [ARCHITECTURE.md](ARCHITECTURE.md), the order of the other work in
@@ -29,7 +30,7 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   the commands (`pnpm generate:types`) and committed; a test of the crate fails when they
   differ from the commands.
 - The settings are one JSON file in the app's data directory, a key per setting id
-  (`appearance.theme`, `inputs.game`, `output.folder`).
+  (`appearance.theme`, `inputs.game`, `inputs.installs`, `output.folder`).
 - The theme (`app/src/styles/`) and the components are LTK Manager's, copied. reforge's own
   red, taken from Ornn's base splash art, is `app/src/styles/reforge.css` over them. LTK
   Manager's lint rules apply as its own, so the warnings it gives on its components are given
@@ -102,15 +103,17 @@ before it.
 
 | input | where it comes from | without it |
 |---|---|---|
-| the game install | the user picks the folder, or the app finds it as LTK Manager does | no run |
+| the game install | one of a list (#ADR-0101): the live install and the PBE the app detects (the Riot client's list of installs, a running client as `ltk_mod_core` finds it, the usual folders on every drive), and the folders the user added that open as an install | no run |
 | the hash tables | the cache the League Toolkit programs share, else a folder the user picks; downloaded or updated by the app when asked (#ADR-0059) | a run names less: a chunk no table spells ships under its hash |
 | the schema database | the copy the League Toolkit programs share, downloaded or updated by the app when asked (#ADR-0059), else a file the user picks | the types come from the install's bins alone |
 | the history index | fetched prebuilt and taken forward from the census history (#ADR-0047, #ADR-0057) | the run is judged against the install alone, and says so |
 
 The app says which inputs it read and how old each is, since a report differs with them: the
 install's build, the newest build the schema and the history index describe, and what opening
-each one raised. On a first start with no game chosen, the app looks for one with
-`ltk_mod_core`, as LTK Manager does, and chooses the one it finds.
+each one raised. On a first start with no game chosen, the app lists the installs and chooses
+the live one, else the first found. An install is listed by the build its
+`content-metadata.json` states, and none is opened to list it; the chosen one opens with the
+other inputs. The chosen install is `inputs.game`, the added ones `inputs.installs`.
 
 On this machine (2026-10-04), the inputs open in 1.7 s with the name-hash index already built,
 and a repair of a mod of 27 MB runs through check in 0.4 s and through write in 0.5 s. The
@@ -134,11 +137,18 @@ is only where its new builds are fetched into.
 A row holds, in this order:
 
 1. Its title, and a badge of how it stands: up to date, an update published, none, being
-   checked, or not opening.
+   checked, or not opening. The game's row says none is chosen, or that the chosen install
+   does not open.
 2. The path read, with a button that shows the folder in the system's file manager
    (`reveal_place`, which takes the name of a place and never a path; the places are the
    inputs' folders, the package the last run wrote, which the run state remembers, and the
-   package a kept run wrote, which its row names).
+   package a kept run wrote, which its row names). The game's row lists the installs instead
+   (#ADR-0101), one line each: a mark on the chosen one, where it was found (live, PBE,
+   running, added), its build or that it does not open, its path with the same button (a
+   listed install's path is the one place named by a path, and any other is refused), and on
+   an added one a button that takes it off the list. A click on a line chooses that install.
+   The row's actions find the installs again and add a folder, which is refused when it is no
+   install.
 3. Short facts: whether the folder is the shared one or one the user chose, the build, the
    tables, the bytes on disk.
 4. An offer for each thing the user can have done, as a box with what it does, what it costs
