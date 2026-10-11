@@ -24,7 +24,7 @@ use crate::hashes::{self, HashesCheck, HashesProgress, Release, TABLES};
 use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, Web};
 use crate::inputs::{Choice, InputsView};
 use crate::installs::{self, InstallView};
-use crate::lookup::{HistoryBuilds, Lookup};
+use crate::lookup::{HistoryBuilds, Lookup, LookupView};
 use crate::records::{self, RecordHead, RecordView};
 use crate::reveal::{self, Place};
 use crate::run::{
@@ -997,4 +997,24 @@ where
 #[specta::specta]
 pub async fn history_builds(app: AppHandle) -> IpcResult<HistoryBuilds> {
     ask_history(&app, |lookup| Ok(lookup.builds())).await
+}
+
+/// A path, or its path hash as sixteen hex digits, looked up in the history the settings
+/// choose: its life, and at the build at position `at`, the head when none is given, the WADs
+/// that held it, the objects that named it and the bin it was.
+#[tauri::command]
+#[specta::specta]
+pub async fn history_lookup(
+    app: AppHandle,
+    query: String,
+    at: Option<u16>,
+) -> IpcResult<LookupView> {
+    ask_history(&app, move |lookup| lookup.lookup(&query, at)).await
+}
+
+/// The paths the hash tables spell that start with a prefix, for the History page's search.
+#[tauri::command]
+#[specta::specta]
+pub async fn history_suggest(app: AppHandle, prefix: String) -> IpcResult<Vec<String>> {
+    ask_history(&app, move |lookup| Ok(lookup.suggest(&prefix))).await
 }

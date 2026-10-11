@@ -36,6 +36,14 @@ export const commands = {
 	/**  The builds of the history the settings choose, in position order, and its head. */
 	historyBuilds: () => __TAURI_INVOKE<({ ok: true; value: HistoryBuilds }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("history_builds"),
 	/**
+	 *  A path, or its path hash as sixteen hex digits, looked up in the history the settings
+	 *  choose: its life, and at the build at position `at`, the head when none is given, the WADs
+	 *  that held it, the objects that named it and the bin it was.
+	 */
+	historyLookup: (query: string, at: number | null) => __TAURI_INVOKE<({ ok: true; value: LookupView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("history_lookup", { query, at }),
+	/**  The paths the hash tables spell that start with a prefix, for the History page's search. */
+	historySuggest: (prefix: string) => __TAURI_INVOKE<({ ok: true; value: string[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("history_suggest", { prefix }),
+	/**
 	 *  A repair or a port of a mod, as far as the request asks, against the inputs the settings
 	 *  choose, one run at a time. How it goes comes as `RunStage`, `RunFinding` and `RunPart`
 	 *  events.
@@ -461,6 +469,18 @@ export type BatchView = {
 	stopped: boolean,
 };
 
+/**  The bin the game held at the path at the build asked about. */
+export type BinLookup = {
+	/**  The WAD that held it: the first in the census history's order. */
+	wad: string,
+	/**  The builds that WAD held the bin there without a break. */
+	life: LifeView,
+	/**  The bins it links, in the order the census history lists them. */
+	links: LinkView[],
+	/**  Its objects, by entry name and then hash. */
+	entries: EntryView[],
+};
+
 /**  A build of the history. */
 export type BuildView = {
 	/**  Its position: its number in the order the builds arrived. */
@@ -732,6 +752,16 @@ export type Diff = {
 	a: string,
 	/**  The value in the second run. */
 	b: string,
+};
+
+/**  An object of a bin. */
+export type EntryView = {
+	/**  Its entry name, spelled, else its hash. */
+	entry: string,
+	/**  Its entry hash, as eight hex digits. */
+	hash: string,
+	/**  Its class, spelled, else its hash. */
+	class: string,
 };
 
 /**  What dated the mod: the first piece of it that first shipped at the bound. */
@@ -1108,6 +1138,46 @@ export type KindCount = {
 	bytes: number,
 };
 
+/**  The builds a key was present in, from the first to the last. */
+export type LifeView = {
+	/**  The first build. */
+	first: BuildView,
+	/**  The last build. */
+	last: BuildView,
+	/**  How many positions the life spans, both ends counted. */
+	builds: number,
+};
+
+/**  A bin a bin links. */
+export type LinkView = {
+	/**  Its path, spelled, else its hash. */
+	path: string,
+	/**  Its path hash, as sixteen hex digits. */
+	hash: string,
+};
+
+/**  A path looked up in the history. */
+export type LookupView = {
+	/**  The path, spelled through the tables, else as asked, else its hash. */
+	path: string,
+	/**  Its path hash, as sixteen hex digits. */
+	hash: string,
+	/**  The builds some WAD held a file at the path. None when the game never held one. */
+	life: LifeView | null,
+	/**  The kind of the first file seen there, as the census history spells it. */
+	kind: string | null,
+	/**  The build the rest is answered at. */
+	at: BuildView,
+	/**  The files the game's WADs held at the path at that build. */
+	placed: PlacedView[],
+	/**  The game objects that named the path, oldest first, up to [`MAX_NAMED_BY`]. */
+	named_by: NamedByView[],
+	/**  Whether more objects named the path than `named_by` holds. */
+	named_by_capped: boolean,
+	/**  The bin at the path at that build. None when the file there is no bin, or none is. */
+	bin: BinLookup | null,
+};
+
 /**  How a file stands against the stage before. */
 export type Mark = 
 /**  The same bytes at the same place. */
@@ -1146,6 +1216,20 @@ export type ModView = {
 	version?: string | null,
 	/**  Its description. */
 	description?: string | null,
+};
+
+/**  A game object that named the path. */
+export type NamedByView = {
+	/**  The path of the object's bin, spelled, else its hash. */
+	bin: string,
+	/**  The bin's path hash, as sixteen hex digits. */
+	bin_hash: string,
+	/**  The object's entry name, spelled, else its hash. */
+	entry: string,
+	/**  The entry hash, as eight hex digits. */
+	entry_hash: string,
+	/**  The builds the object named the path. */
+	life: LifeView,
 };
 
 /**  An object a fixup changed, as the run spells it. */
@@ -1280,6 +1364,16 @@ export type Place =
 "index" | 
 /**  The app's clone of the census history. */
 "census";
+
+/**  A file a WAD of the game held at the path. */
+export type PlacedView = {
+	/**  The WAD's path in the manifest. */
+	wad: string,
+	/**  The file's key, the head of its SHA-256, as 32 hex digits. */
+	content: string,
+	/**  The builds the WAD held the file there without a break. */
+	life: LifeView,
+};
 
 /**  A policy: how a target is chosen, and how much animation reuse is accepted. */
 export type PolicyView = {
