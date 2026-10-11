@@ -1,6 +1,6 @@
 import { LockSimpleIcon } from "@phosphor-icons/react";
 import { type QueryKey, useQuery } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { match } from "ts-pattern";
 
 import { FailureNote, Spinner, Tooltip } from "@/components";
@@ -23,14 +23,10 @@ export interface FileQuery {
 const preClass =
   "max-h-[60vh] overflow-auto rounded-lg border border-surface-700/50 bg-surface-950/40 p-3 font-mono text-xs whitespace-pre text-surface-200";
 
-/** The object asked for, marked, and scrolled to as it shows. */
+/** The object asked for, marked. It is the text's first, so the text's own scroll is at it. */
 function AskedObject({ text }: { text: string }) {
-  const scrolled = useCallback((node: HTMLSpanElement | null) => {
-    node?.scrollIntoView({ block: "nearest" });
-  }, []);
   return (
     <span
-      ref={scrolled}
       className="-mx-3 block border-l-2 border-accent-500 bg-accent-500/10 px-3"
       data-ui="FileViewer:entry"
     >
@@ -107,8 +103,17 @@ interface FileViewerProps {
 export function FileViewer({ row, query, entry = null, entryName }: FileViewerProps) {
   // A file's bytes under their id never change, and one no tier holds is not asked again.
   const view = useQuery({ ...query, staleTime: Infinity, retry: false });
+  const root = useRef<HTMLDivElement>(null);
+  // The viewer's top goes to the top of the page once the asked object shows: the object is
+  // the text's first, and may stand taller than the page, which a scroll to its nearest edge
+  // leaves where it is.
+  useEffect(() => {
+    if (entry && view.data) {
+      root.current?.scrollIntoView({ block: "start" });
+    }
+  }, [entry, view.data]);
   return (
-    <div className="flex flex-col gap-3" data-ui="FileViewer">
+    <div ref={root} className="flex flex-col gap-3" data-ui="FileViewer">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-surface-veil-soft px-3 py-2 text-xs">
         <span className="inline-flex items-center gap-1 rounded-full bg-surface-veil px-2 py-0.5 font-medium text-surface-200 select-none">
           <LockSimpleIcon weight="bold" className="h-3 w-3" />
