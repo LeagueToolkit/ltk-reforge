@@ -445,7 +445,8 @@ Under them are three tabs:
   word on hover, a removed file struck through. A box filters by path and kind, and a switch
   hides the files that are the same. A WAD opens at first and a folder closed, so a WAD of
   thousands of files draws its rows as they are opened. The file picked opens below the tree;
-  a finding's Show in bin picks the bin at `build` and opens it at the value's object.
+  a finding's Show in bin picks the bin at `build`, opens the folders down to it, scrolls the
+  tree to it and opens it at the value's object.
 - **Report**: the report the package embeds (`run_report`), as its JSON.
 
 For a package opened, the Files tab is one line saying the run has no snapshots, and the

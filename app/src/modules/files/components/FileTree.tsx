@@ -12,14 +12,21 @@ import {
   ImageIcon,
   SpeakerHighIcon,
 } from "@phosphor-icons/react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 
 import { Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { FileRow, Mark } from "@/lib/bindings.gen";
 import { twMerge } from "@/utils";
 
-import { isSourceFact, sizeLabel, type SourceFact, type TreeFile, type TreeFolder } from "../tree";
+import {
+  foldersTo,
+  isSourceFact,
+  sizeLabel,
+  type SourceFact,
+  type TreeFile,
+  type TreeFolder,
+} from "../tree";
 
 /** The words for a provenance fact, the fact's own key for one the app has none for. */
 export function sourceLabel(fact: string): string {
@@ -170,6 +177,27 @@ interface FileTreeProps {
 export function FileTree({ roots, allOpen, selected, onPick, againstRun = false }: FileTreeProps) {
   // The keys whose open state differs from the default: a root open, a folder closed.
   const [flipped, setFlipped] = useState<Set<string>>(() => new Set());
+  // A file picked from outside the tree, by a jump to a value's bin, has its folders opened
+  // once; a person may close them again.
+  const [revealed, setRevealed] = useState<FileRow | null>(null);
+  if (selected !== revealed) {
+    setRevealed(selected);
+    const folders = selected ? (foldersTo(roots, selected) ?? []) : [];
+    if (folders.length > 0) {
+      setFlipped((keys) => {
+        const next = new Set(keys);
+        // A root opens by default and a folder by being flipped.
+        next.delete(folders[0]);
+        for (const key of folders.slice(1)) {
+          next.add(key);
+        }
+        return next;
+      });
+    }
+  }
+  const scrolled = useCallback((node: HTMLButtonElement | null) => {
+    node?.scrollIntoView({ block: "nearest" });
+  }, []);
   const isOpen = (node: TreeFolder, depth: number) =>
     allOpen || (depth === 0) !== flipped.has(node.key);
   const flip = (key: string) =>
@@ -185,6 +213,7 @@ export function FileTree({ roots, allOpen, selected, onPick, againstRun = false 
     <li key={node.key}>
       <button
         type="button"
+        ref={selected === node.row ? scrolled : undefined}
         aria-pressed={selected === node.row}
         onClick={() => onPick(node.row)}
         className={twMerge(rowClass, "aria-pressed:bg-accent-500/10 aria-pressed:text-surface-50")}

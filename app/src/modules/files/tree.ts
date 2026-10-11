@@ -155,6 +155,32 @@ export function buildTree(wads: WadFiles[], filter: TreeFilter): TreeFolder[] {
   return roots;
 }
 
+/**
+ * The keys of the folders down to a file, its WAD's first and its own folder's last. Null for a
+ * file the tree does not show.
+ */
+export function foldersTo(roots: readonly TreeFolder[], row: FileRow): string[] | null {
+  const down = (node: TreeFolder): string[] | null => {
+    for (const child of node.children) {
+      if (child.kind === "file" && child.row === row) {
+        return [node.key];
+      }
+      const below = child.kind === "folder" ? down(child) : null;
+      if (below) {
+        return [node.key, ...below];
+      }
+    }
+    return null;
+  };
+  for (const root of roots) {
+    const found = down(root);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+
 /** The words a size is written in: bytes, then each unit a thousand times the one before. */
 export interface SizeUnits {
   bytes: string;

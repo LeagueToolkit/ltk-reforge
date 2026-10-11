@@ -4,6 +4,7 @@ import type { FileRow, Mark, WadFiles } from "@/lib/bindings.gen";
 
 import {
   buildTree,
+  foldersTo,
   HASHED_FOLDER,
   sizeLabel,
   sourcesOf,
@@ -111,6 +112,26 @@ describe("buildTree", () => {
     expect(names(folderAt(root, "a"))).toEqual(["game.tex"]);
     const [every] = buildTree([sourced], { ...all, source: null });
     expect(names(folderAt(every, "a"))).toEqual(["game.tex", "none.tex", "own.tex"]);
+  });
+});
+
+describe("foldersTo", () => {
+  it("names the folders down to a file, its WAD first, and none for a file not shown", () => {
+    const roots = buildTree([wad], all);
+    const bin = wad.files[2];
+    expect(foldersTo(roots, bin)).toEqual([
+      "Ahri.wad.client",
+      "Ahri.wad.client/data",
+      "Ahri.wad.client/data/characters",
+      "Ahri.wad.client/data/characters/ahri",
+      "Ahri.wad.client/data/characters/ahri/skins",
+    ]);
+    expect(foldersTo(roots, wad.files[4])).toEqual([
+      "Ahri.wad.client",
+      `Ahri.wad.client/${HASHED_FOLDER}`,
+    ]);
+    const narrowed = buildTree([wad], { text: "ahri.tex", changedOnly: false });
+    expect(foldersTo(narrowed, bin)).toBeNull();
   });
 });
 
