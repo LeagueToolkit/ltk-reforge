@@ -1,4 +1,5 @@
 import {
+  ArchiveIcon,
   BookOpenTextIcon,
   ClockCounterClockwiseIcon,
   GearSixIcon,
@@ -71,6 +72,10 @@ export function Shell({ inputsMark, wide = false, children }: ShellProps) {
         <NavLink to="/records">
           <BookOpenTextIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_records_label()}
+        </NavLink>
+        <NavLink to="/history">
+          <ArchiveIcon weight="bold" className="h-4 w-4" />
+          {m.shell_nav_history_label()}
         </NavLink>
         <NavLink to="/batch">
           <QueueIcon weight="bold" className="h-4 w-4" />

@@ -1,6 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/inlang-message-format",
   "shell_nav_batch_label": "Batch",
+  "shell_nav_history_label": "History",
   "shell_nav_inputs_label": "Inputs",
   "shell_nav_label": "Pages",
   "shell_nav_mod_label": "Mod",

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "history_at_label": "At {version}",
+  "history_bin_description": "The bin at the path at {version}: the first WAD's that held it",
+  "history_bin_links_label": "Links",
+  "history_bin_no_links": "It links no bin",
+  "history_bin_title": "Bin",
+  "history_bin_wad_label": "In",
+  "history_build_head": "{version} (head)",
+  "history_build_label": "Build",
+  "history_compare_label": "Compare with",
+  "history_compare_none": "No other build",
+  "history_diff_equal": "The object is the same at both builds",
+  "history_diff_missing": "{version} holds no such object",
+  "history_diff_title": "{before} to {after}",
+  "history_diff_too_long": "Too long to compare",
+  "history_entries_filter_label": "Filter the entries",
+  "history_entries_filter_placeholder": "Filter by name, hash or class",
+  "history_entries_none_match": "No entry matches",
+  "history_hash_label": "Hash",
+  "history_held_description": "The files the game's WADs held at the path at {version}",
+  "history_held_none": "No WAD held a file at the path at this build",
+  "history_held_title": "Held in",
+  "history_kind_label": "Kind",
+  "history_life_never": "never held",
+  "history_life_short": [
+    {
+      "declarations": [
+        "input first",
+        "input last",
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{first}, {count} build",
+        "countPlural=other": "{first} to {last}, {count} builds"
+      }
+    }
+  ],
+  "history_life_text": [
+    {
+      "declarations": [
+        "input first",
+        "input last",
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "at {first} alone, 1 build",
+        "countPlural=other": "from {first} to {last}, {count} builds"
+      }
+    }
+  ],
+  "history_lookup_action": "Look up",
+  "history_named_capped": "The first {count} are shown",
+  "history_named_description": "The game objects that named the path, oldest first",
+  "history_named_none": "No game object named the path",
+  "history_named_title": "Named by",
+  "history_no_index": "No history index is chosen.",
+  "history_no_index_link": "Choose one on the Inputs page",
+  "history_object_bin_label": "Bin",
+  "history_object_description": "An object of a bin at {version}, its names spelled through the hash tables",
+  "history_object_entry_label": "Entry",
+  "history_object_hint": "Pick an entry of the bin or an object that names the path, or type a bin and an entry",
+  "history_object_life_label": "Held",
+  "history_object_none": "{version} holds no such object",
+  "history_object_show_action": "Show",
+  "history_object_title": "Object",
+  "history_object_wad_label": "In",
+  "history_page_description": "When the game held a path, in which WADs, and what an object held at any build: read from the history index, names spelled through the hash tables.",
+  "history_page_title": "History",
+  "history_search_label": "A path or its hash",
+  "history_search_placeholder": "data/characters/lux/skins/skin0.bin, or sixteen hex digits",
+  "history_suggestions_label": "Paths the hash tables spell",
+  "history_table_class": "Class",
+  "history_table_content": "Content",
+  "history_table_entry": "Entry",
+  "history_table_hash": "Hash",
+  "history_table_life": "Builds",
+  "history_table_object": "Object",
+  "history_table_wad": "WAD"
+}
