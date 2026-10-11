@@ -203,8 +203,7 @@ the page says so. Once explored, three tabs:
 - **Files**: the Runs page's files browser over the files at `load` (`explore_files`), each
   marked the same, with a badge of its provenance fact and a filter by fact beside the filter
   by path and kind; a file opens in the Runs page's viewer (`explore_file`), over the explored
-  run's layer, the run tier and the ingest tier, a bin's names spelled through the load's
-  names. The listing is the function a kept run's files go through
+  run's layer, the run tier and the ingest tier, a bin's rows named through the load's names. The listing is the function a kept run's files go through
   (`store::load_files`, `store::Tiers`).
 - **Findings**: the findings of `read` and `load`, the worst first.
 
@@ -499,7 +498,7 @@ hover), the size and the content id:
 
 | kind | shown as | cap |
 |---|---|---|
-| a bin | its objects as text (`model::dump::dump_object`), names spelled through the run's load snapshot and the inputs' tables | 2 MB of whole objects, then how many follow |
+| a bin, `PROP` or `PTCH` | rows in a tree, read apart (below) | 500 rows a page |
 | a texture, TEX or DDS | its largest mip decoded by the app and written as a PNG, its side at most 1024 pixels, with its size and format | a side up to 8192 pixels |
 | text | the text through `clean` | 1 MB |
 | anything else | the first 256 bytes as hex, sixteen to a line | |
@@ -507,18 +506,30 @@ hover), the size and the content id:
 A file over 64 MB, and a texture that does not decode, shows as hex. A mod's bytes reach the
 window only as text through `clean` or as a PNG the app encoded (#ADR-0093).
 
-A bin asked for at an object's entry (`run_file`, `last_file` and `explore_file` take
-`entry`, eight hex digits) shows that object first, between two lines that hold the record
-separator alone (`ENTRY_FENCE`): a control the dump escapes, so no object's text holds it.
-The other objects follow in the bin's order under the same cap, and `entry_found` says
-whether the bin holds the entry. The viewer marks the object with a bar at its left and the
-accent's tint, and names the entry in its badge
-row, by the name the finding's detail spelled, the hash on hover; a bin without the entry says
-so above its objects. Each jump, a second one to the object shown too, brings the viewer's top
-to the top of the page, under its padding, and its text back to its start, once the text
-shows: the object may stand taller than the page. A file's text stands as tall as the page
-less its padding and the badge row, so the page's end does not stop that scroll short, and
-the tree scrolls its own box to the file, never the page. A page's tabs keep their panels mounted, so what a person opened in the
+**A bin** is drawn as LTK Manager's bin editor draws one, read-only (#ADR-0104). The
+backend reads the bin by its content id from the run's tiers (`bin_rows::BinSource`, the
+run's layer over the store's for the last run and the mod explored) and holds the last eight
+parsed (`bin_rows::BinViews`). `bin_open` answers the header (the objects, a `PROP`'s version
+and dependency count, a `PTCH`'s records and deletions) and one row per object, then one target
+row per object a `PTCH`'s records patch; `bin_children` answers the rows under one node, 500
+a page; `bin_read` answers the first page under several nodes of one object, four pages a
+call at most. A node is its object's entry and its hash path, the form a type check's place
+writes, `#` and the record's position under a target. Names are the run's load names over the
+inputs' tables, every text cleaned. The front end (`modules/bin`) draws the rows as a
+virtualized tree: the objects sorted by class then name, a bin of one object opened, a tag of
+the kind in ritobin's words, guide lines, the arrow keys, Home and End, and `Ctrl+←` or the
+header's collapse-all button to shut every row and scroll to the top. A value-family row
+(`ValueColor`, `ValueFloat`, `ValueVector2`, `ValueVector3`) draws its constant, and a
+colour its swatch and the band of its keys. The badge row adds the bin's facts.
+
+A jump to a place (the Show in bin button) carries its entry and its path; the tree opens
+the rows above it, asks for the pages it needs, scrolls the row to its top and marks it with
+the accent's bar and tint. A path whose row the tree does not draw, such as the `[0]` of an
+option drawing its leaf on its own row, lands on the deepest row above it. Each jump, a second
+one to the row shown too, brings the viewer's top to the top of the page, under its padding.
+The tree is a scroll box of its own, as tall as the page less its padding and the badge row,
+so the page's end does not stop that scroll short; the file tree scrolls its own box to the
+file, never the page. A page's tabs keep their panels mounted, so what a person opened in the
 result is as they left it when they come back from the files. Bytes no tier
 holds, such as a mod's cleared from the ingest tier, are refused as `BLOB_MISSING`.
 
@@ -589,8 +600,7 @@ further than it needs: collecting every path of a three-letter prefix took 4.4 s
 machine, 2026-10-11). `history_object` takes a bin, a path or a hash, an entry, a name or
 eight hex digits, and a build, and answers the object as text: `History::object_bytes`,
 `model::bin::read_stored`, then `dump_object` with the tables' names. The text is capped at
-the file viewer's bound for a bin's text (`MAX_BIN_TEXT`), cut at a line end and said to be
-cut. A build that holds no such object answers none, and bytes that do not read are
+2 MB (`MAX_BIN_TEXT`), cut at a line end and said to be cut. A build that holds no such object answers none, and bytes that do not read are
 `HISTORY_OBJECT_UNREADABLE`.
 
 **The page.** A search box takes a path or a hash and lists the suggestions under it as the
@@ -790,7 +800,7 @@ user picks another policy and runs again.
   the mod explored. `last_files` lists a stage through the function a kept run's files go
   through, over that layer and the store's tiers, so a run the store did not keep, one that
   halted or did not write, is browsed as a kept one is; `last_file` opens a file in the Runs
-  page's viewer, a bin's names spelled through the run's load names.
+  page's viewer, a bin's rows named through the run's load names.
 - The app runs the stages one at a time, as `Run::through` does, and tells the window as each
   starts and ends, and each finding as it is raised. A stage that gives a part sends it as it
   ends, built alone with the library's `ReportBuilder` as `Run::report` builds it: `fix` the
@@ -829,7 +839,8 @@ user picks another policy and runs again.
   comparison of two runs name no run to ask, and their rows do not open. On the run page and
   the Runs page's run detail, a place whose bin is a file of the package at `build`, matched
   by its WAD's name and its path, has a Show in bin button: it opens the Files tab at `build`
-  at that file, and the viewer at the place's object. A place in a game bin a patch changes is
+  at that file, and the viewer's tree at the place's value, or at the object for a row's
+  first place, which carries no path. A place in a game bin a patch changes is
   in no file of the package, and has none.
 - "What changed" holds every value the fixups changed, by fixup or by object, filtered by a
   word of its object, field, path or value and by outcome. A change carries its class and

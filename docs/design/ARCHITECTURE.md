@@ -973,7 +973,7 @@ object takes a name of its own, which every link to it follows.
   and, with `--fix`, what the fixups changed, `reforge inspect --dump` the facts and the
   decisions, `reforge port --dump` the plan and the package, `reforge repair --dump` the
   package. `dump_object` writes one bin object as text, its fields with their kinds and its
-  names spelled, which the app's Runs page shows a bin with.
+  names spelled, which the app's History page shows an object with.
 - `Report` is a serialisable struct with a schema version (`reforge.report/1`). It is built from
   parts, each optional, so a run that stops early reports what it has. `Run::report` builds it
   from what the run holds ([Shape](#shape)). The parts: the mod, the inputs (the install

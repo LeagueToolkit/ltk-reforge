@@ -6,6 +6,7 @@ use camino::Utf8PathBuf;
 use fs_err as fs;
 use reforge::history::NoHistory;
 use reforge::model::ContentId;
+use reforge_app::bin_rows::{BinValue, BinViews};
 use reforge_app::explore::{self, ExploredMod};
 use reforge_app::inputs::Inputs;
 use reforge_app::run::RunKind;
@@ -164,18 +165,27 @@ fn the_skin_bin_of_a_mod_explored_opens_as_a_bin() {
     let files = explored.files(Some(&bench.store)).unwrap();
     let skin = file_at(&files, &skin_bin("test", 0));
     let content = ContentId::parse(&skin.content).unwrap();
-    let shown = explore::explored_file(Some(&explored), Some(&bench.store), content, None);
-    match shown.unwrap() {
-        FileView::Bin {
-            text,
-            more,
-            entry_found,
-        } => {
-            assert!(text.contains("SkinCharacterDataProperties"), "{text}");
-            assert_eq!((more, entry_found), (0, None));
-        }
-        other => panic!("shown as {other:?}"),
-    }
+    let shown = explore::explored_file(Some(&explored), Some(&bench.store), content);
+    assert_eq!(shown, Ok(FileView::Bin));
+
+    let views = BinViews::default();
+    let source = explored.bin_source(Some(&bench.store));
+    let handle = source.read(&views, content, None, |document, speller| {
+        Ok(document.open(speller))
+    });
+    let classes: Vec<Option<String>> = handle
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|row| match row.value {
+            BinValue::Struct { class, .. } => class,
+            other => panic!("an object row holds {other:?}"),
+        })
+        .collect();
+    assert!(
+        classes.contains(&Some("SkinCharacterDataProperties".into())),
+        "{classes:?}"
+    );
 }
 
 #[test]

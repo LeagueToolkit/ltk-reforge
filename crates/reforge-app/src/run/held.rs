@@ -6,7 +6,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use reforge::game::Names;
 use reforge::model::{ByteView, ContentId};
 use reforge::snapshot::Snapshots;
 use reforge::store::{BlobStore, MemoryStore};
@@ -14,7 +13,7 @@ use reforge::store::{BlobStore, MemoryStore};
 use super::{RunRequest, StageName};
 use crate::bin_rows::BinSource;
 use crate::error::AppError;
-use crate::store::{self, AppStore, FileAsk, FileView, KeptSnapshots, StageFiles, Tiers};
+use crate::store::{self, AppStore, FileView, KeptSnapshots, StageFiles, Tiers};
 
 /// A run that ended, as the app holds it until the next.
 pub struct HeldRun {
@@ -82,20 +81,9 @@ impl HeldRun {
         BinSource::new(Tiers::layered(&*self.layer, store), book)
     }
 
-    /// One file by the id of its bytes, over the run's layer and the store's tiers, a bin's
-    /// names spelled through the run's load names and `names`.
-    pub fn file(
-        &self,
-        store: Option<&AppStore>,
-        ask: impl Into<FileAsk>,
-        names: Option<&Names>,
-    ) -> Result<FileView, AppError> {
-        let tiers = Tiers::layered(&*self.layer, store);
-        let book = || {
-            let load = self.snapshots.as_ref().map(|snapshots| &snapshots.load);
-            Ok(load.map(|load| load.names().clone()).unwrap_or_default())
-        };
-        store::file_view(&tiers, ask, book, names)
+    /// One file by the id of its bytes, over the run's layer and the store's tiers.
+    pub fn file(&self, store: Option<&AppStore>, content: ContentId) -> Result<FileView, AppError> {
+        store::file_view(&Tiers::layered(&*self.layer, store), content)
     }
 }
 
@@ -104,17 +92,11 @@ impl HeldRun {
 pub fn held_file(
     held: Option<&HeldRun>,
     store: Option<&AppStore>,
-    ask: impl Into<FileAsk>,
-    names: Option<&Names>,
+    content: ContentId,
 ) -> Result<FileView, AppError> {
-    let ask = ask.into();
     match (held, store) {
-        (Some(held), store) => held.file(store, ask, names),
-        (None, Some(store)) => {
-            store::file_view(&Tiers::of(store), ask, || Ok(Default::default()), names)
-        }
-        (None, None) => Err(AppError::BlobMissing {
-            id: ask.content.hex(),
-        }),
+        (Some(held), store) => held.file(store, content),
+        (None, Some(store)) => store.file_view(content),
+        (None, None) => Err(AppError::BlobMissing { id: content.hex() }),
     }
 }

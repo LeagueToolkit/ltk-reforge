@@ -5,15 +5,17 @@
 use camino::Utf8PathBuf;
 use fs_err as fs;
 use ltk_meta::BinObject;
+use reforge::game::Speller;
 use reforge::history::NoHistory;
 use reforge::model::{BinHash, ContentId, name_hash};
 use reforge::store::BlobStore;
+use reforge_app::bin_rows::{BinDocument, BinReadError, BinViews, READ_PAGE, RowNode};
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
     self, HeldRun, RunKind, RunRequest, RunSettings, RunView, StageName, Unwatched,
 };
-use reforge_app::store::{AppStore, ENTRY_FENCE, FileAsk, FileRow, FileView, StageFiles};
+use reforge_app::store::{AppStore, FileRow, FileView, StageFiles};
 use reforge_testkit::ModArchive;
 use reforge_testkit::bins::{bin, entry, float};
 use reforge_testkit::facts::{archive, env, own_files, own_graph, own_skin};
@@ -117,13 +119,10 @@ fn a_run_the_store_did_not_keep_is_browsed_from_its_own_layer() {
     assert_eq!(fixed.kind, "property-bin");
     let content = ContentId::parse(&fixed.content).unwrap();
 
-    let shown = held.file(Some(&bench.store), content, None).unwrap();
-    assert!(
-        matches!(&shown, FileView::Bin { text, .. } if !text.is_empty()),
-        "{shown:?}"
-    );
+    let shown = held.file(Some(&bench.store), content);
+    assert_eq!(shown, Ok(FileView::Bin));
     assert_eq!(
-        run::held_file(None, Some(&bench.store), content, None),
+        run::held_file(None, Some(&bench.store), content),
         Err(AppError::BlobMissing { id: content.hex() }),
         "the bytes `fix` wrote are the held run's alone"
     );
@@ -172,53 +171,52 @@ fn a_held_run_refuses_a_stage_that_names_no_files() {
     }
 }
 
-/// The skin bin at `fix` opened from a held run, with the object of `entry` asked for.
-fn fixed_skin(bench: &Bench, held: &HeldRun, entry: Option<BinHash>) -> (String, Option<bool>) {
+/// The skin bin at `fix` read from a held run: what `ask` reads of it.
+fn fixed_skin<T>(
+    bench: &Bench,
+    held: &HeldRun,
+    ask: impl FnOnce(&BinDocument, &Speller<'_>) -> Result<T, AppError>,
+) -> T {
     let fix = held.files(Some(&bench.store), StageName::Fix).unwrap();
     let fix = fix.expect("the run ended load");
     let content = ContentId::parse(&skin_at(&fix).content).unwrap();
-    let ask = FileAsk { content, entry };
-    match held.file(Some(&bench.store), ask, None).unwrap() {
-        FileView::Bin {
-            text, entry_found, ..
-        } => (text, entry_found),
-        other => panic!("not a bin: {other:?}"),
-    }
+    let views = BinViews::default();
+    let source = held.bin_source(Some(&bench.store));
+    source.read(&views, content, None, ask).unwrap()
 }
 
 #[test]
-fn an_entry_asked_for_comes_first_between_two_fences() {
+fn a_bin_the_held_run_fixed_opens_to_a_row_per_object() {
     let bench = Bench::new();
     let (_, held) = bench.held(StageName::Check);
-    // The tool's object is the bin's last.
     let tint = tool_artifact().path_hash;
 
-    let (text, found) = fixed_skin(&bench, &held, Some(tint));
-
-    assert_eq!(found, Some(true));
-    let fence = format!("{ENTRY_FENCE}\n");
-    let parts: Vec<&str> = text.split(&fence).collect();
-    assert_eq!(parts.len(), 3, "{text}");
-    assert_eq!(parts[0], "");
-    let tint_hex = format!("{:08x}", tint.0);
-    assert!(parts[1].starts_with(&tint_hex), "{}", parts[1]);
-    assert!(!parts[2].contains(&tint_hex), "{}", parts[2]);
-    assert!(
-        parts[2].contains("SkinCharacterDataProperties"),
-        "{}",
-        parts[2]
+    let handle = fixed_skin(
+        &bench,
+        &held,
+        |document, speller| Ok(document.open(speller)),
     );
+
+    let entries: Vec<&str> = handle.rows.iter().map(|row| row.entry.as_str()).collect();
+    assert!(
+        entries.contains(&&*format!("0x{:08x}", tint.0)),
+        "{entries:?}"
+    );
+    assert!(handle.rows.iter().all(|row| row.node == RowNode::Object));
 }
 
 #[test]
-fn an_entry_the_bin_lacks_is_said_so_and_the_objects_keep_their_order() {
+fn an_object_the_bin_lacks_is_refused_by_its_address() {
     let bench = Bench::new();
     let (_, held) = bench.held(StageName::Check);
+    let missing = BinHash(0x1234_5678);
 
-    let (asked, found) = fixed_skin(&bench, &held, Some(BinHash(0x1234_5678)));
-    let (plain, none) = fixed_skin(&bench, &held, None);
+    let refused = fixed_skin(&bench, &held, |document, speller| {
+        Ok(document.children(missing, "", 0, READ_PAGE, speller))
+    });
 
-    assert_eq!((found, none), (Some(false), None));
-    assert_eq!(asked, plain);
-    assert!(!plain.contains(ENTRY_FENCE));
+    assert_eq!(
+        refused,
+        Err(BinReadError::NodeNotFound("0x12345678:".into()))
+    );
 }

@@ -14,6 +14,7 @@ use reforge::package::{
     REPORT_FORMAT,
 };
 use reforge::store::BlobStore;
+use reforge_app::bin_rows::{BinSource, BinValue, BinViews};
 use reforge_app::error::AppError;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
@@ -22,6 +23,7 @@ use reforge_app::run::{
 };
 use reforge_app::store::{
     AppStore, Counts, EVIDENCE_ONLY_SCHEMA, FileRow, FileView, HEX_BYTES, Mark, Origin, StageFiles,
+    Tiers,
 };
 use reforge_app::view::Finding;
 use reforge_testkit::bins::{bin, entry, float};
@@ -412,19 +414,30 @@ fn a_bin_opens_as_its_objects_with_their_names() {
     let fix = bench.files(id, StageName::Fix);
     let skin = file(&fix, WAD, &skin_bin("test", 0));
     let names = bench.inputs.env().names();
+    assert_eq!(bench.store.file_view(content(skin)), Ok(FileView::Bin));
 
-    let view = bench
-        .store
-        .file_view(id, content(skin), Some(names))
-        .unwrap();
+    let book = bench.store.kept_names(id).unwrap();
+    let source = BinSource::new(Tiers::of(&bench.store), book.as_deref());
+    let views = BinViews::default();
+    let handle = source.read(&views, content(skin), Some(names), |document, speller| {
+        Ok(document.open(speller))
+    });
 
-    let FileView::Bin { text, more, .. } = view else {
-        panic!("not a bin: {view:?}");
-    };
-    assert_eq!(more, 0);
     // The entry is spelled as the run learnt it, the class as the tables do.
-    let head = format!("{} = SkinCharacterDataProperties {{", SKIN0.to_lowercase());
-    assert!(text.to_lowercase().contains(&head.to_lowercase()), "{text}");
+    let spelled: Vec<(String, Option<String>)> = handle
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|row| match row.value {
+            BinValue::Struct { class, .. } => (row.name.to_lowercase(), class),
+            other => panic!("an object row holds {other:?}"),
+        })
+        .collect();
+    let skin0 = (
+        SKIN0.to_lowercase(),
+        Some("SkinCharacterDataProperties".to_string()),
+    );
+    assert!(spelled.contains(&skin0), "{spelled:?}");
 }
 
 #[test]
@@ -438,7 +451,7 @@ fn a_texture_opens_as_a_picture_the_app_decoded() {
         (ending(&load, ".tex"), "DXT1"),
         (ending(&build, ".tex"), "Bc1"),
     ] {
-        let view = bench.store.file_view(id, content(row), None).unwrap();
+        let view = bench.store.file_view(content(row)).unwrap();
 
         let FileView::Image {
             png,
@@ -461,7 +474,7 @@ fn bytes_of_no_kind_open_as_their_first_bytes_in_hex() {
     let bytes: Vec<u8> = (0..300u32).map(|i| (i * 7 % 251) as u8 | 0x80).collect();
     let id = bench.store.tier().put(ByteView::from(bytes.clone()));
 
-    let view = bench.store.file_view(1, id, None).unwrap();
+    let view = bench.store.file_view(id).unwrap();
 
     let FileView::Hex { head, size } = view else {
         panic!("not hex: {view:?}");
@@ -478,7 +491,7 @@ fn bytes_no_tier_holds_are_refused() {
     let bench = Bench::new();
     let id = ContentId::of(b"never kept");
 
-    let refused = bench.store.file_view(1, id, None);
+    let refused = bench.store.file_view(id);
 
     assert_eq!(refused, Err(AppError::BlobMissing { id: id.hex() }));
 }

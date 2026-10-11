@@ -88,10 +88,11 @@ export function useLastFiles(stage: StageName) {
   return useQuery({ ...lastFilesQuery(stage), staleTime: Infinity });
 }
 
-/** One file of the last run, by the id of its bytes, shown by its kind, the object of `entry` first. */
-export const lastFileQuery = (content: string, entry: string | null = null): FileQuery => ({
-  queryKey: [...lastKey, "file", content, entry],
-  queryFn: queryFn(() => commands.lastFile(content, entry)),
+/** One file of the last run, by the id of its bytes, shown by its kind. */
+export const lastFileQuery = (content: string): FileQuery => ({
+  queryKey: [...lastKey, "file", content],
+  queryFn: queryFn(() => commands.lastFile(content)),
+  run: { of: "last" },
 });
 
 /**

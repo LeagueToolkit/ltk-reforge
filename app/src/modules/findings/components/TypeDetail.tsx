@@ -83,18 +83,21 @@ function RowSummary({ row, list, name }: RowProps) {
   );
 }
 
-/** A jump to a place's object in its bin, or none. */
-type ShowInBin = (place: FirstPlace) => (() => void) | null;
+/**
+ * A jump to a place in its bin, or none: to the value where the place has its path, else to
+ * its object.
+ */
+type ShowInBin = (place: FirstPlace & { at?: string }) => (() => void) | null;
 
 /** The read of no files, for a page with no jump. */
 const NO_FILES: FilesQuery = { queryKey: ["no-files"], queryFn: () => Promise.resolve(null) };
 
 /**
- * The jump to a place's object in its bin, through the page's files at `build`, the entry by
- * its name. None on a page with no jump, and for a place in no file of the package, such as a
- * game bin a patch changes.
+ * The jump to a place in its bin, through the page's files at `build` (#ADR-0104). None on a
+ * page with no jump, and for a place in no file of the package, such as a game bin a patch
+ * changes.
  */
-function useShowInBin(name: Namer): ShowInBin {
+function useShowInBin(): ShowInBin {
   const jump = useContext(FileJumpContext);
   const build = useQuery({
     ...(jump?.build ?? NO_FILES),
@@ -103,7 +106,8 @@ function useShowInBin(name: Namer): ShowInBin {
   });
   return (place) => {
     const row = jump && build.data ? placeRow(build.data, place.wad, place.path) : null;
-    return jump && row ? () => jump.open(row, place.entry, name(place.entry)) : null;
+    const at = { entry: place.entry, at: place.at ?? "" };
+    return jump && row ? () => jump.open(row, at) : null;
   };
 }
 
@@ -160,7 +164,7 @@ function PlaceList({
     [page],
   );
   const name = namer(useSpelled(run, hashes));
-  const show = useShowInBin(name);
+  const show = useShowInBin();
   const left = places.length - shown;
   return (
     <div className="flex flex-col gap-1">
@@ -205,7 +209,7 @@ interface RowPlacesProps {
  */
 function RowPlaces({ run, list, index, rows, row, name }: RowPlacesProps) {
   const places = useTypePlaces(run);
-  const show = useShowInBin(name);
+  const show = useShowInBin();
   if (places.isPending) {
     return (
       <p className="flex items-center gap-2 font-sans text-surface-400 select-none">

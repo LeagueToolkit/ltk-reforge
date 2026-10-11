@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use camino::{Utf8Path, Utf8PathBuf};
 use parking_lot::Mutex;
 use reforge::game::{Speller, meta_cache_dir, mimir_cache_dir};
-use reforge::model::{BinHash, ContentId};
+use reforge::model::ContentId;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
@@ -41,8 +41,7 @@ use crate::state::{
 };
 use crate::storage::StorageView;
 use crate::store::{
-    AppStore, CompareView, FileAsk, FileView, RunAgain, RunRow, StageFiles, StoreState, StoreView,
-    Tiers,
+    AppStore, CompareView, FileView, RunAgain, RunRow, StageFiles, StoreState, StoreView, Tiers,
 };
 use crate::view::Finding;
 
@@ -247,45 +246,14 @@ pub async fn last_files(app: AppHandle, stage: StageName) -> IpcResult<Option<St
 }
 
 /// One file of the last run, by the id of its bytes as 64 hex digits, shown by its kind. A
-/// bin's names are spelled through the run's names and the inputs' tables, when they open, and
-/// the object of `entry`, eight hex digits, comes first.
+/// bin's rows are read apart (`bin_open`).
 #[tauri::command]
 #[specta::specta]
-pub async fn last_file(
-    app: AppHandle,
-    content: String,
-    entry: Option<String>,
-) -> IpcResult<FileView> {
+pub async fn last_file(app: AppHandle, content: String) -> IpcResult<FileView> {
     let store = app.state::<RunStore>().get().ok();
     let last = app.state::<Arc<LastRun>>().get();
-    let choice = Choice::from(&app.state::<SettingsStore>().get());
-    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
-    off_thread(move || {
-        let ask = file_ask(&content, entry.as_deref())?;
-        // Inputs that do not open leave the run's own names.
-        let inputs = open.get(&choice).ok();
-        let names = inputs.as_deref().map(|inputs| inputs.env().names());
-        run::held_file(last.as_deref(), store.as_deref(), ask, names)
-    })
-    .await
-}
-
-/// A file as the front end asks for it: its bytes' id as 64 hex digits, and an object's entry
-/// hash as eight.
-fn file_ask(content: &str, entry: Option<&str>) -> Result<FileAsk, AppError> {
-    let entry = entry.map(|hex| {
-        let parsed = (hex.len() == 8).then(|| u32::from_str_radix(hex, 16).ok());
-        parsed
-            .flatten()
-            .map(BinHash)
-            .ok_or_else(|| AppError::Internal {
-                detail: format!("{hex:?} is no entry hash"),
-            })
-    });
-    Ok(FileAsk {
-        content: content_of(content)?,
-        entry: entry.transpose()?,
-    })
+    off_thread(move || run::held_file(last.as_deref(), store.as_deref(), content_of(&content)?))
+        .await
 }
 
 /// Runs a batch of mods through `write`, one after another against the inputs the settings
@@ -379,29 +347,13 @@ pub async fn compare_files(
     off_thread(move || store?.compare_files(a, b, stage)).await
 }
 
-/// One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A
-/// bin's names are spelled through the run's names and the inputs' tables, when they open, and
-/// the object of `entry`, eight hex digits, comes first.
+/// One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A bin's
+/// rows are read apart (`bin_open`).
 #[tauri::command]
 #[specta::specta]
-pub async fn run_file(
-    app: AppHandle,
-    id: u64,
-    content: String,
-    entry: Option<String>,
-) -> IpcResult<FileView> {
+pub async fn run_file(app: AppHandle, content: String) -> IpcResult<FileView> {
     let store = app.state::<RunStore>().get();
-    let choice = Choice::from(&app.state::<SettingsStore>().get());
-    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
-    off_thread(move || {
-        let store = store?;
-        let ask = file_ask(&content, entry.as_deref())?;
-        // Inputs that do not open leave the run's own names.
-        let inputs = open.get(&choice).ok();
-        let names = inputs.as_deref().map(|inputs| inputs.env().names());
-        store.file_view(id, ask, names)
-    })
-    .await
+    off_thread(move || store?.file_view(content_of(&content)?)).await
 }
 
 /// A content id as 64 hex digits, as the front end names a file's bytes.
@@ -804,25 +756,15 @@ pub async fn explore_files(app: AppHandle) -> IpcResult<Option<StageFiles>> {
 }
 
 /// One file of the explored mod, by the id of its bytes as 64 hex digits, shown by its kind.
-/// A bin's names are spelled through the load's names and the inputs' tables, when they open,
-/// and the object of `entry`, eight hex digits, comes first.
+/// A bin's rows are read apart (`bin_open`).
 #[tauri::command]
 #[specta::specta]
-pub async fn explore_file(
-    app: AppHandle,
-    content: String,
-    entry: Option<String>,
-) -> IpcResult<FileView> {
+pub async fn explore_file(app: AppHandle, content: String) -> IpcResult<FileView> {
     let store = app.state::<RunStore>().get().ok();
     let explored = Arc::clone(&app.state::<Arc<Explored>>());
-    let choice = Choice::from(&app.state::<SettingsStore>().get());
-    let open = Arc::clone(&app.state::<Arc<OpenInputs>>());
     off_thread(move || {
-        let ask = file_ask(&content, entry.as_deref())?;
-        // Inputs that do not open leave the load's own names.
-        let inputs = open.get(&choice).ok();
-        let names = inputs.as_deref().map(|inputs| inputs.env().names());
-        explored.with(|explored| explore::explored_file(explored, store.as_deref(), ask, names))
+        let content = content_of(&content)?;
+        explored.with(|explored| explore::explored_file(explored, store.as_deref(), content))
     })
     .await
 }

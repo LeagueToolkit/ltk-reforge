@@ -36,7 +36,7 @@ export function LastRunFiles({ stages, at, onStage, onPick }: LastRunFilesProps)
       stages={stages}
       stage={stage}
       onStage={onStage}
-      fileQuery={(row, entry) => lastFileQuery(row.content, entry)}
+      fileQuery={(row) => lastFileQuery(row.content)}
       picked={at.picked}
       onPick={onPick}
     />

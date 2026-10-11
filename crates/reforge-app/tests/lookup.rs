@@ -11,8 +11,8 @@ use reforge::game::Names;
 use reforge::history::{BinEntry, NoHistory};
 use reforge::model::{BinHash, NormKey, ObjectKey, WadHash, name_hash, path_hash};
 use reforge_app::error::AppError;
+use reforge_app::lookup::MAX_BIN_TEXT;
 use reforge_app::lookup::{BuildView, EntryQuery, Lookup, MAX_NAMED_BY, PathQuery};
-use reforge_app::store::MAX_BIN_TEXT;
 use reforge_testkit::history::{MemoryHistory, file_key};
 use tempfile::TempDir;
 

@@ -6,10 +6,10 @@ import { FailureNote, SegmentedControl, Spinner, Switch } from "@/components";
 import { m, stageLabel } from "@/i18n";
 import type { FileRow, RunView, StageFiles, StageName } from "@/lib/bindings.gen";
 
-import type { Picked } from "../jump";
+import type { FileQuery, Picked } from "../jump";
 import { buildTree, filtering, sourcesOf } from "../tree";
 import { FileTree, sourceLabel } from "./FileTree";
-import { type FileQuery, FileViewer } from "./FileViewer";
+import { FileViewer } from "./FileViewer";
 
 /** The stages whose snapshot names files, as the store's `FILE_STAGES` lists them. */
 export const FILE_STAGES: readonly StageName[] = ["load", "fix", "plan", "build"];
@@ -30,8 +30,8 @@ export interface FilesBrowserProps {
   stages: StageName[];
   stage: StageName;
   onStage: (stage: StageName) => void;
-  /** The read of a file's bytes, a bin's object of `entry` first. */
-  fileQuery: (row: FileRow, entry: string | null) => FileQuery;
+  /** The read of a file's bytes, and the run it is one of. */
+  fileQuery: (row: FileRow) => FileQuery;
   /** Whether the marks are against another run's files, not the stage before. */
   againstRun?: boolean;
   /** Whether the files are marked against anything, which a switch then narrows to. */
@@ -136,7 +136,7 @@ export function FilesBrowser({
             roots={roots}
             allOpen={filtering(filter)}
             selected={picked}
-            onPick={(row) => setPicked({ row, entry: null })}
+            onPick={(row) => setPicked({ row, place: null })}
             againstRun={againstRun}
           />
         </div>
@@ -144,9 +144,8 @@ export function FilesBrowser({
       {current ? (
         <FileViewer
           row={current.row}
-          query={fileQuery(current.row, current.entry)}
-          entry={current.entry}
-          entryName={current.entryName}
+          query={fileQuery(current.row)}
+          place={current.place}
           landing={current.jump}
         />
       ) : (

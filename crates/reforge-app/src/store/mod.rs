@@ -50,9 +50,7 @@ pub use self::package::EVIDENCE_ONLY_SCHEMA;
 pub use self::project::{PROJECT_EXTENSION, PROJECT_FORMAT};
 pub use self::read::{Origin, RunAgain, RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
-pub use self::viewer::{
-    ENTRY_FENCE, FileAsk, FileView, HEX_BYTES, MAX_BIN_TEXT, MAX_DECODED, MAX_TEXT, file_view,
-};
+pub use self::viewer::{FileView, HEX_BYTES, MAX_DECODED, MAX_TEXT, file_view};
 use crate::error::AppError;
 use crate::run::{RunKind, RunSettings, RunView};
 

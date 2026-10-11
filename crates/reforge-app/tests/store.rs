@@ -901,7 +901,7 @@ fn a_run_resumed_from_a_kept_run_keeps_its_bytes_when_the_kept_run_is_removed() 
     assert_eq!(bench.ids(), [2]);
     assert_eq!(bench.store.tier().ids().unwrap(), tier);
     for id in tier {
-        let shown = bench.store.file_view(2, id, None);
+        let shown = bench.store.file_view(id);
         assert!(shown.is_ok(), "{id:?}: {shown:?}");
     }
 }
@@ -1206,9 +1206,9 @@ fn a_project_imported_into_another_store_reads_as_the_run_it_was() {
     assert!(!bins.is_empty());
     for bin in bins {
         let content = ContentId::parse(&bin.content).unwrap();
-        let shown = other.store.file_view(imported, content, None);
+        let shown = other.store.file_view(content);
         assert!(
-            matches!(shown, Ok(FileView::Bin { .. })),
+            matches!(shown, Ok(FileView::Bin)),
             "{}: {shown:?}",
             bin.content
         );

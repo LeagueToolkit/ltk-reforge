@@ -73,10 +73,9 @@ export const commands = {
 	lastFiles: (stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_files", { stage }),
 	/**
 	 *  One file of the last run, by the id of its bytes as 64 hex digits, shown by its kind. A
-	 *  bin's names are spelled through the run's names and the inputs' tables, when they open, and
-	 *  the object of `entry`, eight hex digits, comes first.
+	 *  bin's rows are read apart (`bin_open`).
 	 */
-	lastFile: (content: string, entry: string | null) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_file", { content, entry }),
+	lastFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("last_file", { content }),
 	/**
 	 *  A bin of a run, by the id of its bytes as 64 hex digits: its header and its rows at depth
 	 *  zero, one per object and one per object its patch records target (#ADR-0104).
@@ -130,10 +129,9 @@ export const commands = {
 	exploreFiles: () => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_files"),
 	/**
 	 *  One file of the explored mod, by the id of its bytes as 64 hex digits, shown by its kind.
-	 *  A bin's names are spelled through the load's names and the inputs' tables, when they open,
-	 *  and the object of `entry`, eight hex digits, comes first.
+	 *  A bin's rows are read apart (`bin_open`).
 	 */
-	exploreFile: (content: string, entry: string | null) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_file", { content, entry }),
+	exploreFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("explore_file", { content }),
 	/**
 	 *  The explored mod's archive and the standard settings, for the run page to run it. None when
 	 *  no mod is explored.
@@ -158,11 +156,10 @@ export const commands = {
 	 */
 	runFiles: (id: number, stage: StageName) => __TAURI_INVOKE<({ ok: true; value: StageFiles | null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_files", { id, stage }),
 	/**
-	 *  One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A
-	 *  bin's names are spelled through the run's names and the inputs' tables, when they open, and
-	 *  the object of `entry`, eight hex digits, comes first.
+	 *  One file of a kept run, by the id of its bytes as 64 hex digits, shown by its kind. A bin's
+	 *  rows are read apart (`bin_open`).
 	 */
-	runFile: (id: number, content: string, entry: string | null) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_file", { id, content, entry }),
+	runFile: (content: string) => __TAURI_INVOKE<({ ok: true; value: FileView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_file", { content }),
 	/**
 	 *  What a kept run was run on and with, for the run page to run it again. None for a number
 	 *  no run has.
@@ -1094,18 +1091,8 @@ export type FileRow = {
 
 /**  One file's bytes as the window shows them. */
 export type FileView = 
-/**  A bin's objects as text, names spelled where the run or the tables spell them. */
-{ as: "bin"; 
-/**
- *  The objects, whole, up to [`MAX_BIN_TEXT`]. The object of the entry asked for comes
- *  first, between two lines that hold [`ENTRY_FENCE`] alone, and the others follow in
- *  the bin's order.
- */
-text: string; 
-/**  How many objects follow the ones shown. */
-more: number; 
-/**  Whether the bin holds the entry asked for. None when none was asked. */
-entry_found: boolean | null } | 
+/**  A bin, a `PROP` or a `PTCH`, whose rows the window reads through `bin_open` (#ADR-0104). */
+{ as: "bin" } | 
 /**  A texture's largest mip, decoded by the app. */
 { as: "image"; 
 /**  A PNG as a `data:` URL, its longest side at most 1024 pixels. */

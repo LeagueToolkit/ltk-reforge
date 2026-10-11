@@ -11,7 +11,9 @@ use reforge::model::{BinHash, WadHash, clean, name_hash, path_hash};
 use serde::Serialize;
 
 use crate::error::{AppError, chain};
-use crate::store::MAX_BIN_TEXT;
+
+/// The most text of an object shown, cut at a line end.
+pub const MAX_BIN_TEXT: usize = 2 << 20;
 
 /// The most objects naming a path a lookup answers: a page's table, and the rest said to be
 /// left out.
@@ -223,8 +225,8 @@ fn hex_digits(text: &str, digits: usize) -> Option<u64> {
         .flatten()
 }
 
-/// Text up to [`MAX_BIN_TEXT`] bytes, as the file viewer shows a bin's, cut after the last line
-/// end within the bound, else at a character; and whether it was cut.
+/// Text up to [`MAX_BIN_TEXT`] bytes, cut after the last line end within the bound, else at a
+/// character; and whether it was cut.
 fn capped(mut text: String) -> (String, bool) {
     if text.len() <= MAX_BIN_TEXT {
         return (text, false);

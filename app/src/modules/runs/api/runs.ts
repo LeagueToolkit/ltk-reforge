@@ -12,8 +12,7 @@ export const runsKeys = {
   list: () => [...runsKey, "list"] as const,
   view: (id: number) => [...runsKey, "view", id] as const,
   files: (id: number, stage: StageName) => [...runsKey, "files", id, stage] as const,
-  file: (id: number, content: string, entry: string | null) =>
-    [...runsKey, "file", id, content, entry] as const,
+  file: (id: number, content: string) => [...runsKey, "file", id, content] as const,
   report: (id: number) => [...runsKey, "report", id] as const,
   again: (id: number) => [...runsKey, "again", id] as const,
   compare: (a: number, b: number) => [...runsKey, "compare", a, b] as const,
@@ -96,14 +95,11 @@ export function useCompareFiles(a: number, b: number, stage: StageName) {
   );
 }
 
-/** One file of a kept run, by the id of its bytes, shown by its kind, the object of `entry` first. */
-export const runFileQuery = (
-  id: number,
-  content: string,
-  entry: string | null = null,
-): FileQuery => ({
-  queryKey: runsKeys.file(id, content, entry),
-  queryFn: queryFn(() => commands.runFile(id, content, entry)),
+/** One file of a kept run, by the id of its bytes, shown by its kind. */
+export const runFileQuery = (id: number, content: string): FileQuery => ({
+  queryKey: runsKeys.file(id, content),
+  queryFn: queryFn(() => commands.runFile(content)),
+  run: { of: "kept", id },
 });
 
 /** What the store holds and its bytes on disk. Asked only while `enabled`: the store is open. */

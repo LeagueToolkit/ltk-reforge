@@ -26,7 +26,7 @@ export function FilesTab({ id, stages, stage, onStage, picked, onPick }: FilesTa
       stages={stages}
       stage={stage}
       onStage={onStage}
-      fileQuery={(row, entry) => runFileQuery(id, row.content, entry)}
+      fileQuery={(row) => runFileQuery(id, row.content)}
       picked={picked}
       onPick={onPick}
     />

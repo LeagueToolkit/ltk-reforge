@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { FileRow, StageFiles } from "@/lib/bindings.gen";
 
-import { ENTRY_FENCE, fencedObject } from "./fence";
-import { placeRow } from "./jump";
+import { placeKey, placeRow } from "./jump";
 
 function row(path: string | null, mark: FileRow["mark"] = "same"): FileRow {
   return {
@@ -43,19 +42,14 @@ describe("placeRow", () => {
   });
 });
 
-describe("fencedObject", () => {
-  const fence = `${ENTRY_FENCE}\n`;
-
-  it("splits the object asked for from the objects after it", () => {
-    const text = `${fence}a = Material {}\n${fence}b = Material {}\n`;
-    expect(fencedObject(text)).toEqual({ asked: "a = Material {}\n", rest: "b = Material {}\n" });
+describe("placeKey", () => {
+  it("keys a place's value as the tree keys its row: the entry with `0x`, then the path", () => {
+    expect(placeKey({ entry: "2a1f3c7d", at: "0000000b[3].0000000c" })).toBe(
+      "0x2a1f3c7d:0000000b[3].0000000c",
+    );
   });
 
-  it("leaves text with no fences as it is", () => {
-    expect(fencedObject("a = Material {}\n")).toEqual({ asked: null, rest: "a = Material {}\n" });
-    expect(fencedObject(`${fence}a = Material {}\n`)).toEqual({
-      asked: null,
-      rest: `${fence}a = Material {}\n`,
-    });
+  it("keys the object itself for a place with no path", () => {
+    expect(placeKey({ entry: "2a1f3c7d", at: "" })).toBe("0x2a1f3c7d:");
   });
 });
