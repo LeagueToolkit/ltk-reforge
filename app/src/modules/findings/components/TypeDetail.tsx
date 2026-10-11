@@ -9,7 +9,7 @@ import { FileJumpContext, type FilesQuery, placeRow } from "@/modules/files";
 
 import { useRunRef, useSpelled, useTypePlaces } from "../api/run";
 import {
-  fieldsOf,
+  hashesOf,
   type FirstPlace,
   parseFieldPath,
   pathText,
@@ -152,7 +152,7 @@ function PlaceList({
   const [shown, setShown] = useState(PAGE);
   const page = useMemo(() => places.slice(0, shown), [places, shown]);
   const hashes = useMemo(
-    () => page.flatMap((place) => [place.entry, ...fieldsOf(parseFieldPath(place.at) ?? [])]),
+    () => page.flatMap((place) => [place.entry, ...hashesOf(parseFieldPath(place.at) ?? [])]),
     [page],
   );
   const name = namer(useSpelled(run, hashes));

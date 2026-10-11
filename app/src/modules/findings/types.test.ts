@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Finding } from "@/lib/bindings.gen";
 
 import { hashesIn, isHash } from "./hashes";
-import { fieldsOf, parseFieldPath, pathText, shapeText, typeFinding } from "./types";
+import { hashesOf, parseFieldPath, pathText, shapeText, typeFinding } from "./types";
 
 const names: Record<string, string> = {
   "14e6a52c": "VfxVector3fBase",
@@ -72,10 +72,12 @@ describe("parseFieldPath", () => {
     expect(parseFieldPath('bc037de7{"open}')).toBeNull();
   });
 
-  it("names each field it can, and lists the fields once", () => {
-    const steps = parseFieldPath("bc037de7[0].bc037de7.0000abcd") ?? [];
-    expect(pathText(steps, spell)).toBe("dynamics[0].dynamics.0000abcd");
-    expect(fieldsOf(steps)).toEqual(["bc037de7", "0000abcd"]);
+  it("names each field and hash key it can, and lists the hashes once", () => {
+    const steps = parseFieldPath('bc037de7[0].bc037de7{14e6a52c}.0000abcd{"14e6a52c"}{12}') ?? [];
+    expect(pathText(steps, spell)).toBe(
+      'dynamics[0].dynamics{VfxVector3fBase}.0000abcd{"14e6a52c"}{12}',
+    );
+    expect(hashesOf(steps)).toEqual(["bc037de7", "14e6a52c", "0000abcd"]);
   });
 });
 

@@ -87,20 +87,36 @@ function keyEnd(at: string, from: number): number {
   return at[i + 1] === "}" ? i + 1 : -1;
 }
 
-/** The fields a path names, each once. */
-export function fieldsOf(steps: readonly Step[]): string[] {
-  const fields = steps.flatMap((step) => ("field" in step ? [step.field] : []));
-  return [...new Set(fields)];
+/** Whether a map key is a bin hash: eight hex digits, as a hash key is written. */
+function isHashKey(key: string): boolean {
+  return /^[0-9a-f]{8}$/.test(key);
 }
 
-/** A path for a person: each field by its name where one is given, else its hash. */
-export function pathText(steps: readonly Step[], fieldName: (hash: string) => string): string {
+/** The hashes a path names, each once: its fields, and the map keys that are hashes. */
+export function hashesOf(steps: readonly Step[]): string[] {
+  const hashes = steps.flatMap((step) => {
+    if ("field" in step) {
+      return [step.field];
+    }
+    return "key" in step && isHashKey(step.key) ? [step.key] : [];
+  });
+  return [...new Set(hashes)];
+}
+
+/**
+ * A path for a person: each field and each hash key by its name where one is given, else its
+ * hash. Any other key is written as the window got it, cleaned by the app.
+ */
+export function pathText(steps: readonly Step[], name: (hash: string) => string): string {
   return steps
     .map((step, at) => {
       if ("field" in step) {
-        return `${at > 0 ? "." : ""}${fieldName(step.field)}`;
+        return `${at > 0 ? "." : ""}${name(step.field)}`;
       }
-      return "index" in step ? `[${step.index}]` : `{${step.key}}`;
+      if ("index" in step) {
+        return `[${step.index}]`;
+      }
+      return `{${isHashKey(step.key) ? name(step.key) : step.key}}`;
     })
     .join("");
 }
