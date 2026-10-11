@@ -53,18 +53,24 @@ export function LiveProgress({ live, stages }: { live: LiveRun; stages: StageNam
                 "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs select-none",
                 !seen && "border-surface-700 text-surface-500",
                 seen?.state === "running" && "border-accent-500 text-surface-50",
-                seen?.state === "ended" && "border-surface-600 text-surface-200",
+                (seen?.state === "ended" || seen?.state === "resumed") &&
+                  "border-surface-600 text-surface-200",
               )}
             >
               {seen?.state === "running" && (
                 <CircleNotchIcon weight="bold" className="h-3 w-3 animate-spin text-accent-400" />
               )}
-              {seen?.state === "ended" && <CheckIcon weight="bold" className="h-3 w-3" />}
+              {(seen?.state === "ended" || seen?.state === "resumed") && (
+                <CheckIcon weight="bold" className="h-3 w-3" />
+              )}
               {stageLabel(stage)}
               {seen?.millis != null && (
                 <span className="text-surface-400">
                   {m.run_stage_millis_label({ millis: seen.millis })}
                 </span>
+              )}
+              {seen?.state === "resumed" && (
+                <span className="text-surface-400">{m.run_stage_resumed_label()}</span>
               )}
             </li>
           );

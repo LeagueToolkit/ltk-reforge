@@ -49,6 +49,9 @@ export function StageStrip({ stages, findings, selected, onSelect }: StageStripP
               <span className="text-xs text-surface-400">
                 {m[`stage_state.${stage.state}.label`]()}
               </span>
+              {stage.resumed === true && (
+                <span className="text-[10px] text-surface-500">{m.run_stage_resumed_label()}</span>
+              )}
               <span className="flex gap-2 text-xs">
                 {errors > 0 && (
                   <span className="flex items-center gap-0.5 text-danger-text">

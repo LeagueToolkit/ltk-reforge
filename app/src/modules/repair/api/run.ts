@@ -6,18 +6,20 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { match } from "ts-pattern";
 
 import {
   commands,
   events,
   type RunKind,
   type RunRequest,
+  type StageEvent,
   type StageName,
 } from "@/lib/bindings.gen";
 import { runsKey } from "@/lib/query";
 import { queryFn, unwrap } from "@/utils";
 
-import { startedRun, useRepairStore, withPart } from "../state/repairStore";
+import { type LiveStage, startedRun, useRepairStore, withPart } from "../state/repairStore";
 
 /** The stages of a run of the kind, as the library names them. They are built into the app. */
 export const runStagesQuery = (kind: RunKind) =>
@@ -67,6 +69,15 @@ export function useRunMod() {
   });
 }
 
+/** A stage of the run under way, as an event of it tells. */
+export function liveStage(event: StageEvent): LiveStage {
+  return match(event)
+    .with({ event: "started" }, () => ({ state: "running" as const }))
+    .with({ event: "ended" }, ({ millis }) => ({ state: "ended" as const, millis }))
+    .with({ event: "resumed" }, () => ({ state: "resumed" as const }))
+    .exhaustive();
+}
+
 /** Follows the run under way through its events, into the page's live run. */
 export function useRunEvents() {
   const setLive = useRepairStore((state) => state.setLive);
@@ -77,10 +88,7 @@ export function useRunEvents() {
           if (!live) {
             return live;
           }
-          const stage =
-            payload.event.event === "started"
-              ? { state: "running" as const }
-              : { state: "ended" as const, millis: payload.event.millis };
+          const stage = liveStage(payload.event);
           return { ...live, stages: { ...live.stages, [payload.stage]: stage } };
         }),
       ),

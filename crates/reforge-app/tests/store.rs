@@ -5,13 +5,15 @@ use camino::{Utf8Path, Utf8PathBuf};
 use fjall::{Database, KeyspaceCreateOptions};
 use fs_err as fs;
 use reforge::archive::Caps;
+use reforge::fixups::{FixupSelection, FixupSet};
 use reforge::history::NoHistory;
 use reforge::model::{ByteView, ContentId};
 use reforge::snapshot::{self, BuildSnapshot, CheckSnapshot, LoadSnapshot, StageSnapshot};
 use reforge::store::BlobStore;
 use reforge_app::inputs::Inputs;
 use reforge_app::run::{
-    self, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, Unwatched,
+    self, PartView, RunKind, RunRequest, RunSettings, RunView, StageEvent, StageName, StageState,
+    Unwatched, Watch,
 };
 use reforge_app::store::{AppStore, FORMAT, KEYSPACE, ROWS_FILE, RunTier};
 use reforge_testkit::ModArchive;
@@ -462,20 +464,162 @@ fn the_second_run_of_an_archive_starts_from_the_ingest_tiers_raw_snapshot() {
     bench.run(&request);
     let raw = bench.store.ingest().get(sha256, &Caps::default());
     assert!(raw.is_some(), "the first run left no raw snapshot");
+    let first = bench.store.report(1).unwrap();
+    // With the first run kept, the second resumes from its snapshots in place of the raw one.
+    bench.store.remove_run(1).unwrap();
     let second = bench.run(&request);
 
     let read = second.stages.iter().find(|s| s.stage == StageName::Read);
     assert_eq!(read.map(|stage| stage.state), Some(StageState::Ran));
     assert!(second.stages.iter().all(|s| s.state == StageState::Ran));
-    let rows = bench.rows();
-    let reports: Vec<Vec<u8>> = rows
-        .prepare("SELECT report FROM run ORDER BY id")
-        .unwrap()
-        .query_map([], |row| row.get(0))
-        .unwrap()
-        .map(Result::unwrap)
+    assert!(second.stages.iter().all(|s| !s.resumed));
+    let report = bench.store.report(second.saved.unwrap()).unwrap();
+    assert_eq!(first, report, "the reports of a read and a resume");
+}
+
+/// Which stages of a run's view the run took from a kept run's snapshots.
+fn resumed(view: &RunView) -> Vec<StageName> {
+    let stages = view.stages.iter().filter(|stage| stage.resumed);
+    stages.map(|stage| stage.stage).collect()
+}
+
+/// The first fixup on bin values of the standard set, which `fix` declares.
+fn a_bin_fixup() -> String {
+    let set = FixupSet::from(&FixupSelection::standard());
+    set.bin_ids()[0].as_str().to_string()
+}
+
+#[test]
+fn a_rerun_resumes_from_the_latest_stage_its_settings_leave_as_the_kept_run_had_them() {
+    use StageName::*;
+    let bench = Bench::new();
+    let first = bench.port(&own_mod(), "mod.fantome");
+    assert_eq!(resumed(&first), []);
+
+    let second = bench.port(&own_mod(), "mod.fantome");
+
+    assert!(second.stages.iter().all(|s| s.state == StageState::Ran));
+    assert_eq!(
+        resumed(&second),
+        [Load, Fix, Facts, Decide, Plan, Build, Check]
+    );
+    let reports = |id: u64| bench.store.report(id).unwrap().expect("the report");
+    assert_eq!(
+        reports(2),
+        reports(1),
+        "the reports of a run and its resume"
+    );
+
+    let mut request = bench.request(&own_mod(), "mod.fantome", Write);
+    request.kind = RunKind::Port;
+    request.settings.fixups.off = vec![a_bin_fixup()];
+    let third = bench.run(&request);
+
+    assert_eq!(resumed(&third), [Load], "the fix settings differ");
+    let straight = Bench::new();
+    let from_archive = straight.run(&request);
+    assert_eq!(resumed(&from_archive), []);
+    let straight_report = straight.store.report(1).unwrap();
+    assert_eq!(reports(3), straight_report.expect("the report"));
+}
+
+/// What a watch heard of a run: each stage's events, and how many parts.
+#[derive(Default)]
+struct Heard {
+    stages: Vec<(StageName, &'static str)>,
+    parts: usize,
+}
+
+impl Watch for Heard {
+    fn stage(&mut self, stage: StageName, event: StageEvent) {
+        let event = match event {
+            StageEvent::Started => "started",
+            StageEvent::Ended { .. } => "ended",
+            StageEvent::Resumed => "resumed",
+        };
+        self.stages.push((stage, event));
+    }
+
+    fn takes_parts(&self) -> bool {
+        true
+    }
+
+    fn part(&mut self, _part: PartView) {
+        self.parts += 1;
+    }
+}
+
+#[test]
+fn a_watch_hears_the_stages_a_rerun_takes_from_a_kept_run_with_their_parts() {
+    use StageName::*;
+    let bench = Bench::new();
+    let mut request = bench.request(&own_mod(), "mod.fantome", Write);
+    request.kind = RunKind::Port;
+    let mut first = Heard::default();
+    run::run(&bench.inputs, &request, Some(&bench.store), &mut first).unwrap();
+
+    let mut heard = Heard::default();
+    run::run(&bench.inputs, &request, Some(&bench.store), &mut heard).unwrap();
+
+    let resumed = [Load, Fix, Facts, Decide, Plan, Build, Check].map(|stage| (stage, "resumed"));
+    let mut expected = vec![(Read, "started"), (Read, "ended")];
+    expected.extend(resumed);
+    expected.extend([(Write, "started"), (Write, "ended")]);
+    assert_eq!(heard.stages, expected);
+    assert_eq!(
+        heard.parts, first.parts,
+        "the parts of a run and its resume"
+    );
+}
+
+#[test]
+fn a_rerun_through_a_stage_resumes_no_later_than_it() {
+    use StageName::*;
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+    let mut request = bench.request(&own_mod(), "mod.fantome", Fix);
+    request.kind = RunKind::Port;
+
+    let view = bench.run(&request);
+
+    assert_eq!(resumed(&view), [Load, Fix]);
+    let reached: Vec<StageName> = view
+        .stages
+        .iter()
+        .filter(|s| s.state == StageState::Ran)
+        .map(|s| s.stage)
         .collect();
-    assert_eq!(reports[0], reports[1], "the reports of a read and a resume");
+    assert_eq!(reached, [Read, Load, Fix]);
+}
+
+#[test]
+fn a_repair_after_a_port_of_the_same_archive_resumes_from_nothing_of_the_ports() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+
+    let repair = bench.run(&bench.request(&own_mod(), "mod.fantome", StageName::Write));
+
+    assert_eq!(resumed(&repair), []);
+    assert!(repair.stages.iter().all(|s| s.state == StageState::Ran));
+}
+
+#[test]
+fn a_run_resumed_from_a_kept_run_keeps_its_bytes_when_the_kept_run_is_removed() {
+    let bench = Bench::new();
+    bench.port(&own_mod(), "mod.fantome");
+    let resumed_run = bench.port(&own_mod(), "mod.fantome");
+    assert!(!resumed(&resumed_run).is_empty());
+    let tier = bench.store.tier().ids().unwrap();
+    assert!(!tier.is_empty(), "the first run made no bytes");
+
+    bench.store.remove_run(1).unwrap();
+
+    assert_eq!(bench.ids(), [2]);
+    assert_eq!(bench.store.tier().ids().unwrap(), tier);
+    for id in tier {
+        let shown = bench.store.file_view(2, id, None);
+        assert!(shown.is_ok(), "{id:?}: {shown:?}");
+    }
 }
 
 #[test]

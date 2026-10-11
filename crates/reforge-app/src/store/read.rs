@@ -140,15 +140,19 @@ impl AppStore {
     }
 }
 
+/// A run's kind from the text it is kept as.
+pub(super) fn kind_of(text: &str) -> Result<RunKind, AppError> {
+    match text {
+        "repair" => Ok(RunKind::Repair),
+        "port" => Ok(RunKind::Port),
+        other => Err(failed(format!("a run of the kind {other:?}"))),
+    }
+}
+
 /// A row of the listing's query.
 fn run_row(row: &Row<'_>) -> Result<RunRow, AppError> {
     let shown = |text: Option<String>| text.map(|text| clean(&text).into_owned());
-    let kind: String = row.get(2)?;
-    let kind = match kind.as_str() {
-        "repair" => RunKind::Repair,
-        "port" => RunKind::Port,
-        other => return Err(failed(format!("a run of the kind {other:?}"))),
-    };
+    let kind = kind_of(&row.get::<_, String>(2)?)?;
     let sha256: Vec<u8> = row.get(4)?;
     let mut reached = vec![StageName::Load];
     for (at, (stage, _)) in REACHED.iter().enumerate() {

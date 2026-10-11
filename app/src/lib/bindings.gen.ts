@@ -1020,7 +1020,9 @@ export type StageEvent =
 /**  The stage started. */
 { event: "started" } | 
 /**  The stage ended, after this many milliseconds. */
-{ event: "ended"; millis: number };
+{ event: "ended"; millis: number } | 
+/**  The run took the stage from a kept run's snapshots, and did not run it. */
+{ event: "resumed" };
 
 /**  The files of a kept run at a stage. */
 export type StageFiles = {
@@ -1068,6 +1070,11 @@ export type StageView = {
 	state: StageState,
 	/**  How long it took, in milliseconds, when it ran. */
 	millis: number | null,
+	/**
+	 *  Whether the run took it from a kept run's snapshots in place of running it. A kept
+	 *  view without the field reads as false.
+	 */
+	resumed?: boolean,
 };
 
 /**  What the app keeps on disk for the history, as the inputs page shows it. */

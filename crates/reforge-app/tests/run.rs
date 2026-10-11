@@ -334,6 +334,7 @@ impl Watch for Heard {
         let event = match event {
             StageEvent::Started => "started",
             StageEvent::Ended { .. } => "ended",
+            StageEvent::Resumed => "resumed",
         };
         self.stages.push((stage, event));
     }

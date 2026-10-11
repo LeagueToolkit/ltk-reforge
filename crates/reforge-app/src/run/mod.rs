@@ -1,10 +1,12 @@
 //! A run of a mod, as both views drive it (#ADR-0050): a repair or a port, the archive, the
 //! last stage to run, the settings the library has, and where the package is written. Each
-//! request is a new `Run`, from the raw snapshot the app's store holds of the archive or else
-//! from the archive, and a run is kept in the store when it writes its package (#ADR-0096).
+//! request is a new `Run`: resumed from a kept run's snapshots where one of its load holds,
+//! else from the raw snapshot the app's store holds of the archive, else from the archive; a
+//! run is kept in the store when it writes its package (#ADR-0094, #ADR-0096).
 //!
 //! The stages are run one at a time, as `Run::through` runs them, so a [`Watch`] hears each
-//! one start and end, each finding as it is raised, and what each stage gave as it ends.
+//! one start and end, or taken from a kept run, each finding as it is raised, and what each
+//! stage gave as it ends.
 
 mod drawn;
 mod peek;
@@ -20,7 +22,8 @@ use reforge::fixups::FixupSet;
 use reforge::model::{ContentId, Spelled};
 use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy};
-use reforge::{Porter, Repairer, Run, RunError, Settings};
+use reforge::snapshot::{LoadInputs, Program, Snapshots, StageSettings};
+use reforge::{Porter, Repairer, Run, RunError, Settings, Start};
 use serde::{Deserialize, Serialize};
 
 use self::drawn::Drawn;
@@ -29,7 +32,7 @@ pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
 use crate::selection::FixupChoice;
-use crate::store::{AppStore, Saved};
+use crate::store::{AppStore, Saved, load_key};
 use crate::view::Finding;
 
 /// A stage of a run, in the order they run.
@@ -195,6 +198,8 @@ pub enum StageEvent {
     Started,
     /// The stage ended, after this many milliseconds.
     Ended { millis: u64 },
+    /// The run took the stage from a kept run's snapshots, and did not run it.
+    Resumed,
 }
 
 /// What hears a run as it goes. Every method has a default that does nothing.
@@ -324,38 +329,34 @@ pub fn run(
         ),
     };
     let archive = Utf8PathBuf::from(&request.archive);
-    let mut run = maker.start(inputs, store, watch);
     let caps = maker.settings().caps();
-    if let Some(raw) = store.and_then(|store| ingested(store, &archive, caps)) {
-        run = run.resume(raw).unwrap_or_else(|error| {
-            tracing::warn!(%error, "a run does not start from the ingest tier's raw snapshot");
-            maker.start(inputs, store, watch)
-        });
-    }
+    let raw = store.and_then(|store| ingested(store, &archive, caps));
+    let mut run = match (store, &raw) {
+        (Some(store), Some(raw)) => resumed(&maker, inputs, store, raw, request, watch),
+        _ => maker.start(inputs, store, watch),
+    };
 
     let mut timed = Vec::new();
     let mut fault = None;
-    let stages = run.stages().iter().map(|&stage| StageName::of(stage));
-    for stage in stages.filter(|&stage| stage <= request.through.min(StageName::Check)) {
-        watch.stage(stage, StageEvent::Started);
+    let through = request.through.min(StageName::Check);
+    for &stage in run.stages() {
+        let name = StageName::of(stage);
+        if name > through {
+            continue;
+        }
+        if stage != Stage::Read && run.ran(stage) {
+            watch.stage(name, StageEvent::Resumed);
+            send_parts(&run, name, watch);
+            continue;
+        }
+        watch.stage(name, StageEvent::Started);
         let at = Instant::now();
-        let ran = run_stage(&mut run, stage, &archive);
+        let ran = run_stage(&mut run, name, &archive);
         let millis = millis_since(at);
-        watch.stage(stage, StageEvent::Ended { millis });
-        timed.push((stage, millis));
+        watch.stage(name, StageEvent::Ended { millis });
+        timed.push((name, millis));
         match ran {
-            Ok(()) => {
-                // The tables a finding names by id are the mod's, which `load` makes.
-                if watch.takes_parts() && stage == StageName::Load {
-                    let names = ReportParts::names_of(&run);
-                    watch.part(PartView::Names { names });
-                }
-                if watch.takes_parts()
-                    && let Some(part) = Drawn::part(&run, stage)
-                {
-                    watch.part(part);
-                }
-            }
+            Ok(()) => send_parts(&run, name, watch),
             Err(RunError::Halted(_)) => break,
             Err(error) => {
                 fault = Some(chain(&error));
@@ -402,24 +403,146 @@ pub fn run(
         millis,
     };
     if let (Some(store), Some(package)) = (store, view.written.clone()) {
-        view.saved = save(store, run, request, inputs, &package, &view);
+        let kept = Kept {
+            request,
+            raw,
+            package: &package,
+            view: &view,
+        };
+        view.saved = save(store, run, inputs, kept);
     }
     Ok(view)
+}
+
+/// What a stage gave the views, sent to a watch that takes it, as the stage ends or is taken
+/// from a kept run's snapshots.
+fn send_parts(run: &Run<'_>, stage: StageName, watch: &mut dyn Watch) {
+    if !watch.takes_parts() {
+        return;
+    }
+    // The tables a finding names by id are the mod's, which `load` makes.
+    if stage == StageName::Load {
+        let names = ReportParts::names_of(run);
+        watch.part(PartView::Names { names });
+    }
+    if let Some(part) = Drawn::part(run, stage) {
+        watch.part(part);
+    }
+}
+
+/// The stages a rerun may start after, latest first: those after which a run keeps a
+/// snapshot.
+const STARTS: [Stage; 7] = [
+    Stage::Check,
+    Stage::Build,
+    Stage::Plan,
+    Stage::Decide,
+    Stage::Facts,
+    Stage::Fix,
+    Stage::Load,
+];
+
+/// The start after `stage` from a kept run's snapshots, when they hold its snapshot.
+fn start_after(snapshots: &Snapshots, stage: Stage) -> Option<Start> {
+    let all = || Box::new(snapshots.clone());
+    match stage {
+        Stage::Load => Some(Start::Load(Box::new(snapshots.load.clone()))),
+        Stage::Fix => snapshots.fix.as_ref().map(|_| Start::Fix(all())),
+        Stage::Facts => snapshots.facts.as_ref().map(|_| Start::Facts(all())),
+        Stage::Decide => snapshots.decide.as_ref().map(|_| Start::Decide(all())),
+        Stage::Plan => snapshots.plan.as_ref().map(|_| Start::Plan(all())),
+        Stage::Build => snapshots.build.as_ref().map(|_| Start::Build(all())),
+        Stage::Check => snapshots.check.as_ref().map(|_| Start::Check(all())),
+        Stage::Read | Stage::Write => None,
+    }
+}
+
+/// A run of an archive the ingest tier holds, resumed from the newest kept run of the
+/// request's kind and load where one holds (#ADR-0094, #ADR-0096), else from the raw snapshot,
+/// else from nothing, `read` then reading the archive.
+fn resumed<'m>(
+    maker: &'m Maker<'_>,
+    inputs: &Inputs,
+    store: &AppStore,
+    raw: &RawSnapshot,
+    request: &RunRequest,
+    watch: &mut dyn Watch,
+) -> Run<'m> {
+    if let Some(run) = from_kept(maker, inputs, store, raw, request, watch) {
+        return run;
+    }
+    let run = maker.start(inputs, Some(store), watch);
+    run.resume(raw.clone()).unwrap_or_else(|error| {
+        tracing::warn!(%error, "a run does not start from the ingest tier's raw snapshot");
+        maker.start(inputs, Some(store), watch)
+    })
+}
+
+/// A run resumed from the newest kept run of the request's kind whose load is the one this
+/// run would make: of the same raw snapshot, program, load inputs and load settings. None
+/// when the store keeps none, or every start is refused.
+///
+/// The start is the latest stage the snapshots hold that is at or before the request's
+/// `through`, so a resume never runs past the request; each start refused, by a setting, an
+/// input or the program that differs, falls back to the one before it, down to `load`.
+fn from_kept<'m>(
+    maker: &'m Maker<'_>,
+    inputs: &Inputs,
+    store: &AppStore,
+    raw: &RawSnapshot,
+    request: &RunRequest,
+    watch: &mut dyn Watch,
+) -> Option<Run<'m>> {
+    let declared = maker.settings().declared(Stage::Load);
+    let StageSettings::Load(load_settings) = &declared else {
+        panic!("the settings load declares are {declared:?}");
+    };
+    let load_inputs = LoadInputs::of(inputs.env());
+    let key = load_key(raw, &Program::this(), &load_inputs, load_settings);
+    let kept = store.kept_runs_of(&key);
+    let kept = kept
+        .inspect_err(|error| tracing::warn!(%error, "the kept runs of a load do not read"))
+        .ok()?;
+    // A repair's snapshots do not resume a port.
+    let newest = kept.into_iter().find(|kept| kept.kind == request.kind)?;
+    let starts = STARTS.into_iter();
+    let starts = starts.filter(|&stage| StageName::of(stage) <= request.through);
+    for stage in starts {
+        let Some(start) = start_after(&newest.snapshots, stage) else {
+            continue;
+        };
+        match maker.start(inputs, Some(store), watch).resume(start) {
+            Ok(run) => return Some(run),
+            Err(error) => {
+                tracing::debug!(run = newest.id, %stage, %error, "a kept run does not resume");
+            }
+        }
+    }
+    None
+}
+
+/// What a run that wrote its package keeps beside the run itself.
+struct Kept<'a> {
+    request: &'a RunRequest,
+    /// The raw snapshot the ingest tier held of the archive, which a run resumed from a kept
+    /// run's later snapshots does not hold.
+    raw: Option<RawSnapshot>,
+    package: &'a str,
+    view: &'a RunView,
 }
 
 /// Keeps a run that wrote its package in the store with the view it ended with, and answers
 /// its number. A run with no snapshots, one judged with an earlier run's evidence, is not
 /// kept. A store that does not write leaves the run as it ran, unkept, and says so in the log.
-fn save(
-    store: &AppStore,
-    run: Run<'_>,
-    request: &RunRequest,
-    inputs: &Inputs,
-    package: &str,
-    view: &RunView,
-) -> Option<u64> {
+fn save(store: &AppStore, run: Run<'_>, inputs: &Inputs, kept: Kept<'_>) -> Option<u64> {
+    let Kept {
+        request,
+        raw,
+        package,
+        view,
+    } = kept;
     let snapshots = run.snapshots()?;
-    let raw = run.archive()?.clone();
+    let raw = run.archive().cloned().or(raw)?;
     let saved = Saved {
         raw,
         path: Utf8PathBuf::from(&request.archive),
@@ -478,6 +601,7 @@ fn stage_views(run: &Run<'_>, timed: &[(StageName, u64)]) -> Vec<StageView> {
                 stage,
                 state,
                 millis,
+                resumed: state == StageState::Ran && millis.is_none(),
             }
         })
         .collect()

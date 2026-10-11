@@ -4,5 +4,6 @@
   "run_live_title": "Running, {seconds} s",
   "run_page_title": "Run",
   "run_simple_port_description": "Ports the mod with the standard settings and the automatic policy, and writes a .modpkg",
-  "run_stage_millis_label": "{millis} ms"
+  "run_stage_millis_label": "{millis} ms",
+  "run_stage_resumed_label": "from store"
 }

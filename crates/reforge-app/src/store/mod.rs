@@ -12,6 +12,7 @@
 //! names, in the transaction of the change.
 
 mod files;
+mod kept;
 mod read;
 mod sweep;
 mod tier;
@@ -25,10 +26,13 @@ use parking_lot::Mutex;
 use reforge::archive::RawSnapshot;
 use reforge::model::{ByteView, ContentId, Spelled};
 use reforge::report::Report;
-use reforge::snapshot::{self, LoadSnapshot, RawCache, Snapshots, StageSnapshot};
+use reforge::snapshot::{
+    self, LoadInputs, LoadSettings, Program, RawCache, Snapshots, StageSnapshot,
+};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 pub use self::files::{FILE_STAGES, FileRow, KeptSnapshots, Mark, StageFiles, WadFiles};
+pub use self::kept::KeptRun;
 pub use self::read::{RunRow, StoreView};
 pub use self::tier::{KEYSPACE, RunTier};
 pub use self::viewer::{FileView, HEX_BYTES, MAX_BIN_TEXT, MAX_DECODED, MAX_TEXT};
@@ -209,7 +213,7 @@ fn insert_run(tx: &Transaction<'_>, saved: &Saved) -> Result<u64, AppError> {
             text(&meta.version),
         ],
     )?;
-    let key = load_key(raw, load);
+    let key = load_key(raw, load.program(), load.inputs(), load.settings());
     tx.execute(
         "INSERT INTO load (key, sha256, json) VALUES (?1, ?2, ?3) ON CONFLICT (key) DO NOTHING",
         params![key, meta.sha256.0.as_slice(), pack_snapshot(load)?],
@@ -259,17 +263,23 @@ fn number(value: i64) -> u64 {
 }
 
 /// The key of a load (#ADR-0096): the hex of the SHA-256 over the JSON of what the snapshot
-/// after `load` was made under. The raw snapshot by its archive, reading and caps; the
-/// program by its version and commit; the inputs by their identity (#ADR-0094); and the
-/// settings `load` declares.
-fn load_key(raw: &RawSnapshot, load: &LoadSnapshot) -> String {
+/// after `load` is made under. The raw snapshot by its archive, reading and caps; the program
+/// by its version and commit; the inputs by their identity (#ADR-0094); and the settings
+/// `load` declares. A saved run's key is its load snapshot's; a run to come computes its own
+/// from this program, the inputs open and its settings, to find the runs it resumes from.
+pub fn load_key(
+    raw: &RawSnapshot,
+    program: &Program,
+    inputs: &LoadInputs,
+    settings: &LoadSettings,
+) -> String {
     let made_under = (
-        load.meta().sha256.hex(),
+        raw.meta.sha256.hex(),
         raw.version,
         &raw.caps,
-        load.program(),
-        load.inputs(),
-        load.settings(),
+        program,
+        inputs,
+        settings,
     );
     ContentId::of(json_of(&made_under).as_bytes()).hex()
 }

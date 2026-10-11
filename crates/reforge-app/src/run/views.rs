@@ -31,6 +31,10 @@ pub struct StageView {
     pub state: StageState,
     /// How long it took, in milliseconds, when it ran.
     pub millis: Option<u64>,
+    /// Whether the run took it from a kept run's snapshots in place of running it. A kept
+    /// view without the field reads as false.
+    #[serde(default)]
+    pub resumed: bool,
 }
 
 /// The mod, as its archive and `META/info.json` name it.

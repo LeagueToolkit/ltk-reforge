@@ -74,9 +74,12 @@ export function runSettings(settings: AdvancedSettings): RunSettings {
   };
 }
 
-/** A stage of the run under way, as its events tell it. */
+/**
+ * A stage of the run under way, as its events tell it: `resumed` for one the run took from a
+ * kept run's snapshots.
+ */
 export interface LiveStage {
-  state: "running" | "ended";
+  state: "running" | "ended" | "resumed";
   millis?: number;
 }
 

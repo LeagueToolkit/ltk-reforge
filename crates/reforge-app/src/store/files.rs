@@ -349,7 +349,7 @@ impl AppStore {
 }
 
 /// A snapshot from its packed column.
-fn read_snapshot<S: snapshot::StageSnapshot>(column: &[u8]) -> Result<S, AppError> {
+pub(super) fn read_snapshot<S: snapshot::StageSnapshot>(column: &[u8]) -> Result<S, AppError> {
     snapshot::from_json(&unpack(column)?).map_err(failed)
 }
 
