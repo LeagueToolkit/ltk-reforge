@@ -228,6 +228,11 @@ impl FixSnapshot {
         &self.wads
     }
 
+    /// Every id it names: each WAD's files'.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        self.wads.values().flat_map(|files| files.values().copied())
+    }
+
     /// The names the run learnt up to the end of `fix`.
     pub fn names(&self) -> &NameBook {
         &self.names

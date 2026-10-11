@@ -129,6 +129,12 @@ impl PlanSnapshot {
         &self.wads
     }
 
+    /// Every id it names: each WAD's files', and the values'.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        let files = self.wads.values().flat_map(|files| files.values().copied());
+        files.chain(self.values.ids())
+    }
+
     /// The port as its report holds it.
     pub fn part(&self) -> &Port {
         &self.port

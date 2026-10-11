@@ -115,6 +115,19 @@ impl Snapshots {
             check: None,
         }
     }
+
+    /// Every id the snapshots name, each once, in order: what a store must hold for a run to
+    /// resume after any of their stages.
+    pub fn ids(&self) -> Vec<ContentId> {
+        let mut ids: BTreeSet<ContentId> = self.load.ids().collect();
+        ids.extend(self.fix.iter().flat_map(FixSnapshot::ids));
+        ids.extend(self.facts.iter().flat_map(FactsSnapshot::ids));
+        ids.extend(self.decide.iter().flat_map(DecideSnapshot::ids));
+        ids.extend(self.plan.iter().flat_map(PlanSnapshot::ids));
+        ids.extend(self.build.iter().flat_map(BuildSnapshot::ids));
+        ids.extend(self.check.iter().flat_map(CheckSnapshot::ids));
+        ids.into_iter().collect()
+    }
 }
 
 /// The snapshot after a stage, or the refusal of a resume after it.
@@ -540,6 +553,17 @@ impl LoadSnapshot {
     /// The names the run learnt.
     pub fn names(&self) -> &NameBook {
         &self.names
+    }
+
+    /// Every id it names: its files', its extras' first bytes' and its image's.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        let files = self.part.files.iter().map(|file| file.content);
+        let heads = self.extras.iter().map(|extra| extra.head);
+        let image = self.image.and_then(|image| match image {
+            RawImage::Held(id) => Some(id),
+            RawImage::TooLarge(_) | RawImage::Unreadable => None,
+        });
+        files.chain(heads).chain(image)
     }
 
     /// Each WAD's files as `load` left them, by path hash: the file fixups' rewrites and the

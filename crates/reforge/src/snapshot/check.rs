@@ -99,6 +99,11 @@ impl CheckSnapshot {
         &self.bins
     }
 
+    /// Every id it names: each patched bin's.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        self.bins.iter().flatten().copied()
+    }
+
     /// The findings from the start of `read` to the end of `check`, in order.
     pub fn findings(&self) -> &[Logged] {
         &self.findings

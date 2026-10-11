@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
 use crate::diag::{Logged, Stage};
+use crate::model::ContentId;
 use crate::port::{Policy, Targets, UnitTarget};
 
 /// The settings `decide` reads (#ADR-0094). It reads no input: only the facts.
@@ -72,6 +73,11 @@ impl DecideSnapshot {
     /// The targets, with what the compared policies choose.
     pub fn targets(&self) -> &Targets {
         &self.targets
+    }
+
+    /// Every id it names: none, since `decide` changes no byte.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        std::iter::empty()
     }
 
     /// The findings from the start of `read` to the end of `decide`, in order.

@@ -1177,6 +1177,11 @@ impl<'a> Run<'a> {
                     let what = format!("{applied} outcomes and {bins} bins of {patches} patches");
                     return Err(ResumeError::Malformed(what));
                 }
+                // No stage reads a patched bin again, so the store is asked for each here: a
+                // run holds no snapshot naming bytes its store lacks.
+                if let Some(id) = check.ids().find(|&id| !self.store.contains(id)) {
+                    return Err(ResumeError::Store(id));
+                }
                 findings = check.findings();
             }
         }

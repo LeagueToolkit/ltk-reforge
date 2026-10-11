@@ -8,6 +8,7 @@ use super::{Program, ResumeError, SNAPSHOT_FORMAT, Setting, StageSnapshot};
 use crate::diag::{Logged, Stage};
 use crate::facts::{Facts, FactsFound};
 use crate::load::ReworkTable;
+use crate::model::ContentId;
 
 /// The settings `facts` reads (#ADR-0094). It reads no input `load` does not.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -63,6 +64,11 @@ impl FactsSnapshot {
     /// What the facts found.
     pub fn found(&self) -> &FactsFound {
         &self.facts
+    }
+
+    /// Every id it names: none, since `facts` changes no byte.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        std::iter::empty()
     }
 
     /// The findings from the start of `read` to the end of `facts`, in order.

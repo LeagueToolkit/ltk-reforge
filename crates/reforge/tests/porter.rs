@@ -1433,6 +1433,68 @@ fn a_run_resumed_after_check_writes_the_report_and_package_of_the_straight_run()
     assert!(codes.collect::<Vec<_>>().contains(&"check.done"));
 }
 
+/// A store holding the blobs of `from` under `ids`, and nothing else.
+fn holding(from: &dyn BlobStore, ids: impl IntoIterator<Item = ContentId>) -> Arc<MemoryStore> {
+    let store = Arc::new(MemoryStore::new());
+    for id in ids {
+        let bytes = from
+            .get(id)
+            .unwrap_or_else(|| panic!("the run's store lacks {id:?}"));
+        store.put(bytes);
+    }
+    store
+}
+
+/// A port of `bytes` through `check`, resumed after `check` over a store that holds exactly the
+/// ids its snapshots name, writes the package of the straight run; a store that lacks any one
+/// of them is refused. Gives how many ids the snapshots name.
+fn the_ids_named_are_what_a_resume_reads(porter: &Porter<'_>, bytes: &[u8]) -> usize {
+    let mut straight = porter.run();
+    straight.read(bytes, FILE_NAME).expect("the archive reads");
+    straight.through(Stage::Check).expect("no fault");
+    let (_, files) = written(&mut straight);
+
+    let mut first = porter.run().in_store(MemoryStore::new());
+    first.read(bytes, FILE_NAME).expect("the archive reads");
+    first.through(Stage::Check).expect("no fault");
+    let snapshots = first.snapshots().expect("the snapshots");
+    let ids = snapshots.ids();
+    let mut sorted = ids.clone();
+    sorted.sort();
+    sorted.dedup();
+    assert_eq!(ids, sorted, "each id once, in order");
+    let start = || Start::Check(Box::new(snapshots.clone()));
+
+    let store = holding(first.store(), ids.iter().copied());
+    let mut resumed = porter.resume(start(), store).expect("the run resumes");
+    let (_, resumed_files) = written(&mut resumed);
+    assert!(resumed_files == files, "the package of the resumed run");
+
+    // The empty blob is held by every store.
+    let held = ids.iter().filter(|&&id| id != ContentId::EMPTY);
+    for &lacking in held {
+        let store = holding(
+            first.store(),
+            ids.iter().copied().filter(|&id| id != lacking),
+        );
+        match porter.resume(start(), store) {
+            Err(ResumeError::Store(id)) => assert_eq!(id, lacking),
+            Err(error) => panic!("a store lacking {lacking:?} is refused with {error}"),
+            Ok(_) => panic!("a store lacking {lacking:?} resumes"),
+        }
+    }
+    ids.len()
+}
+
+#[test]
+fn a_resume_after_check_reads_every_id_the_snapshots_name_and_no_other() {
+    let env = game_env();
+    let named = the_ids_named_are_what_a_resume_reads(&Porter::new(&env), &pictured_mod());
+    assert!(named > 0);
+    let env = legacy_env();
+    the_ids_named_are_what_a_resume_reads(&Porter::new(&env), &legacy_archive().build());
+}
+
 #[test]
 fn a_check_snapshot_is_refused_when_the_checks_are_not_the_runs() {
     let env = legacy_env();

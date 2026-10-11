@@ -131,6 +131,18 @@ impl OriginRecord {
         }
     }
 
+    /// What the bin was written to hold, for a bin the run wrote.
+    fn written(&self) -> Option<&WrittenRecord> {
+        match self {
+            OriginRecord::Rewritten { written, .. } | OriginRecord::Made { written } => {
+                Some(written)
+            }
+            OriginRecord::Kept { .. }
+            | OriginRecord::Contained { .. }
+            | OriginRecord::Bank { .. } => None,
+        }
+    }
+
     fn origin(&self, store: &dyn BlobAccess) -> Result<Origin, ResumeError> {
         Ok(match self {
             OriginRecord::Kept { file } => Origin::Kept(*file),
@@ -263,6 +275,20 @@ impl PackageRecord {
         }
     }
 
+    fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        let layers = self.layers.iter();
+        layers
+            .flat_map(|layer| {
+                let chunks = layer.chunks.iter();
+                let chunks = chunks.flat_map(|chunk| {
+                    let edited = chunk.origin.written().map(|w| w.edited.iter().copied());
+                    std::iter::once(chunk.content).chain(edited.into_iter().flatten())
+                });
+                chunks.chain(layer.patches.iter().map(|patch| patch.content))
+            })
+            .chain(self.thumbnail)
+    }
+
     fn package(&self, blobs: &Blobs) -> Result<Package, ResumeError> {
         let store: &dyn BlobAccess = blobs;
         let mut package = Package::new(self.config.clone()).in_store(blobs.clone());
@@ -363,6 +389,12 @@ impl BuildSnapshot {
             let chunks = layer.chunks.iter();
             chunks.map(move |chunk| (&layer.layer, &chunk.wad, &chunk.path, chunk.content))
         })
+    }
+
+    /// Every id it names: each chunk's, each object a bin was written with, each patch's and
+    /// the thumbnail's.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        self.package.ids()
     }
 
     /// The findings from the start of `read` to the end of `build`, in order.

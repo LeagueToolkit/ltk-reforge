@@ -94,6 +94,17 @@ impl PortValues {
         &self.banks
     }
 
+    /// Every id the values name: the objects', the copies', the edits' and the banks'.
+    pub fn ids(&self) -> impl Iterator<Item = ContentId> + '_ {
+        let objects = self.objects.values().copied();
+        let copies = self.copies.iter().flatten().copied();
+        let edits = self.edits.iter().flatten().copied();
+        objects
+            .chain(copies)
+            .chain(edits)
+            .chain(self.banks.iter().copied())
+    }
+
     /// The port its report gave, with these values read back from `store`.
     pub fn reopen(&self, mut port: Port, store: &dyn BlobStore) -> Result<Port, ValuesError> {
         let bytes = |id: ContentId| store.get(id).ok_or(ValuesError::Missing(id));
