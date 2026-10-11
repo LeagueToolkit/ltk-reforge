@@ -12,6 +12,7 @@ export const runsKeys = {
   file: (id: number, content: string) => [...runsKey, "file", id, content] as const,
   report: (id: number) => [...runsKey, "report", id] as const,
   again: (id: number) => [...runsKey, "again", id] as const,
+  ingest: (sha256: string) => [...runsKey, "ingest", sha256] as const,
   store: () => [...runsKey, "store"] as const,
 };
 
@@ -104,6 +105,35 @@ export function useKeepRun() {
 /** Removes a kept run. */
 export function useRemoveRun() {
   return useStoreChange((id: number) => commands.removeRun(id));
+}
+
+/** Removes every kept run of the mod whose archive has this SHA-256. */
+export function useRemoveModRuns() {
+  return useStoreChange((sha256: string) => commands.removeModRuns(sha256));
+}
+
+/** Clears the archive data of the mod whose archive has this SHA-256 from the ingest tier. */
+export function useClearModIngest() {
+  return useStoreChange((sha256: string) => commands.clearModIngest(sha256));
+}
+
+/** Clears the archive data of every mod no kept run is of from the ingest tier. */
+export function useClearUnusedIngest() {
+  return useStoreChange<void>(() => commands.clearUnusedIngest());
+}
+
+/**
+ * The bytes the ingest tier holds of a mod: what clearing its archive data frees at most.
+ * Asked only while `enabled`, since it reads every entry of the tier.
+ */
+export function useModIngestBytes(sha256: string, enabled: boolean) {
+  return useQuery(
+    queryOptions({
+      queryKey: runsKeys.ingest(sha256),
+      queryFn: queryFn(() => commands.modIngestBytes(sha256)),
+      enabled,
+    }),
+  );
 }
 
 /** Removes every kept run. */

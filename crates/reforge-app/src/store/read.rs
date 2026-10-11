@@ -2,7 +2,9 @@
 //! size for the settings page. A mod's text is cleaned here, as every view shows it.
 
 use camino::Utf8Path;
-use reforge::model::clean;
+use reforge::archive::Caps;
+use reforge::model::{ContentId, clean};
+use reforge::snapshot::RawCache;
 use rusqlite::{OptionalExtension, Row};
 use serde::Serialize;
 
@@ -48,6 +50,9 @@ pub struct RunRow {
     pub package: Option<String>,
     /// The stages it keeps a snapshot of, in stage order, `load` first.
     pub reached: Vec<StageName>,
+    /// Whether the ingest tier holds the archive's raw snapshot. A run whose mod was cleared
+    /// from it is read-only until the archive is read again (#ADR-0096).
+    pub archive_ingested: bool,
 }
 
 /// What a kept run was run on and with: what the run page takes to run it again.
@@ -79,6 +84,10 @@ pub struct StoreView {
     pub tier_bytes: u64,
     /// The bytes of the ingest tier.
     pub ingest_bytes: u64,
+    /// The bytes of the blobs the ingest tier's entries name whose archive no run is of: what
+    /// clearing the unused archive data frees at most, since a blob two entries share is
+    /// counted in each.
+    pub ingest_unused_bytes: u64,
 }
 
 impl AppStore {
@@ -87,14 +96,14 @@ impl AppStore {
         let reached = REACHED.map(|(_, column)| format!("run.{column} IS NOT NULL"));
         let query = format!(
             "SELECT run.id, run.made_at, run.kind, run.kept, raw.sha256, raw.file_name,
-               raw.name, raw.author, raw.mod_version, run.package, {}
+               raw.name, raw.author, raw.mod_version, run.package, raw.version, raw.caps, {}
              FROM run JOIN load ON load.id = run.load_id JOIN raw ON raw.sha256 = load.sha256
              ORDER BY run.id DESC",
             reached.join(", ")
         );
         let rows = self.rows.lock();
         let mut statement = rows.prepare(&query)?;
-        let listed = statement.query_map([], |row| Ok(run_row(row)))?;
+        let listed = statement.query_map([], |row| Ok(run_row(row, &self.ingest)))?;
         listed.map(|row| row?).collect()
     }
 
@@ -169,6 +178,9 @@ impl AppStore {
 
     /// What the store holds and its bytes on disk.
     pub fn view(&self) -> Result<StoreView, AppError> {
+        let used = self.mods()?;
+        let unused = self.ingest.entries().into_iter();
+        let unused = unused.filter(|entry| !used.contains(&entry.sha256));
         let rows = self.rows.lock();
         let count = |query: &str| rows.query_row(query, [], |row| row.get(0)).map(number);
         Ok(StoreView {
@@ -178,7 +190,31 @@ impl AppStore {
             rows_bytes: bytes_of(&self.dir.join(ROWS_FILE)),
             tier_bytes: self.tier.bytes(),
             ingest_bytes: bytes_of(self.ingest.dir()),
+            ingest_unused_bytes: unused.map(|entry| entry.bytes).sum(),
         })
+    }
+
+    /// The archives the runs kept are of, by SHA-256: every `raw` row's.
+    pub(super) fn mods(&self) -> Result<Vec<ContentId>, AppError> {
+        let rows = self.rows.lock();
+        let mut statement = rows.prepare("SELECT sha256 FROM raw ORDER BY sha256")?;
+        let found = statement.query_map([], |row| row.get::<_, Vec<u8>>(0))?;
+        let mut mods = Vec::new();
+        for sha256 in found {
+            // A key of another length names no archive.
+            if let Ok(id) = <[u8; 32]>::try_from(sha256?) {
+                mods.push(ContentId(id));
+            }
+        }
+        Ok(mods)
+    }
+
+    /// The bytes of the blobs the ingest tier's entries of an archive name: what clearing
+    /// the mod's archive data frees at most, since a blob another entry names stays.
+    pub fn mod_ingest_bytes(&self, sha256: ContentId) -> u64 {
+        let entries = self.ingest.entries().into_iter();
+        let of_mod = entries.filter(|entry| entry.sha256 == sha256);
+        of_mod.map(|entry| entry.bytes).sum()
     }
 }
 
@@ -192,17 +228,23 @@ pub(super) fn kind_of(text: &str) -> Result<RunKind, AppError> {
 }
 
 /// A row of the listing's query.
-fn run_row(row: &Row<'_>) -> Result<RunRow, AppError> {
+fn run_row(row: &Row<'_>, ingest: &RawCache) -> Result<RunRow, AppError> {
     let shown = |text: Option<String>| text.map(|text| clean(&text).into_owned());
     let kind = kind_of(&row.get::<_, String>(2)?)?;
     let sha256: Vec<u8> = row.get(4)?;
     let mut reached = vec![StageName::Load];
     for (at, (stage, _)) in REACHED.iter().enumerate() {
-        if row.get::<_, bool>(10 + at)? {
+        if row.get::<_, bool>(12 + at)? {
             reached.push(*stage);
         }
     }
+    let caps: Caps = serde_json::from_str(&row.get::<_, String>(11)?).map_err(failed)?;
+    let version: u32 = row.get(10)?;
+    // The entry's file, not its snapshot: a listing reads no snapshot.
+    let archive_ingested = <[u8; 32]>::try_from(sha256.as_slice())
+        .is_ok_and(|id| ingest.entry(ContentId(id), version, &caps).is_file());
     Ok(RunRow {
+        archive_ingested,
         id: number(row.get(0)?),
         made_at: row.get(1)?,
         kind,

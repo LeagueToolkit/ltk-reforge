@@ -2,14 +2,15 @@
 //! `run_blob` rows; a load no run refers to goes, and a raw row no load refers to, in the
 //! transaction of the change. After the commit, the run tier's blobs no `run_blob` row lists
 //! are removed and the tier collects its space. The ingest tier is not swept: it is cleared by
-//! mod.
+//! mod, an action of its own that removes no run.
 
 use std::collections::BTreeSet;
 
 use reforge::model::ContentId;
+use reforge::snapshot::Cleared;
 use rusqlite::{Connection, ToSql, Transaction, params};
 
-use super::{AppStore, RunTier};
+use super::{AppStore, RunTier, failed};
 use crate::error::AppError;
 
 impl AppStore {
@@ -42,6 +43,19 @@ impl AppStore {
     /// Removes every run.
     pub fn remove_all(&self) -> Result<(), AppError> {
         self.change(|_, tx| Ok(((), remove_runs(tx, "1", &[])?)))
+    }
+
+    /// Clears a mod's archive data from the ingest tier: every entry of its archive and the
+    /// blobs no other entry names (#ADR-0096). Its runs stay, read-only until the archive is
+    /// read again.
+    pub fn clear_ingest(&self, sha256: ContentId) -> Result<Cleared, AppError> {
+        self.ingest.clear(sha256).map_err(failed)
+    }
+
+    /// Clears the archive data of every mod no run is of from the ingest tier.
+    pub fn clear_unused_ingest(&self) -> Result<Cleared, AppError> {
+        let used = self.mods()?;
+        self.ingest.clear_unnamed(&used).map_err(failed)
     }
 
     /// Makes a change of the rows under the lock, in one transaction with the bound's cut and

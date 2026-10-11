@@ -1,18 +1,23 @@
-import { TrashIcon } from "@phosphor-icons/react";
+import { BroomIcon, TrashIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 import { Button, FailureNote } from "@/components";
 import { m } from "@/i18n";
 import { ConfirmRemove, diskSize } from "@/modules/inputs";
 
-import { useRemoveAllRuns, useStoreView } from "../api/runs";
+import { useClearUnusedIngest, useRemoveAllRuns, useStoreView } from "../api/runs";
+
+/** What the storage group asks about before it removes. */
+type Asking = "runs" | "unused" | null;
 
 /** The store of runs as the settings page's storage group shows it: its counts, its bytes. */
 export function RunsStorage() {
   const view = useStoreView();
   const remove = useRemoveAllRuns();
-  const [asking, setAsking] = useState(false);
+  const clearUnused = useClearUnusedIngest();
+  const [asking, setAsking] = useState<Asking>(null);
   const store = view.data;
+  const failure = remove.error ?? clearUnused.error;
 
   return (
     <div className="flex items-start justify-between gap-4" data-ui="RunsStorage">
@@ -30,28 +35,52 @@ export function RunsStorage() {
                 ingest: diskSize(store.ingest_bytes),
               })}
             </p>
+            <p className="text-xs text-surface-400">
+              {m.runs_storage_unused_bytes({ bytes: diskSize(store.ingest_unused_bytes) })}
+            </p>
             <p className="text-xs text-surface-500">{m.runs_storage_tier_hint()}</p>
           </>
         )}
         {view.isError && <FailureNote failure={view.error} />}
-        {remove.isError && <FailureNote failure={remove.error} />}
+        {failure && <FailureNote failure={failure} />}
       </div>
-      <Button
-        size="sm"
-        variant="outline"
-        left={<TrashIcon weight="bold" />}
-        disabled={!store || store.runs === 0}
-        loading={remove.isPending}
-        onClick={() => setAsking(true)}
-      >
-        {m.runs_storage_remove_action()}
-      </Button>
+      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          left={<BroomIcon weight="bold" />}
+          disabled={!store || store.ingest_unused_bytes === 0}
+          loading={clearUnused.isPending}
+          onClick={() => setAsking("unused")}
+        >
+          {m.runs_storage_clear_unused_action()}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          left={<TrashIcon weight="bold" />}
+          disabled={!store || store.runs === 0}
+          loading={remove.isPending}
+          onClick={() => setAsking("runs")}
+        >
+          {m.runs_storage_remove_action()}
+        </Button>
+      </div>
       <ConfirmRemove
-        open={asking}
-        onClose={() => setAsking(false)}
+        open={asking === "runs"}
+        onClose={() => setAsking(null)}
         title={m.runs_storage_remove_title()}
         description={m.runs_storage_remove_description()}
         onConfirm={() => remove.mutate()}
+      />
+      <ConfirmRemove
+        open={asking === "unused"}
+        onClose={() => setAsking(null)}
+        title={m.runs_storage_clear_unused_title()}
+        description={m.runs_storage_clear_unused_description({
+          bytes: diskSize(store?.ingest_unused_bytes ?? 0),
+        })}
+        onConfirm={() => clearUnused.mutate()}
       />
     </div>
   );

@@ -59,6 +59,18 @@ export const commands = {
 	removeModRuns: (sha256: string) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_mod_runs", { sha256 }),
 	/**  Removes every kept run. */
 	removeAllRuns: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("remove_all_runs"),
+	/**
+	 *  The bytes the ingest tier holds of the mod whose archive has this SHA-256, as hex: what
+	 *  clearing its archive data frees at most.
+	 */
+	modIngestBytes: (sha256: string) => __TAURI_INVOKE<({ ok: true; value: number }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("mod_ingest_bytes", { sha256 }),
+	/**
+	 *  Clears the archive data of the mod whose archive has this SHA-256, as hex, from the ingest
+	 *  tier. Its kept runs stay, read-only until the archive is read again.
+	 */
+	clearModIngest: (sha256: string) => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("clear_mod_ingest", { sha256 }),
+	/**  Clears the archive data of every mod no kept run is of from the ingest tier. */
+	clearUnusedIngest: () => __TAURI_INVOKE<({ ok: true; value: null }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("clear_unused_ingest"),
 	/**  What the app's store holds and its bytes on disk, for the settings page. */
 	storeView: () => __TAURI_INVOKE<({ ok: true; value: StoreView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("store_view"),
 	/**  Saves a choice of fixups as a selection file the command reads with `--fixups`. */
@@ -897,6 +909,11 @@ export type RunRow = {
 	package: string | null,
 	/**  The stages it keeps a snapshot of, in stage order, `load` first. */
 	reached: StageName[],
+	/**
+	 *  Whether the ingest tier holds the archive's raw snapshot. A run whose mod was cleared
+	 *  from it is read-only until the archive is read again (#ADR-0096).
+	 */
+	archive_ingested: boolean,
 };
 
 /**
@@ -1133,6 +1150,12 @@ export type StoreView = {
 	tier_bytes: number,
 	/**  The bytes of the ingest tier. */
 	ingest_bytes: number,
+	/**
+	 *  The bytes of the blobs the ingest tier's entries name whose archive no run is of: what
+	 *  clearing the unused archive data frees at most, since a blob two entries share is
+	 *  counted in each.
+	 */
+	ingest_unused_bytes: number,
 };
 
 /**  What a finding is about. */

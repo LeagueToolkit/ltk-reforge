@@ -598,6 +598,59 @@ fn a_kept_run_gives_its_archive_and_settings_to_run_again() {
 }
 
 #[test]
+fn clearing_a_mods_archive_data_keeps_its_runs_and_marks_them_not_ingested() {
+    let bench = Bench::new();
+    let view = bench.port(&own_mod(), "mod.fantome");
+    let row = bench.store.list().unwrap().remove(0);
+    assert!(row.archive_ingested);
+    let sha256 = ContentId::parse(&row.sha256).unwrap();
+    assert!(bench.store.mod_ingest_bytes(sha256) > 0);
+
+    let cleared = bench.store.clear_ingest(sha256).unwrap();
+
+    assert_eq!(cleared.entries, 1);
+    assert!(cleared.blobs > 0);
+    for table in ["raw", "load", "run"] {
+        assert_eq!(bench.count(table), 1, "{table}");
+    }
+    let row = bench.store.list().unwrap().remove(0);
+    assert!(!row.archive_ingested);
+    assert_eq!(bench.store.mod_ingest_bytes(sha256), 0);
+    assert_eq!(
+        bench.store.run_view(row.id).unwrap().map(|v| v.saved),
+        Some(view.saved)
+    );
+
+    // Run again reads the archive, which ingests it again.
+    let again = bench.port(&own_mod(), "mod.fantome");
+    assert_eq!(resumed(&again), []);
+    let rows = bench.store.list().unwrap();
+    assert!(rows.iter().all(|row| row.archive_ingested));
+}
+
+#[test]
+fn clearing_the_unused_archive_data_keeps_the_mods_with_runs() {
+    let bench = Bench::new();
+    let other = own_mod().extra("README.txt", "another archive");
+    bench.port(&own_mod(), "mod.fantome");
+    let unkept = bench.run(&bench.request(&other, "other.fantome", StageName::Check));
+    assert_eq!(unkept.saved, None);
+    let kept = ContentId::parse(&bench.store.list().unwrap()[0].sha256).unwrap();
+    let other_sha256 = ContentId::of(&other.build());
+    let unused = bench.store.view().unwrap().ingest_unused_bytes;
+    assert_eq!(unused, bench.store.mod_ingest_bytes(other_sha256));
+    assert!(unused > 0);
+
+    let cleared = bench.store.clear_unused_ingest().unwrap();
+
+    assert_eq!(cleared.entries, 1);
+    assert_eq!(bench.store.view().unwrap().ingest_unused_bytes, 0);
+    assert_eq!(bench.store.mod_ingest_bytes(other_sha256), 0);
+    assert!(bench.store.mod_ingest_bytes(kept) > 0);
+    assert!(bench.store.list().unwrap()[0].archive_ingested);
+}
+
+#[test]
 fn a_rerun_through_a_stage_resumes_no_later_than_it() {
     use StageName::*;
     let bench = Bench::new();

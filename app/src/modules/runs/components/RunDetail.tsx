@@ -1,23 +1,23 @@
-import { ArrowClockwiseIcon, FolderOpenIcon, PushPinIcon, TrashIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, FolderOpenIcon, PushPinIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { Button, FailureNote, Spinner, TabPanel, Tabs, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { RunRow, RunView, StageName } from "@/lib/bindings.gen";
-import { ConfirmRemove } from "@/modules/inputs";
 import { endedResults, RunResults, StageStrip, useRepairStore } from "@/modules/repair";
 import { twMerge } from "@/utils";
 
 import {
   useKeepRun,
-  useRemoveRun,
   useRevealRun,
   useRunAgain,
   useRunReport,
   useRunView,
+  useRuns,
 } from "../api/runs";
 import { FILE_STAGES, FilesTab } from "./FilesTab";
+import { RemoveMenu } from "./RemoveMenu";
 import { runName } from "./RunList";
 
 /** The tabs of a run. */
@@ -101,12 +101,12 @@ interface RunDetailProps {
 export function RunDetail({ row, onRemoved }: RunDetailProps) {
   const view = useRunView(row.id);
   const keep = useKeepRun();
-  const remove = useRemoveRun();
   const reveal = useRevealRun();
   const again = useRunAgain(row.id);
+  const runs = useRuns();
+  const modRuns = runs.data?.filter((other) => other.sha256 === row.sha256).length ?? 1;
   const takeRun = useRepairStore((state) => state.takeRun);
   const navigate = useNavigate();
-  const [asking, setAsking] = useState(false);
   const [tab, setTab] = useState<Tab>("result");
   const [filesStage, setFilesStage] = useState<StageName | null>(null);
   const name = runName(row);
@@ -120,7 +120,7 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
     setFilesStage(stage);
     setTab("files");
   };
-  const failure = keep.error ?? remove.error ?? reveal.error ?? again.error;
+  const failure = keep.error ?? reveal.error ?? again.error;
   const againButton = (
     <Button
       size="sm"
@@ -189,23 +189,7 @@ export function RunDetail({ row, onRemoved }: RunDetailProps) {
         ) : (
           againButton
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="ml-auto"
-          left={<TrashIcon weight="bold" />}
-          loading={remove.isPending}
-          onClick={() => setAsking(true)}
-        >
-          {m.runs_remove_action()}
-        </Button>
-        <ConfirmRemove
-          open={asking}
-          onClose={() => setAsking(false)}
-          title={m.runs_remove_title()}
-          description={m.runs_remove_description()}
-          onConfirm={() => remove.mutate(row.id, { onSuccess: onRemoved })}
-        />
+        <RemoveMenu row={row} modRuns={modRuns} onRemoved={onRemoved} />
       </div>
       {failure && <FailureNote failure={failure} />}
       {view.isPending && <Spinner />}

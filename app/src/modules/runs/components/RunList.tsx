@@ -112,6 +112,16 @@ export function RunList({ runs, selected, onSelect, now, className }: RunListPro
                 </span>
                 <span className="flex min-w-0 items-center gap-2 text-xs text-surface-400">
                   <KindBadge kind={row.kind} />
+                  {!row.archive_ingested && (
+                    <Tooltip content={m.runs_ingest_cleared_hint()}>
+                      <span
+                        className="shrink-0 rounded-full border border-surface-600 px-2 py-0.5 text-[11px] text-surface-300 select-none"
+                        data-ui="RunList:cleared"
+                      >
+                        {m.runs_ingest_cleared_label()}
+                      </span>
+                    </Tooltip>
+                  )}
                   {row.author && (
                     <span className="min-w-0 truncate">
                       {m.runs_by_label({ author: row.author })}

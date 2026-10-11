@@ -250,12 +250,44 @@ pub async fn remove_run(app: AppHandle, id: u64) -> IpcResult<()> {
 pub async fn remove_mod_runs(app: AppHandle, sha256: String) -> IpcResult<()> {
     off_thread(move || {
         let store = idle_store(&app)?;
-        let sha256 = ContentId::parse(&sha256).ok_or_else(|| AppError::Internal {
-            detail: format!("{sha256:?} is no SHA-256"),
-        })?;
-        store.remove_mod(sha256)
+        store.remove_mod(sha256_of(&sha256)?)
     })
     .await
+}
+
+/// A SHA-256 as hex, as the front end names an archive.
+fn sha256_of(hex: &str) -> Result<ContentId, AppError> {
+    ContentId::parse(hex).ok_or_else(|| AppError::Internal {
+        detail: format!("{hex:?} is no SHA-256"),
+    })
+}
+
+/// The bytes the ingest tier holds of the mod whose archive has this SHA-256, as hex: what
+/// clearing its archive data frees at most.
+#[tauri::command]
+#[specta::specta]
+pub async fn mod_ingest_bytes(app: AppHandle, sha256: String) -> IpcResult<u64> {
+    let store = app.state::<RunStore>().get();
+    off_thread(move || Ok(store?.mod_ingest_bytes(sha256_of(&sha256)?))).await
+}
+
+/// Clears the archive data of the mod whose archive has this SHA-256, as hex, from the ingest
+/// tier. Its kept runs stay, read-only until the archive is read again.
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_mod_ingest(app: AppHandle, sha256: String) -> IpcResult<()> {
+    off_thread(move || {
+        let store = idle_store(&app)?;
+        store.clear_ingest(sha256_of(&sha256)?).map(drop)
+    })
+    .await
+}
+
+/// Clears the archive data of every mod no kept run is of from the ingest tier.
+#[tauri::command]
+#[specta::specta]
+pub async fn clear_unused_ingest(app: AppHandle) -> IpcResult<()> {
+    off_thread(move || idle_store(&app)?.clear_unused_ingest().map(drop)).await
 }
 
 /// Removes every kept run.
