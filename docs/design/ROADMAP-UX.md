@@ -212,7 +212,8 @@ input or the program that differs, or at the resume a store that lacks an id) is
 debug; when no start holds or the resume is refused, the run starts from the raw snapshot.
 The stages taken from the snapshots are not run: the watch
 hears each as `StageEvent::Resumed` with what it gave the views, and its `StageView` says
-`resumed`, which the stage strip shows as "from store" in place of a time. A resumed run's
+`resumed`, which the stage strip shows as "from store" beside the stage's state and the live
+progress in place of its time. A resumed run's
 report is the report of the same run from the archive. Its layer holds only what its own
 stages made, so its `run_blob` rows list every id its snapshots name too: the bytes the older
 run made stay while the newer names them, and an id the ingest tier holds is absent from the
@@ -332,7 +333,8 @@ list's head.
 **The detail** has a header with the package's thumbnail (the first letter of the name when
 there is none), the name, the version, the author and the file name. A run imported has a
 badge "imported", and a package opened "from package", each with the path it was opened
-from on hover. Six actions follow:
+from on hover. A run whose archive data was cleared has the list's badge there too. Six
+actions follow:
 
 - **Keep** (`keep_run`).
 - **Show package** (`reveal_place` with the place `run`, which names the run and never a path),
@@ -382,13 +384,15 @@ are of different archives by their SHA-256. Under it, one card each, an empty on
 - **Settings and inputs**: the request's settings that differ, then what the runs were judged
   under that differs: the program and the install's build, the history's newest build and
   head and the hash tables, as the load snapshots hold them, and the schema's build. A key per
-  row the window names; a value in mono, a switch as on or off.
+  row the window names; a value in mono, a switch as on or off, a fixup by its title with its
+  id, the hash tables a line each with the table, its version and the start of its SHA-256.
 - **Findings**: how many are in both, then the left run's findings the right lacks, marked
   with a minus, beside the right run's the left lacks, marked with a plus, each opening to its
   details as on the run page. A finding is matched by its code, its subject and its message,
   not its id, which another setting shifts.
 - **Targets**, when both runs are ports: each unit of either, matched by its character and
-  slot, with each run's skin and reason; the rows that differ first, marked.
+  slot, with each run's skin and its reason in the run page's sentence; the rows that differ
+  first, marked.
 - **Fixups**: each fixup that changed something in either run, with each run's counts by
   outcome; the rows that differ first, marked.
 - **Package**: the two packages side by side, each with its thumbnail and what it holds.
@@ -409,7 +413,8 @@ tier holds has the kind `missing`.
 
 **The viewer** (`run_file`) fetches the file's bytes by their id from the run tier over the
 ingest tier, and shows them by the kind their first bytes give, under a read-only badge with
-the path, the kind, the size and the content id:
+the path, the kind in a word (bin, image, model, audio, text, other; the library's kind on
+hover), the size and the content id:
 
 | kind | shown as | cap |
 |---|---|---|
@@ -627,6 +632,20 @@ maintainer's rows to every user. The decisions are #ADR-0090 (a guided view) and
    imported, and a package's evidence opened as a kept run with no snapshots. Left: the
    records.
 5. **Batch** (#ADR-0091), once the library runs several mods with one environment for a few.
+
+A review of the pages step 4 added (2026-10-11, screenshots of every state over runs of two
+mods, a run resumed from another, a project imported and a package opened) found and fixed:
+the Runs page's filter squeezed to nothing beside Open… in a narrow window; the path an origin
+badge names on hover running past the window; a run whose archive data was cleared saying so
+in the list alone; the viewer naming a file's kind by the library's id and its content id with
+no word; the comparison's columns squeezed by one long value, its hash tables as JSON, its
+fixups by id, its targets' reasons as the library's ids, and its marks of a row that differs
+pushing that row out of line; the settings page's storage row breaking a size from its unit;
+and the stage strip's "from store" on a line of its own, which made that stage's box taller
+than its row. Left: the schema's build reads as the schema's number for a run of the app and
+as the install's build for a package opened, which the comparison shows as a difference; live
+findings name objects by hash until the run ends; and the detail's six actions wrap at the
+default window.
 
 Each library change is one rule with its test (#ADR-0045), made before the page that needs it.
 
