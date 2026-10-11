@@ -1,17 +1,17 @@
 //! A history in memory, for tests: built from facts (a path, a content in a WAD, an object, a
-//! clip, an animation clip's joints, an events bank or a bank unit at builds a to b), with no
-//! SQLite file behind it. It answers the questions about those. The families no stage reads yet
-//! answer nothing.
+//! clip, an animation clip's joints, an events bank, a bank unit, a bin, a path an object named
+//! or an object's bytes at builds a to b), with no SQLite file behind it. It answers the
+//! questions about those. The families no stage reads yet answer nothing.
 
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
 use reforge::game::{Build, FieldType};
 use reforge::history::{
-    BinHit, BuildDetails, BuildRow, ClipJoints, EventsBank, EventsBankHit, FORMAT, Families,
-    FileHit, FileKind, HeldAt, History, HistoryError, Life, MeshHit, NamedBy, ObjectBytes,
-    ObjectCodec, ObjectHit, PathHit, Placed, PlayedBy, Position, Reached, SkeletonHit, Stamp,
-    TextBlob, UnitHit, WemPlayed, version_order, wad_order,
+    BinEntry, BinHit, BuildDetails, BuildRow, ClipJoints, EventsBank, EventsBankHit, FORMAT,
+    Families, FileHit, FileKind, HeldAt, History, HistoryError, Life, MeshHit, NamedBy,
+    ObjectBytes, ObjectCodec, ObjectHit, PathHit, Placed, PlayedBy, Position, Reached, SkeletonHit,
+    Stamp, TextBlob, UnitHit, WemPlayed, version_order, wad_order,
 };
 use reforge::model::{
     BinHash, ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, name_hash, path_hash,
@@ -32,6 +32,9 @@ pub struct MemoryHistory {
     animations: BTreeMap<(WadHash, FileKey), (Life, Vec<u32>)>,
     banks: BTreeMap<(WadHash, FileKey), EventsBank>,
     units: BTreeMap<WadHash, Vec<UnitHit>>,
+    bins: BTreeMap<WadHash, Vec<BinHit>>,
+    named: BTreeMap<WadHash, Vec<NamedBy>>,
+    stored: BTreeMap<(WadHash, BinHash), Vec<ObjectBytes>>,
 }
 
 fn life(builds: RangeInclusive<u16>) -> Life {
@@ -101,6 +104,9 @@ impl MemoryHistory {
             animations: BTreeMap::new(),
             banks: BTreeMap::new(),
             units: BTreeMap::new(),
+            bins: BTreeMap::new(),
+            named: BTreeMap::new(),
+            stored: BTreeMap::new(),
         }
     }
 
@@ -216,6 +222,74 @@ impl MemoryHistory {
         self
     }
 
+    /// The WAD at `wad` held a bin of `bytes` at `path` at these builds, linking the bins at
+    /// `links` and holding `entries`.
+    #[must_use]
+    pub fn with_bin(
+        mut self,
+        (wad, path): (&str, &str),
+        bytes: &[u8],
+        links: &[&str],
+        entries: Vec<BinEntry>,
+        builds: RangeInclusive<u16>,
+    ) -> Self {
+        let hit = BinHit {
+            wad: wad.to_string(),
+            key: file_key(bytes),
+            life: life(builds.clone()),
+            links: links.iter().map(|link| path_hash(link)).collect(),
+            entries,
+        };
+        let held = self.bins.entry(path_hash(path)).or_default();
+        held.push(hit);
+        held.sort_by(|a, b| wad_order(&a.wad, &b.wad).then(a.life.first.cmp(&b.life.first)));
+        self.with_content_in(wad, path, bytes, builds)
+    }
+
+    /// The game object `entry` of the bin at `bin` named `path` at these builds.
+    #[must_use]
+    pub fn with_naming(
+        mut self,
+        path: &str,
+        (entry, bin): (&str, &str),
+        builds: RangeInclusive<u16>,
+    ) -> Self {
+        let hit = NamedBy {
+            bin: path_hash(bin),
+            entry: name_hash(entry),
+            life: life(builds),
+        };
+        let held = self.named.entry(path_hash(path)).or_default();
+        held.push(hit);
+        held.sort_by_key(|hit| (hit.life.first, hit.bin, hit.entry));
+        self
+    }
+
+    /// The bin at `bin` in the WAD at `wad` held the object `entry` of class `class` as `bytes`
+    /// at these builds: the bytes as the index stores them, from the entry hash on.
+    #[must_use]
+    pub fn with_object_bytes(
+        mut self,
+        wad: &str,
+        (entry, class, bin): (&str, &str, &str),
+        bytes: Vec<u8>,
+        builds: RangeInclusive<u16>,
+    ) -> Self {
+        let held = ObjectBytes {
+            wad: wad.to_string(),
+            class: name_hash(class),
+            bytes,
+            life: life(builds),
+        };
+        let versions = self
+            .stored
+            .entry((path_hash(bin), name_hash(entry)))
+            .or_default();
+        versions.push(held);
+        versions.sort_by(|a, b| wad_order(&a.wad, &b.wad).then(a.life.first.cmp(&b.life.first)));
+        self
+    }
+
     /// Every content a WAD held at the path, in `wad_order` and then oldest first.
     fn placed_at(&self, path: WadHash) -> Vec<Placed> {
         let held = self.placements.iter().filter(|((p, ..), _)| *p == path);
@@ -282,8 +356,9 @@ impl History for MemoryHistory {
         Ok(placed)
     }
 
-    fn bin(&self, _: WadHash, _: Position) -> Result<Option<BinHit>, HistoryError> {
-        Ok(None)
+    fn bin(&self, path: WadHash, at: Position) -> Result<Option<BinHit>, HistoryError> {
+        let mut held = self.bins.get(&path).into_iter().flatten();
+        Ok(held.find(|hit| hit.life.holds(at)).cloned())
     }
 
     fn object(&self, key: ObjectKey) -> Result<Option<ObjectHit>, HistoryError> {
@@ -318,11 +393,12 @@ impl History for MemoryHistory {
 
     fn object_bytes(
         &self,
-        _: WadHash,
-        _: BinHash,
-        _: Position,
+        bin: WadHash,
+        entry: BinHash,
+        at: Position,
     ) -> Result<Option<ObjectBytes>, HistoryError> {
-        Ok(None)
+        let mut held = self.stored.get(&(bin, entry)).into_iter().flatten();
+        Ok(held.find(|held| held.life.holds(at)).cloned())
     }
 
     fn links(&self, _: WadHash, _: BinHash, _: Position) -> Result<Vec<BinHash>, HistoryError> {
@@ -346,8 +422,8 @@ impl History for MemoryHistory {
         Ok(self.clips.get(&key).copied())
     }
 
-    fn named_by(&self, _: WadHash) -> Result<Vec<NamedBy>, HistoryError> {
-        Ok(Vec::new())
+    fn named_by(&self, path: WadHash) -> Result<Vec<NamedBy>, HistoryError> {
+        Ok(self.named.get(&path).cloned().unwrap_or_default())
     }
 
     fn units_loading(&self, bank: WadHash) -> Result<Vec<UnitHit>, HistoryError> {
