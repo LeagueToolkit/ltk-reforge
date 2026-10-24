@@ -1,5 +1,6 @@
 import {
   ArrowsClockwiseIcon,
+  CopyIcon,
   MagnifyingGlassIcon,
   QueueIcon,
   ScanIcon,
@@ -13,7 +14,7 @@ import { m } from "@/i18n";
 import type { BatchRow, ManagerMod } from "@/lib/bindings.gen";
 import { useBatchStore } from "@/modules/batch";
 import { useJobRunning } from "@/modules/repair";
-import { twMerge } from "@/utils";
+import { copyText, twMerge } from "@/utils";
 
 import { useManagerLibrary } from "../api/manager";
 import { useScan, useScanEvents, useScanRunning, useScanStore, useStopScan } from "../api/scan";
@@ -24,6 +25,7 @@ import {
   isPaste,
   movesToPremium,
   originText,
+  reportText,
   slotText,
   stateText,
   unitMovesToPremium,
@@ -225,6 +227,16 @@ export function ManagerPage() {
             data-ui="ManagerPage:tickFixable"
           >
             {m.manager_tick_fixable_action({ count: fixable.length })}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            left={<CopyIcon weight="bold" />}
+            disabled={counts.moved === 0}
+            onClick={() => copyText(reportText(scanned))}
+            data-ui="ManagerPage:report"
+          >
+            {m.manager_report_action({ count: counts.moved })}
           </Button>
           {scanning ? (
             <Button

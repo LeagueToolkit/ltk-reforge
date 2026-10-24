@@ -25,6 +25,7 @@
   "manager_page_title": "LTK Manager",
   "manager_pastes_only_label": "Problems only",
   "manager_refresh_action": "Read again",
+  "manager_report_action": "Copy report ({count})",
   "manager_scan_action": "Scan {count}",
   "manager_scan_counts": "{scanned} scanned: {fixable} fixable, {moved} need a premium skin",
   "manager_state_fine": "Fine",

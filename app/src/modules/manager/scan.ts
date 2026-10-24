@@ -39,6 +39,31 @@ export function isFixable(row: BatchRow): boolean {
   return hasPaste(row) && !movesToPremium(row);
 }
 
+/**
+ * The mods that need a premium skin, a line each for a report: the mod's name, version and
+ * author, then each unit's origin and where a port lands it.
+ */
+export function reportText(rows: readonly BatchRow[]): string {
+  return rows
+    .filter(movesToPremium)
+    .map((row) => {
+      const name = row.name ?? row.archive;
+      const version = row.version ? ` ${row.version}` : "";
+      const author = row.author ? ` (${row.author})` : "";
+      const units = row.units
+        .map((unit) =>
+          m.manager_origin_line({
+            character: unit.character,
+            origin: originText(unit),
+            landing: slotText(unit.chosen),
+          }),
+        )
+        .join("; ");
+      return `${name}${version}${author}: ${units}`;
+    })
+    .join("\n");
+}
+
 /** What the scan comes to for a unit, in the person's words: fine, fixable, or needs a skin. */
 export function stateText(unit: BatchUnit): string {
   if (unitMovesToPremium(unit)) {

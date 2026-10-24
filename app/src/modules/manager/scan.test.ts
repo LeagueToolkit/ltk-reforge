@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { BatchRow, BatchUnit, OriginView } from "@/lib/bindings.gen";
 
-import { hasPaste, isPaste, movesToPremium, originText } from "./scan";
+import { hasPaste, isPaste, movesToPremium, originText, reportText } from "./scan";
 
 function unit(origin: Partial<OriginView>, chosen: number | null = 0): BatchUnit {
   return {
@@ -69,5 +69,21 @@ describe("movesToPremium", () => {
     expect(movesToPremium(row([unit({}, 20)]))).toBe(true);
     expect(movesToPremium(row([unit({}, 0)]))).toBe(false);
     expect(movesToPremium(row([unit({}, null)]))).toBe(false);
+  });
+});
+
+describe("reportText", () => {
+  it("lists the mods that need a premium skin, with each unit's origin", () => {
+    const moved = {
+      ...row([unit({ verdict: "premium", slot: 20, strength: "strong", evidence: ["mesh"] }, 20)]),
+      name: "A mod",
+      version: "1.0.0",
+      author: "someone",
+    };
+    const kept = row([unit({ verdict: "base", strength: "strong", evidence: [] }, 0)]);
+    expect(reportText([kept, moved])).toBe(
+      "A mod 1.0.0 (someone): Vex: paste of skin 20 (mesh) → skin 20",
+    );
+    expect(reportText([kept])).toBe("");
   });
 });
