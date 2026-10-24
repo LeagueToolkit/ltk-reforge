@@ -1,15 +1,24 @@
-import { ArrowsClockwiseIcon, MagnifyingGlassIcon, QueueIcon } from "@phosphor-icons/react";
+import {
+  ArrowsClockwiseIcon,
+  MagnifyingGlassIcon,
+  QueueIcon,
+  ScanIcon,
+  StopIcon,
+} from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { Button, Checkbox, FailureNote, Spinner } from "@/components";
 import { m } from "@/i18n";
-import type { ManagerMod } from "@/lib/bindings.gen";
+import type { BatchRow, ManagerMod } from "@/lib/bindings.gen";
 import { useBatchStore } from "@/modules/batch";
+import { useJobRunning } from "@/modules/repair";
 import { twMerge } from "@/utils";
 
 import { useManagerLibrary } from "../api/manager";
+import { useScan, useScanEvents, useScanRunning, useScanStore, useStopScan } from "../api/scan";
 import { isLegacyChampionMod, type ManagerNote, noteOf } from "../legacy";
+import { hasPaste, movesToPremium, originText, slotText } from "../scan";
 
 const headClass = "px-3 py-2 text-left text-xs font-medium text-surface-400 select-none";
 const cellClass = "px-3 py-2 align-top";
@@ -32,6 +41,29 @@ function archivesOf(mods: readonly ManagerMod[]): string[] {
   return mods.map((mod) => mod.archive).filter((path): path is string => path !== null);
 }
 
+/** A scanned mod's origin, a line per unit: where its work comes from and where a port lands it. */
+function OriginCell({ row }: { row: BatchRow | undefined }) {
+  if (!row) {
+    return null;
+  }
+  if (row.outcome.outcome !== "scanned" || row.units.length === 0) {
+    return <span className="text-surface-500">{m.manager_scan_no_verdict()}</span>;
+  }
+  return (
+    <span className="flex flex-col gap-0.5">
+      {row.units.map((unit, index) => (
+        <span key={index} className={hasPaste(row) ? "text-warning-text" : "text-surface-300"}>
+          {m.manager_origin_line({
+            character: unit.character,
+            origin: originText(unit),
+            landing: slotText(unit.chosen),
+          })}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Whether a mod's name, slug, version or a champion holds the text, whatever the case. */
 export function matchesFilter(mod: ManagerMod, text: string): boolean {
   const needle = text.trim().toLowerCase();
@@ -48,16 +80,37 @@ export function matchesFilter(mod: ManagerMod, text: string): boolean {
  * Fantomes of champion mods ticked, and the ticked archives handed to the Batch page.
  */
 export function ManagerPage() {
+  useScanEvents();
   const library = useManagerLibrary();
   const addArchives = useBatchStore((state) => state.addArchives);
   const navigate = useNavigate();
+  const scan = useScan();
+  const stopScan = useStopScan();
+  const scanning = useScanRunning();
+  const busy = useJobRunning();
+  const scanRows = useScanStore((state) => state.rows);
+  const scanAt = useScanStore((state) => state.at);
+  const stopping = useScanStore((state) => state.stopping);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
+  const [pastesOnly, setPastesOnly] = useState(false);
   const mods = library.data?.mods ?? [];
   // The filter narrows what is shown, and "all" ticks what is shown: a few are picked by
   // typing a name, ticking all, then another.
-  const shown = mods.filter((mod) => matchesFilter(mod, filter));
+  const shown = mods.filter((mod) => {
+    if (!matchesFilter(mod, filter)) {
+      return false;
+    }
+    const row = mod.archive === null ? undefined : scanRows[mod.archive];
+    return !pastesOnly || (row !== undefined && hasPaste(row));
+  });
   const tickable = shown.filter((mod) => mod.archive !== null);
+  const scanned = Object.values(scanRows);
+  const counts = {
+    scanned: scanned.length,
+    pastes: scanned.filter(hasPaste).length,
+    moved: scanned.filter(movesToPremium).length,
+  };
 
   // The default ticks are taken each time the library is read.
   useEffect(() => {
@@ -120,16 +173,56 @@ export function ManagerPage() {
           <Button size="sm" variant="outline" disabled={mods.length === 0} onClick={tickLegacy}>
             {m.manager_tick_legacy_action()}
           </Button>
+          {scanning ? (
+            <Button
+              size="sm"
+              variant="outline"
+              left={<StopIcon weight="bold" />}
+              loading={stopping}
+              onClick={() => stopScan.mutate()}
+            >
+              {m.manager_scan_stop_action()}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              left={<ScanIcon weight="bold" />}
+              disabled={ticked.size === 0 || busy}
+              onClick={() => scan.mutate([...ticked])}
+              data-ui="ManagerPage:scan"
+            >
+              {m.manager_scan_action({ count: ticked.size })}
+            </Button>
+          )}
           <Button
             variant="filled"
             left={<QueueIcon weight="bold" />}
-            disabled={ticked.size === 0}
+            disabled={ticked.size === 0 || busy}
             onClick={toBatch}
           >
             {m.manager_to_batch_action({ count: ticked.size })}
           </Button>
         </div>
       </div>
+      {scan.isError && <FailureNote failure={scan.error} />}
+      {scanAt && (
+        <div className="flex flex-col gap-2" data-ui="ManagerPage:progress">
+          <p className="truncate text-sm text-surface-200 select-none">
+            {m.manager_scan_progress({
+              number: scanAt.index + 1,
+              total: scanAt.total,
+              archive: scanAt.archive,
+            })}
+          </p>
+          <div className="h-1.5 overflow-hidden rounded-full bg-surface-800">
+            <div
+              className="h-full bg-accent-500 transition-[width]"
+              style={{ width: `${(scanAt.index / scanAt.total) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
       {library.isPending && <Spinner />}
       {library.isError && <FailureNote failure={library.error} />}
       {library.isSuccess && mods.length === 0 && (
@@ -148,12 +241,19 @@ export function ManagerPage() {
               className="h-8 min-w-0 flex-1 bg-transparent text-sm text-surface-100 outline-none placeholder:text-surface-500"
             />
           </label>
+          <Checkbox
+            checked={pastesOnly}
+            onCheckedChange={setPastesOnly}
+            label={m.manager_pastes_only_label()}
+            className="text-surface-300"
+          />
           <p className="text-xs text-surface-400 select-none">
             {m.manager_ticked_label({
               ticked: ticked.size,
               shown: shown.length,
               total: mods.length,
             })}
+            {counts.scanned > 0 && ` · ${m.manager_scan_counts(counts)}`}
           </p>
         </div>
       )}
@@ -172,6 +272,7 @@ export function ManagerPage() {
                 <th className={headClass}>{m.manager_table_version_label()}</th>
                 <th className={headClass}>{m.manager_table_champions_label()}</th>
                 <th className={headClass}>{m.manager_table_note_label()}</th>
+                <th className={headClass}>{m.manager_table_origin_label()}</th>
                 <th className={headClass}>{m.manager_table_installed_label()}</th>
               </tr>
             </thead>
@@ -206,6 +307,9 @@ export function ManagerPage() {
                     </td>
                     <td className={twMerge(cellClass, "text-xs text-surface-400")}>
                       {note ? noteLabel(note) : m.manager_note_legacy()}
+                    </td>
+                    <td className={twMerge(cellClass, "text-xs")}>
+                      <OriginCell row={path === null ? undefined : scanRows[path]} />
                     </td>
                     <td
                       className={twMerge(cellClass, "text-xs whitespace-nowrap text-surface-400")}

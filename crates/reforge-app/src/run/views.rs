@@ -207,6 +207,14 @@ pub struct OriginView {
     /// The premium skin, for a premium origin.
     #[serde(default)]
     pub slot: Option<u16>,
+    /// The weight of the evidence that decided, `strong` or `weak`. None when none did.
+    #[serde(default)]
+    pub strength: Option<String>,
+    /// The aspects of the strong evidence that points at the verdict's skin, as the library
+    /// names them: `mesh`, `skeleton`, `skin-name`, `audio-tag`, `resolver`, `graph` and the
+    /// rest. Empty for a verdict no strong evidence decided.
+    #[serde(default)]
+    pub evidence: Vec<String>,
 }
 
 /// One check of a candidate slot.
@@ -411,7 +419,36 @@ pub(crate) struct ReportParts {
     pub targets: Option<TargetsView>,
     #[serde(default)]
     pub package: Option<PackageRow>,
+    #[serde(default)]
+    pub facts: Option<FactsRows>,
     pub diagnostics: Vec<Finding>,
+}
+
+/// The facts of the report the views read: each unit's origin with its evidence.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub(crate) struct FactsRows {
+    #[serde(default)]
+    pub origins: Vec<OriginRow>,
+}
+
+/// A unit's origin as the report writes it.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct OriginRow {
+    pub unit: String,
+    #[serde(default)]
+    pub slot: Option<u16>,
+    #[serde(default)]
+    pub strength: Option<String>,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRow>,
+}
+
+/// One piece of a unit's origin evidence as the report writes it.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct EvidenceRow {
+    pub aspect: String,
+    pub slot: u16,
+    pub weight: String,
 }
 
 impl ReportParts {
@@ -443,9 +480,25 @@ impl ReportParts {
     /// The decisions, each with its character's name.
     pub fn named_targets(&mut self) -> Option<TargetsView> {
         let mut targets = self.targets.take()?;
+        let origins = self
+            .facts
+            .as_ref()
+            .map_or(&[][..], |facts| &facts.origins[..]);
         for decision in &mut targets.decisions {
             let name = self.characters.iter().find(|c| c.id == decision.character);
             decision.character_name = name.map_or_else(String::new, |c| c.spelled.clone());
+            // The facts say what the verdict rests on: the strong evidence for its skin, the
+            // base at slot 0.
+            if let Some(origin) = origins.iter().find(|o| o.unit == decision.unit) {
+                let skin = decision.origin.slot.or(origin.slot).unwrap_or(0);
+                decision.origin.strength = origin.strength.clone();
+                decision.origin.evidence = origin
+                    .evidence
+                    .iter()
+                    .filter(|e| e.weight == "strong" && e.slot == skin)
+                    .map(|e| e.aspect.clone())
+                    .collect();
+            }
         }
         Some(targets)
     }

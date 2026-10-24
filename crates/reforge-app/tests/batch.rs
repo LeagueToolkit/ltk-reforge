@@ -122,6 +122,7 @@ impl Bench {
         fs::write(&writes, own_mod().build()).unwrap();
         BatchRequest {
             kind: RunKind::Repair,
+            through: StageName::Write,
             archives: [unreadable, halts, writes].map(String::from).to_vec(),
             settings: RunSettings::default(),
             out: Some(self.folder.path("out").to_string()),
@@ -195,6 +196,49 @@ fn each_archive_of_a_batch_is_a_row_of_its_own_runs_answer() {
             (2, true)
         ]
     );
+}
+
+/// #ADR-0107: a batch through `decide` scans the mods' origins, writes nothing and keeps no
+/// run.
+#[test]
+fn a_batch_through_decide_answers_each_units_origin_and_writes_nothing() {
+    let bench = Bench::new();
+    let mut request = bench.request();
+    request.kind = RunKind::Port;
+    request.through = StageName::Decide;
+
+    let view = bench.run(&request, &Cancel::default(), &mut |_| {});
+
+    let outcomes: Vec<&Outcome> = view.rows.iter().map(|row| &row.outcome).collect();
+    assert_eq!(
+        outcomes,
+        [
+            &Outcome::Unreadable,
+            &Outcome::Halted {
+                code: "archive.no-skin".to_string()
+            },
+            &Outcome::Scanned
+        ]
+    );
+    let scanned = &view.rows[2];
+    assert_eq!((scanned.package.as_deref(), scanned.saved), (None, None));
+    assert!(bench.store.list().unwrap().is_empty());
+    let [unit] = &scanned.units[..] else {
+        panic!("one unit decided: {:?}", scanned.units);
+    };
+    assert_eq!((unit.character.as_str(), unit.source), ("test", 0));
+    assert!(
+        ["base", "premium", "custom", "unknown"].contains(&unit.origin.verdict.as_str()),
+        "{:?}",
+        unit.origin
+    );
+    assert!(
+        unit.origin.strength.is_none() || !unit.origin.evidence.is_empty(),
+        "{:?}",
+        unit.origin
+    );
+    let out = bench.folder.path("out");
+    assert!(!out.exists() || fs::read_dir(&out).unwrap().next().is_none());
 }
 
 #[test]

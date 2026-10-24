@@ -130,6 +130,7 @@ export function BatchPage() {
   const start = () => {
     const request: BatchRequest = {
       kind,
+      through: "write",
       archives,
       settings: runSettings(runPageSettings ? forEveryMod(advanced) : STANDARD),
       out: chosenOut ?? null,

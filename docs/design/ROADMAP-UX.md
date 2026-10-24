@@ -698,6 +698,15 @@ again" reads the library again. "Port N in a batch" adds the ticked archives to 
 page's list and goes there; the batch's kind, settings and Start stay the Batch page's. A mod
 with no archive is listed and has no box.
 
+"Find premium pastes" (#ADR-0107) runs the ticked mods as a batch of ports through `decide`
+(`run_batch` with `through`), which writes nothing and keeps no run, with a progress line and
+Stop. Its rows fill an origin column, a line per unit: where the unit's work comes from with
+the aspects that decided (`paste of skin 20 (mesh, skeleton)`, `base (resolver)`, `own
+work`), then where a port lands it (`→ base`, `→ skin 20`). A paste is a premium origin on
+strong mesh or skeleton evidence, shown in the warning tone; "Pastes only" narrows the table
+to them, and a line counts the mods scanned, the pastes and the ports that would move to a
+premium skin. The rows stay, by archive, until the library is read again.
+
 ## The history index
 
 #ADR-0047. To build, in this order:

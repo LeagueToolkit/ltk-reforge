@@ -63,6 +63,8 @@ fn decision(
         origin: OriginView {
             verdict: "custom".to_string(),
             slot: None,
+            strength: None,
+            evidence: Vec::new(),
         },
         candidates,
         alternatives: Vec::new(),

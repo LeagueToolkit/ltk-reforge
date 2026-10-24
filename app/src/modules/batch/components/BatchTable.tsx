@@ -18,6 +18,7 @@ const toneClass: Record<OutcomeTone, string> = {
 function outcomeLabel(outcome: Outcome): string {
   return match(outcome)
     .with({ outcome: "written" }, () => m.batch_outcome_written())
+    .with({ outcome: "scanned" }, () => m.batch_outcome_scanned())
     .with({ outcome: "refused" }, () => m.batch_outcome_refused())
     .with({ outcome: "halted" }, () => m.batch_outcome_halted())
     .with({ outcome: "cancelled" }, ({ stage }) =>

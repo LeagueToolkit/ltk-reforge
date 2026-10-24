@@ -21,6 +21,9 @@ function outcomeText(row: BatchRow): string {
     .with({ outcome: "written" }, () =>
       row.units.length > 0 ? row.units.map(unitText).join(", ") : "written",
     )
+    .with({ outcome: "scanned" }, () =>
+      row.units.length > 0 ? row.units.map(unitText).join(", ") : "scanned",
+    )
     .with({ outcome: "refused" }, () => "refused")
     .with({ outcome: "halted" }, () => "halted")
     .with({ outcome: "fault" }, () => "failed")

@@ -11,7 +11,7 @@ export type OutcomeTone = "success" | "warning" | "danger" | "muted";
  */
 export function outcomeTone(outcome: Outcome): OutcomeTone {
   return match(outcome)
-    .with({ outcome: "written" }, () => "success" as const)
+    .with({ outcome: "written" }, { outcome: "scanned" }, () => "success" as const)
     .with({ outcome: "refused" }, { outcome: "halted" }, () => "warning" as const)
     .with({ outcome: "fault" }, { outcome: "unreadable" }, () => "danger" as const)
     .with({ outcome: "cancelled" }, () => "muted" as const)

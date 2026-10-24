@@ -16,7 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 use crate::inputs::{Choice, Inputs};
-use crate::run::{self, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, Watch};
+use crate::run::{
+    self, OriginView, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, Watch,
+};
 use crate::settings::PackageFormat;
 use crate::state::OpenInputs;
 use crate::store::AppStore;
@@ -59,12 +61,18 @@ pub fn list_archives(folder: &Utf8Path) -> Result<Vec<String>, AppError> {
     Ok(archives)
 }
 
-/// What the front end asks a batch to do. Every archive runs through `write`.
+/// What the front end asks a batch to do. Every archive runs through the stage asked,
+/// `write` unless another is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct BatchRequest {
     /// A repair or a port, of every archive.
     #[serde(default)]
     pub kind: RunKind,
+    /// The last stage every archive runs through. `write` writes a package per archive; an
+    /// earlier stage, `decide` for a scan of the mods' origins (#ADR-0107), writes none and
+    /// keeps no run.
+    #[serde(default = "write_stage")]
+    pub through: StageName,
     /// The archives, in the order they run.
     pub archives: Vec<String>,
     /// The settings of every run.
@@ -76,12 +84,19 @@ pub struct BatchRequest {
     pub format: PackageFormat,
 }
 
+/// The stage a batch runs through unless asked otherwise.
+fn write_stage() -> StageName {
+    StageName::Write
+}
+
 /// How one archive's run ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum Outcome {
     /// The package was written.
     Written,
+    /// The run ran through the stage asked, before `write`, with nothing written.
+    Scanned,
     /// A finding the settings block refused the write.
     Refused,
     /// A fatal finding ended the run after `read`.
@@ -137,6 +152,8 @@ pub struct BatchUnit {
     pub source: u16,
     /// The slot it went to. None: left to the game.
     pub chosen: Option<u16>,
+    /// Where its work comes from.
+    pub origin: OriginView,
 }
 
 /// One archive of a batch and how its run ended.
@@ -249,9 +266,12 @@ fn out_of(request: &BatchRequest, archive: &str) -> String {
 }
 
 /// How a run ended, from its view.
-fn outcome_of(view: &RunView) -> Outcome {
+fn outcome_of(view: &RunView, through: StageName) -> Outcome {
     if view.written.is_some() {
         return Outcome::Written;
+    }
+    if through != StageName::Write && run::reached(view, through) {
+        return Outcome::Scanned;
     }
     if let Some(stage) = view.cancelled {
         return Outcome::Cancelled { stage };
@@ -295,15 +315,17 @@ struct Batch<'a> {
 }
 
 impl Batch<'_> {
-    /// Runs one archive through `write`, and answers its row. A run that does not start is
-    /// the row's fault.
+    /// Runs one archive through the stage asked, and answers its row. A run that does not
+    /// start is the row's fault.
     fn run_one(&self, inputs: &Inputs, index: usize, archive: &str) -> BatchRow {
+        let through = self.request.through;
+        let writes = through == StageName::Write;
         let request = RunRequest {
             kind: self.request.kind,
             archive: archive.to_string(),
-            through: StageName::Write,
+            through,
             settings: self.request.settings.clone(),
-            out: Some(out_of(self.request, archive)),
+            out: writes.then(|| out_of(self.request, archive)),
             format: self.request.format,
             keep: false,
         };
@@ -322,6 +344,7 @@ impl Batch<'_> {
                             character: decision.character_name.clone(),
                             source: decision.source,
                             chosen: decision.chosen,
+                            origin: decision.origin.clone(),
                         })
                         .collect()
                 });
@@ -329,7 +352,7 @@ impl Batch<'_> {
                 BatchRow {
                     index,
                     archive: file_name(archive),
-                    outcome: outcome_of(&view),
+                    outcome: outcome_of(&view, through),
                     name: meta.and_then(|meta| meta.name.clone()),
                     author: meta.and_then(|meta| meta.author.clone()),
                     version: meta.and_then(|meta| meta.version.clone()),

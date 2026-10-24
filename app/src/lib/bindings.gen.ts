@@ -514,10 +514,19 @@ export type BatchProgress = {
 	row: BatchRow | null,
 };
 
-/**  What the front end asks a batch to do. Every archive runs through `write`. */
+/**
+ *  What the front end asks a batch to do. Every archive runs through the stage asked,
+ *  `write` unless another is.
+ */
 export type BatchRequest = {
 	/**  A repair or a port, of every archive. */
 	kind?: RunKind,
+	/**
+	 *  The last stage every archive runs through. `write` writes a package per archive; an
+	 *  earlier stage, `decide` for a scan of the mods' origins (#ADR-0107), writes none and
+	 *  keeps no run.
+	 */
+	through?: StageName,
 	/**  The archives, in the order they run. */
 	archives: string[],
 	/**  The settings of every run. */
@@ -565,6 +574,8 @@ export type BatchUnit = {
 	source: number,
 	/**  The slot it went to. None: left to the game. */
 	chosen: number | null,
+	/**  Where its work comes from. */
+	origin: OriginView,
 };
 
 /**  A batch as it ended. */
@@ -1596,12 +1607,22 @@ export type OriginView = {
 	verdict: string,
 	/**  The premium skin, for a premium origin. */
 	slot?: number | null,
+	/**  The weight of the evidence that decided, `strong` or `weak`. None when none did. */
+	strength?: string | null,
+	/**
+	 *  The aspects of the strong evidence that points at the verdict's skin, as the library
+	 *  names them: `mesh`, `skeleton`, `skin-name`, `audio-tag`, `resolver`, `graph` and the
+	 *  rest. Empty for a verdict no strong evidence decided.
+	 */
+	evidence?: string[],
 };
 
 /**  How one archive's run ended. */
 export type Outcome = 
 /**  The package was written. */
 { outcome: "written" } | 
+/**  The run ran through the stage asked, before `write`, with nothing written. */
+{ outcome: "scanned" } | 
 /**  A finding the settings block refused the write. */
 { outcome: "refused" } | 
 /**  A fatal finding ended the run after `read`. */

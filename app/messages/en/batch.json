@@ -29,6 +29,7 @@
   "batch_outcome_halted": "Halted",
   "batch_outcome_refused": "Refused",
   "batch_outcome_unreadable": "Does not read",
+  "batch_outcome_scanned": "Scanned",
   "batch_outcome_written": "Written",
   "batch_page_description": "Runs every mod of the list through every stage with one set of settings, one after another, and writes a package for each that passes.",
   "batch_page_title": "Batch",

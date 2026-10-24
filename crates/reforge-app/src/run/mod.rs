@@ -618,7 +618,7 @@ fn run_with(
 }
 
 /// Whether a run ended at `through` with that stage run: not halted, stopped or faulted.
-fn reached(view: &RunView, through: StageName) -> bool {
+pub(crate) fn reached(view: &RunView, through: StageName) -> bool {
     let ended = view.halted.is_none() && view.cancelled.is_none() && view.fault.is_none();
     let ran = (view.stages.iter()).any(|s| s.stage == through && s.state == StageState::Ran);
     ended && ran
@@ -884,6 +884,8 @@ pub fn view_of_evidence(kind: RunKind, evidence: &EvidenceDoc, meta: ModView) ->
             origin: OriginView {
                 verdict: "unknown".to_string(),
                 slot: None,
+                strength: None,
+                evidence: Vec::new(),
             },
             candidates: Vec::new(),
             alternatives: Vec::new(),
