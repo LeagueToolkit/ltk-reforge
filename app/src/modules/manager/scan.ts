@@ -99,7 +99,10 @@ export function aspectText(aspect: string): string {
 /** A unit's origin in a few words: `paste of skin 20 (mesh, skeleton)`, `base`, `own work`. */
 export function originText(unit: BatchUnit): string {
   const { verdict, slot, evidence } = unit.origin;
-  const by = evidence && evidence.length > 0 ? ` (${evidence.map(aspectText).join(", ")})` : "";
+  // Two aspects read as one word to a person (the graph and its closeness), so a word is said
+  // once.
+  const words = [...new Set((evidence ?? []).map(aspectText))];
+  const by = words.length > 0 ? ` (${words.join(", ")})` : "";
   switch (verdict) {
     case "premium": {
       const skin = slotText(slot ?? null);

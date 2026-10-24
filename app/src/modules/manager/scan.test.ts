@@ -62,6 +62,19 @@ describe("originText", () => {
     expect(originText(unit({ verdict: "custom" }))).toBe("own work");
     expect(originText(unit({}))).toBe("unknown");
   });
+
+  it("says a word once when two aspects read as one", () => {
+    expect(
+      originText(
+        unit({
+          verdict: "premium",
+          slot: 20,
+          strength: "strong",
+          evidence: ["graph", "mesh", "graph-closeness"],
+        }),
+      ),
+    ).toBe("paste of skin 20 (graph, mesh)");
+  });
 });
 
 describe("movesToPremium", () => {
