@@ -244,8 +244,11 @@ impl Linking<'_, '_> {
             let (PropertyValueEnum::Hash(key), Some(target)) = (key, value::as_link(target)) else {
                 continue;
             };
-            let spelled = self.inputs.names.hash(key.value);
-            let Some(spelled) = spelled.or_else(|| self.inputs.names.entry(key.value)) else {
+            let Some(key) = value::entry_hash(key.value) else {
+                continue;
+            };
+            let spelled = self.inputs.names.hash(key);
+            let Some(spelled) = spelled.or_else(|| self.inputs.names.entry(key)) else {
                 continue;
             };
             let named = carried.iter().find(|&&o| self.objects.entry(o) == target);

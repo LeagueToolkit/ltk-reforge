@@ -17,20 +17,19 @@ reforge-magic = { path = "crates/reforge-magic" }
 reforge-testkit = { path = "crates/reforge-testkit" }
 
 # LeagueToolkit crates: every League format goes through these and nothing else.
-ltk_hash = "0.4"
-ltk_primitives = "0.3"
-ltk_io_ext = "0.4.4"
-ltk_file = "0.2.11"
-ltk_wad = "0.5.4"
-ltk_meta = "0.8.6"
-ltk_mesh = "0.4.6"
-ltk_anim = "0.3.7"
-# The shader cache's tables of contents. 0.3.10 has the same source and needs an ltk_io_ext newer
-# than the commit patched in below.
-ltk_shader = "=0.3.8"
+ltk_hash = { version = "0.5", features = ["serde"] }
+ltk_primitives = "0.3.8"
+ltk_io_ext = "0.4.9"
+ltk_file = "0.2.13"
+ltk_wad = "0.5.10"
+ltk_meta = "0.9.1"
+ltk_mesh = "0.5.5"
+ltk_anim = "0.3.12"
+# The shader cache's tables of contents.
+ltk_shader = "0.3.11"
 # Later milestones, declared now so the versions agree from the start.
-ltk_ritobin = "0.9.0"
-ltk_texture = "0.6.1"
+ltk_ritobin = "0.12.0"
+ltk_texture = "0.6.6"
 ltk_game_data = "0.7.2"
 ltk_mod_project = "0.15.2"
 ltk_modpkg = "0.12.5"
@@ -123,17 +122,7 @@ parking_lot = "0.12"
 # A package's thumbnail sent to the window as a `data:` URL.
 base64 = "0.22"
 
-# ltk_ritobin as census-sync reads and writes the census history's bin entries,
-# LeagueToolkit/league-toolkit#269 at 521a875, until it is released: the release before it reads
-# 2.3% of the entries at 16.19.8207193 wrong (exponent floats in an `mtx44`, a null pointer before
-# a field). The crates its types are made of come from the same commit, so the build holds one
-# ltk_meta and one ltk_hash.
 [patch.crates-io]
-ltk_ritobin = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
-ltk_meta = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
-ltk_hash = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
-ltk_primitives = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
-ltk_io_ext = { git = "https://github.com/LeagueToolkit/league-toolkit", rev = "521a875e7c281da1ef98fad93dd822ae8b68f430" }
 # LeagueToolkit/league-mod#302 at 1fbf4c8, until it is released: the release before it orders the
 # chunks of one WAD and layer as a HashMap gives them, so two writes of one package differ. Every
 # league-mod crate the workspace uses comes from the same commit, so the build holds one of each.

@@ -9,6 +9,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 use indexmap::IndexMap;
+use ltk_hash::HashValue;
 use ltk_meta::path::{FieldNames, FloatBits, MapKey, ValuePath, ValueSegment};
 use ltk_meta::walk::{Node, NodeRefMut, Trail, TreeNode, Visit, Visitor, VisitorMut};
 use ltk_meta::{BinObject, PropertyValueEnum};
@@ -157,7 +158,10 @@ pub enum Key {
     Matrix44([u32; 16]),
     Color([u8; 4]),
     String(String),
+    /// A 4-byte hash.
     Hash(u32),
+    /// An 8-byte hash.
+    WideHash(u64),
     File(u64),
 }
 
@@ -182,7 +186,10 @@ impl Key {
             MapKey::Matrix44(v) => Key::Matrix44(v.map(bits)),
             MapKey::Color(c) => Key::Color([c.r, c.g, c.b, c.a]),
             MapKey::String(v) => Key::String(v.clone()),
-            MapKey::Hash(v) => Key::Hash(v.0),
+            MapKey::Hash(v) => match v.try_as_u32() {
+                Some(narrow) => Key::Hash(narrow),
+                None => Key::WideHash(v.as_u64()),
+            },
             MapKey::File(v) => Key::File(v.0),
         }
     }
@@ -212,7 +219,8 @@ impl Key {
                 a: *a,
             }),
             Key::String(v) => MapKey::String(v.clone()),
-            Key::Hash(v) => MapKey::Hash(BinHash(*v)),
+            Key::Hash(v) => MapKey::Hash(HashValue::narrow(*v)),
+            Key::WideHash(v) => MapKey::Hash(HashValue::wide(*v)),
             Key::File(v) => MapKey::File(WadHash(*v)),
         }
     }

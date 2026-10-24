@@ -80,7 +80,12 @@ fn classes(run: &FixRun<'_>) -> Vec<(BinHash, BinHash)> {
         panic!("the clip holds no map of events");
     };
     let rows = map.entries().iter().map(|(key, event)| match (key, event) {
-        (V::Hash(key), V::Struct(event)) => (key.value, event.class_hash),
+        (V::Hash(key), V::Struct(event)) => (
+            key.value
+                .try_as_bin_hash()
+                .expect("an event key is a 4-byte hash"),
+            event.class_hash,
+        ),
         other => panic!("an event of another shape: {other:?}"),
     });
     rows.collect()

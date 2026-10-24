@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Cursor;
 
+use ltk_hash::HashValue;
 use ltk_meta::{BinObject, PropertyKind as Kind, PropertyValueEnum};
 use sha2::{Digest, Sha256};
 
@@ -36,12 +37,20 @@ pub fn map_keys(object: &BinObject, field: &str) -> Vec<BinHash> {
             .entries()
             .iter()
             .filter_map(|(k, _)| match k {
-                PropertyValueEnum::Hash(h) => Some(h.value),
+                PropertyValueEnum::Hash(h) => entry_hash(h.value),
                 _ => None,
             })
             .collect(),
         _ => Vec::new(),
     }
+}
+
+/// The entry hash a `Hash` value can be: a 4-byte one.
+///
+/// An entry's hash is 4 bytes wide, so an 8-byte value names no entry, matches no entry's
+/// rename and spells through no entry table.
+pub fn entry_hash(value: HashValue) -> Option<BinHash> {
+    value.try_as_bin_hash()
 }
 
 /// The text of a string value, through an option.
@@ -57,7 +66,7 @@ pub fn as_str(value: &PropertyValueEnum) -> Option<&str> {
 pub fn as_link(value: &PropertyValueEnum) -> Option<BinHash> {
     match value {
         PropertyValueEnum::ObjectLink(l) if l.value.0 != 0 => Some(l.value),
-        PropertyValueEnum::Hash(h) if h.value.0 != 0 => Some(h.value),
+        PropertyValueEnum::Hash(h) => entry_hash(h.value).filter(|h| h.0 != 0),
         PropertyValueEnum::Optional(o) => o.value().and_then(as_link),
         _ => None,
     }
@@ -243,7 +252,11 @@ pub fn rename_hashes(object: &BinObject, renames: &[(BinHash, BinHash)]) -> BinO
     for value in out.properties.values_mut() {
         each_mut(value, &mut |v| match v {
             PropertyValueEnum::ObjectLink(l) => l.value = map(l.value),
-            PropertyValueEnum::Hash(h) => h.value = map(h.value),
+            PropertyValueEnum::Hash(h) => {
+                if let Some(entry) = entry_hash(h.value) {
+                    h.value = map(entry).into();
+                }
+            }
             _ => {}
         });
     }
@@ -264,7 +277,11 @@ pub fn rename_hashes_by(
     for value in out.properties.values_mut() {
         each_mut(value, &mut |v| match v {
             PropertyValueEnum::ObjectLink(l) => l.value = map(l.value),
-            PropertyValueEnum::Hash(h) if !keep(h.value) => h.value = map(h.value),
+            PropertyValueEnum::Hash(h) => {
+                if let Some(entry) = entry_hash(h.value).filter(|&entry| !keep(entry)) {
+                    h.value = map(entry).into();
+                }
+            }
             _ => {}
         });
     }
@@ -279,7 +296,9 @@ pub fn names_any(object: &BinObject, hashes: &HashSet<BinHash>) -> bool {
     let mut found = false;
     walk_object(object, &mut |v| match v {
         PropertyValueEnum::ObjectLink(l) => found |= hashes.contains(&l.value),
-        PropertyValueEnum::Hash(h) => found |= hashes.contains(&h.value),
+        PropertyValueEnum::Hash(h) => {
+            found |= entry_hash(h.value).is_some_and(|entry| hashes.contains(&entry));
+        }
         _ => {}
     });
     found
@@ -460,7 +479,7 @@ pub fn brief(value: &PropertyValueEnum, names: &dyn Spell) -> String {
             format!("{head:?}...")
         }
         V::String(v) => format!("{:?}", v.value),
-        V::Hash(v) => format!("{:08x}", v.value.0),
+        V::Hash(v) => format!("{:x}", v.value),
         V::ObjectLink(v) => names.entry_or_hex(v.value),
         V::WadChunkLink(v) => names.path_or_hex(v.value),
         V::Struct(s) => strukt(s),

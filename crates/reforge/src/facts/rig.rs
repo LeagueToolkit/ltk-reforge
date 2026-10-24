@@ -325,7 +325,9 @@ fn shown_submeshes(graph: &BinObject) -> (HashSet<String>, HashSet<u32>) {
                     spelled.insert(text.value.to_ascii_lowercase());
                 }
                 PropertyValueEnum::Hash(hash) => {
-                    hashed.insert(hash.value.0);
+                    if let Some(narrow) = hash.value.try_as_u32() {
+                        hashed.insert(narrow);
+                    }
                 }
                 _ => {}
             }

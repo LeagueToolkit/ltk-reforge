@@ -3495,15 +3495,15 @@ dependencies = [
 
 [[package]]
 name = "ltk_anim"
-version = "0.3.10"
+version = "0.3.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff2e67c41354bbfdad70c0e09f2ae71d341b4da5eb45c409aa4f520cdd40c2a"
+checksum = "35f24a7d442b20dd8747212a304d86187f4fccb410cd7eac74a0fb43d5653113"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
  "byteorder",
  "glam",
- "ltk_hash",
+ "ltk_hash 0.5.1",
  "ltk_io_ext",
  "num_enum",
  "thiserror 1.0.69",
@@ -3511,9 +3511,9 @@ dependencies = [
 
 [[package]]
 name = "ltk_file"
-version = "0.2.11"
+version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bcd3964b2671ccf16dfc5e4adb9bd1d724793bb303332aa86588eb5250e5604"
+checksum = "13ddfc374f1983db2cc14e6017c848b42ee41394d3df3fc08afd22db6dc6424d"
 dependencies = [
  "strum",
 ]
@@ -3526,8 +3526,8 @@ dependencies = [
  "camino",
  "glam",
  "indexmap 2.14.2",
- "ltk_hash",
- "ltk_meta",
+ "ltk_hash 0.4.0",
+ "ltk_meta 0.8.6",
  "ltk_primitives",
  "serde",
  "serde-saphyr",
@@ -3540,7 +3540,19 @@ dependencies = [
 [[package]]
 name = "ltk_hash"
 version = "0.4.0"
-source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=521a875e7c281da1ef98fad93dd822ae8b68f430#521a875e7c281da1ef98fad93dd822ae8b68f430"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ada44666d233f89786fdfd6784346a140ddfc7c31d31ac23dfa7b066f9fbe41b"
+dependencies = [
+ "byteorder",
+ "serde",
+ "xxhash-rust",
+]
+
+[[package]]
+name = "ltk_hash"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63c57a6d50b0b2a0e4121f791508d8a999ad6c92d3c78a547da119054c802b6a"
 dependencies = [
  "byteorder",
  "serde",
@@ -3565,15 +3577,16 @@ version = "0.1.3"
 source = "git+https://github.com/LeagueToolkit/league-mod?rev=1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a#1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a"
 dependencies = [
  "camino",
- "ltk_hash",
+ "ltk_hash 0.4.0",
  "serde",
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "ltk_io_ext"
-version = "0.4.7"
-source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=521a875e7c281da1ef98fad93dd822ae8b68f430#521a875e7c281da1ef98fad93dd822ae8b68f430"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7d8109559ce8fd5c364be0c793d51f658a6c2d5afb35ffb8b8ce7f8731d3b7"
 dependencies = [
  "byteorder",
  "glam",
@@ -3583,13 +3596,14 @@ dependencies = [
 
 [[package]]
 name = "ltk_mesh"
-version = "0.4.6"
+version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a05eed66667b67fcc0cc7900bf8b85f9ccb8883cb590b4da468cbc42c22f500"
+checksum = "569c1d9eb15f069a2fdea97587de06402c2254884087e1b26aec862d8c7d1a96"
 dependencies = [
  "bitflags 2.13.2",
  "byteorder",
  "glam",
+ "half",
  "lazy_static",
  "ltk_io_ext",
  "ltk_primitives",
@@ -3600,14 +3614,35 @@ dependencies = [
 [[package]]
 name = "ltk_meta"
 version = "0.8.6"
-source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=521a875e7c281da1ef98fad93dd822ae8b68f430#521a875e7c281da1ef98fad93dd822ae8b68f430"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a25eb8ecd8ce79a18144e316af8be673a2be4ef91a46d7e8b9e78e9dda35480"
 dependencies = [
  "byteorder",
  "enum_dispatch",
  "glam",
  "indexmap 2.14.2",
  "log",
- "ltk_hash",
+ "ltk_hash 0.4.0",
+ "ltk_io_ext",
+ "ltk_primitives",
+ "miette 7.6.0",
+ "num_enum",
+ "paste",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "ltk_meta"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdb750a2336b1a5055b330cda2e9d9c26a0c8c95cabaa4b90792857e8cce048e"
+dependencies = [
+ "byteorder",
+ "enum_dispatch",
+ "glam",
+ "indexmap 2.14.2",
+ "log",
+ "ltk_hash 0.5.1",
  "ltk_io_ext",
  "ltk_primitives",
  "miette 7.6.0",
@@ -3653,7 +3688,7 @@ dependencies = [
  "indexmap 2.14.2",
  "ltk_game_data",
  "ltk_hashtable",
- "ltk_meta",
+ "ltk_meta 0.8.6",
  "ltk_modpkg",
  "semver",
  "serde",
@@ -3685,8 +3720,9 @@ dependencies = [
 
 [[package]]
 name = "ltk_primitives"
-version = "0.3.6"
-source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=521a875e7c281da1ef98fad93dd822ae8b68f430#521a875e7c281da1ef98fad93dd822ae8b68f430"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d2ec61599fb7ad880c5b7febc317c52cc0b2aa3d18367437af007796f2ac85b"
 dependencies = [
  "byteorder",
  "glam",
@@ -3695,19 +3731,19 @@ dependencies = [
 
 [[package]]
 name = "ltk_ritobin"
-version = "0.9.0"
-source = "git+https://github.com/LeagueToolkit/league-toolkit?rev=521a875e7c281da1ef98fad93dd822ae8b68f430#521a875e7c281da1ef98fad93dd822ae8b68f430"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62d878b50a28c47c1aebfc10d842732c8c06949958f504f15685d88fa75a6ba2"
 dependencies = [
  "glam",
  "indexmap 2.14.2",
  "itertools",
- "ltk_hash",
- "ltk_meta",
+ "ltk_hash 0.5.1",
+ "ltk_meta 0.9.1",
  "ltk_primitives",
  "miette 7.6.0",
  "nom",
  "nom_locate",
- "ryu",
  "smallvec",
  "thiserror 1.0.69",
  "xxhash-rust",
@@ -3715,13 +3751,13 @@ dependencies = [
 
 [[package]]
 name = "ltk_shader"
-version = "0.3.8"
+version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd6681caadfe7e2adfc566dcbd7cf8d41a6d2a859bf8ca970379975b96379a1a"
+checksum = "74ae1d8dcd23efd8b4a7776b5ea34cc03602b3ab955104c726a7e6e09e8bd8dd"
 dependencies = [
  "byteorder",
  "itertools",
- "ltk_hash",
+ "ltk_hash 0.5.1",
  "ltk_io_ext",
  "ltk_wad",
  "thiserror 1.0.69",
@@ -3730,9 +3766,9 @@ dependencies = [
 
 [[package]]
 name = "ltk_texture"
-version = "0.6.4"
+version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20ff81b971d3fb6ca2a18166383b925795915e88465ad822f87d45453464376b"
+checksum = "a48f5ef299112ff9b72da4f92c8c290c14a3af45c74c3b72f021e7ec023ae2ed"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -3750,16 +3786,16 @@ dependencies = [
 
 [[package]]
 name = "ltk_wad"
-version = "0.5.8"
+version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48e73b005c91b13bfde7733ffa33882d3354aec9b9067b54d3681d3ba155874b"
+checksum = "3214bffc3c9f8fe7b68544975d288e8ddb58b50e2b2b724ce8584aa4a6376a94"
 dependencies = [
  "byteorder",
  "camino",
  "flate2",
  "itertools",
  "ltk_file",
- "ltk_hash",
+ "ltk_hash 0.5.1",
  "ltk_io_ext",
  "memchr",
  "num_enum",
@@ -4891,11 +4927,11 @@ dependencies = [
  "indexmap 2.14.2",
  "ltk_anim",
  "ltk_game_data",
- "ltk_hash",
+ "ltk_hash 0.5.1",
  "ltk_hashdb",
  "ltk_hashtable",
  "ltk_mesh",
- "ltk_meta",
+ "ltk_meta 0.9.1",
  "ltk_mimir_cache",
  "ltk_mod_project",
  "ltk_modpkg",
@@ -4934,7 +4970,7 @@ dependencies = [
  "image",
  "indexmap 2.14.2",
  "ltk_hashdb",
- "ltk_meta",
+ "ltk_meta 0.9.1",
  "ltk_mimir_cache",
  "ltk_mod_core",
  "ltk_modpkg",
@@ -4973,7 +5009,7 @@ dependencies = [
  "fs-err",
  "gix",
  "indexmap 2.14.2",
- "ltk_meta",
+ "ltk_meta 0.9.1",
  "ltk_ritobin",
  "rayon",
  "reforge",
@@ -5019,9 +5055,9 @@ dependencies = [
  "fs-err",
  "glam",
  "ltk_anim",
- "ltk_hash",
+ "ltk_hash 0.5.1",
  "ltk_mesh",
- "ltk_meta",
+ "ltk_meta 0.9.1",
  "ltk_wad",
  "reforge",
  "reforge-wwise",

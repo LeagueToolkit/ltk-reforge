@@ -14,7 +14,7 @@ use serde::Serialize;
 use crate::fixups::FixCx;
 use crate::game::{FieldType, NameHashError, Names, Speller};
 use crate::model::entity::Character;
-use crate::model::{Arena, BinHash, Record, WadHash, name_hash, path_hash};
+use crate::model::{Arena, BinHash, Record, WadHash, name_hash, path_hash, value};
 
 /// One way a value is put in the type the target build reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -258,7 +258,9 @@ fn retag(value: &V, want: &FieldType, names: &mut PathNames<'_>) -> Option<V> {
         (V::Bool(flag), K::BitBool) => V::BitBool(values::BitBool::new(flag.value)),
         (V::BitBool(flag), K::Bool) => V::Bool(values::Bool::new(flag.value)),
         (V::ObjectLink(link), K::Hash) => V::Hash(values::Hash::new(link.value)),
-        (V::Hash(hash), K::ObjectLink) => V::ObjectLink(values::ObjectLink::new(hash.value)),
+        (V::Hash(hash), K::ObjectLink) => {
+            V::ObjectLink(values::ObjectLink::new(value::entry_hash(hash.value)?))
+        }
         _ => return None,
     })
 }
@@ -274,10 +276,11 @@ fn rehash(value: &V, names: &mut PathNames<'_>) -> Option<V> {
     let V::Hash(hash) = value else {
         return None;
     };
-    if hash.value.0 == 0 {
+    let hash = value::entry_hash(hash.value)?;
+    if hash.0 == 0 {
         return Some(names.file(""));
     }
-    let path = names.path_named(hash.value)?;
+    let path = names.path_named(hash)?;
     Some(names.file(&path))
 }
 

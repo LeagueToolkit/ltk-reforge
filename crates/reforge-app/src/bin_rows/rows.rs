@@ -13,7 +13,7 @@ use ltk_meta::path::MapKey;
 use ltk_meta::property::values;
 use ltk_meta::walk::{Leaf, TreeValue as _};
 use reforge::game::Speller;
-use reforge::model::{BinHash, Spell, WadHash, clean};
+use reforge::model::{BinHash, Spell, WadHash, clean, value};
 
 use super::path::{
     EntryKey, HashPath, Node, Trace, as_list, dot, inlines, is_null, key_text, map_key,
@@ -137,9 +137,9 @@ pub(super) fn children_of(node: Node<'_>) -> Vec<Child<'_>> {
 /// digits. Every other kind reads as it does in the hash path.
 fn key_label(key: &PropertyValueEnum, names: &Names<'_>) -> (String, bool) {
     match map_key(key) {
-        Some(MapKey::Hash(hash)) => match names.value(hash) {
+        Some(MapKey::Hash(hash)) => match value::entry_hash(hash).and_then(|h| names.value(h)) {
             Some(name) => (json_string(&name), false),
-            None => (hex(hash), true),
+            None => (format!("0x{hash:x}"), true),
         },
         _ => (clean(&key_text(key)).into_owned(), false),
     }
@@ -291,8 +291,8 @@ impl<'a> Names<'a> {
                 value: cleaned(text.to_owned()),
             },
             Some(Leaf::Hash(hash)) => BinValue::Hash {
-                hash: hex(hash),
-                name: self.value(hash),
+                hash: format!("0x{hash:x}"),
+                name: value::entry_hash(hash).and_then(|h| self.value(h)),
             },
             Some(Leaf::File(hash)) => BinValue::WadChunkLink {
                 hash: format!("{:016x}", hash.0),
