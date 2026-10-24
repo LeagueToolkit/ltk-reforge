@@ -23,6 +23,7 @@ static INFO: FixupInfo = FixupInfo::built_in(
         Record::game_change(19),
         Record::game_change(20),
         Record::game_change(21),
+        Record::game_change(28),
         Record::mod_artifact(21),
         Record::mod_artifact(22),
     ],

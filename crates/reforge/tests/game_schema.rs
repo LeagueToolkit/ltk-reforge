@@ -73,7 +73,8 @@ fn a_type_is_read_at_a_build() {
             kind: Kind::String,
             key: None,
             item: None,
-            class: None
+            class: None,
+            width: None,
         })
     );
     assert_eq!(kind(&s, 0x10, 0xa1, 199), Some(Kind::String));
@@ -94,7 +95,8 @@ fn a_field_is_found_through_the_bases() {
             kind: Kind::Map,
             key: Some(Kind::Hash),
             item: Some(Kind::ObjectLink),
-            class: None
+            class: None,
+            width: None,
         })
     );
     // A list's second slot is not a key kind.
@@ -104,7 +106,8 @@ fn a_field_is_found_through_the_bases() {
             kind: Kind::UnorderedContainer,
             key: None,
             item: Some(Kind::Embedded),
-            class: Some(BinHash(0x30))
+            class: Some(BinHash(0x30)),
+            width: None,
         })
     );
 }

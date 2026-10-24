@@ -489,7 +489,9 @@ pub struct FixupInfo {
   calls that record what a fixup did.
 - **The target's types** are `TargetTypes`: the meta schema, else what the install's own bins
   hold for a class and field, and the install's version, `16.19`, which orders builds across
-  hotfixes where a build's number does not.
+  hotfixes where a build's number does not. A hash's stored width, 4 or 8 bytes
+  (#GAME-CHANGE-0028), is not in the schema: a field the schema declares takes it from the
+  install's bins, where they hold the field in the same kind.
 - **A change is a record.** `Change { fixup, object, path, before, after }`, where `after` is a
   value, a move to another path, removed, lost or unconvertible. A fixup writes no sentence and
   sets no flag. The object's edited state, the report's rows and the four `fixup.*` findings

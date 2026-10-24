@@ -493,6 +493,8 @@ impl History for SqliteHistory {
                     key: stored_kind(r, 1)?,
                     item: stored_kind(r, 2)?,
                     class: Some(bin_hash(r, 3)?).filter(|class| class.0 != 0),
+                    // The table holds a type's kinds and class, and no hash width.
+                    width: None,
                 })
             },
         )

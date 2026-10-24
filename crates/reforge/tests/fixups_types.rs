@@ -114,7 +114,8 @@ fn a_field_the_schema_does_not_describe_has_the_shape_the_installs_bins_hold() {
                 kind: Kind::F32,
                 key: None,
                 item: None,
-                class: None
+                class: None,
+                width: None,
             },
             TypeSource::Install
         ))
@@ -126,6 +127,7 @@ fn a_field_the_schema_does_not_describe_has_the_shape_the_installs_bins_hold() {
             key: None,
             item: Some(Kind::Embedded),
             class: Some(name_hash("Item")),
+            width: None,
         })
     );
     // A struct inside a list is witnessed as its own class.

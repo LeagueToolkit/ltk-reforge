@@ -7,6 +7,7 @@
 
 use std::fmt;
 
+use ltk_hash::{HashAlgorithm, HashWidth, Hasher};
 use ltk_meta::property::values;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum as V};
 use serde::Serialize;
@@ -26,6 +27,8 @@ pub enum Conversion {
     HashValue,
     /// The name hash of a path as the hash of the chunk the path names.
     Rehash,
+    /// A string as the 8-byte hash the build reads.
+    WideHash,
     /// A map with its keys, and its values, each converted.
     HashKey,
     /// An integer in a wider kind that holds every value of its own.
@@ -42,10 +45,11 @@ pub enum Conversion {
 
 impl Conversion {
     /// Every conversion, in the catalogue's order.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Retag,
         Self::HashValue,
         Self::Rehash,
+        Self::WideHash,
         Self::HashKey,
         Self::Widen,
         Self::Narrow,
@@ -60,6 +64,7 @@ impl Conversion {
             Self::Retag => "retag",
             Self::HashValue => "hash-value",
             Self::Rehash => "rehash",
+            Self::WideHash => "wide-hash",
             Self::HashKey => "hash-key",
             Self::Widen => "widen",
             Self::Narrow => "narrow",
@@ -75,6 +80,7 @@ impl Conversion {
             Self::Retag => "Embed and Pointer, List and List2, Bool and Flag, Link and Hash",
             Self::HashValue => "String to File",
             Self::Rehash => "Hash to File",
+            Self::WideHash => "String to Hash of 8 bytes",
             Self::HashKey => "Map to Map of other key and value kinds",
             Self::Widen => "an integer to a wider integer of every value it has",
             Self::Narrow => "an integer to any other integer",
@@ -90,6 +96,7 @@ impl Conversion {
             Self::Retag => "the same encoding under the other tag; a list's items are converted",
             Self::HashValue => "the xxh64 of the lowercased path; an empty string is the null hash",
             Self::Rehash => "the path the names spell under that name hash, hashed as a file",
+            Self::WideHash => "the xxh3-64 of the lowercased string; an empty string is left",
             Self::HashKey => "each key and each value by its own conversion; one refuses the map",
             Self::Widen => "the same number",
             Self::Narrow => "the same number, where the kind holds it",
@@ -105,9 +112,11 @@ impl Conversion {
         const FILES_AS_HASHES: &[Record] = &[Record::game_change(13)];
         const LINKS_AS_HASHES: &[Record] = &[Record::game_change(19)];
         const INTEGERS_TOO_WIDE: &[Record] = &[Record::game_change(20), Record::mod_artifact(21)];
+        const NAMES_AS_WIDE_HASHES: &[Record] = &[Record::game_change(28)];
         match self {
             Self::Retag => LINKS_AS_HASHES,
             Self::HashValue | Self::Rehash | Self::HashKey => FILES_AS_HASHES,
+            Self::WideHash => NAMES_AS_WIDE_HASHES,
             Self::Narrow => INTEGERS_TOO_WIDE,
             Self::Widen | Self::Optional | Self::NullPointer | Self::EmptyOption => &[],
         }
@@ -118,7 +127,8 @@ impl Conversion {
     pub fn at_install(self, from: Kind) -> bool {
         match self {
             Self::Retag => !matches!(from, Kind::ObjectLink | Kind::Hash),
-            Self::Narrow | Self::Optional => false,
+            // The manager's rule predates the 8-byte hash.
+            Self::Narrow | Self::Optional | Self::WideHash => false,
             _ => true,
         }
     }
@@ -134,6 +144,7 @@ impl Conversion {
             (_, K::Optional) => return None,
             (K::String, K::WadChunkLink) => Self::HashValue,
             (K::Hash, K::WadChunkLink) => Self::Rehash,
+            (K::String, K::Hash) => Self::WideHash,
             (K::None, K::Struct) => Self::NullPointer,
             (K::Embedded, K::Struct)
             | (K::Struct, K::Embedded)
@@ -155,6 +166,7 @@ impl Conversion {
             Self::Retag => retag(value, want, names),
             Self::HashValue => hash_value(value, names),
             Self::Rehash => rehash(value, names),
+            Self::WideHash => wide_hash(value, want),
             Self::HashKey => hash_key(value, want, names),
             Self::Widen => widen(value, want.kind),
             Self::Narrow => narrow(value, want.kind),
@@ -200,29 +212,31 @@ impl Int {
     }
 }
 
-/// The type of one value with no item and no class.
-fn leaf(kind: Kind) -> FieldType {
+/// The type of one item a collection of type `of` holds: a kind with no item and no class, and
+/// the collection's hash width.
+fn item_of(of: &FieldType, kind: Kind) -> FieldType {
     FieldType {
         kind,
         key: None,
         item: None,
         class: None,
+        width: of.width,
     }
 }
 
-/// One value as a kind: itself when it is of the kind, else by the conversion between the
-/// two.
-fn value_as(value: &V, to: Kind, names: &mut PathNames<'_>) -> Option<V> {
-    if value.kind() == to {
+/// One value as a type: itself when it is of the type's kind, else by the conversion between
+/// the two.
+fn value_as(value: &V, to: &FieldType, names: &mut PathNames<'_>) -> Option<V> {
+    if value.kind() == to.kind {
         return Some(value.clone());
     }
-    Conversion::between(value.kind(), to)?.apply(value, &leaf(to), names)
+    Conversion::between(value.kind(), to.kind)?.apply(value, to, names)
 }
 
-/// Every value as a kind, or none of them.
+/// Every value as a type, or none of them.
 fn values_as<'v>(
     items: impl IntoIterator<Item = &'v V>,
-    to: Kind,
+    to: &FieldType,
     names: &mut PathNames<'_>,
 ) -> Option<Vec<V>> {
     let mut items = items.into_iter();
@@ -232,13 +246,14 @@ fn values_as<'v>(
     })
 }
 
-/// A list with its items as a kind.
+/// A list of type `of` with its items as a kind.
 fn list_as(
     list: &values::Container,
+    of: &FieldType,
     item: Kind,
     names: &mut PathNames<'_>,
 ) -> Option<values::Container> {
-    let items = values_as(list.items(), item, names)?;
+    let items = values_as(list.items(), &item_of(of, item), names)?;
     values::Container::new(item, items).ok()
 }
 
@@ -249,11 +264,12 @@ fn retag(value: &V, want: &FieldType, names: &mut PathNames<'_>) -> Option<V> {
         (V::Struct(pointer), K::Embedded) => V::Embedded(values::Embedded(pointer.clone())),
         (V::Container(list), K::UnorderedContainer) => {
             let item = want.item.unwrap_or(list.item_kind());
-            V::UnorderedContainer(values::UnorderedContainer(list_as(list, item, names)?))
+            let list = list_as(list, want, item, names)?;
+            V::UnorderedContainer(values::UnorderedContainer(list))
         }
         (V::UnorderedContainer(list), K::Container) => {
             let item = want.item.unwrap_or(list.0.item_kind());
-            V::Container(list_as(&list.0, item, names)?)
+            V::Container(list_as(&list.0, want, item, names)?)
         }
         (V::Bool(flag), K::BitBool) => V::BitBool(values::BitBool::new(flag.value)),
         (V::BitBool(flag), K::Bool) => V::Bool(values::Bool::new(flag.value)),
@@ -284,14 +300,35 @@ fn rehash(value: &V, names: &mut PathNames<'_>) -> Option<V> {
     Some(names.file(&path))
 }
 
+/// The 8-byte hash of a material's name, as the client stores it (#GAME-CHANGE-0028).
+const WIDE_NAME: Hasher = Hasher {
+    width: HashWidth::W8,
+    algorithm: HashAlgorithm::Xxh3,
+    lowercased: true,
+};
+
+fn wide_hash(value: &V, want: &FieldType) -> Option<V> {
+    let V::String(text) = value else {
+        return None;
+    };
+    // #GAME-CHANGE-0028 shows the conversion for the 8-byte width alone, and no game value
+    // shows what an empty string became.
+    if want.width != Some(HashWidth::W8) || text.value.is_empty() {
+        return None;
+    }
+    Some(V::Hash(values::Hash::new(WIDE_NAME.hash_str(&text.value))))
+}
+
 fn hash_key(value: &V, want: &FieldType, names: &mut PathNames<'_>) -> Option<V> {
     let V::Map(map) = value else {
         return None;
     };
     let key = want.key.unwrap_or(map.key_kind());
     let item = want.item.unwrap_or(map.value_kind());
-    let keys = values_as(map.entries().iter().map(|(key, _)| key), key, names)?;
-    let items = values_as(map.entries().iter().map(|(_, item)| item), item, names)?;
+    let keys = map.entries().iter().map(|(key, _)| key);
+    let keys = values_as(keys, &item_of(want, key), names)?;
+    let items = map.entries().iter().map(|(_, item)| item);
+    let items = values_as(items, &item_of(want, item), names)?;
     let entries = keys.into_iter().zip(items).collect();
     values::Map::new(key, item, entries).ok().map(V::Map)
 }
@@ -337,7 +374,7 @@ fn narrow(value: &V, to: Kind) -> Option<V> {
 
 fn optional(value: &V, want: &FieldType, names: &mut PathNames<'_>) -> Option<V> {
     let item = want.item?;
-    let present = value_as(value, item, names)?;
+    let present = value_as(value, &item_of(want, item), names)?;
     let option = values::Optional::new(item, Some(present));
     option.ok().map(V::Optional)
 }
@@ -381,14 +418,14 @@ pub(super) fn conform(
             let Some(item) = other(list.item_kind(), want.item) else {
                 return Ok(None);
             };
-            let list = list_as(list, item, names).map(V::Container);
+            let list = list_as(list, want, item, names).map(V::Container);
             list.map(Some).ok_or(item)
         }
         V::UnorderedContainer(list) => {
             let Some(item) = other(list.0.item_kind(), want.item) else {
                 return Ok(None);
             };
-            let list = list_as(&list.0, item, names).map(values::UnorderedContainer);
+            let list = list_as(&list.0, want, item, names).map(values::UnorderedContainer);
             list.map(|list| Some(V::UnorderedContainer(list)))
                 .ok_or(item)
         }

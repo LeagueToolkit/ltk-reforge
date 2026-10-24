@@ -664,7 +664,11 @@ fn nested(value: &P, out: &mut Vec<ClassField>) {
 /// The types a value has: one, or of a list, an option or a map of structs one per class its
 /// items have.
 fn types(value: &P) -> impl Iterator<Item = FieldType> {
-    let ty = FieldType::of(value);
+    // The schema table holds kinds and classes: a width would make two rows of one type.
+    let ty = FieldType {
+        width: None,
+        ..FieldType::of(value)
+    };
     let items: Vec<&P> = match value {
         P::Container(c) => c.items().iter().collect(),
         P::UnorderedContainer(c) => c.0.items().iter().collect(),

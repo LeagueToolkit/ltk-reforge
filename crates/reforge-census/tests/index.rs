@@ -289,6 +289,7 @@ fn a_fields_kinds_at_a_build_are_the_ones_its_texts_held_then() {
         key: None,
         item: None,
         class: None,
+        width: None,
     };
     let icon = |build| {
         let types = index.field_types(BinHash(2), name_hash("iconSquare"), Position(build));
@@ -304,6 +305,7 @@ fn a_fields_kinds_at_a_build_are_the_ones_its_texts_held_then() {
         key: None,
         item: Some(Kind::Embedded),
         class: Some(name_hash("BankUnit")),
+        width: None,
     };
     assert_eq!(units.unwrap(), [embedded]);
     let voice = index.field_types(name_hash("BankUnit"), name_hash("voiceOver"), Position(2));

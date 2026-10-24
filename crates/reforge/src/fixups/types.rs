@@ -126,7 +126,13 @@ impl<'a> TargetTypes<'a> {
             .zip(self.build)
             .and_then(|(schema, build)| schema.field_type(class, field, build));
         match declared {
-            Some(field_type) => Some((field_type, TypeSource::Schema)),
+            Some(mut field_type) => {
+                // The schema has no hash width: the install's bins give it (#GAME-CHANGE-0028).
+                let seen = self.witnessed.get(&(class, field));
+                let seen = seen.filter(|seen| seen.kind == field_type.kind);
+                field_type.width = field_type.width.or(seen.and_then(|seen| seen.width));
+                Some((field_type, TypeSource::Schema))
+            }
             None => self
                 .witnessed
                 .get(&(class, field))

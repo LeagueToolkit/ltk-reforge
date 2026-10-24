@@ -19,6 +19,7 @@ use std::io;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
+use ltk_hash::HashWidth;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum};
 use serde::{Deserialize, Serialize};
 
@@ -80,6 +81,11 @@ pub struct FieldType {
     pub item: Option<Kind>,
     /// The class of an embed or a pointer, or of a container's items.
     pub class: Option<BinHash>,
+    /// The stored width of the hash the type holds: the value's own, or the width of the
+    /// hashes a container, an option or a map holds. None where the type holds no hash, or
+    /// where its source does not say: the meta schema database carries no width, so a
+    /// hash's width is known from the game's own bins (#GAME-CHANGE-0028).
+    pub width: Option<HashWidth>,
 }
 
 impl FieldType {
@@ -119,6 +125,7 @@ impl FieldType {
             key,
             item,
             class,
+            width: hash_width(value),
         }
     }
 
@@ -135,7 +142,24 @@ impl FieldType {
                 Some(kind_named(item)?)
             },
             class: Some(hash(class)?).filter(|class| class.0 != 0),
+            width: None,
         })
+    }
+}
+
+/// The stored width of the first hash a value holds, at any depth of its collections.
+fn hash_width(value: &PropertyValueEnum) -> Option<HashWidth> {
+    use PropertyValueEnum as V;
+    match value {
+        V::Hash(h) => Some(h.value.width()),
+        V::Container(c) => c.items().iter().find_map(hash_width),
+        V::UnorderedContainer(c) => c.0.items().iter().find_map(hash_width),
+        V::Optional(o) => o.value().and_then(hash_width),
+        V::Map(m) => m
+            .entries()
+            .iter()
+            .find_map(|(key, item)| hash_width(key).or_else(|| hash_width(item))),
+        _ => None,
     }
 }
 

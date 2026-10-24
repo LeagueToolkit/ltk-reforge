@@ -351,6 +351,7 @@ fn a_texts_schema_is_the_type_of_every_field_of_every_struct_in_it() {
         key: None,
         item,
         class: class.map(name_hash),
+        width: None,
     };
     let field = |class: BinHash, field: &str, ty| ClassField {
         class,

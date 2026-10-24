@@ -3,6 +3,7 @@
 
 use camino::Utf8PathBuf;
 use fs_err as fs;
+use ltk_hash::{HashAlgorithm, HashValue, HashWidth, Hasher};
 use ltk_hashdb::{Compression, HashDbWriter};
 use ltk_meta::property::values;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum as V};
@@ -222,6 +223,7 @@ fn the_catalogue_lists_each_conversion_with_the_records_it_follows() {
             row(Conversion::Retag, "retag", &["#GAME-CHANGE-0019"]),
             row(Conversion::HashValue, "hash-value", &["#GAME-CHANGE-0013"]),
             row(Conversion::Rehash, "rehash", &["#GAME-CHANGE-0013"]),
+            row(Conversion::WideHash, "wide-hash", &["#GAME-CHANGE-0028"]),
             row(Conversion::HashKey, "hash-key", &["#GAME-CHANGE-0013"]),
             row(Conversion::Widen, "widen", &[]),
             row(
@@ -263,6 +265,10 @@ fn the_conversion_between_two_kinds_is_read_off_the_kinds() {
         Some(Conversion::Retag)
     );
     assert_eq!(
+        between(Kind::String, Kind::Hash),
+        Some(Conversion::WideHash)
+    );
+    assert_eq!(
         between(Kind::Container, Kind::UnorderedContainer),
         Some(Conversion::Retag)
     );
@@ -297,6 +303,7 @@ fn the_conversion_between_two_kinds_is_read_off_the_kinds() {
     assert!(!at_install(Kind::U32, Kind::U8));
     assert!(!at_install(Kind::ObjectLink, Kind::Hash));
     assert!(!at_install(Kind::Hash, Kind::ObjectLink));
+    assert!(!at_install(Kind::String, Kind::Hash));
     assert!(!at_install(Kind::F32, Kind::Optional));
 }
 
@@ -823,6 +830,94 @@ fn a_mod_with_no_date_or_one_before_the_schema_is_not_judged() {
         );
         assert!(run.raised::<Removed>("retype").is_empty());
     }
+}
+
+/// #GAME-CHANGE-0028: a string where the build reads an 8-byte hash, in a field and in a
+/// list, becomes the XXH3-64 of the lowercased string. The schema knows the kind and the
+/// install's bin the width. A string where nothing shows the width is left, and so is an
+/// empty string.
+#[test]
+fn wide_hash_puts_a_string_in_the_eight_byte_hash_the_installs_bins_hold() {
+    let schema = SchemaRows::new(300)
+        .class(
+            "Material",
+            &[
+                field("name", kind("String")).then(200, kind("Hash")),
+                field("names", list("String")).then(200, list("Hash")),
+                field("label", kind("String")).then(200, kind("Hash")),
+                field("blank", kind("String")).then(200, kind("Hash")),
+            ],
+        )
+        .build();
+    let wide = |hash: u64| V::Hash(values::Hash::new(HashValue::wide(hash)));
+    let mut game = skins::game_at("16.21.300");
+    let held = object(
+        "G",
+        "Material",
+        vec![
+            ("name", wide(0x2a25_98c3_55f5_7ed7)),
+            (
+                "names",
+                V::Container(list_of_kind(Kind::Hash, vec![wide(0x0102_0304_0506_0708)])),
+            ),
+            ("blank", wide(0x1)),
+        ],
+    );
+    game.insert(&skins::skin_bin("test", 5), bin(vec![held]));
+    let history = MemoryHistory::new(&["1.0.50", "1.0.150", "16.21.300"]);
+    let env = Env::builder()
+        .game(game)
+        .schema(schema)
+        .history(Box::new(history.with_content(DATED, &dated_bytes(), 1..=2)))
+        .build()
+        .expect("an environment");
+    let path = "Characters/Test/Skins/Skin0/Materials/Body";
+    let mine = object(
+        "M",
+        "Material",
+        vec![
+            ("name", text(path)),
+            (
+                "names",
+                V::Container(list_of_kind(Kind::String, vec![text(path)])),
+            ),
+            ("label", text(path)),
+            ("blank", text("")),
+        ],
+    );
+    let archive = skin_archive(vec![mine]).file(skins::WAD, DATED, dated_bytes());
+    let mut run = FixRun::of(&env, &retype(), &archive);
+    for name in ["name", "names", "label", "blank"] {
+        run.names.learn_field(name);
+    }
+    let hasher = Hasher {
+        width: HashWidth::W8,
+        algorithm: HashAlgorithm::Xxh3,
+        lowercased: true,
+    };
+    let hashed = hasher.hash_str(path);
+    assert_eq!(hashed.width(), HashWidth::W8);
+    assert_eq!(hashed, hasher.hash_str(&path.to_ascii_lowercase()));
+    let get = |name: &str| run.field("M", name).cloned();
+    assert_eq!(get("name"), Some(V::Hash(values::Hash::new(hashed))));
+    assert_eq!(
+        get("names"),
+        Some(V::Container(list_of_kind(
+            Kind::Hash,
+            vec![V::Hash(values::Hash::new(hashed))]
+        )))
+    );
+    assert_eq!(get("label"), Some(text(path)));
+    assert_eq!(get("blank"), Some(text("")));
+    assert_eq!(
+        rows(run.changes.of("retype"), &run),
+        [
+            ("name".into(), "String", format!("Hash {hashed:x}")),
+            ("names".into(), "List", "List [1 Hash]".into()),
+            ("label".into(), "String", "left for Hash".into()),
+            ("blank".into(), "String", "left for Hash".into()),
+        ]
+    );
 }
 
 #[test]

@@ -151,10 +151,11 @@ each byte of an object's row in `bin_entries` is paid by every version of every 
 build indexes each table once its rows are in and before the next is written, so the writer
 finds an object's id by the index.
 
-A type in `schema` is the four slots of `FieldType`: the value's kind, a map's key kind, an
+A type in `schema` is four slots of `FieldType`: the value's kind, a map's key kind, an
 item's kind (a list's, an option's, a map's value), and a class (an embed's or a pointer's, or
 of the structs a list, an option or a map holds). A kind slot that does not apply is 255, a class
-that does not apply 0. A list, an option or a map of structs has one row per class its items
+that does not apply 0. A hash's stored width (#GAME-CHANGE-0028) is not a slot: the table does
+not say whether a `hash` field holds 4 or 8 bytes at a build. A list, an option or a map of structs has one row per class its items
 had. A field whose values had two kinds at one build has two rows alive there.
 
 A table is defined once, in `reforge::history::tables`: its name, family, key columns, fact
