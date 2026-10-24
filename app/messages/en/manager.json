@@ -1,0 +1,22 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "manager_filter_label": "Filter the mods",
+  "manager_filter_placeholder": "Filter by name, champion or version",
+  "manager_none": "The manager's library holds no mods.",
+  "manager_ticked_label": "{ticked} ticked · {shown} of {total} shown",
+  "manager_note_extended": "Already carries layers",
+  "manager_note_legacy": "Plain .fantome, champion mod",
+  "manager_note_modpkg": "A .modpkg",
+  "manager_note_no_archive": "Unpacked in the manager, no archive to read",
+  "manager_note_not_champion": "Not a champion mod",
+  "manager_page_description": "The mods installed in LTK Manager, read from its library and never changed. Tick the ones to port; plain .fantome files of champion mods are ticked.",
+  "manager_page_title": "LTK Manager",
+  "manager_refresh_action": "Read again",
+  "manager_table_all_label": "Every mod with an archive ({count})",
+  "manager_table_champions_label": "Champions",
+  "manager_table_installed_label": "Installed",
+  "manager_table_note_label": "Status",
+  "manager_table_version_label": "Version",
+  "manager_tick_legacy_action": "Tick the plain champion mods",
+  "manager_to_batch_action": "Port {count} in a batch"
+}

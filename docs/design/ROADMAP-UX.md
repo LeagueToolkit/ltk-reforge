@@ -664,10 +664,8 @@ it with the rows so far (`BatchView::stopped`).
 **The page.** A card "Mods" lists the archives, each once, with a remove icon per line, their
 count and Clear: "Choose folder" adds a folder's `.fantome` and `.zip` files, not its
 subfolders', sorted by name (`list_archives`); "Add files" adds the files picked; every
-archive dropped on the window is added; "From LTK Manager" opens the manager's library
-(`manager_library`, #ADR-0106) as a list with a box per mod, its name, version and champions,
-the plain Fantomes of champion mods ticked and a note on the rest (layered already, a
-`.modpkg`, no archive, not a champion mod), and adds the archives ticked. A card "Settings" picks the kind (Repair, Port), says
+archive dropped on the window is added; the Manager page hands over the archives it ticked
+(#ADR-0106). A card "Settings" picks the kind (Repair, Port), says
 where the packages go with a link to Settings, and says the standard settings are used, with a
 switch that takes the run page's advanced settings in their place, less the targets given to
 units and the files kept, which name one mod's. Start is off with no
@@ -682,6 +680,20 @@ halted and failed the archives that do not read) with its time, and "Copy summar
 per mod on the clipboard: its name, version and author, then where each of a port's units
 went (`Vex base→base`, `Janna base→skin7`) or how the run ended. The table stays until the
 next Start or Clear.
+
+## The Manager page
+
+#ADR-0106. LTK Manager's library at the window's whole width, third in the sidebar after Mod,
+read from the manager's data folder (`manager_library`) and never written: a table with a box
+per mod, its name, version, champions, a status (a plain `.fantome` of a champion mod, already
+carries layers, a `.modpkg`, unpacked in the manager with no archive, not a champion mod) and
+the day it was installed. The plain `.fantome` files of champion mods are ticked when the
+library is read; "Tick the plain champion mods" ticks them again; the box in the header ticks
+and unticks every mod shown that has an archive. A filter box narrows the table by name, slug,
+version or champion, whatever the case, and a line counts what is ticked and shown. "Read
+again" reads the library again. "Port N in a batch" adds the ticked archives to the Batch
+page's list and goes there; the batch's kind, settings and Start stay the Batch page's. A mod
+with no archive is listed and has no box.
 
 ## The history index
 

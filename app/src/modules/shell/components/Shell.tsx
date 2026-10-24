@@ -1,6 +1,7 @@
 import {
   ArchiveIcon,
   BookOpenTextIcon,
+  BooksIcon,
   ClockCounterClockwiseIcon,
   GearSixIcon,
   PackageIcon,
@@ -64,6 +65,10 @@ export function Shell({ inputsMark, wide = false, children }: ShellProps) {
         <NavLink to="/mod">
           <PackageIcon weight="bold" className="h-4 w-4" />
           {m.shell_nav_mod_label()}
+        </NavLink>
+        <NavLink to="/manager">
+          <BooksIcon weight="bold" className="h-4 w-4" />
+          {m.shell_nav_manager_label()}
         </NavLink>
         <NavLink to="/runs">
           <ClockCounterClockwiseIcon weight="bold" className="h-4 w-4" />

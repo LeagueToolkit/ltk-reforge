@@ -1,8 +1,8 @@
-# ADR-0106: The Batch page reads LTK Manager's library
+# ADR-0106: A Manager page reads LTK Manager's library for the batch
 
 - **Status:** Accepted (2026-10-24)
 - **Related:** #ADR-0046, #ADR-0091, #ADR-0105, #MOD-ARTIFACT-0040;
-  [docs/design/ROADMAP-UX.md](../design/ROADMAP-UX.md), "The Batch page"
+  [docs/design/ROADMAP-UX.md](../design/ROADMAP-UX.md), "The Manager page"
 
 ## Context
 
@@ -24,13 +24,15 @@ have, or to leave the person to find the archives.
 
 ## Decision
 
-The Batch page offers the manager's library as a source of archives (the user's call,
-2026-10-24). The app reads `library.json` and each mod's config from the manager's data
-folder, the folder Tauri names for the manager's identifier beside the app's own, and lists
-every mod: its name, its format, its champions as the manager's report names them, whether it
-has an archive, and whether the archive is a plain Fantome or carries the extensions. The
-person ticks the mods to add, the plain Fantomes of champions with an archive ticked first,
-and the archives join the batch's list as picked files do.
+A page of its own, third in the sidebar, lists the manager's library at the window's whole
+width and hands the archives ticked to the Batch page (the user's call, 2026-10-24: a page
+with room to pick, not a dialog on the Batch page). The app reads `library.json` and each
+mod's config from the manager's data folder, the folder Tauri names for the manager's
+identifier beside the app's own, and lists every mod: its name, its format, its champions as
+the manager's report names them, whether it has an archive, and whether the archive is a plain
+Fantome or carries the extensions. The plain Fantomes of champions with an archive are ticked
+first; a filter narrows the list for picking a few. The archives ticked join the batch's list
+as picked files do, and the batch runs as the Batch page runs one.
 
 The read is read only. Nothing under the manager's folder is written, renamed or locked, so
 the manager may run at the same time. A mod's name is the manager's text and reaches the page
