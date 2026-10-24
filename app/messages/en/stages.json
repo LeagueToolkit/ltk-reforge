@@ -16,7 +16,7 @@
   "stage.plan.label": "Plan",
   "stage.read.description": "The archive read",
   "stage.read.label": "Read",
-  "stage.write.description": "The .modpkg written",
+  "stage.write.description": "The package written",
   "stage.write.label": "Write",
   "stage_state.halted.label": "Halted",
   "stage_state.not-run.label": "Not run",

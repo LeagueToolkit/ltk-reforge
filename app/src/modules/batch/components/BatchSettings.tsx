@@ -3,7 +3,13 @@ import { Link } from "@tanstack/react-router";
 import { SectionCard, SegmentedControl, Switch } from "@/components";
 import { m } from "@/i18n";
 import type { RunKind } from "@/lib/bindings.gen";
-import { useSettings } from "@/modules/settings";
+import {
+  DEFAULT_PACKAGE_FORMAT,
+  formatLabel,
+  PACKAGE_FORMATS,
+  useSaveSettings,
+  useSettings,
+} from "@/modules/settings";
 
 import { useBatchStore } from "../state/batchStore";
 
@@ -16,7 +22,14 @@ export function BatchSettings({ busy }: { busy: boolean }) {
   const setKind = useBatchStore((state) => state.setKind);
   const runPageSettings = useBatchStore((state) => state.runPageSettings);
   const setRunPageSettings = useBatchStore((state) => state.setRunPageSettings);
-  const chosenOut = useSettings().data?.["output.folder"];
+  const settings = useSettings().data;
+  const save = useSaveSettings();
+  const chosenOut = settings?.["output.folder"];
+  const format = settings?.["output.format"] ?? DEFAULT_PACKAGE_FORMAT;
+  const formats = PACKAGE_FORMATS.map((option) => ({
+    value: option,
+    label: formatLabel(option),
+  }));
 
   const kinds: { value: RunKind; label: string }[] = [
     { value: "repair", label: m.batch_kind_repair_label() },
@@ -32,6 +45,17 @@ export function BatchSettings({ busy }: { busy: boolean }) {
           value={kind}
           onChange={(next) => !busy && setKind(next)}
           aria-label={m.batch_kind_label()}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-4" data-ui="BatchSettings:format">
+        <p className="text-sm text-surface-100 select-none">{m["setting.output.format.label"]()}</p>
+        <SegmentedControl
+          options={formats}
+          value={format}
+          onChange={(next) =>
+            !busy && settings && save.mutate({ ...settings, "output.format": next })
+          }
+          aria-label={m["setting.output.format.label"]()}
         />
       </div>
       <Link

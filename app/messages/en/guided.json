@@ -38,5 +38,5 @@
   "guided_questions_description": "The run made these choices by a default. Each is chosen as the run made it; change the ones the mod needs otherwise.",
   "guided_run_action": "Run with these answers",
   "guided_start_action": "Guide me",
-  "guided_start_description": "Ports the mod with the standard settings as far as the plan, asks about each choice the run made by a default, and writes a .modpkg with the answers"
+  "guided_start_description": "Ports the mod with the standard settings as far as the plan, asks about each choice the run made by a default, and writes a package with the answers"
 }

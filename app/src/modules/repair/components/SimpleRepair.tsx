@@ -10,6 +10,7 @@ import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
 import { EndedTabs } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
 import { useOutputFolder, usePackageFormat } from "./ModCard";
+import { PackageFormatMenu } from "./PackageFormatMenu";
 import { resultsOf, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
 import { StopButton } from "./StopButton";
@@ -58,18 +59,21 @@ export function SimpleRepair() {
     <div className="flex flex-col gap-6" data-ui="SimpleRepair">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-surface-400 select-none">{m.run_simple_port_description()}</p>
-        {running ? (
-          <StopButton />
-        ) : (
-          <Button
-            variant="filled"
-            left={<WrenchIcon weight="bold" />}
-            disabled={!archive || !out || inputs.isPending || busy}
-            onClick={() => start(ERRORS_BLOCK)}
-          >
-            {m.run_kind_port_label()}
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {!running && <PackageFormatMenu />}
+          {running ? (
+            <StopButton />
+          ) : (
+            <Button
+              variant="filled"
+              left={<WrenchIcon weight="bold" />}
+              disabled={!archive || !out || inputs.isPending || busy}
+              onClick={() => start(ERRORS_BLOCK)}
+            >
+              {m.run_kind_port_label()}
+            </Button>
+          )}
+        </div>
       </div>
       {dialog}
       {live && <LiveProgress live={live} stages={stages} />}

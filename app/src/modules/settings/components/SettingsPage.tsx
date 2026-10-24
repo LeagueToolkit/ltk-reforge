@@ -4,12 +4,12 @@ import type { ReactNode } from "react";
 
 import { Button, FailureNote, SectionCard, SegmentedControl, Spinner } from "@/components";
 import { m } from "@/i18n";
-import type { PackageFormat, Theme } from "@/lib/bindings.gen";
+import type { Theme } from "@/lib/bindings.gen";
 
 import { useSaveSettings, useSettings } from "../api/settings";
+import { DEFAULT_PACKAGE_FORMAT, formatLabel, PACKAGE_FORMATS } from "../format";
 
 const THEMES: Theme[] = ["system", "dark", "light"];
-const FORMATS: PackageFormat[] = ["fantome", "modpkg"];
 
 interface SettingsPageProps {
   /**
@@ -33,9 +33,9 @@ export function SettingsPage({ storage }: SettingsPageProps) {
 
   const current = settings.data;
   const options = THEMES.map((theme) => ({ value: theme, label: m[`theme.${theme}.label`]() }));
-  const formats = FORMATS.map((format) => ({
+  const formats = PACKAGE_FORMATS.map((format) => ({
     value: format,
-    label: m[`format.${format}.label`](),
+    label: formatLabel(format),
   }));
   const chosenOut = current["output.folder"];
 
@@ -76,7 +76,7 @@ export function SettingsPage({ storage }: SettingsPageProps) {
           </div>
           <SegmentedControl
             options={formats}
-            value={current["output.format"] ?? "fantome"}
+            value={current["output.format"] ?? DEFAULT_PACKAGE_FORMAT}
             onChange={(format) => save.mutate({ ...current, "output.format": format })}
             aria-label={m["setting.output.format.label"]()}
           />

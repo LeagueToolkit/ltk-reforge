@@ -6,7 +6,7 @@ import { Button, FailureNote, SectionCard } from "@/components";
 import { m } from "@/i18n";
 import { type CharacterPeek, commands, type ModView, type PackageFormat } from "@/lib/bindings.gen";
 import { pickFile } from "@/modules/inputs";
-import { useSettings } from "@/modules/settings";
+import { DEFAULT_PACKAGE_FORMAT, useSettings } from "@/modules/settings";
 import { queryFn, twMerge } from "@/utils";
 
 import { ARCHIVE_EXTENSIONS, useArchiveDrop } from "../api/drop";
@@ -24,10 +24,10 @@ export function useOutputFolder(): string | null {
   return archive ? folderOf(archive) : null;
 }
 
-/** The form a package is written in: the chosen one, else a `.fantome`. */
+/** The form a package is written in: the chosen one, else the default (#ADR-0105). */
 export function usePackageFormat(): PackageFormat {
   const settings = useSettings();
-  return settings.data?.["output.format"] ?? "fantome";
+  return settings.data?.["output.format"] ?? DEFAULT_PACKAGE_FORMAT;
 }
 
 /** The key of every read of an archive alone. */
