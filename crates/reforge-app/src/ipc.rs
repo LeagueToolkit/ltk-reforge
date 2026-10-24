@@ -51,6 +51,7 @@ pub fn builder() -> Builder<Wry> {
             commands::type_places,
             commands::peek_mod,
             commands::list_archives,
+            commands::manager_library,
             commands::explore_mod,
             commands::explore_files,
             commands::explore_file,

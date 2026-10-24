@@ -1,4 +1,4 @@
-import { PlayIcon, StopIcon } from "@phosphor-icons/react";
+import { CopyIcon, PlayIcon, StopIcon } from "@phosphor-icons/react";
 import { useCallback } from "react";
 
 import { Button, FailureNote } from "@/components";
@@ -14,10 +14,12 @@ import {
   useRepairStore,
 } from "@/modules/repair";
 import { useSettings } from "@/modules/settings";
+import { copyText } from "@/utils";
 
 import { useBatchEvents, useBatchRunning, useRunBatch, useStopBatch } from "../api/batch";
 import { summaryOf } from "../outcomes";
 import { useBatchStore } from "../state/batchStore";
+import { summaryText } from "../summary";
 import { BatchSettings } from "./BatchSettings";
 import { BatchTable } from "./BatchTable";
 import { ModsCard } from "./ModsCard";
@@ -58,13 +60,23 @@ function BatchSummary() {
     parts.push(m.batch_summary_stopped_label({ count: summary.stopped }));
   }
   return (
-    <p className="text-sm text-surface-200 select-none" data-ui="BatchSummary">
-      {parts.join(", ")}{" "}
-      <span className="text-surface-400">
-        {m.batch_summary_time_label({ seconds: (ended.millis / 1000).toFixed(1) })}
-      </span>
-      {ended.stopped && <span className="block text-surface-400">{m.batch_stopped_label()}</span>}
-    </p>
+    <div className="flex items-center justify-between gap-4" data-ui="BatchSummary">
+      <p className="text-sm text-surface-200 select-none">
+        {parts.join(", ")}{" "}
+        <span className="text-surface-400">
+          {m.batch_summary_time_label({ seconds: (ended.millis / 1000).toFixed(1) })}
+        </span>
+        {ended.stopped && <span className="block text-surface-400">{m.batch_stopped_label()}</span>}
+      </p>
+      <Button
+        size="sm"
+        variant="outline"
+        left={<CopyIcon weight="bold" />}
+        onClick={() => copyText(summaryText(ended.rows))}
+      >
+        {m.batch_summary_copy_action()}
+      </Button>
+    </div>
   );
 }
 

@@ -16,6 +16,7 @@
   "error.CENSUS_FETCH.title": "The census history did not fetch",
   "error.CENSUS_UNWRITABLE.title": "The census history could not be written to disk",
   "error.FOLDER_UNREADABLE.title": "The folder does not read",
+  "error.MANAGER_ABSENT.title": "LTK Manager keeps no library here",
   "error.GAME_UNREADABLE.title": "The game at {path} does not open",
   "error.HASHES_BUSY.description": "Another program, such as LTK Manager, is updating them. Try again when it ends.",
   "error.HASHES_BUSY.title": "The hash tables are being updated already",

@@ -117,6 +117,11 @@ export const commands = {
 	 */
 	listArchives: (folder: string) => __TAURI_INVOKE<({ ok: true; value: string[] }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("list_archives", { folder }),
 	/**
+	 *  LTK Manager's library, read from its data folder beside the app's own (#ADR-0106). Read
+	 *  only.
+	 */
+	managerLibrary: () => __TAURI_INVOKE<({ ok: true; value: ManagerLibrary }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("manager_library"),
+	/**
 	 *  A mod archive explored through `load` (#ADR-0091), against the inputs the settings choose,
 	 *  and held until the next explore. It runs as `run_mod` does, one run at a time, and keeps
 	 *  nothing in the store's rows.
@@ -477,6 +482,8 @@ export type AppError =
 { code: "NOT_SHOWN"; path: string; detail: string } | 
 /**  A folder of mods did not list. */
 { code: "FOLDER_UNREADABLE"; path: string; detail: string } | 
+/**  LTK Manager keeps no library at the folder its identifier names (#ADR-0106). */
+{ code: "MANAGER_ABSENT"; path: string } | 
 /**  The user stopped the work. */
 { code: "CANCELLED" } | 
 /**  A fault of the app's own, with no remedy a person can take. */
@@ -529,6 +536,15 @@ export type BatchRow = {
 	archive: string,
 	/**  The mod's name, as its archive says, once it was read. */
 	name: string | null,
+	/**  The mod's author, as its archive says. */
+	author: string | null,
+	/**  The mod's version, as its archive says. */
+	version: string | null,
+	/**
+	 *  A port's units and where each went. Empty for a repair, and for a run that decided
+	 *  nothing.
+	 */
+	units: BatchUnit[],
 	/**  How the run ended. */
 	outcome: Outcome,
 	/**  The run's number in the app's store, once a write kept it there (#ADR-0096). */
@@ -539,6 +555,16 @@ export type BatchRow = {
 	counts: SeverityCounts,
 	/**  How long the run took, in milliseconds. Shown, never written to a report. */
 	millis: number,
+};
+
+/**  One unit of a port and the slot it went to, for the batch's summary. */
+export type BatchUnit = {
+	/**  The character's name. */
+	character: string,
+	/**  The slot the mod ships the unit at. */
+	source: number,
+	/**  The slot it went to. None: left to the game. */
+	chosen: number | null,
 };
 
 /**  A batch as it ended. */
@@ -1437,6 +1463,56 @@ export type LookupView = {
 	named_by_capped: boolean,
 	/**  The bin at the path at that build. None when the file there is no bin, or none is. */
 	bin: BinLookup | null,
+};
+
+/**  The form a mod's archive takes. */
+export type ManagerFormat = 
+/**  A `.fantome`. */
+"fantome" | 
+/**  A `.modpkg`. */
+"modpkg" | 
+/**  A form this reader does not name. */
+"other";
+
+/**  The manager's library as read. */
+export type ManagerLibrary = {
+	/**  The manager's data folder. */
+	folder: string,
+	/**  Every mod the index lists, in its order. */
+	mods: ManagerMod[],
+};
+
+/**  One mod of the manager's library. */
+export type ManagerMod = {
+	/**  The manager's name for the mod's folder. */
+	slug: string,
+	/**  The mod's display name, cleaned; the slug when its config does not say. */
+	name: string,
+	/**  The mod's version, as its config says. */
+	version: string | null,
+	/**  The form its archive takes. */
+	format: ManagerFormat,
+	/**
+	 *  The archive the mod keeps. None for a mod stored as an unpacked project, or one whose
+	 *  archive is not where the layout puts it.
+	 */
+	archive: string | null,
+	/**
+	 *  Whether the archive carries league-mod's layer directories, game data or hash tables
+	 *  (#MOD-ARTIFACT-0040). False for a plain Fantome, and for a mod with no archive.
+	 */
+	extended: boolean,
+	/**  When the manager installed it, as its index spells the time. */
+	installed_at: string,
+	/**
+	 *  The champions the manager found the mod's WADs to be of, cleaned. Empty when the
+	 *  manager has no report of the mod.
+	 */
+	champions: string[],
+	/**  The maps the manager found the mod's WADs to be of, cleaned. */
+	maps: string[],
+	/**  The manager's tags for the mod, `champion-skin` among them, cleaned. */
+	tags: string[],
 };
 
 /**  How a file stands against the stage before. */

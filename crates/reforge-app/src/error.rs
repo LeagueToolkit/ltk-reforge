@@ -183,6 +183,9 @@ pub enum AppError {
     /// A folder of mods did not list.
     #[error("the folder {path} does not read: {detail}")]
     FolderUnreadable { path: String, detail: String },
+    /// LTK Manager keeps no library at the folder its identifier names (#ADR-0106).
+    #[error("no LTK Manager library at {path}")]
+    ManagerAbsent { path: String },
     /// The user stopped the work.
     #[error("cancelled")]
     Cancelled,

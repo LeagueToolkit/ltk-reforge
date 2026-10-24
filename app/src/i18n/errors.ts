@@ -209,6 +209,10 @@ export function describeError(error: AppError): ErrorCopy {
       title: m["error.FOLDER_UNREADABLE.title"](),
       detail: `${path}: ${detail}`,
     }))
+    .with({ code: "MANAGER_ABSENT" }, ({ path }) => ({
+      title: m["error.MANAGER_ABSENT.title"](),
+      detail: path,
+    }))
     .with({ code: "CANCELLED" }, () => ({ title: m["error.CANCELLED.title"]() }))
     .with({ code: "INTERNAL" }, ({ detail }) => ({
       title: m["error.INTERNAL.title"](),

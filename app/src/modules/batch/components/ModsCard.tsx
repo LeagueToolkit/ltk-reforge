@@ -1,4 +1,5 @@
 import { XIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 
 import { Button, FailureNote, SectionCard, Tooltip } from "@/components";
 import { m } from "@/i18n";
@@ -6,6 +7,7 @@ import { twMerge } from "@/utils";
 
 import { addFiles, useAddFolder } from "../api/batch";
 import { useBatchStore } from "../state/batchStore";
+import { ManagerDialog } from "./ManagerDialog";
 
 /** The file name of a path. */
 export function fileNameOf(path: string): string {
@@ -23,9 +25,20 @@ export function ModsCard({ busy, over }: { busy: boolean; over: boolean }) {
   const removeArchive = useBatchStore((state) => state.removeArchive);
   const clear = useBatchStore((state) => state.clear);
   const addFolder = useAddFolder();
+  const [managerOpen, setManagerOpen] = useState(false);
 
   const actions = (
     <div className="flex flex-wrap gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => setManagerOpen(true)}
+        data-ui="ModsCard:manager"
+      >
+        {m.batch_mods_manager_action()}
+      </Button>
+      <ManagerDialog open={managerOpen} onClose={() => setManagerOpen(false)} onAdd={addArchives} />
       <Button
         size="sm"
         variant="outline"

@@ -128,6 +128,17 @@ impl SeverityCounts {
     }
 }
 
+/// One unit of a port and the slot it went to, for the batch's summary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+pub struct BatchUnit {
+    /// The character's name.
+    pub character: String,
+    /// The slot the mod ships the unit at.
+    pub source: u16,
+    /// The slot it went to. None: left to the game.
+    pub chosen: Option<u16>,
+}
+
 /// One archive of a batch and how its run ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct BatchRow {
@@ -137,6 +148,13 @@ pub struct BatchRow {
     pub archive: String,
     /// The mod's name, as its archive says, once it was read.
     pub name: Option<String>,
+    /// The mod's author, as its archive says.
+    pub author: Option<String>,
+    /// The mod's version, as its archive says.
+    pub version: Option<String>,
+    /// A port's units and where each went. Empty for a repair, and for a run that decided
+    /// nothing.
+    pub units: Vec<BatchUnit>,
     /// How the run ended.
     pub outcome: Outcome,
     /// The run's number in the app's store, once a write kept it there (#ADR-0096).
@@ -295,16 +313,33 @@ impl Batch<'_> {
         let millis = millis_since(at);
         let counts = *watch.0.lock();
         match ran {
-            Ok(view) => BatchRow {
-                index,
-                archive: file_name(archive),
-                outcome: outcome_of(&view),
-                name: view.meta.and_then(|meta| meta.name),
-                saved: view.saved,
-                package: view.written,
-                counts,
-                millis,
-            },
+            Ok(view) => {
+                let units = view.targets.as_ref().map_or_else(Vec::new, |targets| {
+                    targets
+                        .decisions
+                        .iter()
+                        .map(|decision| BatchUnit {
+                            character: decision.character_name.clone(),
+                            source: decision.source,
+                            chosen: decision.chosen,
+                        })
+                        .collect()
+                });
+                let meta = view.meta.as_ref();
+                BatchRow {
+                    index,
+                    archive: file_name(archive),
+                    outcome: outcome_of(&view),
+                    name: meta.and_then(|meta| meta.name.clone()),
+                    author: meta.and_then(|meta| meta.author.clone()),
+                    version: meta.and_then(|meta| meta.version.clone()),
+                    units,
+                    saved: view.saved,
+                    package: view.written,
+                    counts,
+                    millis,
+                }
+            }
             Err(error) => BatchRow {
                 counts,
                 millis,
@@ -320,6 +355,9 @@ fn fault_row(index: usize, archive: &str, error: &AppError) -> BatchRow {
         index,
         archive: file_name(archive),
         name: None,
+        author: None,
+        version: None,
+        units: Vec::new(),
         outcome: Outcome::Fault {
             detail: error.to_string(),
         },

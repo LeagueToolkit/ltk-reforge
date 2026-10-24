@@ -664,7 +664,10 @@ it with the rows so far (`BatchView::stopped`).
 **The page.** A card "Mods" lists the archives, each once, with a remove icon per line, their
 count and Clear: "Choose folder" adds a folder's `.fantome` and `.zip` files, not its
 subfolders', sorted by name (`list_archives`); "Add files" adds the files picked; every
-archive dropped on the window is added. A card "Settings" picks the kind (Repair, Port), says
+archive dropped on the window is added; "From LTK Manager" opens the manager's library
+(`manager_library`, #ADR-0106) as a list with a box per mod, its name, version and champions,
+the plain Fantomes of champion mods ticked and a note on the rest (layered already, a
+`.modpkg`, no archive, not a champion mod), and adds the archives ticked. A card "Settings" picks the kind (Repair, Port), says
 where the packages go with a link to Settings, and says the standard settings are used, with a
 switch that takes the run page's advanced settings in their place, less the targets given to
 units and the files kept, which name one mod's. Start is off with no
@@ -675,8 +678,10 @@ halting code, in warning; a fault, with its detail on hover, and an archive that
 in danger; stopped muted), the run's errors, warnings and notes in their severities' colours,
 the time, and "Open" to the run on the Runs page (`/runs?run=<number>`) when it was kept. When
 the batch ends, a line counts the rows ("9 written, 2 refused, 1 failed", refused counting the
-halted and failed the archives that do not read) with its time. The table stays until the next
-Start or Clear.
+halted and failed the archives that do not read) with its time, and "Copy summary" puts a line
+per mod on the clipboard: its name, version and author, then where each of a port's units
+went (`Vex base→base`, `Janna base→skin7`) or how the run ended. The table stays until the
+next Start or Clear.
 
 ## The history index
 

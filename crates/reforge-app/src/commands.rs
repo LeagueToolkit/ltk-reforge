@@ -27,6 +27,7 @@ use crate::index::{IndexReleaseView, InstallProgress, InstallStep, Installer, We
 use crate::inputs::{Choice, InputsView};
 use crate::installs::{self, InstallView};
 use crate::lookup::{HistoryBuilds, HistoryObjectView, Lookup, LookupView};
+use crate::manager::{self, ManagerLibrary};
 use crate::places::{self, RunRef, TypePlacesView};
 use crate::records::{self, RecordHead, RecordView};
 use crate::reveal::{self, Place};
@@ -712,6 +713,21 @@ pub async fn peek_mod(archive: String) -> IpcResult<ModPeek> {
 #[specta::specta]
 pub async fn list_archives(folder: String) -> IpcResult<Vec<String>> {
     off_thread(move || batch::list_archives(Utf8Path::new(&folder))).await
+}
+
+/// LTK Manager's library, read from its data folder beside the app's own (#ADR-0106). Read
+/// only.
+#[tauri::command]
+#[specta::specta]
+pub async fn manager_library(app: AppHandle) -> IpcResult<ManagerLibrary> {
+    off_thread(move || {
+        let data = app.path().data_dir().map_err(|error| AppError::NoDataDir {
+            detail: error.to_string(),
+        })?;
+        let data = Utf8PathBuf::from_path_buf(data).map_err(|_| no_data_dir())?;
+        manager::read_library(&manager::library_folder(&data))
+    })
+    .await
 }
 
 /// A mod archive explored through `load` (#ADR-0091), against the inputs the settings choose,

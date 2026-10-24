@@ -18,6 +18,7 @@ pub mod inputs;
 pub mod installs;
 pub mod ipc;
 pub mod lookup;
+pub mod manager;
 pub mod places;
 pub mod records;
 pub mod reveal;
