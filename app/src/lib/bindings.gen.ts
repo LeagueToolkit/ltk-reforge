@@ -535,6 +535,11 @@ export type BatchRequest = {
 	out: string | null,
 	/**  The form every package is written in (#ADR-0105). */
 	format?: PackageFormat,
+	/**
+	 *  How many archives run at once (#ADR-0108). 0: one per four cores of the machine,
+	 *  one at least and [`MAX_JOBS`] at most.
+	 */
+	jobs?: number,
 };
 
 /**  One archive of a batch and how its run ended. */

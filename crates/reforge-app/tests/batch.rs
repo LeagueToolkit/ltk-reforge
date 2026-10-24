@@ -127,6 +127,7 @@ impl Bench {
             settings: RunSettings::default(),
             out: Some(self.folder.path("out").to_string()),
             format: reforge_app::settings::PackageFormat::default(),
+            jobs: 1,
         }
     }
 
@@ -322,6 +323,66 @@ impl BatchInputs for Counted {
     fn forget(&self) {
         self.forgotten.fetch_add(1, Ordering::Relaxed);
     }
+}
+
+/// #ADR-0108: the archives of a wave run at once, every archive of the wave started before any
+/// of its rows, and the rows come back in the request's order.
+#[test]
+fn a_batch_runs_its_archives_in_waves_and_answers_its_rows_in_order() {
+    let bench = Bench::new();
+    let archives: Vec<String> = (0..7)
+        .map(|n| {
+            let path = bench.folder.path(&format!("own-{n}.fantome"));
+            fs::write(&path, own_mod().build()).unwrap();
+            path.to_string()
+        })
+        .collect();
+    let request = BatchRequest {
+        archives,
+        jobs: 3,
+        ..bench.request()
+    };
+    let mut heard = Vec::new();
+
+    let view = bench.run(&request, &Cancel::new(), &mut |progress| {
+        heard.push(progress)
+    });
+
+    let indices: Vec<usize> = view.rows.iter().map(|row| row.index).collect();
+    assert_eq!(indices, (0..7).collect::<Vec<_>>());
+    assert!(
+        view.rows.iter().all(|row| row.outcome == Outcome::Written),
+        "{:?}",
+        view.rows.iter().map(|row| &row.outcome).collect::<Vec<_>>()
+    );
+    let starts: Vec<usize> = heard
+        .iter()
+        .take(3)
+        .filter(|seen| seen.row.is_none())
+        .map(|seen| seen.index)
+        .collect();
+    assert_eq!(starts, [0, 1, 2]);
+    assert_eq!(heard.iter().filter(|seen| seen.row.is_some()).count(), 7);
+}
+
+#[test]
+fn a_batch_in_waves_opens_its_inputs_again_as_a_wave_passes_sixteen_archives() {
+    let bench = Bench::new();
+    let path = bench.folder.path("unreadable.fantome");
+    fs::write(&path, b"not a zip").unwrap();
+    let request = BatchRequest {
+        archives: vec![path.to_string(); 2 * batch::REOPEN_EVERY + 1],
+        jobs: 3,
+        ..bench.request()
+    };
+    let inputs = Counted::default();
+
+    let view = batch::run_batch(&inputs, &request, None, &Cancel::new(), &mut |_| {}).unwrap();
+
+    // Waves start at 0, 3, ..., 15, 18, ..., 30: one passes 16, none passes 32.
+    assert_eq!(view.rows.len(), 2 * batch::REOPEN_EVERY + 1);
+    assert_eq!(inputs.opened.load(Ordering::Relaxed), 2);
+    assert_eq!(inputs.forgotten.load(Ordering::Relaxed), 1);
 }
 
 #[test]

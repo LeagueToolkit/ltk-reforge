@@ -82,6 +82,23 @@ pub struct BatchRequest {
     /// The form every package is written in (#ADR-0105).
     #[serde(default)]
     pub format: PackageFormat,
+    /// How many archives run at once (#ADR-0108). 0: one per four cores of the machine,
+    /// one at least and [`MAX_JOBS`] at most.
+    #[serde(default)]
+    pub jobs: usize,
+}
+
+/// The most archives a batch runs at once when it chooses: each run holds its mod's bytes
+/// and the game bins it reads, so memory bounds it before cores do.
+pub const MAX_JOBS: usize = 8;
+
+/// How many archives a request runs at once: what it asks, else one per four cores.
+fn jobs_of(request: &BatchRequest) -> usize {
+    if request.jobs > 0 {
+        return request.jobs;
+    }
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+    (cores / 4).clamp(1, MAX_JOBS)
 }
 
 /// The stage a batch runs through unless asked otherwise.
@@ -412,46 +429,99 @@ pub fn run_batch(
         cancel,
     };
     let total = request.archives.len();
+    let jobs = jobs_of(request);
     let mut held = Some(inputs.open()?);
-    let mut rows = Vec::new();
+    let mut rows: Vec<BatchRow> = Vec::new();
     let mut stopped = false;
-    for (index, archive) in request.archives.iter().enumerate() {
-        if index > 0 && index % REOPEN_EVERY == 0 {
+    // The archives run in waves of `jobs`, each archive of a wave in a thread of its own over
+    // the one set of inputs (#ADR-0108). The inputs are let go of and opened again after
+    // every `REOPEN_EVERY` archives, as a wave starts.
+    for (wave, archives) in request.archives.chunks(jobs).enumerate() {
+        let start = wave * jobs;
+        // A wave that starts past a multiple of `REOPEN_EVERY` the wave before did not.
+        if start > 0 && start / REOPEN_EVERY != (start - jobs) / REOPEN_EVERY {
             held = None;
             inputs.forget();
         }
-        progress(BatchProgress {
-            index,
-            total,
-            archive: file_name(archive),
-            row: None,
-        });
+        for (offset, archive) in archives.iter().enumerate() {
+            progress(BatchProgress {
+                index: start + offset,
+                total,
+                archive: file_name(archive),
+                row: None,
+            });
+        }
         let opened = match held.take() {
             Some(open) => Ok(open),
             None => inputs.open(),
         };
-        // Inputs that do not open again fault this archive alone; the next tries again.
-        let row = match &opened {
-            Ok(open) => batch.run_one(open, index, archive),
-            Err(error) => fault_row(index, archive, error),
+        // Inputs that do not open again fault this wave alone; the next tries again.
+        let wave_rows: Vec<BatchRow> = match &opened {
+            Ok(open) => run_wave(&batch, open, start, archives, progress),
+            Err(error) => archives
+                .iter()
+                .enumerate()
+                .map(|(offset, archive)| {
+                    let row = fault_row(start + offset, archive, error);
+                    progress(BatchProgress {
+                        index: row.index,
+                        total,
+                        archive: row.archive.clone(),
+                        row: Some(row.clone()),
+                    });
+                    row
+                })
+                .collect(),
         };
         held = opened.ok();
-        progress(BatchProgress {
-            index,
-            total,
-            archive: row.archive.clone(),
-            row: Some(row.clone()),
-        });
-        let cancelled = matches!(row.outcome, Outcome::Cancelled { .. });
-        rows.push(row);
+        let cancelled = wave_rows
+            .iter()
+            .any(|row| matches!(row.outcome, Outcome::Cancelled { .. }));
+        rows.extend(wave_rows);
         if cancel.is_set() {
-            stopped = cancelled || index + 1 < total;
+            stopped = cancelled || rows.len() < total;
             break;
         }
     }
+    rows.sort_by_key(|row| row.index);
     Ok(BatchView {
         rows,
         millis: millis_since(started),
         stopped,
+    })
+}
+
+/// Runs the archives of one wave at once, a thread each, and tells `progress` of each as it
+/// ends, in the order they end. The rows come back in the order they ended.
+fn run_wave(
+    batch: &Batch<'_>,
+    inputs: &Inputs,
+    start: usize,
+    archives: &[String],
+    progress: &mut dyn FnMut(BatchProgress),
+) -> Vec<BatchRow> {
+    let total = batch.request.archives.len();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        for (offset, archive) in archives.iter().enumerate() {
+            let tx = tx.clone();
+            scope.spawn(move || {
+                let row = batch.run_one(inputs, start + offset, archive);
+                // The receiver outlives the wave: a send fails only if the scope is torn down.
+                let _ = tx.send(row);
+            });
+        }
+        drop(tx);
+        let mut rows = Vec::with_capacity(archives.len());
+        for row in rx {
+            progress(BatchProgress {
+                index: row.index,
+                total,
+                archive: row.archive.clone(),
+                row: Some(row.clone()),
+            });
+            rows.push(row);
+        }
+        rows
     })
 }

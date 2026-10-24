@@ -644,9 +644,9 @@ reach the table through `clean`.
 **The loop.** A `Run` takes one archive, so a batch is a loop in the app (`reforge_app::batch`,
 the command `run_batch`). It takes the run job as `run_mod` does, so a run and a batch never
 run at once (`RUN_BUSY`), and settings the library does not take refuse it before it starts.
-It opens the inputs once and runs each archive in order through `write`, as a request of the
-run page's would: the output folder is the one chosen under Settings, else each archive's own
-folder. A run that wrote its package is kept in the store as any run is. The window hears a
+It opens the inputs once and runs the archives in waves of `jobs` at once (#ADR-0108), each
+in a thread of its own, through `write`, as a request of the run page's would: the output
+folder is the one chosen under Settings, else each archive's own folder. A run that wrote its package is kept in the store as any run is. The window hears a
 batch through `BatchProgress`, sent as each archive starts and as it ends with its row, and
 none of a run's events: each run's watch counts its findings by severity and forwards nothing.
 A run that does not start, or an input that does not answer, is that row's fault, and the

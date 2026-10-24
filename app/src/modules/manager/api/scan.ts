@@ -79,6 +79,7 @@ export function useScan() {
           settings: runSettings(STANDARD),
           out: null,
           format,
+          jobs: 0,
         }),
       );
     },

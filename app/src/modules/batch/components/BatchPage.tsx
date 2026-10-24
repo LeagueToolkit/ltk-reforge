@@ -135,6 +135,7 @@ export function BatchPage() {
       settings: runSettings(runPageSettings ? forEveryMod(advanced) : STANDARD),
       out: chosenOut ?? null,
       format,
+      jobs: 0,
     };
     gate(() => runBatch.mutate(request));
   };
