@@ -90,7 +90,6 @@ camino = "1"
 # The ltk crates log through `log`, which the subscriber takes in too.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-appender = "0.2"
 # The checks before a push: every changed YAML file loaded and validated against the schema the
 # tree's census.yaml names for it, the schemas' patterns as regexes.
 serde_yaml_ng = "0.10"
