@@ -19,9 +19,14 @@ export function hasPaste(row: BatchRow): boolean {
   return row.units.some(isPaste);
 }
 
+/** Whether a port would move the unit from the base to a premium slot. */
+export function unitMovesToPremium(unit: BatchUnit): boolean {
+  return unit.source === 0 && unit.chosen !== null && unit.chosen > 0;
+}
+
 /** Whether a port of the scanned mod would move a unit from the base to a premium slot. */
 export function movesToPremium(row: BatchRow): boolean {
-  return row.units.some((unit) => unit.source === 0 && unit.chosen !== null && unit.chosen > 0);
+  return row.units.some(unitMovesToPremium);
 }
 
 /** A slot as the page spells it. */

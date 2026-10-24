@@ -18,7 +18,14 @@ import { twMerge } from "@/utils";
 import { useManagerLibrary } from "../api/manager";
 import { useScan, useScanEvents, useScanRunning, useScanStore, useStopScan } from "../api/scan";
 import { isLegacyChampionMod, type ManagerNote, noteOf } from "../legacy";
-import { hasPaste, movesToPremium, originText, slotText } from "../scan";
+import {
+  hasPaste,
+  isPaste,
+  movesToPremium,
+  originText,
+  slotText,
+  unitMovesToPremium,
+} from "../scan";
 
 const headClass = "px-3 py-2 text-left text-xs font-medium text-surface-400 select-none";
 const cellClass = "px-3 py-2 align-top";
@@ -60,7 +67,18 @@ function OriginCell({ row, running }: { row: BatchRow | undefined; running: bool
   return (
     <span className="flex flex-col gap-0.5">
       {row.units.map((unit, index) => (
-        <span key={index} className={hasPaste(row) ? "text-warning-text" : "text-surface-300"}>
+        // A paste that stays at the base is a warning; one a port moves to a premium skin is
+        // what the person came to find, so it stands out from the rest.
+        <span
+          key={index}
+          className={
+            unitMovesToPremium(unit)
+              ? "text-danger-text"
+              : isPaste(unit)
+                ? "text-warning-text"
+                : "text-surface-300"
+          }
+        >
           {m.manager_origin_line({
             character: unit.character,
             origin: originText(unit),
