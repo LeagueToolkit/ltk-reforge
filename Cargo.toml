@@ -30,11 +30,12 @@ ltk_shader = "0.3.11"
 # Later milestones, declared now so the versions agree from the start.
 ltk_ritobin = "0.12.0"
 ltk_texture = "0.6.6"
-ltk_game_data = "0.7.2"
-ltk_mod_project = "0.15.2"
-ltk_modpkg = "0.12.5"
-ltk_hashtable = "0.1.3"
+ltk_game_data = "0.9.3"
+ltk_mod_project = "0.17.1"
+ltk_modpkg = "0.12.14"
+ltk_hashtable = "0.2.2"
 ltk_overlay = "0.14.2"
+ltk_fantome = "0.16.1"
 
 # Mimir: the League Toolkit hash cache (`%LOCALAPPDATA%\LeagueToolkit\hashes`), read, and updated
 # by the app with Mimir's own updater (#ADR-0059), at the revision LTK Manager checks out.
@@ -121,16 +122,6 @@ tar = "0.4"
 parking_lot = "0.12"
 # A package's thumbnail sent to the window as a `data:` URL.
 base64 = "0.22"
-
-[patch.crates-io]
-# LeagueToolkit/league-mod#302 at 1fbf4c8, until it is released: the release before it orders the
-# chunks of one WAD and layer as a HashMap gives them, so two writes of one package differ. Every
-# league-mod crate the workspace uses comes from the same commit, so the build holds one of each.
-ltk_modpkg = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
-ltk_mod_project = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
-ltk_hashtable = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
-ltk_game_data = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
-ltk_mod_core = { git = "https://github.com/LeagueToolkit/league-mod", rev = "1fbf4c8b0cf4e44098f39b41278d7f57da2fa83a" }
 
 [profile.release]
 debug = "line-tables-only"
