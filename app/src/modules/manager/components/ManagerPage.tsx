@@ -30,6 +30,7 @@ import {
   stateText,
   unitMovesToPremium,
 } from "../scan";
+import { useTickStore } from "../state/tickStore";
 
 const headClass = "px-3 py-2 text-left text-xs font-medium text-surface-400 select-none";
 const cellClass = "px-3 py-2 align-top";
@@ -131,7 +132,11 @@ export function ManagerPage() {
   const scanArchives = useScanStore((state) => state.archives);
   const underScan = new Set((scanAt?.running ?? []).map((index) => scanArchives[index]));
   const stopping = useScanStore((state) => state.stopping);
-  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const ticked = useTickStore((state) => state.ticked);
+  const tickedAt = useTickStore((state) => state.readAt);
+  const setTickedAt = useTickStore((state) => state.setTicked);
+  const setTicked = (next: Set<string> | ((before: Set<string>) => Set<string>)) =>
+    setTickedAt(typeof next === "function" ? next(useTickStore.getState().ticked) : next);
   const [filter, setFilter] = useState("");
   const [pastesOnly, setPastesOnly] = useState(false);
   const mods = library.data?.mods ?? [];
@@ -152,12 +157,14 @@ export function ManagerPage() {
     moved: scanned.filter(movesToPremium).length,
   };
 
-  // The default ticks are taken each time the library is read.
+  // The default ticks are taken each time the library is read, and kept across pages: a
+  // return to the page with the library as it was read keeps what was ticked.
+  const readAt = library.dataUpdatedAt;
   useEffect(() => {
-    if (library.data) {
-      setTicked(new Set(archivesOf(library.data.mods.filter(isLegacyChampionMod))));
+    if (library.data && readAt !== tickedAt) {
+      setTickedAt(new Set(archivesOf(library.data.mods.filter(isLegacyChampionMod))), readAt);
     }
-  }, [library.data]);
+  }, [library.data, readAt, tickedAt, setTickedAt]);
 
   const toggle = (path: string, on: boolean) =>
     setTicked((before) => {
