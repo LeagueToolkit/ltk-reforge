@@ -1498,8 +1498,8 @@ export type ManagerMod = {
 	 */
 	archive: string | null,
 	/**
-	 *  Whether the archive carries league-mod's layer directories, game data or hash tables
-	 *  (#MOD-ARTIFACT-0040). False for a plain Fantome, and for a mod with no archive.
+	 *  Whether the archive carries a layer beyond the base or game data (#MOD-ARTIFACT-0040).
+	 *  False for a plain Fantome, hash tables or not, and for a mod with no archive.
 	 */
 	extended: boolean,
 	/**  When the manager installed it, as its index spells the time. */
