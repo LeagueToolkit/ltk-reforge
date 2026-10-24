@@ -86,6 +86,26 @@ pub struct IndexRelease {
     pub db: Asset,
     /// The census history at the index's head, when the release holds it.
     pub archive: Option<Asset>,
+    /// The delta that takes the index to the history's tip, when the release holds one
+    /// (#ADR-0109).
+    pub delta: Option<Asset>,
+}
+
+/// The name of a release's delta for the app's format, to the head `head`:
+/// `history-v<format>-delta-<head12>.tar`.
+pub fn delta_name(head: &str) -> String {
+    format!(
+        "history-v{FORMAT}-delta-{}.tar",
+        head.get(..12).unwrap_or(head)
+    )
+}
+
+/// The head a delta's name says it reaches, when the name is a delta's of the app's format.
+pub fn delta_head(name: &str) -> Option<&str> {
+    let head = name
+        .strip_prefix(&format!("history-v{FORMAT}-delta-"))?
+        .strip_suffix(".tar")?;
+    (head.len() == 12 && head.bytes().all(|b| b.is_ascii_hexdigit())).then_some(head)
 }
 
 #[derive(Deserialize)]
@@ -127,6 +147,11 @@ impl ApiRelease {
             builds: self.asset(&names.builds)?,
             db: self.asset(&names.db)?,
             archive: self.asset(ARCHIVE_FILE),
+            delta: self
+                .assets
+                .iter()
+                .find(|asset| delta_head(&asset.name).is_some())
+                .and_then(|asset| self.asset(&asset.name)),
         })
     }
 }
@@ -562,6 +587,10 @@ pub struct IndexReleaseView {
     pub builds: usize,
     /// The bytes of the census history's archive, when the release holds it.
     pub archive_size: Option<u64>,
+    /// The head the release's delta reaches, when it holds one (#ADR-0109).
+    pub delta_head: Option<String>,
+    /// The bytes of that delta.
+    pub delta_size: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -600,6 +629,12 @@ impl IndexRelease {
             newest_build: stamp.newest_build,
             builds: stamp.builds,
             archive_size: self.archive.as_ref().map(|archive| archive.size),
+            delta_head: self
+                .delta
+                .as_ref()
+                .and_then(|delta| delta_head(&delta.name))
+                .map(str::to_string),
+            delta_size: self.delta.as_ref().map(|delta| delta.size),
         })
     }
 }
@@ -624,7 +659,14 @@ pub(crate) fn path_safe(text: &str) -> String {
         .collect()
 }
 
-/// The index folders under `root` other than `keep`, removed. A folder that does not go, as
+/// The folder an index taken forward to `head` is written in.
+pub fn head_folder(root: &Utf8Path, head: &str) -> Utf8PathBuf {
+    let short = head.get(..12).unwrap_or(head);
+    root.join(folder_name(&format!("head-{short}")))
+}
+
+/// The folders of indexes taken forward under `root` other than `keep`, removed. A release's
+/// index stays: it is the base of the next delta (#ADR-0109). A folder that does not go, as
 /// one an earlier run still holds open, is left for the next time.
 pub fn remove_others(root: &Utf8Path, keep: &Utf8Path) {
     let Ok(entries) = fs::read_dir(root) else {
@@ -634,7 +676,10 @@ pub fn remove_others(root: &Utf8Path, keep: &Utf8Path) {
         let Ok(path) = Utf8PathBuf::from_path_buf(entry.path()) else {
             continue;
         };
-        if path != keep && path.is_dir() {
+        let taken_forward = path
+            .file_name()
+            .is_some_and(|name| name.starts_with("head-"));
+        if path != keep && path.is_dir() && taken_forward {
             let _ = fs::remove_dir_all(&path);
         }
     }

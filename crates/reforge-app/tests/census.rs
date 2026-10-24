@@ -3,14 +3,18 @@
 //! census history here is a bare repository on disk served by `git upload-pack`, so the tests
 //! need git on the path.
 
+use std::io::Read;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
-use reforge::history::{FORMAT, Families, Stamp};
-use reforge_app::census::Updater;
+use reforge::history::{DB_FILE, FORMAT, Families, Stamp};
+use reforge_app::census::{DeltaUpdate, UpdateStep, Updater, delta_behind, update_from_release};
 use reforge_app::error::AppError;
-use reforge_census::{GitRepo, Indexer};
+use reforge_app::index::{Asset, IndexRelease, Source, delta_name, folder_name};
+use reforge_census::{GitRepo, Indexer, write_delta};
+use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 const WAD: &str = "files/data/x.wad.client";
@@ -133,6 +137,115 @@ fn an_index_behind_the_history_is_taken_forward_into_a_folder_of_its_own() {
     );
     assert!(!updater.behind(&updated).unwrap());
     assert_eq!(updater.update(&updated).unwrap(), None);
+}
+
+/// A release's files served from a folder, each at the URL of its name.
+struct Files(Utf8PathBuf);
+
+impl Source for Files {
+    fn open(&self, url: &str) -> Result<Box<dyn Read + Send>, AppError> {
+        Ok(Box::new(fs::File::open(self.0.join(url)).unwrap()))
+    }
+}
+
+impl Files {
+    fn asset(&self, name: &str) -> Asset {
+        let bytes = fs::read(self.0.join(name)).unwrap();
+        Asset {
+            name: name.to_string(),
+            size: bytes.len() as u64,
+            sha256: format!("{:x}", Sha256::digest(&bytes)),
+            url: name.to_string(),
+        }
+    }
+}
+
+/// #ADR-0109: the release's delta takes the release's index forward without the history.
+#[test]
+fn a_releases_delta_takes_its_index_forward_into_a_folder_of_the_new_head() {
+    let (_dir, root) = scratch();
+    let server = two_builds(root.join("server"));
+    let tag = "history-v2-snapshot-9";
+    let indexes = root.join("indexes");
+    let base = indexes.join(folder_name(tag));
+    server.index(0, &base);
+    let head = root.join("head");
+    server.index(1, &head);
+    let files = Files(root.join("files"));
+    fs::create_dir_all(&files.0).unwrap();
+    let name = delta_name(&server.commits[1]);
+    write_delta(&files.0.join(&name), &base, &head).unwrap();
+    let none = Asset {
+        name: String::new(),
+        size: 0,
+        sha256: String::new(),
+        url: String::new(),
+    };
+    let release = IndexRelease {
+        tag: tag.to_string(),
+        stamp: none.clone(),
+        builds: none.clone(),
+        db: none,
+        archive: None,
+        delta: Some(files.asset(&name)),
+    };
+    assert_eq!(delta_behind(&release, &indexes, &base), Some(true));
+    assert_eq!(
+        delta_behind(&release, &root.join("elsewhere"), &base),
+        None,
+        "no base under the root"
+    );
+
+    let cancel = AtomicBool::new(false);
+    let steps = Mutex::new(Vec::new());
+    let heard = |step: UpdateStep| steps.lock().unwrap().push(step);
+    let updated = update_from_release(
+        &files,
+        &release,
+        &indexes,
+        &root.join("downloads"),
+        &base,
+        &cancel,
+        &heard,
+    )
+    .unwrap();
+
+    let out = indexes.join(format!("head-{}-v{FORMAT}", &server.commits[1][..12]));
+    assert_eq!(updated, DeltaUpdate::Updated(out.clone()));
+    assert_eq!(Stamp::read(&out).unwrap(), Stamp::read(&head).unwrap());
+    assert_eq!(
+        fs::read(out.join(DB_FILE)).unwrap(),
+        fs::read(head.join(DB_FILE)).unwrap()
+    );
+    let steps = steps.lock().unwrap().clone();
+    assert!(
+        steps
+            .iter()
+            .any(|s| matches!(s, UpdateStep::Download { .. }))
+    );
+    assert!(steps.iter().any(|s| matches!(s, UpdateStep::Write { .. })));
+    assert_eq!(steps.last(), Some(&UpdateStep::Check));
+    assert_eq!(delta_behind(&release, &indexes, &out), Some(false));
+    assert_eq!(
+        update_from_release(
+            &files,
+            &release,
+            &indexes,
+            &root.join("downloads"),
+            &out,
+            &cancel,
+            &heard
+        )
+        .unwrap(),
+        DeltaUpdate::UpToDate
+    );
+    assert!(
+        !root
+            .join("downloads")
+            .join(format!("{tag}-{name}"))
+            .exists(),
+        "the delta is removed once applied"
+    );
 }
 
 #[test]

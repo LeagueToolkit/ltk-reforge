@@ -155,6 +155,7 @@ impl Folder {
             builds: self.asset(&names.builds),
             db: self.asset(&names.db),
             archive: None,
+            delta: None,
         }
     }
 
@@ -304,6 +305,39 @@ fn the_newest_release_holding_a_whole_index_is_picked() {
     assert_eq!(
         picked.db.url,
         format!("https://example.invalid/{}", names().db)
+    );
+}
+
+/// #ADR-0109: a release's delta is the asset named for the app's format and a head.
+#[test]
+fn a_release_holding_a_delta_of_the_apps_format_is_picked_with_it() {
+    let head = "5970301fb64afa82f106d3d69dd9550c8da65e22";
+    let name = index::delta_name(head);
+    assert_eq!(name, format!("history-v{FORMAT}-delta-5970301fb64a.tar"));
+    assert_eq!(index::delta_head(&name), Some("5970301fb64a"));
+    assert_eq!(
+        index::delta_head(&format!("history-v{OTHER}-delta-5970301fb64a.tar")),
+        None
+    );
+    assert_eq!(index::delta_head("history-v1-delta-nothex000000.tar"), None);
+    let mut files = whole(FORMAT).to_vec();
+    files.push((
+        format!("history-v{OTHER}-delta-aaaaaaaaaaaa.tar"),
+        Some("sha256:ee"),
+    ));
+    files.push((name.clone(), Some("sha256:dd")));
+    let releases = serde_json::json!([api_release("whole", false, &files)]);
+
+    let picked = index::pick(&releases.to_string())
+        .unwrap()
+        .expect("a release");
+
+    let delta = picked.delta.expect("the delta");
+    assert_eq!((delta.name, delta.sha256.as_str()), (name, "dd"));
+    let without = serde_json::json!([api_release("whole", false, &whole(FORMAT))]);
+    assert_eq!(
+        index::pick(&without.to_string()).unwrap().unwrap().delta,
+        None
     );
 }
 

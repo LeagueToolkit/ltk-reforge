@@ -113,7 +113,7 @@ before it.
 | the game install | one of a list (#ADR-0101): the live install and the PBE the app detects (the Riot client's list of installs, a running client as `ltk_mod_core` finds it, the usual folders on every drive), and the folders the user added that open as an install | no run |
 | the hash tables | the cache the League Toolkit programs share, else a folder the user picks; downloaded or updated by the app when asked (#ADR-0059) | a run names less: a chunk no table spells ships under its hash |
 | the schema database | the copy the League Toolkit programs share, downloaded or updated by the app when asked (#ADR-0059), else a file the user picks | the types come from the install's bins alone |
-| the history index | fetched prebuilt and taken forward from the census history (#ADR-0047, #ADR-0057) | the run is judged against the install alone, and says so |
+| the history index | fetched prebuilt and taken forward by the release's delta (#ADR-0047, #ADR-0109), or from the census history (#ADR-0057) | the run is judged against the install alone, and says so |
 
 The app says which inputs it read and how old each is, since a report differs with them: the
 install's build, the newest build the schema and the history index describe, and what opening
@@ -162,8 +162,9 @@ A row holds, in this order:
 4. An offer for each thing the user can have done, as a box with what it does, what it costs
    and one button. Work under way shows its progress in the same box.
 
-The index row has up to three offers: the builds after its head added from the census history,
-the newest release downloaded in its place, and an index of the app's that the settings do not
+The index row has up to three offers: the builds after its head added, by the release's delta
+when the release's index is on disk (#ADR-0109) and from the census history otherwise, the
+newest release downloaded in its place, and an index of the app's that the settings do not
 name put back in use. The filled button is the cheapest that brings the index up to date.
 
 The index, the clone and the kept downloads each show their bytes on disk and a button that
@@ -717,8 +718,9 @@ premium skin. The rows stay, by archive, until the library is read again.
    release, with a stamp that names the published repository. The file is 2.75 GB: 891 MB
    with xz up to 16.19.8207193, 767 MB with zstd at `--ultra -22 --long=31` up to
    16.19.8230722 (2026-10-05).
-3. **The builds after the index's head added** on the user's machine, from the census history
-   fetched as far as the append reads it (#ADR-0057).
+3. **The builds after the index's head added** on the user's machine: the release's delta
+   applied to the release's index (#ADR-0109), or the census history fetched as far as the
+   append reads it (#ADR-0057) when no delta fits.
 4. **The census history cloned whole by the app** at the user's choice, bootstrapped from a
    release's archive (#ADR-0060), to build an index with no download. A run reads an object at
    any build from the index (#ADR-0078), so the whole clone serves no run, and #ADR-0078

@@ -18,7 +18,7 @@ use crate::archive::{ArchiveNote, ArchiveProgress, Bootstrap, CloneView};
 use crate::batch::{self, BatchJobs, BatchProgress, BatchRequest, BatchView};
 use crate::bin_rows::{self, BinDocument, BinDocumentHandle, BinRows, BinSource, BinViews};
 use crate::catalog::{self, CheckEntry, FixupEntry};
-use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
+use crate::census::{self, CENSUS, DeltaUpdate, IndexUpdateProgress, UpdateStep, Updater};
 use crate::error::{AppError, IpcResult};
 use crate::explore::{self, ExploreView, ExploredMod};
 use crate::guided::{self, Question};
@@ -942,9 +942,17 @@ pub async fn index_behind(app: AppHandle) -> IpcResult<bool> {
     let job = Arc::clone(&app.state::<Arc<IndexJob>>());
     off_thread(move || {
         let index = history.ok_or(AppError::NoIndex)?;
+        let index = Utf8Path::new(&index);
+        // The release's delta answers when its index is on disk (#ADR-0109); the census
+        // history is asked otherwise.
+        let web = Web::for_checks()?;
+        if let Some(release) = web.latest()?
+            && let Some(behind) = census::delta_behind(&release, &job.root, index)
+        {
+            return Ok(behind);
+        }
         let never = AtomicBool::new(false);
-        Updater::new(CENSUS, job.clones.for_updates(), &job.root, &never)
-            .behind(Utf8Path::new(&index))
+        Updater::new(CENSUS, job.clones.for_updates(), &job.root, &never).behind(index)
     })
     .await
 }
@@ -980,22 +988,57 @@ fn update_from_census(
     job: &IndexJob,
     index: &Utf8Path,
 ) -> Result<Option<Utf8PathBuf>, AppError> {
-    let app = app.clone();
-    // An event per request and per 256 KB: a fetch reads in chunks of a few KB.
-    let shown = Mutex::new((usize::MAX, 0u64));
-    let heard = move |step: UpdateStep| {
-        if let UpdateStep::Fetch { objects, bytes } = step {
-            let mut shown = shown.lock();
-            if objects == shown.0 && bytes < shown.1 + 256 * 1024 {
-                return;
-            }
-            *shown = (objects, bytes);
+    let heard = progress_events(app);
+    // The release's delta first (#ADR-0109): a download and a decode, no fetch and no append.
+    let web = Web::new()?;
+    if let Some(release) = web.latest()? {
+        let updated = census::update_from_release(
+            &web,
+            &release,
+            &job.root,
+            &job.downloads,
+            index,
+            &job.run.cancel,
+            &heard,
+        )?;
+        match updated {
+            DeltaUpdate::Updated(out) => return Ok(Some(out)),
+            DeltaUpdate::UpToDate => return Ok(None),
+            DeltaUpdate::NoDelta => {}
         }
-        let _ = IndexUpdateProgress { step }.emit(&app);
-    };
+    }
     Updater::new(CENSUS, job.clones.for_updates(), &job.root, &job.run.cancel)
         .on_progress(heard)
         .update(index)
+}
+
+/// Emits each step of an update as an event, the ones that come in a stream thinned.
+fn progress_events(app: &AppHandle) -> impl Fn(UpdateStep) + Send + Sync + 'static {
+    let app = app.clone();
+    // An event per request and per 256 KB of a fetch, which reads in chunks of a few KB, and
+    // per percent of a download or a write.
+    let shown = Mutex::new((usize::MAX, 0u64));
+    move |step: UpdateStep| {
+        match step {
+            UpdateStep::Fetch { objects, bytes } => {
+                let mut shown = shown.lock();
+                if objects == shown.0 && bytes < shown.1 + 256 * 1024 {
+                    return;
+                }
+                *shown = (objects, bytes);
+            }
+            UpdateStep::Download { done, total } | UpdateStep::Write { done, total } => {
+                let percent = usize::try_from(done * 100 / total.max(1)).unwrap_or(0);
+                let mut shown = shown.lock();
+                if percent == shown.0 && done != total {
+                    return;
+                }
+                *shown = (percent, done);
+            }
+            UpdateStep::Append { .. } | UpdateStep::Check => {}
+        }
+        let _ = IndexUpdateProgress { step }.emit(&app);
+    }
 }
 
 fn no_data_dir() -> AppError {

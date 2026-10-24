@@ -1349,6 +1349,10 @@ export type IndexReleaseView = {
 	builds: number,
 	/**  The bytes of the census history's archive, when the release holds it. */
 	archive_size: number | null,
+	/**  The head the release's delta reaches, when it holds one (#ADR-0109). */
+	delta_head: string | null,
+	/**  The bytes of that delta. */
+	delta_size: number | null,
 };
 
 /**  An update of the index, as it goes. */
@@ -2531,7 +2535,21 @@ done: number;
 /**  The builds it holds once the append ends. */
 of: number; 
 /**  The build appended last. */
-build: string };
+build: string } | 
+/**  The release's delta is downloading (#ADR-0109). */
+{ kind: "download"; 
+/**  The bytes downloaded. */
+done: number; 
+/**  The bytes to download. */
+total: number } | 
+/**  The index is being written from the delta and the release's index. */
+{ kind: "write"; 
+/**  The bytes written. */
+done: number; 
+/**  The bytes to write. */
+total: number } | 
+/**  The index written is being checked against the delta's digest. */
+{ kind: "check" };
 
 /**
  *  Where one value a type check counts is, every string cleaned: the WAD, the bin's path, the

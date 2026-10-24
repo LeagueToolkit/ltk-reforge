@@ -226,6 +226,7 @@ impl Folder {
             builds: none.clone(),
             db: none,
             archive: Some(self.asset()),
+            delta: None,
         }
     }
 }

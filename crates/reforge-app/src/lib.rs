@@ -64,8 +64,8 @@ pub fn run() -> tauri::Result<()> {
                 format!("the app's data folder is not UTF-8: {}", path.display())
             })?;
             let indexes = data.join("history-indexes");
-            // Before any run opens one: an index the settings no longer name is an older
-            // release's, and nothing holds it open yet.
+            // Before any run opens one: an index taken forward that the settings no longer
+            // name is behind the one they do, and nothing holds it open yet.
             let current = app
                 .state::<SettingsStore>()
                 .get()
