@@ -31,7 +31,7 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   the commands (`pnpm generate:types`) and committed; a test of the crate fails when they
   differ from the commands.
 - The settings are one JSON file in the app's data directory, a key per setting id
-  (`appearance.theme`, `inputs.game`, `inputs.installs`, `output.folder`).
+  (`appearance.theme`, `inputs.game`, `inputs.installs`, `output.folder`, `output.format`).
 - The theme (`app/src/styles/`) and the components are LTK Manager's, copied. reforge's own
   red, taken from Ornn's base splash art, is `app/src/styles/reforge.css` over them. LTK
   Manager's lint rules apply as its own, so the warnings it gives on its components are given
@@ -76,7 +76,7 @@ run and writes the report, in some two hundred lines.
 | what a fixup changed | `Changes`: per fixup, object and field path, the value before and after, and whether it was moved, removed, lost or had no conversion |
 | the findings | `Diagnostics`, an ordered log of typed diagnostics, each with a code, a severity, a subject and data. `Diagnostics::listen` gives each one as it is raised. `docs/design/CODES.md` lists every code |
 | a finding that stops the write | `DiagnosticPolicy`: codes or areas a caller sets to block. None blocks by default (#ADR-0003) |
-| the output | `ProjectDir` and `Modpkg`, the two `PackageWriter`s. A package holds the evidence of its run as its readme (#ADR-0041) |
+| the output | `ProjectDir`, `Modpkg` and `Fantome`, the three `PackageWriter`s; the app writes the one `output.format` names, the `.fantome` by default (#ADR-0105). A package holds the evidence of its run as its readme (#ADR-0041) |
 | text that is safe to show | a mod's name, description and paths are `Spelled` and reach a person through `clean`. A mod is untrusted input: [ARCHITECTURE.md](ARCHITECTURE.md), "Untrusted input" |
 
 A record a fixup or a finding names (`#GAME-CHANGE-0005`, `#MOD-ARTIFACT-0017`) is a file

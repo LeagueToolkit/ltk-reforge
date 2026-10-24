@@ -4,7 +4,7 @@ import { type ReactNode, useCallback, useEffect } from "react";
 
 import { Button, FailureNote, SectionCard } from "@/components";
 import { m } from "@/i18n";
-import { type CharacterPeek, commands, type ModView } from "@/lib/bindings.gen";
+import { type CharacterPeek, commands, type ModView, type PackageFormat } from "@/lib/bindings.gen";
 import { pickFile } from "@/modules/inputs";
 import { useSettings } from "@/modules/settings";
 import { queryFn, twMerge } from "@/utils";
@@ -22,6 +22,12 @@ export function useOutputFolder(): string | null {
     return chosen;
   }
   return archive ? folderOf(archive) : null;
+}
+
+/** The form a package is written in: the chosen one, else a `.fantome`. */
+export function usePackageFormat(): PackageFormat {
+  const settings = useSettings();
+  return settings.data?.["output.format"] ?? "fantome";
 }
 
 /** The key of every read of an archive alone. */

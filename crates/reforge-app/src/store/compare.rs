@@ -33,7 +33,7 @@ pub struct RunHead {
     pub version: Option<String>,
     /// The archive's file name.
     pub file_name: String,
-    /// The file name of the `.modpkg` written.
+    /// The file name of the package written.
     pub package: Option<String>,
 }
 

@@ -9,7 +9,7 @@ import { useJobRunning, useRunMod, useRunRunning, useRunStages } from "../api/ru
 import { runSettings, STANDARD, useRepairStore } from "../state/repairStore";
 import { EndedTabs } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
-import { useOutputFolder } from "./ModCard";
+import { useOutputFolder, usePackageFormat } from "./ModCard";
 import { resultsOf, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
 import { StopButton } from "./StopButton";
@@ -29,6 +29,7 @@ export function SimpleRepair() {
   const last = useRepairStore((state) => state.last);
   const live = useRepairStore((state) => state.live);
   const out = useOutputFolder();
+  const format = usePackageFormat();
   const inputs = useInputs();
   const run = useRunMod();
   const running = useRunRunning();
@@ -46,6 +47,7 @@ export function SimpleRepair() {
       through: "write",
       settings: runSettings({ ...STANDARD, block }),
       out,
+      format,
     };
     gate(() => run.mutate(request));
   };

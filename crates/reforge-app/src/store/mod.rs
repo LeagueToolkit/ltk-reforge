@@ -157,7 +157,7 @@ pub struct Saved {
     pub settings: RunSettings,
     /// The schema database's build, as the inputs report it.
     pub schema_build: Option<String>,
-    /// The `.modpkg` written. None for a run kept on request before the write.
+    /// The package written. None for a run kept on request before the write.
     pub package: Option<String>,
     /// The run's memory layer: every byte its stages made, by id.
     pub layer: BTreeMap<ContentId, ByteView>,

@@ -312,7 +312,7 @@ pub struct RunView {
     pub targets: Option<TargetsView>,
     /// The package, once it was built.
     pub package: Option<PackageView>,
-    /// The `.modpkg` written.
+    /// The package written.
     pub written: Option<String>,
     /// The run's number in the app's store, once the store kept it (#ADR-0096).
     pub saved: Option<u64>,

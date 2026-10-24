@@ -517,6 +517,8 @@ export type BatchRequest = {
 	settings: RunSettings,
 	/**  The folder every package is written in. None writes each beside its archive. */
 	out: string | null,
+	/**  The form every package is written in (#ADR-0105). */
+	format?: PackageFormat,
 };
 
 /**  One archive of a batch and how its run ended. */
@@ -531,7 +533,7 @@ export type BatchRow = {
 	outcome: Outcome,
 	/**  The run's number in the app's store, once a write kept it there (#ADR-0096). */
 	saved: number | null,
-	/**  The `.modpkg` written. */
+	/**  The package written. */
 	package: string | null,
 	/**  The run's findings by severity. */
 	counts: SeverityCounts,
@@ -1577,6 +1579,16 @@ export type PackageDiff = {
 	b: PackageView | null,
 };
 
+/**  The form a package is written in. */
+export type PackageFormat = 
+/**
+ *  A `.fantome` with every layer and its game data, as LTK Manager reads one
+ *  (#MOD-ARTIFACT-0040, #ADR-0105).
+ */
+"fantome" | 
+/**  A `.modpkg`. */
+"modpkg";
+
 /**  The package a run built. */
 export type PackageView = {
 	/**  The project's name. */
@@ -1902,7 +1914,7 @@ export type RunHead = {
 	version: string | null,
 	/**  The archive's file name. */
 	file_name: string,
-	/**  The file name of the `.modpkg` written. */
+	/**  The file name of the package written. */
 	package: string | null,
 };
 
@@ -1940,8 +1952,10 @@ export type RunRequest = {
 	through: StageName,
 	/**  The settings. */
 	settings: RunSettings,
-	/**  The folder the `.modpkg` and its report are written in. Required to write. */
+	/**  The folder the package and its report are written in. Required to write. */
 	out: string | null,
+	/**  The form the package is written in (#ADR-0105). */
+	format?: PackageFormat,
 	/**
 	 *  Keep the run in the store when it ends at `through` without writing, as a written run
 	 *  is kept: the guided view's run through `plan`, which the run from the answers resumes
@@ -1974,7 +1988,7 @@ export type RunRow = {
 	author: string | null,
 	/**  The mod's version, as its archive says. */
 	version: string | null,
-	/**  The `.modpkg` written. */
+	/**  The package written. */
 	package: string | null,
 	/**
 	 *  The stages it keeps a snapshot of, in stage order, `load` first. Empty for a run
@@ -2050,7 +2064,7 @@ export type RunView = {
 	targets: TargetsView | null,
 	/**  The package, once it was built. */
 	package: PackageView | null,
-	/**  The `.modpkg` written. */
+	/**  The package written. */
 	written: string | null,
 	/**  The run's number in the app's store, once the store kept it (#ADR-0096). */
 	saved: number | null,
@@ -2137,6 +2151,8 @@ export type Settings = {
 	"inputs.history"?: string | null,
 	/**  The folder a package is written in. None: the mod's own folder. */
 	"output.folder"?: string | null,
+	/**  The form a package is written in (#ADR-0105). */
+	"output.format"?: PackageFormat,
 	/**  Run with an input absent, the history index or the hash tables, without asking first. */
 	"prompts.runWithLess"?: boolean,
 };

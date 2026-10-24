@@ -1,11 +1,28 @@
 use fs_err as fs;
-use reforge_app::settings::{Settings, SettingsStore, Theme};
+use reforge_app::settings::{PackageFormat, Settings, SettingsStore, Theme};
 
 #[test]
 fn an_absent_file_gives_the_defaults() {
     let dir = tempfile::tempdir().unwrap();
     let store = SettingsStore::open(dir.path().join("settings.json"));
     assert_eq!(store.get(), Settings::default());
+}
+
+/// #ADR-0105: a package is a `.fantome` until a person chooses otherwise.
+#[test]
+fn the_package_format_is_the_fantome_by_default_and_is_saved_under_its_id() {
+    assert_eq!(Settings::default().format, PackageFormat::Fantome);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let settings = Settings {
+        format: PackageFormat::Modpkg,
+        ..Settings::default()
+    };
+    SettingsStore::open(&path).save(settings.clone()).unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(saved["output.format"], "modpkg");
+    assert_eq!(SettingsStore::open(&path).get(), settings);
 }
 
 #[test]

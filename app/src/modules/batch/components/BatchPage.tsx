@@ -82,7 +82,9 @@ export function BatchPage() {
   const rows = useBatchStore((state) => state.rows);
   const stopping = useBatchStore((state) => state.stopping);
   const advanced = useRepairStore((state) => state.advanced);
-  const chosenOut = useSettings().data?.["output.folder"];
+  const settings = useSettings().data;
+  const chosenOut = settings?.["output.folder"];
+  const format = settings?.["output.format"] ?? "fantome";
   const inputs = useInputs();
   const running = useBatchRunning();
   const busy = useJobRunning();
@@ -106,6 +108,7 @@ export function BatchPage() {
       archives,
       settings: runSettings(runPageSettings ? forEveryMod(advanced) : STANDARD),
       out: chosenOut ?? null,
+      format,
     };
     gate(() => runBatch.mutate(request));
   };

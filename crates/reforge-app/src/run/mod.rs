@@ -25,7 +25,7 @@ use reforge::diag::{Action, Cancel, DiagnosticPolicy, Filter, Render, Stage};
 use reforge::fixups::FixupSet;
 use reforge::load::KeptFile;
 use reforge::model::{ByteView, ContentId, Slot, Spelled};
-use reforge::package::{CheckSelection, CheckSet, EvidenceDoc, Modpkg, PackageWriter};
+use reforge::package::{CheckSelection, CheckSet, EvidenceDoc, Fantome, Modpkg, PackageWriter};
 use reforge::port::{AnimReuse, Policy, TargetPolicy, UnitTarget};
 use reforge::snapshot::{LoadInputs, Program, Snapshots, StageSettings};
 use reforge::store::{Layered, MemoryStore};
@@ -41,6 +41,7 @@ pub use self::views::*;
 use crate::error::{AppError, chain};
 use crate::inputs::Inputs;
 use crate::selection::FixupChoice;
+use crate::settings::PackageFormat;
 use crate::store::{AppStore, KeptRun, Saved, load_key};
 use crate::view::Finding;
 
@@ -272,8 +273,11 @@ pub struct RunRequest {
     pub through: StageName,
     /// The settings.
     pub settings: RunSettings,
-    /// The folder the `.modpkg` and its report are written in. Required to write.
+    /// The folder the package and its report are written in. Required to write.
     pub out: Option<String>,
+    /// The form the package is written in (#ADR-0105).
+    #[serde(default)]
+    pub format: PackageFormat,
     /// Keep the run in the store when it ends at `through` without writing, as a written run
     /// is kept: the guided view's run through `plan`, which the run from the answers resumes
     /// from (#ADR-0090, #ADR-0094).
@@ -553,10 +557,12 @@ fn run_with(
     if let (Some(out), Some(package), None, None) = (&out, run.package(), &fault, cancelled) {
         watch.stage(StageName::Write, StageEvent::Started);
         let at = Instant::now();
-        let modpkg = Modpkg::new(out);
-        let path = modpkg.path_of(package);
-        let writers: [&dyn PackageWriter; 1] = [&modpkg];
-        match run.write(&writers, &blocking) {
+        let (modpkg, fantome) = (Modpkg::new(out), Fantome::new(out));
+        let (writer, path): (&dyn PackageWriter, _) = match request.format {
+            PackageFormat::Fantome => (&fantome, fantome.path_of(package)),
+            PackageFormat::Modpkg => (&modpkg, modpkg.path_of(package)),
+        };
+        match run.write(&[writer], &blocking) {
             Ok(()) => written = Some(path.to_string()),
             Err(RunError::Refused(_)) => refused = true,
             Err(error) => fault = Some(chain(&error)),

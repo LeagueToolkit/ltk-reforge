@@ -25,7 +25,7 @@ import { DecisionsView } from "./DecisionsView";
 import { GuidedSettingsCard } from "./GuidedSettingsCard";
 import { LastRunFiles, useLastRunFiles } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
-import { useOutputFolder } from "./ModCard";
+import { useOutputFolder, usePackageFormat } from "./ModCard";
 import { PolicyCard } from "./PolicyCard";
 import { RulesCard } from "./RulesCard";
 import { fixupDetail } from "./RunFindings";
@@ -252,6 +252,7 @@ export function AdvancedRepair() {
   const last = useRepairStore((state) => state.last);
   const live = useRepairStore((state) => state.live);
   const out = useOutputFolder();
+  const format = usePackageFormat();
   const run = useRunMod();
   const running = useRunRunning();
   const { gate, dialog } = useInputsGate();
@@ -273,6 +274,7 @@ export function AdvancedRepair() {
         through,
         settings: runSettings(settings),
         out: through === "write" ? out : null,
+        format,
       }),
     );
   };

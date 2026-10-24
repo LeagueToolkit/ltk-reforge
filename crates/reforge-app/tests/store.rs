@@ -378,6 +378,7 @@ impl Bench {
             through,
             settings: RunSettings::default(),
             out: Some(self.folder.root.join("out").to_string()),
+            format: reforge_app::settings::PackageFormat::default(),
             keep: false,
         }
     }
@@ -943,7 +944,7 @@ fn the_runs_are_listed_newest_first_with_the_stages_each_reached() {
         ported
             .package
             .as_deref()
-            .is_some_and(|p| p.ends_with(".modpkg"))
+            .is_some_and(|p| p.ends_with(".fantome"))
     );
     let view = bench.store.view().unwrap();
     assert_eq!((view.runs, view.kept, view.mods), (2, 0, 1));

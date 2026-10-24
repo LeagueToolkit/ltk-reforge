@@ -125,6 +125,7 @@ impl Bench {
             archives: [unreadable, halts, writes].map(String::from).to_vec(),
             settings: RunSettings::default(),
             out: Some(self.folder.path("out").to_string()),
+            format: reforge_app::settings::PackageFormat::default(),
         }
     }
 

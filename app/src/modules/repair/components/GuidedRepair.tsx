@@ -35,7 +35,7 @@ import {
 import { Candidate } from "./DecisionsView";
 import { EndedTabs } from "./LastRunFiles";
 import { LiveProgress } from "./LiveProgress";
-import { useOutputFolder } from "./ModCard";
+import { useOutputFolder, usePackageFormat } from "./ModCard";
 import { resultsOf, RunResults } from "./RunResults";
 import { RunSummary } from "./RunSummary";
 import { StopButton } from "./StopButton";
@@ -162,6 +162,7 @@ export function GuidedRepair() {
   const setGuided = useRepairStore((state) => state.setGuided);
   const setAdvanced = useRepairStore((state) => state.setAdvanced);
   const out = useOutputFolder();
+  const format = usePackageFormat();
   const inputs = useInputs();
   const run = useRunMod();
   const running = useRunRunning();
@@ -176,7 +177,7 @@ export function GuidedRepair() {
       return null;
     }
     const kind = STANDARD.kind;
-    return { kind, archive, through, settings: runSettings(settings), out };
+    return { kind, archive, through, settings: runSettings(settings), out, format };
   };
 
   /** Runs from these settings through the write, and shows how it ended. */

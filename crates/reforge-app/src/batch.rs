@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::inputs::{Choice, Inputs};
 use crate::run::{self, RunKind, RunRequest, RunSettings, RunView, StageName, StageState, Watch};
+use crate::settings::PackageFormat;
 use crate::state::OpenInputs;
 use crate::store::AppStore;
 use crate::view::{Finding, Severity};
@@ -70,6 +71,9 @@ pub struct BatchRequest {
     pub settings: RunSettings,
     /// The folder every package is written in. None writes each beside its archive.
     pub out: Option<String>,
+    /// The form every package is written in (#ADR-0105).
+    #[serde(default)]
+    pub format: PackageFormat,
 }
 
 /// How one archive's run ended.
@@ -137,7 +141,7 @@ pub struct BatchRow {
     pub outcome: Outcome,
     /// The run's number in the app's store, once a write kept it there (#ADR-0096).
     pub saved: Option<u64>,
-    /// The `.modpkg` written.
+    /// The package written.
     pub package: Option<String>,
     /// The run's findings by severity.
     pub counts: SeverityCounts,
@@ -282,6 +286,7 @@ impl Batch<'_> {
             through: StageName::Write,
             settings: self.request.settings.clone(),
             out: Some(out_of(self.request, archive)),
+            format: self.request.format,
             keep: false,
         };
         let mut watch = Counting::default();

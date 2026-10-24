@@ -80,6 +80,7 @@ impl Bench {
             through,
             settings: RunSettings::default(),
             out: Some(root.join("out").to_string()),
+            format: reforge_app::settings::PackageFormat::default(),
             keep: false,
         };
         let held = run::run_held(

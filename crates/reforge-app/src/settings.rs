@@ -41,6 +41,9 @@ pub struct Settings {
     /// The folder a package is written in. None: the mod's own folder.
     #[serde(rename = "output.folder")]
     pub output: Option<String>,
+    /// The form a package is written in (#ADR-0105).
+    #[serde(rename = "output.format")]
+    pub format: PackageFormat,
     /// Run with an input absent, the history index or the hash tables, without asking first.
     #[serde(rename = "prompts.runWithLess")]
     pub run_with_less: bool,
@@ -57,6 +60,18 @@ pub enum Theme {
     Dark,
     /// Light.
     Light,
+}
+
+/// The form a package is written in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum PackageFormat {
+    /// A `.fantome` with every layer and its game data, as LTK Manager reads one
+    /// (#MOD-ARTIFACT-0040, #ADR-0105).
+    #[default]
+    Fantome,
+    /// A `.modpkg`.
+    Modpkg,
 }
 
 /// The settings of a running app and the file they are saved in.

@@ -76,6 +76,7 @@ impl Bench {
             through,
             settings: RunSettings::default(),
             out: Some(self.path("out").to_string()),
+            format: reforge_app::settings::PackageFormat::default(),
             keep: false,
         }
     }
@@ -96,8 +97,9 @@ fn states(view: &RunView) -> Vec<(StageName, StageState)> {
         .collect()
 }
 
+/// #ADR-0105: the package is a `.fantome` unless the request asks for a `.modpkg`.
 #[test]
-fn a_repair_through_write_runs_every_stage_and_writes_the_modpkg() {
+fn a_repair_through_write_runs_every_stage_and_writes_the_package() {
     let bench = Bench::new();
 
     let view = bench.run(&bench.request(&own_mod(), StageName::Write));
@@ -111,9 +113,19 @@ fn a_repair_through_write_runs_every_stage_and_writes_the_modpkg() {
         states(&view)
     );
     let written = view.written.expect("a written package");
-    assert!(written.ends_with(".modpkg"), "{written}");
+    assert!(written.ends_with(".fantome"), "{written}");
     assert!(Utf8PathBuf::from(&written).is_file());
     assert!(view.package.is_some());
+
+    let request = RunRequest {
+        format: reforge_app::settings::PackageFormat::Modpkg,
+        ..bench.request(&own_mod(), StageName::Write)
+    };
+    let view = bench.run(&request);
+    assert_eq!(view.fault, None);
+    let written = view.written.expect("a written package");
+    assert!(written.ends_with(".modpkg"), "{written}");
+    assert!(Utf8PathBuf::from(&written).is_file());
 }
 
 #[test]

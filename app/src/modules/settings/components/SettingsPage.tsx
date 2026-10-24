@@ -4,11 +4,12 @@ import type { ReactNode } from "react";
 
 import { Button, FailureNote, SectionCard, SegmentedControl, Spinner } from "@/components";
 import { m } from "@/i18n";
-import type { Theme } from "@/lib/bindings.gen";
+import type { PackageFormat, Theme } from "@/lib/bindings.gen";
 
 import { useSaveSettings, useSettings } from "../api/settings";
 
 const THEMES: Theme[] = ["system", "dark", "light"];
+const FORMATS: PackageFormat[] = ["fantome", "modpkg"];
 
 interface SettingsPageProps {
   /**
@@ -32,6 +33,10 @@ export function SettingsPage({ storage }: SettingsPageProps) {
 
   const current = settings.data;
   const options = THEMES.map((theme) => ({ value: theme, label: m[`theme.${theme}.label`]() }));
+  const formats = FORMATS.map((format) => ({
+    value: format,
+    label: m[`format.${format}.label`](),
+  }));
   const chosenOut = current["output.folder"];
 
   const chooseOut = async () => {
@@ -64,6 +69,18 @@ export function SettingsPage({ storage }: SettingsPageProps) {
         </div>
       </SectionCard>
       <SectionCard title={m.settings_output_title()}>
+        <div className="flex items-center justify-between gap-4" data-ui="SettingsPage:format">
+          <div>
+            <p className="text-sm text-surface-100">{m["setting.output.format.label"]()}</p>
+            <p className="text-xs text-surface-400">{m["setting.output.format.description"]()}</p>
+          </div>
+          <SegmentedControl
+            options={formats}
+            value={current["output.format"] ?? "fantome"}
+            onChange={(format) => save.mutate({ ...current, "output.format": format })}
+            aria-label={m["setting.output.format.label"]()}
+          />
+        </div>
         <div className="flex items-start justify-between gap-4" data-ui="SettingsPage:output">
           <div className="min-w-0 flex-1">
             <p className="text-sm text-surface-100">{m["setting.output.folder.label"]()}</p>

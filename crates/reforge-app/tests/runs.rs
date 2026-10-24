@@ -118,6 +118,8 @@ impl Bench {
             through: StageName::Write,
             settings,
             out: Some(root.join("out").to_string()),
+            // The app opens a `.modpkg` as a run, and these tests open what they wrote.
+            format: reforge_app::settings::PackageFormat::Modpkg,
             keep: false,
         };
         let view = run::run(

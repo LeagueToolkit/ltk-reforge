@@ -83,7 +83,7 @@ pub struct RunRow {
     pub author: Option<String>,
     /// The mod's version, as its archive says.
     pub version: Option<String>,
-    /// The `.modpkg` written.
+    /// The package written.
     pub package: Option<String>,
     /// The stages it keeps a snapshot of, in stage order, `load` first. Empty for a run
     /// opened from a package.
@@ -170,7 +170,7 @@ impl AppStore {
         Ok(Some(view))
     }
 
-    /// The `.modpkg` a kept run wrote. None for a number no run has, or a run that wrote none.
+    /// The package a kept run wrote. None for a number no run has, or a run that wrote none.
     pub fn package_of(&self, id: u64) -> Result<Option<String>, AppError> {
         let Ok(id) = i64::try_from(id) else {
             return Ok(None);

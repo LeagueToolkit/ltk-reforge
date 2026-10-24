@@ -77,6 +77,7 @@ impl Bench {
             through: StageName::Check,
             settings: RunSettings::default(),
             out: None,
+            format: reforge_app::settings::PackageFormat::default(),
             keep: true,
         };
         let held = run::run_held(
