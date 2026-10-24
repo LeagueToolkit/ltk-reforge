@@ -171,6 +171,12 @@ export function ManagerPage() {
       return next;
     });
   const tickLegacy = () => setTicked(new Set(archivesOf(mods.filter(isLegacyChampionMod))));
+  // The scanned mods a port fixes while they stay at the base (#ADR-0107): the ones that
+  // move to a premium skin are a list to report, not to port.
+  const fixable = Object.entries(scanRows)
+    .filter(([, row]) => hasPaste(row) && !movesToPremium(row))
+    .map(([path]) => path);
+  const tickFixable = () => setTicked(new Set(fixable));
   const toBatch = () => {
     addArchives([...ticked]);
     void navigate({ to: "/batch" });
@@ -200,6 +206,15 @@ export function ManagerPage() {
           </Button>
           <Button size="sm" variant="outline" disabled={mods.length === 0} onClick={tickLegacy}>
             {m.manager_tick_legacy_action()}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={fixable.length === 0}
+            onClick={tickFixable}
+            data-ui="ManagerPage:tickFixable"
+          >
+            {m.manager_tick_fixable_action({ count: fixable.length })}
           </Button>
           {scanning ? (
             <Button

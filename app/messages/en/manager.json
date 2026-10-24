@@ -37,6 +37,7 @@
   "manager_table_installed_label": "Installed",
   "manager_table_note_label": "Status",
   "manager_table_version_label": "Version",
+  "manager_tick_fixable_action": "Tick the {count} pastes kept at the base",
   "manager_tick_legacy_action": "Tick the plain champion mods",
   "manager_to_batch_action": "Port {count} in a batch"
 }
