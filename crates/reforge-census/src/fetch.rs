@@ -91,7 +91,7 @@ impl<'a> Fetcher<'a> {
     /// Fetches every commit of the builds' branch, and what an append of the builds after `head`
     /// reads for an index of `families`, and opens the clone.
     pub fn fetch(&mut self, head: &str, families: Families) -> Result<GitRepo, CensusError> {
-        let repo = self.repository()?;
+        let mut repo = self.repository()?;
         let mut session = Session::open(&self.url)?;
         let tip = session.tip(&self.url)?;
         let branch = branch_ref();
@@ -104,7 +104,7 @@ impl<'a> Fetcher<'a> {
         if held != Some(tip) {
             // The commits alone: the filter leaves out every tree.
             let haves: Vec<ObjectId> = held.into_iter().collect();
-            self.get(&mut session, &repo, &[tip], &haves)?;
+            self.get(&mut session, &mut repo, &[tip], &haves)?;
             repo.reference(
                 branch.as_str(),
                 tip,
@@ -114,7 +114,12 @@ impl<'a> Fetcher<'a> {
             .gx("moving the clone's branch")?;
         }
         let chain = chain(&repo, tip, commit_id(head)?)?;
-        self.prefetch(&mut session, &repo, &chain, families.has(Family::Objects))?;
+        self.prefetch(
+            &mut session,
+            &mut repo,
+            &chain,
+            families.has(Family::Objects),
+        )?;
         session.close();
         GitRepo::open(&self.dir)
     }
@@ -134,7 +139,7 @@ impl<'a> Fetcher<'a> {
     fn prefetch(
         &mut self,
         session: &mut Session,
-        repo: &gix::Repository,
+        repo: &mut gix::Repository,
         chain: &[ObjectId],
         texts: bool,
     ) -> Result<(), CensusError> {
@@ -199,7 +204,7 @@ impl<'a> Fetcher<'a> {
     fn get_missing(
         &mut self,
         session: &mut Session,
-        repo: &gix::Repository,
+        repo: &mut gix::Repository,
         ids: impl Iterator<Item = ObjectId>,
     ) -> Result<(), CensusError> {
         let mut seen = HashSet::new();
@@ -212,12 +217,13 @@ impl<'a> Fetcher<'a> {
         Ok(())
     }
 
-    /// Fetches `wants` and what they reach that the filter keeps, into a pack of the clone.
-    /// `haves` are commits the clone holds, so their ancestors are not sent.
+    /// Fetches `wants` and what they reach that the filter keeps, into a pack of the clone, and
+    /// opens the clone again so `repo` sees the pack. `haves` are commits the clone holds, so
+    /// their ancestors are not sent.
     fn get(
         &mut self,
         session: &mut Session,
-        repo: &gix::Repository,
+        repo: &mut gix::Repository,
         wants: &[ObjectId],
         haves: &[ObjectId],
     ) -> Result<(), CensusError> {
@@ -284,6 +290,9 @@ impl<'a> Fetcher<'a> {
         if let Some(keep) = written.and_then(|bundle| bundle.keep_path) {
             fs_err::remove_file(keep)?;
         }
+        // A handle opened before the pack was written does not always find the pack's objects
+        // on its own (a fresh install's first update, 2026-10-25); one opened after it does.
+        *repo = self.repository()?;
         self.hear();
         Ok(())
     }
