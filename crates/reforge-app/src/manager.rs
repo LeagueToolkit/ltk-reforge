@@ -6,8 +6,6 @@
 //! a document it cannot read lists nothing, a mod it cannot place has no archive. A mod's name
 //! is the manager's text and is cleaned.
 
-use std::io::Read as _;
-
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
 use reforge::model::clean;
@@ -17,10 +15,6 @@ use crate::error::AppError;
 
 /// The manager's folder under the platform's data directory: its Tauri identifier.
 pub const MANAGER_FOLDER: &str = "dev.leaguetoolkit.manager";
-
-/// The most of an archive's metadata that is read to tell its layout: `META/info.json` is a
-/// small document, and an archive is untrusted.
-const INFO_BYTES: u64 = 1 << 20;
 
 /// The form a mod's archive takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -58,8 +52,8 @@ pub struct ManagerMod {
     /// The archive the mod keeps. None for a mod stored as an unpacked project, or one whose
     /// archive is not where the layout puts it.
     pub archive: Option<String>,
-    /// Whether the archive carries league-mod's layer directories, game data or hash tables
-    /// (#MOD-ARTIFACT-0040). False for a plain Fantome, and for a mod with no archive.
+    /// Whether the archive carries a layer beyond the base or game data (#MOD-ARTIFACT-0040).
+    /// False for a plain Fantome, hash tables or not, and for a mod with no archive.
     pub extended: bool,
     /// When the manager installed it, as its index spells the time.
     pub installed_at: String,
@@ -237,33 +231,19 @@ fn archive_of(folder: &Utf8Path, entry: &IndexEntry, format: ManagerFormat) -> O
     places.into_iter().find(|place| place.is_file())
 }
 
-/// Whether an archive carries league-mod's extensions to the Fantome layout
-/// (#MOD-ARTIFACT-0040): a layer directory, game data or hash tables among its entries, or
-/// a `Generator` in its metadata. An archive that does not open is not extended.
+/// Whether an archive carries a layer beyond the base or game data (#MOD-ARTIFACT-0040): a
+/// `WAD_<layer>/` or `META/game_data/` entry. A hash table under `META/hashes/` does not
+/// count: the manager writes one into every archive it imports, as it harvests names. An
+/// archive that does not open is not extended.
 fn is_extended(path: &Utf8Path) -> bool {
     let Ok(file) = fs::File::open(path) else {
         return false;
     };
-    let Ok(mut archive) = zip::ZipArchive::new(file) else {
+    let Ok(archive) = zip::ZipArchive::new(file) else {
         return false;
     };
-    let extended_entry = |name: &str| {
+    archive.file_names().any(|name| {
         let lower = name.to_ascii_lowercase();
-        lower.starts_with("wad_")
-            || lower.starts_with("meta/game_data/")
-            || lower.starts_with("meta/hashes/")
-    };
-    if archive.file_names().any(extended_entry) {
-        return true;
-    }
-    let Ok(info) = archive.by_name("META/info.json") else {
-        return false;
-    };
-    let mut text = String::new();
-    if info.take(INFO_BYTES).read_to_string(&mut text).is_err() {
-        return false;
-    }
-    serde_json::from_str::<serde_json::Value>(&text)
-        .ok()
-        .is_some_and(|info| info.get("Generator").is_some())
+        lower.starts_with("wad_") || lower.starts_with("meta/game_data/")
+    })
 }

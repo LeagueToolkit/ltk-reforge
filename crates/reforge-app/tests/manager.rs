@@ -98,8 +98,8 @@ fn plain() -> Vec<u8> {
     skin_archive(vec![]).build()
 }
 
-/// A Fantome with a layer directory, as league-mod packs one (#MOD-ARTIFACT-0040).
-fn extended() -> Vec<u8> {
+/// A Fantome of these entries beyond its metadata and base WAD.
+fn fantome_with(entries: &[&str]) -> Vec<u8> {
     let mut zip = ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = SimpleFileOptions::default();
     zip.start_file("META/info.json", options).unwrap();
@@ -111,13 +111,21 @@ fn extended() -> Vec<u8> {
     )
     .unwrap();
     zip.write_all(b"").unwrap();
-    zip.start_file(
-        format!("WAD_pink/{}/{}", skins::WAD, skin_bin("test", 0)),
-        options,
-    )
-    .unwrap();
-    zip.write_all(b"").unwrap();
+    for entry in entries {
+        zip.start_file(*entry, options).unwrap();
+        zip.write_all(b"").unwrap();
+    }
     zip.finish().unwrap().into_inner()
+}
+
+/// A Fantome with a layer directory, as league-mod packs one (#MOD-ARTIFACT-0040).
+fn extended() -> Vec<u8> {
+    fantome_with(&[&format!("WAD_pink/{}/{}", skins::WAD, skin_bin("test", 0))])
+}
+
+/// A plain Fantome with the hash table the manager writes into every archive it imports.
+fn harvested() -> Vec<u8> {
+    fantome_with(&["META/hashes/game.hashes.txt"])
 }
 
 #[test]
@@ -125,6 +133,11 @@ fn the_library_lists_each_mod_with_its_archive_and_whether_it_is_extended() {
     let folder = Folder::new();
     fs::write(folder.root.join("mods").join("plain-one.fantome"), plain()).unwrap();
     fs::write(folder.root.join("mods").join("layered.fantome"), extended()).unwrap();
+    fs::write(
+        folder.root.join("mods").join("harvested.fantome"),
+        harvested(),
+    )
+    .unwrap();
     fs::create_dir_all(folder.root.join("archives")).unwrap();
     fs::write(
         folder.root.join("archives").join("id-older.fantome"),
@@ -139,6 +152,7 @@ fn the_library_lists_each_mod_with_its_archive_and_whether_it_is_extended() {
             Some("Plain \u{1b}[31mOne"),
         ),
         folder.entry("layered", "fantome", "archive", Some("Layered")),
+        folder.entry("harvested", "fantome", "archive", Some("Harvested")),
         folder.entry("unpacked", "fantome", "project", Some("Unpacked")),
         folder.entry("older", "fantome", "archive", None),
         folder.entry("packed", "modpkg", "archive", Some("Packed")),
@@ -171,6 +185,13 @@ fn the_library_lists_each_mod_with_its_archive_and_whether_it_is_extended() {
                 Some(at("layered.fantome")),
             )
         },
+        // The manager's hash table is no layer: the archive stays plain.
+        unreported(
+            "harvested",
+            "Harvested",
+            Some("2.1.0"),
+            Some(at("harvested.fantome")),
+        ),
         unreported("unpacked", "Unpacked", Some("2.1.0"), None),
         unreported("older", "older", None, Some(older.to_string())),
         ManagerMod {

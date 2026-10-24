@@ -38,7 +38,10 @@ manager. league-mod's own records state the choice (its ADR-0036, 2026-10-01) an
 - **LTK Manager** opens any zip as a Fantome, stores its packed WADs so they can be read in
   place, and reads a mod project out of `META/info.json`, giving a `WAD_<layer>/` directory the
   metadata does not declare a layer of its own at priority 0. Its layers and game data are the
-  project's, as from a `.modpkg`.
+  project's, as from a `.modpkg`. As it imports an archive it harvests the names its WADs
+  spell and writes them into the archive as `META/hashes/game.hashes.txt`, declared under
+  `Hashtables`: a plain Fantome in the manager's library carries that entry and nothing else of
+  the extensions.
 - **league-mod** packs a project to this layout and imports one from it.
 - **cslol-manager and Fantome** mount every child of `WAD/`, pack `RAW/` into one WAD, copy
   `META/` whole and ignore every other top-level directory. The base layer installs as before.
@@ -55,6 +58,10 @@ None: this is the form league-mod writes today.
   and names the readers that skip the layer directories; `crates/ltk_mod_project/src/fantome/pack.rs`
   writes every layer's WADs, override files and program. The crates are released as
   `ltk_fantome` 0.16.1 and `ltk_mod_project` 0.17.1 (its `fantome` feature).
+- Two plain Fantomes imported by LTK Manager (2026-10-24): each archive in the manager's
+  library holds `META/info.json` with a `Hashtables` field, `META/hashes/game.hashes.txt` and
+  its `WAD/` entry, and no layer directory or game data; the library's index records the
+  harvest's count beside each mod.
 - LTK Manager at commit ac576af3 (2026-10-22) reads archives with `ltk_fantome` 0.15.5 and
   `ltk_mod_project` 0.16.7, both of which read the layer directories and the game data; its
   archive reader declares a layer for each `WAD_<layer>/` directory the metadata lacks. That its

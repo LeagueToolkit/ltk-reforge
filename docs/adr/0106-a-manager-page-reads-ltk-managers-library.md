@@ -36,8 +36,9 @@ as picked files do, and the batch runs as the Batch page runs one.
 
 The read is read only. Nothing under the manager's folder is written, renamed or locked, so
 the manager may run at the same time. A mod's name is the manager's text and reaches the page
-through `clean` (#ADR-0046). An archive is told extended by its entries alone: a `WAD_<layer>/`,
-`META/game_data/` or `META/hashes/` entry, or a `Generator` field in its metadata.
+through `clean` (#ADR-0046). An archive is told extended by its entries alone: a `WAD_<layer>/`
+or `META/game_data/` entry. A hash table under `META/hashes/` does not make it so, since the
+manager writes one into every archive it imports (#MOD-ARTIFACT-0040).
 
 ## Consequences
 
