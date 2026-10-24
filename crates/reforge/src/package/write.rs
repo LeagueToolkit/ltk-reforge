@@ -30,6 +30,7 @@
 //! named in the config. The packer packs it as the `.modpkg`'s thumbnail.
 
 use std::io::{self, Write as _};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
@@ -258,8 +259,13 @@ struct Staging {
 }
 
 impl Staging {
-    /// A new, empty directory. What an earlier run that was killed left there is removed.
-    fn new(path: Utf8PathBuf) -> Result<Self, WriteError> {
+    /// A new, empty directory under `out`, named after the package and this write alone:
+    /// two packages of one name written at once (#ADR-0108), or by two processes, each get
+    /// their own.
+    fn new(out: &Utf8Path, name: &str) -> Result<Self, WriteError> {
+        static WRITES: AtomicU64 = AtomicU64::new(0);
+        let write = WRITES.fetch_add(1, Ordering::Relaxed);
+        let path = out.join(format!("{name}.partial-{}-{write}", std::process::id()));
         if path.exists() {
             fs::remove_dir_all(&path)?;
         }
@@ -325,7 +331,7 @@ impl PackageWriter for ProjectDir {
             return Err(WriteError::Occupied(target));
         }
         fs::create_dir_all(&self.out)?;
-        let staging = Staging::new(self.out.join(format!("{name}.partial")))?;
+        let staging = Staging::new(&self.out, name)?;
         let tree = Tree {
             package,
             report,
@@ -474,7 +480,7 @@ fn write_packed(
     pack: fn(&Utf8Path, &Utf8Path) -> Result<(), WriteError>,
 ) -> Result<Written, WriteError> {
     fs::create_dir_all(out)?;
-    let staging = Staging::new(out.join(format!("{name}.partial")))?;
+    let staging = Staging::new(out, &name)?;
     let project = staging.path.join("project");
     let tree = Tree {
         package,
