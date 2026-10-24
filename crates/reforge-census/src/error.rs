@@ -33,6 +33,14 @@ pub enum CensusError {
         /// The server's address.
         url: String,
     },
+    /// The server sent none of the objects a request asked for, asked again on their own.
+    #[error("{url} sent none of {objects} objects asked for")]
+    Unsent {
+        /// The server's address.
+        url: String,
+        /// How many objects were asked for and not sent.
+        objects: usize,
+    },
     /// The fetch was stopped.
     #[error("the fetch was stopped")]
     Cancelled,

@@ -195,6 +195,41 @@ fn a_second_fetch_takes_the_builds_pushed_since() {
     assert_eq!(builds(&second), builds(&whole));
 }
 
+/// git leaves a wanted tree out of a pack when an earlier want of the same request holds it
+/// as a child the filter omits: here `a` holds `x`, whose tree is `b`'s, and `a` is asked for
+/// first. The fetch asks again for what did not come.
+#[test]
+fn a_tree_the_server_leaves_out_of_a_request_is_asked_for_again() {
+    let (_dir, root) = scratch();
+    let files = |text: &str| {
+        BTreeMap::from([
+            ("files/a/x/t.txt".to_string(), text.to_string()),
+            ("files/b/t.txt".to_string(), text.to_string()),
+        ])
+    };
+    let mut server = Server::new(root.join("server"));
+    server.push(&build("1.1.1"), &files("one"));
+    server.push(&build("1.2.1"), &files("two"));
+    let clone = root.join("clone");
+
+    fetch(&server, &clone, &server.commits[0]).unwrap();
+
+    let fetched = gix::open(clone.as_std_path()).unwrap();
+    for commit in &server.commits {
+        let tree = server
+            .repo
+            .find_commit(gix::ObjectId::from_hex(commit.as_bytes()).unwrap())
+            .unwrap()
+            .tree()
+            .unwrap();
+        let b = tree.lookup_entry_by_path("files/b").unwrap().unwrap();
+        assert!(
+            fetched.has_object(b.oid()),
+            "files/b of {commit} is fetched"
+        );
+    }
+}
+
 #[test]
 fn the_tip_is_the_branch_on_the_server() {
     let (_dir, root) = scratch();
