@@ -127,6 +127,11 @@ impl ProjectConfig {
         format!("{}_{}.modpkg", self.name, self.version)
     }
 
+    /// The file name of the mod as a Fantome archive: `<name>_<version>.fantome`.
+    pub fn fantome_name(&self) -> String {
+        format!("{}_{}.fantome", self.name, self.version)
+    }
+
     /// The config as a mod project holds it, with the layers of a package after the base
     /// layer in their order, the two hash tables, and the thumbnail's file when the project
     /// has one.

@@ -62,8 +62,8 @@ pub use self::texture::{TexContainer, TexRefusal, dds_to_tex};
 pub use self::thumbnail::{THUMBNAIL_FILE, Thumbnail, ThumbnailRefusal};
 pub use self::wired::{LeftBehind, LeftOut, Wired};
 pub use self::write::{
-    MANIFEST_FILE, MAX_NAME_BYTES, Modpkg, PackageWriter, ProjectDir, REPORT_FILE, Refused,
-    WriteError, WriterKind, permit,
+    Fantome, MANIFEST_FILE, MAX_NAME_BYTES, Modpkg, PackageWriter, ProjectDir, REPORT_FILE,
+    Refused, WriteError, WriterKind, permit,
 };
 use crate::diag::{Code, Diag};
 pub use crate::fixups::BinWrite;

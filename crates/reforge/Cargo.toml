@@ -22,7 +22,8 @@ ltk_anim.workspace = true
 ltk_shader.workspace = true
 glam.workspace = true
 ltk_texture.workspace = true
-ltk_mod_project = { workspace = true, features = ["modpkg"] }
+ltk_mod_project = { workspace = true, features = ["modpkg", "fantome"] }
+ltk_fantome.workspace = true
 ltk_modpkg.workspace = true
 ltk_hashtable.workspace = true
 ltk_game_data.workspace = true

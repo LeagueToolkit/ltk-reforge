@@ -20,7 +20,7 @@ archive bytes
    │ plan      Port          the units that ship, renamed and placed; audio; HUD
    │ build     Package       layers, chunks, patches, manifests, hash tables
    │ check     diagnostics   the package applied as the overlay applies it; types
-   ▼ write                   a project directory, a .modpkg
+   ▼ write                   a project directory, a .modpkg, a .fantome
 ```
 
 `repair` is the same run without facts, decide and plan: `FixedMod` builds a `Package` in place.
@@ -938,10 +938,13 @@ object takes a name of its own, which every link to it follows.
   `CheckSet` the checks of a run. Each says what it covered. What a check finds is a
   diagnostic and does not stop `write` (#ADR-0003): `permit` asks the caller's
   `DiagnosticPolicy`, and raises `write.blocked` where it refuses.
-- **Writers** implement `PackageWriter`: `ProjectDir`, `Modpkg`. A writer writes into a new
-  directory and renames it into place, with the report beside the package: `<out>/<project>/`
-  with `reforge-report.json` in it, and `<out>/<project>_<version>.modpkg` with
-  `<project>_<version>.reforge-report.json` beside it. A write that fails leaves nothing, and a
+- **Writers** implement `PackageWriter`: `ProjectDir`, `Modpkg`, `Fantome`. A writer writes
+  into a new directory and renames it into place, with the report beside the package:
+  `<out>/<project>/` with `reforge-report.json` in it, and `<out>/<project>_<version>.modpkg`
+  or `<out>/<project>_<version>.fantome` with `<project>_<version>.reforge-report.json` beside
+  it. The `.fantome` carries every layer and its game data in league-mod's layout
+  (#MOD-ARTIFACT-0040, #ADR-0105); a manager that predates the layout installs its base layer
+  alone. A write that fails leaves nothing, and a
   directory that is no mod project is not replaced. The evidence of a package that has one is
   written as `README.md` at the project's root with the report's block, and the packer packs
   it as the `.modpkg`'s readme, `_meta_/readme.md`, stored as it is. The thumbnail of a package that has one is written as

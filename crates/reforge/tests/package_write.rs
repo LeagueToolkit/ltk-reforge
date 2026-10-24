@@ -1,18 +1,22 @@
-//! The writers: a package as a mod project directory and as a `.modpkg`, each written beside
-//! its place and renamed into it, with the report. A write that fails leaves nothing.
+//! The writers: a package as a mod project directory, as a `.modpkg` and as a `.fantome`, each
+//! written beside its place and renamed into it, with the report. A write that fails leaves
+//! nothing.
 
 use std::io::Cursor;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
+use ltk_fantome::{FantomeReader, game_data_entry_name};
 use ltk_modpkg::Modpkg as Packed;
+use ltk_wad::Wad;
 use reforge::diag::{Diagnostics, Render, Stage};
-use reforge::model::entity::FileId;
-use reforge::model::{ByteView, ChunkPath, Spelled, WadName, path_hash};
+use reforge::model::entity::{CharId, FileId};
+use reforge::model::{ByteView, ChunkPath, NoNames, Spelled, WadName, name_hash, path_hash};
 use reforge::package::{
     ArchiveRef, Chunk, ChunkKey, EVIDENCE_FORMAT, EvidenceDating, EvidenceDoc, EvidenceInputs,
-    Layer, MAX_NAME_BYTES, Made, Modpkg, Origin, Package, PackageWriter, Program, ProjectConfig,
-    ProjectDir, README_FILE, REPORT_FILE, ReportNote, WriteError, WriterKind, Written,
+    Fantome, Layer, MAX_NAME_BYTES, Made, Modpkg, Origin, Package, PackageWriter, Patch, PatchOf,
+    Program, ProjectConfig, ProjectDir, PtchBuilder, README_FILE, REPORT_FILE, ReportNote,
+    WriteError, WriterKind, Written,
 };
 use reforge_testkit::bins::{bin, blob, object, text};
 use reforge_testkit::skins::WAD;
@@ -446,30 +450,145 @@ fn a_project_the_packer_refuses_does_not_pack_and_leaves_nothing() {
     assert_eq!(written.expect("the project writes").chunks, 3);
 }
 
+/// A spell icon, in the HUD layer.
+const ICON: &str = "assets/characters/test/hud/icons2d/test_q.tex";
+/// Where a port's PTCH sits in its layer.
+const PTCH: &str = "overrides/test-root.ptch";
+
+/// A patch of the champion's root bin that renames a skin entry, as a port writes one. The
+/// packer reads the PTCH, so it is a real one.
+fn patch() -> Patch {
+    let mut ptch = PtchBuilder::new(&NoNames);
+    ptch.set(
+        name_hash("Characters/Test/Skins/Skin0"),
+        &[name_hash("championSkinName")],
+        text("Renamed"),
+    )
+    .expect("the field has a name");
+    Patch {
+        target: ChunkPath::parse(SKIN_BIN).expect("a path"),
+        path: ChunkPath::parse(PTCH).expect("a path"),
+        records: ptch.len(),
+        bytes: ptch.bytes().into(),
+        links: Vec::new(),
+        of: PatchOf::Root {
+            character: CharId::new(0),
+        },
+    }
+}
+
+/// [`package_of_a_run`] with a HUD layer and a patch of the base layer.
+fn layered_package() -> Package {
+    let mut package = package_of_a_run();
+    package.insert(Layer::Hud, key(ICON), chunk(blob(ICON)));
+    package.patch(Layer::Base, patch());
+    package
+}
+
+/// #MOD-ARTIFACT-0040, #ADR-0105: the archive holds each layer's WAD in its directory, the
+/// patch under the game data with its program in the metadata, and the evidence as its readme.
+#[test]
+fn a_fantome_holds_every_layer_its_game_data_and_the_readme() {
+    let (_guard, out) = scratch();
+    let package = layered_package();
+    let writer = Fantome::new(&out);
+    let written = writer.write(&package, REPORT).expect("the archive writes");
+    assert_eq!(written.kind, WriterKind::Fantome);
+    assert_eq!(written.name, "Synthetic-tests_1.2.3.fantome");
+    assert_eq!((written.chunks, written.hash_named), (4, 0));
+    // The archive and the report beside it, and nothing of the project it was packed from.
+    assert_eq!(
+        names(&out),
+        [
+            "Synthetic-tests_1.2.3.fantome",
+            "Synthetic-tests_1.2.3.reforge-report.json"
+        ]
+    );
+    assert_eq!(
+        fs::read(writer.report_path_of(&package)).expect("the report reads"),
+        REPORT.as_bytes()
+    );
+
+    let file = fs::File::open(writer.path_of(&package)).expect("the archive opens");
+    let mut reader = FantomeReader::new(file).expect("the archive reads");
+    let info = reader.read_info().expect("the metadata reads");
+    assert_eq!(info.version, "1.2.3");
+    let mut layers = reader.layer_names();
+    layers.sort_unstable();
+    assert_eq!(layers, ["base", "hud"]);
+    assert!(info.layers["base"].game_data.is_some());
+    let entries: Vec<String> = reader.entry_names().map(str::to_string).collect();
+    assert!(entries.contains(&game_data_entry_name("base", PTCH)));
+    let readme = reader.read_readme().expect("the readme reads");
+    assert_eq!(readme, Some(evidence().readme(Some(REPORT)).into_bytes()));
+
+    let mut held = |layer: &str, path: &str| -> Vec<u8> {
+        let bytes = reader.read_packed_wad(layer, WAD).expect("the WAD reads");
+        let bytes = bytes.unwrap_or_else(|| panic!("no {WAD} in layer {layer}"));
+        let mut wad = Wad::mount(Cursor::new(bytes)).expect("the WAD mounts");
+        let hash = path_hash(path);
+        let chunks: Vec<_> = wad.chunks().iter().copied().collect();
+        let chunk = chunks.iter().find(|chunk| chunk.path_hash() == hash);
+        let chunk = chunk.unwrap_or_else(|| panic!("no chunk at {path}"));
+        wad.load_chunk_decompressed(chunk)
+            .expect("the chunk reads")
+            .into_vec()
+    };
+    assert_eq!(held("base", SKIN_BIN), skin_bytes());
+    assert_eq!(held("base", TEXTURE), blob(TEXTURE));
+    assert_eq!(held("hud", ICON), blob(ICON));
+}
+
+/// Both packers read each override file as a PTCH: bytes that are none refuse the pack.
+#[test]
+fn a_patch_that_is_no_ptch_does_not_pack_and_leaves_nothing() {
+    let (_guard, out) = scratch();
+    let mut package = package();
+    package.patch(
+        Layer::Base,
+        Patch {
+            bytes: ByteView::from(b"not a PTCH".to_vec()),
+            ..patch()
+        },
+    );
+    let failed = Fantome::new(&out).write(&package, REPORT);
+    assert!(
+        matches!(failed, Err(WriteError::PackFantome(_))),
+        "{failed:?}"
+    );
+    let failed = Modpkg::new(&out).write(&package, REPORT);
+    assert!(matches!(failed, Err(WriteError::Pack(_))), "{failed:?}");
+    assert_eq!(names(&out), Vec::<String>::new());
+}
+
+#[test]
+fn a_fantome_that_fails_to_write_leaves_nothing() {
+    let (_guard, out) = scratch();
+    let failed = Fantome::new(&out).write(&unwritable(), REPORT);
+    assert!(failed.is_err(), "{failed:?}");
+    assert_eq!(names(&out), Vec::<String>::new());
+}
+
 #[test]
 fn two_writes_of_one_package_give_the_same_files() {
     let (_guard, first) = scratch();
     let (_guard, second) = scratch();
     for out in [&first, &second] {
         ProjectDir::new(out)
-            .write(&package(), REPORT)
+            .write(&layered_package(), REPORT)
             .expect("the project writes");
         Modpkg::new(out)
-            .write(&package(), REPORT)
+            .write(&layered_package(), REPORT)
             .expect("the package writes");
+        Fantome::new(out)
+            .write(&layered_package(), REPORT)
+            .expect("the archive writes");
     }
     assert_eq!(tree(&first), tree(&second));
-    let packed = "Synthetic-tests_1.2.3.modpkg";
-    for file in tree(&first).iter().filter(|file| *file != packed) {
-        let read = |out: &Utf8Path| fs::read(out.join(file)).expect("the file reads");
+    for file in tree(&first) {
+        let read = |out: &Utf8Path| fs::read(out.join(&file)).expect("the file reads");
         assert_eq!(read(&first), read(&second), "{file}");
     }
-    // `ltk_modpkg` 0.12.5 writes its chunks in the order of a hashed map, so two packages of
-    // one project differ in the order of their chunks and in nothing a reader gets from them.
-    assert_eq!(
-        read_back(&first.join(packed)),
-        read_back(&second.join(packed))
-    );
 }
 
 /// Reads back the `.modpkg` the environment names: `REFORGE_MODPKG=<file> cargo test -p

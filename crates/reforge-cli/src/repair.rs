@@ -15,7 +15,7 @@ use reforge::model::{Dump, DumpCx};
 use reforge::report::AgainRow;
 
 use crate::fixups::Choice;
-use crate::run::{self, Cache, Inputs, SchemaInput};
+use crate::run::{self, Cache, Inputs, Packed, SchemaInput};
 
 #[derive(Args)]
 pub struct Repair {
@@ -29,9 +29,8 @@ pub struct Repair {
     /// The directory the repaired mod is written in: a mod project, `<out>/<project>`.
     #[arg(long, required_unless_present = "no_write")]
     out: Option<Utf8PathBuf>,
-    /// Also pack the project, as `<out>/<project>_<version>.modpkg`.
-    #[arg(long)]
-    modpkg: bool,
+    #[command(flatten)]
+    packed: Packed,
     /// Do everything but the write.
     #[arg(long)]
     no_write: bool,
@@ -99,7 +98,7 @@ impl Repair {
 
         let out = self.out.as_ref().filter(|_| !self.no_write);
         let refused = match (run.package(), out) {
-            (Some(_), Some(out)) => run::write(&mut run, out, self.modpkg, &policy)?,
+            (Some(_), Some(out)) => run::write(&mut run, out, self.packed, &policy)?,
             _ => false,
         };
 

@@ -13,7 +13,7 @@ use reforge::env::Env;
 use reforge::game::{Game, Install, MimirAbsent, Names, Schema, mimir_cache_dir};
 use reforge::history;
 use reforge::model::ContentId;
-use reforge::package::{CheckSelection, CheckSet, Modpkg, PackageWriter, ProjectDir};
+use reforge::package::{CheckSelection, CheckSet, Fantome, Modpkg, PackageWriter, ProjectDir};
 use reforge::snapshot::RawCache;
 use reforge::{Run, RunError};
 use reforge_census::GitRepo;
@@ -216,12 +216,26 @@ pub fn blocking(filters: &[String]) -> Result<DiagnosticPolicy> {
     Ok(policy)
 }
 
-/// Writes a run's package as a project directory in `out` and, when asked, as a `.modpkg`,
-/// each with the report beside it. Says whether the policy refused the write.
+/// Which packed forms a run's package is written in, beside the project directory.
+#[derive(Debug, Clone, Copy, Default, clap::Args)]
+pub struct Packed {
+    /// Also pack the project, as `<out>/<project>_<version>.modpkg`.
+    #[arg(long)]
+    pub modpkg: bool,
+    /// Also pack the project as a Fantome archive, `<out>/<project>_<version>.fantome`, with
+    /// every layer and its game data where LTK Manager and league-mod read them. A manager
+    /// that predates them installs the base layer alone, and a port's patch does not apply.
+    #[arg(long)]
+    pub fantome: bool,
+}
+
+/// Writes a run's package as a project directory in `out` and, when asked, as a `.modpkg`
+/// and as a `.fantome`, each with the report beside it. Says whether the policy refused the
+/// write.
 pub fn write(
     run: &mut Run<'_>,
     out: &Utf8Path,
-    modpkg: bool,
+    packed: Packed,
     policy: &DiagnosticPolicy,
 ) -> Result<bool> {
     // A cancelled run writes nothing, and its report says where it ended.
@@ -229,10 +243,14 @@ pub fn write(
         return Ok(false);
     }
     let project = ProjectDir::new(out);
-    let packed = Modpkg::new(out);
+    let modpkg = Modpkg::new(out);
+    let fantome = Fantome::new(out);
     let mut writers: Vec<&dyn PackageWriter> = vec![&project];
-    if modpkg {
-        writers.push(&packed);
+    if packed.modpkg {
+        writers.push(&modpkg);
+    }
+    if packed.fantome {
+        writers.push(&fantome);
     }
     match run.write(&writers, policy) {
         Ok(()) => Ok(false),

@@ -1,5 +1,6 @@
-//! The writers: a package on disk as a mod project LTK Manager's workshop opens, and packed
-//! as a `.modpkg`.
+//! The writers: a package on disk as a mod project LTK Manager's workshop opens, packed as a
+//! `.modpkg`, and packed as a Fantome archive with league-mod's layer directories and game
+//! data (#MOD-ARTIFACT-0040, #ADR-0105).
 //!
 //! ```text
 //! <out>/<project>/mod.config.json
@@ -10,8 +11,12 @@
 //!                 content/<layer>/<Champion>.wad.client/<path>
 //!                 content/<layer>/game_data.yaml, content/<layer>/overrides/<name>.ptch
 //! <out>/<project>_<version>.modpkg
+//! <out>/<project>_<version>.fantome
 //! <out>/<project>_<version>.reforge-report.json
 //! ```
+//!
+//! The `.modpkg` and the `.fantome` of one package share the report's file: the text is the
+//! same.
 //!
 //! A writer makes everything in a directory of its own beside the place, and renames the
 //! result into place when it is whole. A write that fails leaves nothing behind. Every path
@@ -28,6 +33,7 @@ use std::io::{self, Write as _};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use fs_err as fs;
+use ltk_mod_project::fantome::{FantomeFormat, FantomePackError};
 use ltk_mod_project::modpkg::{ModpkgFormat, ModpkgPackError};
 use ltk_mod_project::{
     ConfigFormat, IgnoreMode, ModProjectError, PackError, PackOptions, ProjectPacker,
@@ -63,6 +69,8 @@ pub enum WriterKind {
     Project,
     /// A `.modpkg` file.
     Modpkg,
+    /// A `.fantome` file with every layer and its game data (#MOD-ARTIFACT-0040).
+    Fantome,
 }
 
 impl WriterKind {
@@ -71,6 +79,7 @@ impl WriterKind {
         match self {
             WriterKind::Project => "project",
             WriterKind::Modpkg => "package",
+            WriterKind::Fantome => "archive",
         }
     }
 }
@@ -88,9 +97,12 @@ pub enum WriteError {
     /// The project's config did not serialise or read back.
     #[error("the project's config does not write")]
     Config(#[from] ModProjectError),
-    /// The project did not pack.
+    /// The project did not pack as a `.modpkg`.
     #[error("the project does not pack")]
     Pack(#[from] Box<PackError<ModpkgPackError>>),
+    /// The project did not pack as a Fantome archive.
+    #[error("the project does not pack as a Fantome archive")]
+    PackFantome(#[from] Box<PackError<FantomePackError>>),
 }
 
 /// The caller's policy refused the write, at this diagnostic.
@@ -358,9 +370,7 @@ impl Modpkg {
 
     /// Packs a project directory into a file, as LTK Manager packs one.
     fn pack(project: &Utf8Path, file: &Utf8Path) -> Result<(), WriteError> {
-        // A chunk of a mod named `.modignore` is no filter of this package's content.
-        let options = PackOptions::default().with_ignore(IgnoreMode::Disabled);
-        let packer = ProjectPacker::from_dir(project)?.with_options(options);
+        let packer = packer(project)?;
         let mut out = io::BufWriter::new(fs::File::create(file)?);
         packer.pack(ModpkgFormat::new(&mut out)).map_err(Box::new)?;
         Ok(out.flush()?)
@@ -374,28 +384,115 @@ impl PackageWriter for Modpkg {
 
     fn write(&self, package: &Package, report: &str) -> Result<Written, WriteError> {
         let name = package.config.modpkg_name();
-        fs::create_dir_all(&self.out)?;
-        // The packer reads a project from disk: the project is staged, packed and removed.
-        let staging = Staging::new(self.out.join(format!("{name}.partial")))?;
-        let project = staging.path.join("project");
-        let tree = Tree {
+        let paths = (self.path_of(package), self.report_path_of(package));
+        write_packed(
+            &self.out,
             package,
             report,
-            root: &project,
-        };
-        let tally = tree.write()?;
-        let packed = staging.path.join(&name);
-        Self::pack(&project, &packed)?;
-        let staged_report = staging.path.join(REPORT_FILE);
-        fs::write(&staged_report, report)?;
-        fs::rename(&packed, self.path_of(package))?;
-        fs::rename(&staged_report, self.report_path_of(package))?;
-        Ok(Written {
-            kind: WriterKind::Modpkg,
-            name,
-            chunks: tally.chunks,
-            hash_named: tally.hash_named,
-            bytes: tally.bytes,
-        })
+            (self.kind(), name),
+            paths,
+            Self::pack,
+        )
     }
+}
+
+/// Writes a package as `<out>/<project>_<version>.fantome`, a Fantome archive with every
+/// layer's WADs, its game data and its hash tables where league-mod and LTK Manager read them
+/// (#MOD-ARTIFACT-0040, #ADR-0105), with the report beside it as
+/// `<project>_<version>.reforge-report.json`.
+///
+/// A manager that predates the layer directories installs the base layer alone and applies no
+/// game data: a port's patch (#ADR-0026) does not reach the game there.
+#[derive(Debug, Clone)]
+pub struct Fantome {
+    out: Utf8PathBuf,
+}
+
+impl Fantome {
+    /// A writer into an output directory, made when absent.
+    pub fn new(out: impl Into<Utf8PathBuf>) -> Self {
+        Self { out: out.into() }
+    }
+
+    /// Where a package's `.fantome` goes.
+    pub fn path_of(&self, package: &Package) -> Utf8PathBuf {
+        self.out.join(package.config.fantome_name())
+    }
+
+    /// Where the report of a package goes.
+    pub fn report_path_of(&self, package: &Package) -> Utf8PathBuf {
+        let stem = format!("{}_{}", package.config.name, package.config.version);
+        self.out.join(format!("{stem}.{REPORT_FILE}"))
+    }
+
+    /// Packs a project directory into a Fantome archive, as league-mod packs one.
+    fn pack(project: &Utf8Path, file: &Utf8Path) -> Result<(), WriteError> {
+        let packer = packer(project)?;
+        let mut out = io::BufWriter::new(fs::File::create(file)?);
+        packer
+            .pack(FantomeFormat::new(&mut out))
+            .map_err(Box::new)?;
+        Ok(out.flush()?)
+    }
+}
+
+impl PackageWriter for Fantome {
+    fn kind(&self) -> WriterKind {
+        WriterKind::Fantome
+    }
+
+    fn write(&self, package: &Package, report: &str) -> Result<Written, WriteError> {
+        let name = package.config.fantome_name();
+        let paths = (self.path_of(package), self.report_path_of(package));
+        write_packed(
+            &self.out,
+            package,
+            report,
+            (self.kind(), name),
+            paths,
+            Self::pack,
+        )
+    }
+}
+
+/// The packer of a project directory, as the mod managers pack one.
+fn packer(project: &Utf8Path) -> Result<ProjectPacker, WriteError> {
+    // A chunk of a mod named `.modignore` is no filter of this package's content.
+    let options = PackOptions::default().with_ignore(IgnoreMode::Disabled);
+    Ok(ProjectPacker::from_dir(project)?.with_options(options))
+}
+
+/// Stages a package's project in `out`, packs it with `pack` into a file named `name`, and
+/// moves the file and the report to `paths`. The packer reads a project from disk, so the
+/// project is staged, packed and removed.
+fn write_packed(
+    out: &Utf8Path,
+    package: &Package,
+    report: &str,
+    (kind, name): (WriterKind, String),
+    (file, report_file): (Utf8PathBuf, Utf8PathBuf),
+    pack: fn(&Utf8Path, &Utf8Path) -> Result<(), WriteError>,
+) -> Result<Written, WriteError> {
+    fs::create_dir_all(out)?;
+    let staging = Staging::new(out.join(format!("{name}.partial")))?;
+    let project = staging.path.join("project");
+    let tree = Tree {
+        package,
+        report,
+        root: &project,
+    };
+    let tally = tree.write()?;
+    let packed = staging.path.join(&name);
+    pack(&project, &packed)?;
+    let staged_report = staging.path.join(REPORT_FILE);
+    fs::write(&staged_report, report)?;
+    fs::rename(&packed, file)?;
+    fs::rename(&staged_report, report_file)?;
+    Ok(Written {
+        kind,
+        name,
+        chunks: tally.chunks,
+        hash_named: tally.hash_named,
+        bytes: tally.bytes,
+    })
 }
