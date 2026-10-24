@@ -13,7 +13,7 @@ import {
   useJobRunning,
   useRepairStore,
 } from "@/modules/repair";
-import { useSettings } from "@/modules/settings";
+import { AUTOMATIC_JOBS, useSettings } from "@/modules/settings";
 import { copyText } from "@/utils";
 
 import { useBatchEvents, useBatchRunning, useRunBatch, useStopBatch } from "../api/batch";
@@ -25,7 +25,7 @@ import { BatchTable } from "./BatchTable";
 import { ModsCard } from "./ModsCard";
 import { MovedDialog } from "./MovedDialog";
 
-/** How far the batch under way is: the archive running, its place, and a bar. */
+/** How far the batch under way is: what is done, what is running, and a bar. */
 function BatchProgressLine() {
   const at = useBatchStore((state) => state.at);
   const done = useBatchStore((state) => state.rows.length);
@@ -37,7 +37,7 @@ function BatchProgressLine() {
   return (
     <div className="flex flex-col gap-2" data-ui="BatchProgress">
       <p className="truncate text-sm text-surface-200 select-none">
-        {m.batch_progress_label({ number: at.index + 1, total: at.total, archive: at.archive })}
+        {m.batch_progress_label({ done, total: at.total, running: at.running.length })}
       </p>
       <div className="h-1.5 overflow-hidden rounded-full bg-surface-800">
         <div className="h-full bg-accent-500 transition-[width]" style={{ width: `${percent}%` }} />
@@ -135,7 +135,7 @@ export function BatchPage() {
       settings: runSettings(runPageSettings ? forEveryMod(advanced) : STANDARD),
       out: chosenOut ?? null,
       format,
-      jobs: 0,
+      jobs: settings?.["batch.jobs"] ?? AUTOMATIC_JOBS,
     };
     gate(() => runBatch.mutate(request));
   };

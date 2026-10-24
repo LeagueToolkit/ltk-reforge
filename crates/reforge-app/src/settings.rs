@@ -47,6 +47,10 @@ pub struct Settings {
     /// Run with an input absent, the history index or the hash tables, without asking first.
     #[serde(rename = "prompts.runWithLess")]
     pub run_with_less: bool,
+    /// How many archives a batch runs at once (#ADR-0108). 0: the app's choice, one per four
+    /// cores.
+    #[serde(rename = "batch.jobs")]
+    pub jobs: u8,
 }
 
 /// A colour scheme.

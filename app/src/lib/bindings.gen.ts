@@ -62,6 +62,11 @@ export const commands = {
 	 */
 	runBatch: (request: BatchRequest) => __TAURI_INVOKE<({ ok: true; value: BatchView }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("run_batch", { request }),
 	/**
+	 *  How many archives a batch runs at once when it chooses, and the most it may be asked for
+	 *  (#ADR-0108).
+	 */
+	batchJobs: () => __TAURI_INVOKE<({ ok: true; value: BatchJobs }) & { error?: never } | ({ ok: false; error: AppError }) & { value?: never }>("batch_jobs"),
+	/**
 	 *  Stops the run under way: the stage under way ends after its step (#ADR-0097), and the run
 	 *  ends with its report, writes nothing and is not kept.
 	 */
@@ -500,6 +505,14 @@ export type ArchiveProgress = {
 	done: number,
 	/**  The bytes to do. */
 	total: number,
+};
+
+/**  The choices of how many archives a batch runs at once, for the setting that holds one. */
+export type BatchJobs = {
+	/**  What 0, the app's choice, comes to on this machine. */
+	automatic: number,
+	/**  The most a request may ask for. */
+	max: number,
 };
 
 /**  An archive of the batch under way starting, or ending with its row. */
@@ -2257,6 +2270,11 @@ export type Settings = {
 	"output.format"?: PackageFormat,
 	/**  Run with an input absent, the history index or the hash tables, without asking first. */
 	"prompts.runWithLess"?: boolean,
+	/**
+	 *  How many archives a batch runs at once (#ADR-0108). 0: the app's choice, one per four
+	 *  cores.
+	 */
+	"batch.jobs"?: number,
 };
 
 /**  How much a finding costs the output, as the report names it. */

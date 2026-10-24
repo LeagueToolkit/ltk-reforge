@@ -42,7 +42,15 @@ function archivesOf(mods: readonly ManagerMod[]): string[] {
 }
 
 /** A scanned mod's origin, a line per unit: where its work comes from and where a port lands it. */
-function OriginCell({ row }: { row: BatchRow | undefined }) {
+function OriginCell({ row, running }: { row: BatchRow | undefined; running: boolean }) {
+  if (running) {
+    return (
+      <span className="flex items-center gap-1.5 text-surface-400">
+        <Spinner size="sm" />
+        {m.manager_scan_running()}
+      </span>
+    );
+  }
   if (!row) {
     return null;
   }
@@ -90,6 +98,8 @@ export function ManagerPage() {
   const busy = useJobRunning();
   const scanRows = useScanStore((state) => state.rows);
   const scanAt = useScanStore((state) => state.at);
+  const scanArchives = useScanStore((state) => state.archives);
+  const underScan = new Set((scanAt?.running ?? []).map((index) => scanArchives[index]));
   const stopping = useScanStore((state) => state.stopping);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -210,15 +220,15 @@ export function ManagerPage() {
         <div className="flex flex-col gap-2" data-ui="ManagerPage:progress">
           <p className="truncate text-sm text-surface-200 select-none">
             {m.manager_scan_progress({
-              number: scanAt.index + 1,
+              done: scanAt.done,
               total: scanAt.total,
-              archive: scanAt.archive,
+              running: scanAt.running.length,
             })}
           </p>
           <div className="h-1.5 overflow-hidden rounded-full bg-surface-800">
             <div
               className="h-full bg-accent-500 transition-[width]"
-              style={{ width: `${(scanAt.index / scanAt.total) * 100}%` }}
+              style={{ width: `${(scanAt.done / scanAt.total) * 100}%` }}
             />
           </div>
         </div>
@@ -309,7 +319,10 @@ export function ManagerPage() {
                       {note ? noteLabel(note) : m.manager_note_legacy()}
                     </td>
                     <td className={twMerge(cellClass, "text-xs")}>
-                      <OriginCell row={path === null ? undefined : scanRows[path]} />
+                      <OriginCell
+                        row={path === null ? undefined : scanRows[path]}
+                        running={path !== null && underScan.has(path)}
+                      />
                     </td>
                     <td
                       className={twMerge(cellClass, "text-xs whitespace-nowrap text-surface-400")}

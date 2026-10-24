@@ -92,13 +92,38 @@ pub struct BatchRequest {
 /// and the game bins it reads, so memory bounds it before cores do.
 pub const MAX_JOBS: usize = 8;
 
-/// How many archives a request runs at once: what it asks, else one per four cores.
+/// How many archives a request runs at once: what it asks, capped, else the app's choice.
 fn jobs_of(request: &BatchRequest) -> usize {
     if request.jobs > 0 {
-        return request.jobs;
+        return request.jobs.min(MAX_JOBS);
     }
+    automatic_jobs()
+}
+
+/// How many archives a batch runs at once when it chooses: one per four cores of the machine,
+/// one at least and [`MAX_JOBS`] at most.
+pub fn automatic_jobs() -> usize {
     let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
     (cores / 4).clamp(1, MAX_JOBS)
+}
+
+/// The choices of how many archives a batch runs at once, for the setting that holds one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+pub struct BatchJobs {
+    /// What 0, the app's choice, comes to on this machine.
+    pub automatic: usize,
+    /// The most a request may ask for.
+    pub max: usize,
+}
+
+impl BatchJobs {
+    /// This machine's.
+    pub fn here() -> Self {
+        Self {
+            automatic: automatic_jobs(),
+            max: MAX_JOBS,
+        }
+    }
 }
 
 /// The stage a batch runs through unless asked otherwise.

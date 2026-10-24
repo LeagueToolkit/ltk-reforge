@@ -15,7 +15,7 @@ use tauri::{AppHandle, Manager, State};
 use tauri_specta::Event;
 
 use crate::archive::{ArchiveNote, ArchiveProgress, Bootstrap, CloneView};
-use crate::batch::{self, BatchProgress, BatchRequest, BatchView};
+use crate::batch::{self, BatchJobs, BatchProgress, BatchRequest, BatchView};
 use crate::bin_rows::{self, BinDocument, BinDocumentHandle, BinRows, BinSource, BinViews};
 use crate::catalog::{self, CheckEntry, FixupEntry};
 use crate::census::{CENSUS, IndexUpdateProgress, UpdateStep, Updater};
@@ -282,6 +282,14 @@ pub async fn run_batch(app: AppHandle, request: BatchRequest) -> IpcResult<Batch
         ran
     })
     .await
+}
+
+/// How many archives a batch runs at once when it chooses, and the most it may be asked for
+/// (#ADR-0108).
+#[tauri::command]
+#[specta::specta]
+pub fn batch_jobs() -> IpcResult<BatchJobs> {
+    IpcResult::ok(BatchJobs::here())
 }
 
 /// Stops the run under way: the stage under way ends after its step (#ADR-0097), and the run

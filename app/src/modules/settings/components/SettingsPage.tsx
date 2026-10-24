@@ -1,13 +1,15 @@
+import { CaretDownIcon } from "@phosphor-icons/react";
 // The inputs module's picker is behind a barrel that reads the settings: a cycle.
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ReactNode } from "react";
 
-import { Button, FailureNote, SectionCard, SegmentedControl, Spinner } from "@/components";
+import { Button, FailureNote, Menu, SectionCard, SegmentedControl, Spinner } from "@/components";
 import { m } from "@/i18n";
 import type { Theme } from "@/lib/bindings.gen";
 
 import { useSaveSettings, useSettings } from "../api/settings";
 import { DEFAULT_PACKAGE_FORMAT, formatLabel, PACKAGE_FORMATS } from "../format";
+import { AUTOMATIC_JOBS, jobsChoices, jobsLabel, useBatchJobs } from "../jobs";
 
 const THEMES: Theme[] = ["system", "dark", "light"];
 
@@ -23,6 +25,7 @@ interface SettingsPageProps {
 export function SettingsPage({ storage }: SettingsPageProps) {
   const settings = useSettings();
   const save = useSaveSettings();
+  const jobs = useBatchJobs();
 
   if (settings.isPending) {
     return <Spinner />;
@@ -38,6 +41,12 @@ export function SettingsPage({ storage }: SettingsPageProps) {
     label: formatLabel(format),
   }));
   const chosenOut = current["output.folder"];
+  const chosenJobs = current["batch.jobs"] ?? AUTOMATIC_JOBS;
+  const jobsItems = jobsChoices(jobs.data ?? { automatic: 1, max: 1 }).map((choice) => ({
+    label: jobsLabel(choice, jobs.data),
+    disabled: choice === chosenJobs,
+    onSelect: () => save.mutate({ ...current, "batch.jobs": choice }),
+  }));
 
   const chooseOut = async () => {
     const picked = await open({ directory: true, multiple: false });
@@ -100,6 +109,28 @@ export function SettingsPage({ storage }: SettingsPageProps) {
               {m.settings_output_choose_action()}
             </Button>
           </div>
+        </div>
+      </SectionCard>
+      <SectionCard title={m.settings_batch_title()}>
+        <div className="flex items-center justify-between gap-4" data-ui="SettingsPage:jobs">
+          <div>
+            <p className="text-sm text-surface-100">{m["setting.batch.jobs.label"]()}</p>
+            <p className="text-xs text-surface-400">{m["setting.batch.jobs.description"]()}</p>
+          </div>
+          <Menu
+            trigger={
+              <Button
+                size="sm"
+                variant="outline"
+                right={<CaretDownIcon weight="bold" />}
+                disabled={!jobs.data}
+                aria-label={m["setting.batch.jobs.label"]()}
+              >
+                {jobsLabel(chosenJobs, jobs.data)}
+              </Button>
+            }
+            items={jobsItems}
+          />
         </div>
       </SectionCard>
       {storage && <SectionCard title={m.settings_storage_title()}>{storage}</SectionCard>}

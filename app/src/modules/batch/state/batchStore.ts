@@ -4,11 +4,11 @@ import type { BatchProgress, BatchRow, BatchView, RunKind } from "@/lib/bindings
 
 import { withArchives } from "../outcomes";
 
-/** The archive of the batch under way that is running. */
+/** How far the batch under way is: how many archives it holds, and which are running. */
 export interface BatchAt {
-  index: number;
   total: number;
-  archive: string;
+  /** The archives started and not ended, by index (#ADR-0108). */
+  running: number[];
 }
 
 interface BatchState {
@@ -20,7 +20,7 @@ interface BatchState {
   runPageSettings: boolean;
   /** The rows of the batch under way or last ended. */
   rows: BatchRow[];
-  /** The archive running, while a batch is under way. */
+  /** How far the batch is, while one is under way. */
   at: BatchAt | null;
   /** The last batch as the backend answered it, once it ended. */
   ended: BatchView | null;
@@ -57,12 +57,17 @@ export const useBatchStore = create<BatchState>()((set) => ({
   setKind: (kind) => set({ kind }),
   setRunPageSettings: (runPageSettings) => set({ runPageSettings }),
   start: () => set({ rows: [], at: null, ended: null, stopping: false }),
-  heard: ({ index, total, archive, row }) =>
-    set((state) =>
-      row
-        ? { rows: [...state.rows.filter((seen) => seen.index !== index), row] }
-        : { at: { index, total, archive } },
-    ),
+  heard: ({ index, total, row }) =>
+    set((state) => {
+      const running = state.at?.running ?? [];
+      if (row) {
+        return {
+          rows: [...state.rows.filter((seen) => seen.index !== index), row],
+          at: { total, running: running.filter((seen) => seen !== index) },
+        };
+      }
+      return { at: { total, running: [...running, index] } };
+    }),
   end: (view) =>
     set((state) => ({ rows: view?.rows ?? state.rows, ended: view, at: null, stopping: false })),
   setStopping: () => set({ stopping: true }),

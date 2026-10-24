@@ -5,17 +5,18 @@ import { create } from "zustand";
 import { type BatchProgress, type BatchRow, commands, events } from "@/lib/bindings.gen";
 import { jobKey } from "@/lib/query";
 import { runSettings, STANDARD } from "@/modules/repair";
-import { DEFAULT_PACKAGE_FORMAT, useSettings } from "@/modules/settings";
+import { AUTOMATIC_JOBS, DEFAULT_PACKAGE_FORMAT, useSettings } from "@/modules/settings";
 import { unwrap } from "@/utils";
 
 /** The scan, a mutation of the run job's (`jobKey`): the backend runs one job at a time. */
 const scanKey = [...jobKey, "scan"] as const;
 
-/** The archive of the scan under way that is running. */
+/** How far the scan under way is: how many archives it holds, which are running, how many ended. */
 export interface ScanAt {
-  index: number;
   total: number;
-  archive: string;
+  /** The archives started and not ended, by index (#ADR-0108). */
+  running: number[];
+  done: number;
 }
 
 interface ScanState {
@@ -23,7 +24,7 @@ interface ScanState {
   rows: Record<string, BatchRow>;
   /** The archives of the scan under way, by index. */
   archives: string[];
-  /** The archive running, while a scan is under way. */
+  /** How far the scan is, while one is under way. */
   at: ScanAt | null;
   /** Whether the person asked the scan to stop. */
   stopping: boolean;
@@ -41,13 +42,21 @@ export const useScanStore = create<ScanState>()((set) => ({
   at: null,
   stopping: false,
   start: (archives) => set({ archives, at: null, stopping: false }),
-  heard: ({ index, total, archive, row }) =>
+  heard: ({ index, total, row }) =>
     set((state) => {
+      const at = state.at ?? { total, running: [], done: 0 };
       if (!row) {
-        return { at: { index, total, archive } };
+        return { at: { ...at, running: [...at.running, index] } };
       }
+      const ended = {
+        ...at,
+        running: at.running.filter((seen) => seen !== index),
+        done: at.done + 1,
+      };
       const path = state.archives[index];
-      return path === undefined ? {} : { rows: { ...state.rows, [path]: row } };
+      return path === undefined
+        ? { at: ended }
+        : { at: ended, rows: { ...state.rows, [path]: row } };
     }),
   end: () => set({ at: null, stopping: false, archives: [] }),
   setStopping: () => set({ stopping: true }),
@@ -66,7 +75,9 @@ export function useScanRunning(): boolean {
 export function useScan() {
   const start = useScanStore((state) => state.start);
   const end = useScanStore((state) => state.end);
-  const format = useSettings().data?.["output.format"] ?? DEFAULT_PACKAGE_FORMAT;
+  const settings = useSettings().data;
+  const format = settings?.["output.format"] ?? DEFAULT_PACKAGE_FORMAT;
+  const jobs = settings?.["batch.jobs"] ?? AUTOMATIC_JOBS;
   return useMutation({
     mutationKey: scanKey,
     mutationFn: async (archives: string[]) => {
@@ -79,7 +90,7 @@ export function useScan() {
           settings: runSettings(STANDARD),
           out: null,
           format,
-          jobs: 0,
+          jobs,
         }),
       );
     },

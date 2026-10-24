@@ -31,7 +31,8 @@ it finds the inputs, drives a run, shows each stage's result, and writes the pac
   the commands (`pnpm generate:types`) and committed; a test of the crate fails when they
   differ from the commands.
 - The settings are one JSON file in the app's data directory, a key per setting id
-  (`appearance.theme`, `inputs.game`, `inputs.installs`, `output.folder`, `output.format`).
+  (`appearance.theme`, `inputs.game`, `inputs.installs`, `output.folder`, `output.format`,
+  `batch.jobs`).
 - The theme (`app/src/styles/`) and the components are LTK Manager's, copied. reforge's own
   red, taken from Ornn's base splash art, is `app/src/styles/reforge.css` over them. LTK
   Manager's lint rules apply as its own, so the warnings it gives on its components are given

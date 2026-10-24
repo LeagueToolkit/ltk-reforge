@@ -23,8 +23,11 @@ a dozen written runs, so keeping a run per scanned mod costs more than it saves 
 ## Decision
 
 A batch runs its archives in waves of `jobs` at once (the user's call, 2026-10-24), each
-archive of a wave in a thread of its own over the one set of inputs. The request says `jobs`;
-0, the app's choice, is one per four cores, one at least and eight at most. A wave's rows reach
+archive of a wave in a thread of its own over the one set of inputs. The request says `jobs`,
+from the setting `batch.jobs` under Settings, "Mods at once"; 0, the app's choice and the
+default, is one per four cores, one at least and eight at most, and the setting names what it
+comes to on the machine. The pages get no control of their own: the one reason to turn it
+down is memory, and that is a number, not a switch. A wave's rows reach
 the window as each ends, in the order they end, and the batch's rows come back in the request's
 order. The inputs are let go of and opened again as a wave starts past every sixteenth archive,
 as before. A cancel ends the archives under way after their step and the batch after that
@@ -36,7 +39,8 @@ wave.
   archive of each wave.
 - Memory grows with the wave: eight large mods at once hold eight archives' bytes. The cap is
   a guess until measured; the request can ask for fewer.
-- The progress line names the archive that started last, not the one running longest.
+- The progress line counts what is done and what is running, and names no archive: with
+  several under way, one name would mislead. The mods running are marked in the list instead.
 - The runs of a wave write to the store one at a time, as SQLite serializes them.
 - Two packages of one name and version in one output folder are written at once, so a
   writer's staging folder is named by the process and the write, not by the package alone;

@@ -1,6 +1,6 @@
 import { XIcon } from "@phosphor-icons/react";
 
-import { Button, FailureNote, SectionCard, Tooltip } from "@/components";
+import { Button, FailureNote, SectionCard, Spinner, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import { twMerge } from "@/utils";
 
@@ -22,6 +22,8 @@ export function ModsCard({ busy, over }: { busy: boolean; over: boolean }) {
   const addArchives = useBatchStore((state) => state.addArchives);
   const removeArchive = useBatchStore((state) => state.removeArchive);
   const clear = useBatchStore((state) => state.clear);
+  const at = useBatchStore((state) => state.at);
+  const running = new Set((at?.running ?? []).map((index) => archives[index]));
   const addFolder = useAddFolder();
 
   const actions = (
@@ -77,7 +79,10 @@ export function ModsCard({ busy, over }: { busy: boolean; over: boolean }) {
                     className="flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-surface-veil"
                   >
                     <Tooltip content={archive}>
-                      <span className="min-w-0 truncate text-sm text-surface-100">{name}</span>
+                      <span className="flex min-w-0 items-center gap-1.5 text-sm text-surface-100">
+                        {running.has(archive) && <Spinner size="sm" />}
+                        <span className="min-w-0 truncate">{name}</span>
+                      </span>
                     </Tooltip>
                     <Button
                       size="xs"
