@@ -16,8 +16,20 @@
 </p>
 
 > 🚧 **Work in progress.** The fixer runs over the whole corpus and a handful of its packages
-> are confirmed in game. The app is released as v0.1.4 (2026-10-09), and every format and
+> are confirmed in game. The app is released as v0.5.0 (2026-10-25), and every format and
 > command below may still change.
+
+## See it run
+
+The first start: the game is found, the history index downloaded, and the builds published
+since added from a small delta.
+
+https://github.com/user-attachments/assets/fd1eb896-8769-46a1-86ad-c76d5ac84bf3
+
+Porting the mods installed in LTK Manager: scan them for copies of premium skins, report the
+ones that need the premium skin, port the rest to the base skin in one batch.
+
+https://github.com/user-attachments/assets/043c59fa-aa5f-4a0d-93dd-50dc75971f3c
 
 ## What it does
 
@@ -38,7 +50,7 @@ archive bytes
    │ plan      what ships, renamed and placed; audio; HUD
    │ build     layers, chunks, patches, manifests, hash tables
    │ check     the package applied as the overlay applies it; types
-   ▼ write     a project directory, a .modpkg
+   ▼ write     a project directory, a .fantome, a .modpkg
 ```
 
 Two programs run on those stages:
