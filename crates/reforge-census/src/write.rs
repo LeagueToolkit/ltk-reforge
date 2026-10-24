@@ -373,7 +373,7 @@ impl Visit for Appended<'_, '_> {
 }
 
 /// How many rows each table of the index holds.
-fn row_counts(db: &Connection) -> Result<BTreeMap<String, u64>, CensusError> {
+pub(crate) fn row_counts(db: &Connection) -> Result<BTreeMap<String, u64>, CensusError> {
     let mut rows = BTreeMap::new();
     for table in tables::table_names() {
         let count: i64 =
@@ -384,7 +384,7 @@ fn row_counts(db: &Connection) -> Result<BTreeMap<String, u64>, CensusError> {
 }
 
 /// The directory an index is built in, beside the one it is renamed to.
-fn scratch(out: &Utf8Path) -> Result<Utf8PathBuf, CensusError> {
+pub(crate) fn scratch(out: &Utf8Path) -> Result<Utf8PathBuf, CensusError> {
     let tmp = out.with_extension("tmp");
     if tmp.exists() {
         fs::remove_dir_all(&tmp)?;
@@ -395,7 +395,7 @@ fn scratch(out: &Utf8Path) -> Result<Utf8PathBuf, CensusError> {
 
 /// Writes `builds.tsv` and the stamp beside the database in `tmp`, the stamp last, and moves
 /// `tmp` into `out`.
-fn install(
+pub(crate) fn install(
     tmp: &Utf8Path,
     out: &Utf8Path,
     builds: &[BuildRow],
@@ -505,7 +505,8 @@ pub(crate) fn append(
     let mut objects = Appender::load(&tx, &stamp.objects)?;
     let (mut newest, mut unparsed) = (stamp.newest_build.clone(), stamp.unparsed_texts);
     let mut objectless = stamp.objectless_texts;
-    for i in builds.len()..commits.len() {
+    let builds_before = builds.len();
+    for i in builds_before..commits.len() {
         let at = position(i)?;
         let parent = i.checked_sub(1).map(|p| commits[p].as_str());
         // A walker of its own per commit: its counts are the commit's net changes.

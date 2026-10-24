@@ -170,6 +170,44 @@ pub enum CensusError {
         running: String,
     },
     /// The index beside the tables does not read or write.
+    /// A delta is of another format than this crate writes, or for an index of another format.
+    #[error("the delta is format {format} for an index of format {index_format}")]
+    DeltaFormat {
+        /// The delta's format.
+        format: u32,
+        /// The format of the index it applies to.
+        index_format: u32,
+    },
+    /// A delta applies to a base whose head is not this index's.
+    #[error("the delta applies to head {expected}, and the index is at {found}")]
+    DeltaBase {
+        /// The head the delta names.
+        expected: String,
+        /// The head found.
+        found: String,
+    },
+    /// A delta lacks one of its entries.
+    #[error("{path} holds no {entry}")]
+    DeltaEntry {
+        /// The delta.
+        path: Utf8PathBuf,
+        /// The entry looked for.
+        entry: &'static str,
+    },
+    /// The database a delta made is not the one its note names.
+    #[error("the delta made a database of digest {found}, not {expected}")]
+    DeltaDigest {
+        /// The digest the note names.
+        expected: String,
+        /// The digest of the database made.
+        found: String,
+    },
+    /// A delta's chunk size is not one this crate reads.
+    #[error("the delta's chunk of {0} bytes is not a power of two this crate reads")]
+    DeltaChunk(u64),
+    /// A delta's note or stamp does not read.
+    #[error("a delta's note or stamp does not read")]
+    DeltaJson(#[from] serde_json::Error),
     #[error(transparent)]
     Index(#[from] HistoryError),
     /// SQLite refused a statement of the writer.

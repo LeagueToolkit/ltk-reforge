@@ -313,6 +313,22 @@ it takes forward in `history-indexes/head-<commit>-v<format>`. Two versions of t
 two formats write no folder in common. In the folder the files take their names in the index's
 directory.
 
+## Deltas
+
+#ADR-0109. A snapshot's release also holds the delta that takes the snapshot to the history's
+tip, `history-v<format>-delta-<head12>.tar`, rewritten at every patch. The delta is a tar:
+`delta.json` (`reforge_census::DeltaNote`: the formats, the base's head, the new head, the
+builds added, the new database's size and SHA-256, the chunk size), the new `builds.tsv` and
+`stamp.json`, then `chunk-<n>.zst`, one zstd frame per 512 MiB chunk of the new database, each
+compressed against the same chunk of the base loaded as its dictionary. An append rewrites
+pages in place and adds pages at the end, so the chunks line up.
+
+`reforge history delta --base <snapshot> --index <head> --out <file>` writes one from the
+snapshot and the index appended from it. `reforge history apply --delta <file> --base
+<snapshot> --out <dir>` and the app decode each frame with the base's chunk, check the digest,
+and install the index: the appended index byte for byte. A base whose head is not the delta's
+is refused.
+
 ## The questions
 
 `History` is a trait with one method per question. `SqliteHistory` reads the index,
@@ -386,6 +402,8 @@ the text by a search of the build's tree, from the first WAD in path order whose
 | `reforge history probe <path> --game <install>` | hashes a game file and looks it up, with a bin's objects, a bank's clips, an events bank's header and objects and the WADs that held its file, or an animation clip's joints; `--strict` fails when one is missing |
 | `reforge history show-entry <entry> --bin <path> --repo <clone> [--index <index>]` | prints an entry's text at a build, by the blob the index names when one is given |
 | `reforge history check-objects [--index <index>] [--unkeyed <file>]` | counts the texts that have their object, checks each object's digest against `objects` under its text's class, and writes each text that has no key there, with its bin, entry and first build |
+| `reforge history delta --base <snapshot> --index <head> --out <file>` | writes the delta that takes the snapshot to the index appended from it (#ADR-0109) |
+| `reforge history apply --delta <file> --base <snapshot> --out <dir>` | applies a delta to the snapshot it starts from |
 
 ## Limits
 

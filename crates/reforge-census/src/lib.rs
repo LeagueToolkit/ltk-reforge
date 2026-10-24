@@ -6,6 +6,7 @@
 //! is exact, stamped with the commit it came from, and disposable: deleting it loses nothing.
 
 mod check;
+mod delta;
 mod error;
 #[cfg(feature = "fetch")]
 mod fetch;
@@ -20,6 +21,9 @@ use camino::Utf8Path;
 use reforge::history::{Families, Stamp};
 
 pub use self::check::{ObjectCheck, Unkeyed, check_objects};
+pub use self::delta::{
+    DELTA_FORMAT, DeltaNote, DeltaStep, apply as apply_delta, read_note, write as write_delta,
+};
 pub use self::error::CensusError;
 #[cfg(feature = "fetch")]
 pub use self::fetch::{Fetcher, Received};
