@@ -7,7 +7,7 @@
 
 use std::fmt;
 
-use ltk_hash::{HashAlgorithm, HashWidth, Hasher};
+use ltk_hash::HashWidth;
 use ltk_meta::property::values;
 use ltk_meta::{PropertyKind as Kind, PropertyValueEnum as V};
 use serde::Serialize;
@@ -15,7 +15,9 @@ use serde::Serialize;
 use crate::fixups::FixCx;
 use crate::game::{FieldType, NameHashError, Names, Speller};
 use crate::model::entity::Character;
-use crate::model::{Arena, BinHash, Record, WadHash, name_hash, path_hash, value};
+use crate::model::{
+    Arena, BinHash, Record, WadHash, material_name_hash, name_hash, path_hash, value,
+};
 
 /// One way a value is put in the type the target build reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
@@ -300,13 +302,6 @@ fn rehash(value: &V, names: &mut PathNames<'_>) -> Option<V> {
     Some(names.file(&path))
 }
 
-/// The 8-byte hash of a material's name, as the client stores it (#GAME-CHANGE-0028).
-const WIDE_NAME: Hasher = Hasher {
-    width: HashWidth::W8,
-    algorithm: HashAlgorithm::Xxh3,
-    lowercased: true,
-};
-
 fn wide_hash(value: &V, want: &FieldType) -> Option<V> {
     let V::String(text) = value else {
         return None;
@@ -316,7 +311,7 @@ fn wide_hash(value: &V, want: &FieldType) -> Option<V> {
     if want.width != Some(HashWidth::W8) || text.value.is_empty() {
         return None;
     }
-    Some(V::Hash(values::Hash::new(WIDE_NAME.hash_str(&text.value))))
+    Some(V::Hash(values::Hash::new(material_name_hash(&text.value))))
 }
 
 fn hash_key(value: &V, want: &FieldType, names: &mut PathNames<'_>) -> Option<V> {

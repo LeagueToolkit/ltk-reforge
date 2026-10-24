@@ -32,7 +32,10 @@ pub use byteview::ByteView;
 pub use dump::{Dump, DumpCx};
 pub use entity::Mod;
 pub use fixup::{FixupId, FixupInfo, Phase, Version};
-pub use hash::{BinHash, ContentId, MAX_SLOT, Slot, WadHash, name_hash, path_hash};
+pub use hash::{
+    BinHash, ContentId, HashValue, MAX_SLOT, Slot, WadHash, material_name_hash, name_hash,
+    path_hash,
+};
 pub use id::{Arena, Id, SideTable, Sigil};
 pub use keys::{ClipKey, FileKey, NormKey, ObjectKey};
 pub use layer::Layer;

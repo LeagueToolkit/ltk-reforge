@@ -735,7 +735,8 @@ object takes a name of its own, which every link to it follows.
    it makes has a file stem of sixteen hex digits (#ADR-0054).
 6. **`Renames`**, second part: the name each carried object takes under the namespace, by
    group. A unit's objects follow the renames of its group only: a champion and its
-   sub-characters at one target. A resolver's keys stay.
+   sub-characters at one target. A resolver's keys stay. A carried material's `name` becomes
+   the hash of its new entry name (#GAME-BEHAVIOR-0030).
 7. **`Port`**: the objects the port answers for, cloned, with the renames and the places
    applied; the files with their places; the units; the HUD edits; the audio.
 

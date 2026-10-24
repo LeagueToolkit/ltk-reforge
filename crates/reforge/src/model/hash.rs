@@ -3,7 +3,8 @@
 use std::fmt;
 
 use ltk_hash::Hash as _;
-pub use ltk_hash::{BinHash, WadHash};
+pub use ltk_hash::{BinHash, HashValue, WadHash};
+use ltk_hash::{HashAlgorithm, HashWidth, Hasher};
 use sha2::{Digest, Sha256};
 
 /// A skin number: `skin<N>.bin`, `Skins/Skin<N>`.
@@ -189,6 +190,17 @@ pub fn path_hash(path: &str) -> WadHash {
 /// The FNV-1a hash of an entry, field or class name, lowercased.
 pub fn name_hash(name: &str) -> BinHash {
     BinHash::hash_str(name)
+}
+
+/// A material's `name`: the XXH3-64 of its entry name, lowercased, stored in 8 bytes
+/// (#GAME-CHANGE-0028, #GAME-BEHAVIOR-0030).
+pub fn material_name_hash(entry_name: &str) -> HashValue {
+    const HASHER: Hasher = Hasher {
+        width: HashWidth::W8,
+        algorithm: HashAlgorithm::Xxh3,
+        lowercased: true,
+    };
+    HASHER.hash_str(entry_name)
 }
 
 /// Paths and entry names of a character's skins.

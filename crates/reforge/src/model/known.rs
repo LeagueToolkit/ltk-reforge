@@ -13,6 +13,8 @@ pub mod class {
     pub const ATOMIC_CLIP_DATA: &str = "AtomicClipData";
     /// A graph event that shows and hides submeshes.
     pub const SUBMESH_VISIBILITY_EVENT_DATA: &str = "SubmeshVisibilityEventData";
+    /// A material.
+    pub const STATIC_MATERIAL: &str = "StaticMaterialDef";
 
     /// Every class name above.
     pub const ALL: &[&str] = &[
@@ -21,6 +23,7 @@ pub mod class {
         ANIMATION_GRAPH_DATA,
         ATOMIC_CLIP_DATA,
         SUBMESH_VISIBILITY_EVENT_DATA,
+        STATIC_MATERIAL,
     ];
 }
 
@@ -64,6 +67,8 @@ pub mod field {
     pub const SKIN_PARENT: &str = "skinParent";
     /// A resolver's map of effect keys to effects.
     pub const RESOURCE_MAP: &str = "resourceMap";
+    /// A material's name: the hash of its entry name (#GAME-BEHAVIOR-0030).
+    pub const NAME: &str = "name";
     /// A graph's clips.
     pub const CLIP_DATA_MAP: &str = "mClipDataMap";
     /// A clip's events.

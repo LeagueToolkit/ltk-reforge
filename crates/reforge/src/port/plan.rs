@@ -28,7 +28,7 @@ use super::hud::HudPlan;
 use super::layout::Layout;
 use super::reach::{Fate, Reach};
 use super::refs::{FileRefs, FileVerdict};
-use super::renames::{Group, Renames};
+use super::renames::{self, Group, Renames};
 use super::shipping::Shipping;
 use crate::diag::{Cancelled, Parts, Sink};
 use crate::env::Env;
@@ -333,6 +333,7 @@ impl Linking<'_, '_> {
                 .or_default()
                 .push((old, new));
             object.path_hash = new;
+            renames::name_material(&mut object, old, self.layout.spelled(new));
             copies.push((object, leaf));
         }
         let ported: Vec<(ObjectId, Fate)> = reached.ported().collect();
@@ -452,7 +453,11 @@ impl Linking<'_, '_> {
                 if !value::names_any(held, &named) {
                     continue;
                 }
-                let renamed = value::rename_hashes_by(held, &renames, &|hash| keys.contains(&hash));
+                let before = held.path_hash;
+                let mut renamed =
+                    value::rename_hashes_by(held, &renames, &|hash| keys.contains(&hash));
+                let spelled = self.layout.spelled(renamed.path_hash);
+                renames::name_material(&mut renamed, before, spelled);
                 self.objects.set(object, renamed);
             }
         }

@@ -8,6 +8,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 
+use ltk_meta::property::values;
+use ltk_meta::{BinObject, PropertyValueEnum};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::findings::{Retargeted, hash_of};
@@ -16,11 +18,27 @@ use super::shipping::Shipping;
 use crate::diag::Sink;
 use crate::model::entity::{BinId, CharId, Mod, ObjectId, UnitId};
 use crate::model::hash::skin_paths;
-use crate::model::{BinHash, Dump, DumpCx, Slot, name_hash, value};
+use crate::model::known::{class, field};
+use crate::model::{BinHash, Dump, DumpCx, Slot, material_name_hash, name_hash, value};
 
 /// A champion and its sub-characters at one target: the units that load together and share
 /// one set of names.
 pub type Group = (CharId, Slot);
+
+/// Puts the hash of a material's new entry name in its `name` (#GAME-BEHAVIOR-0030), where the
+/// object is a material whose entry name is no longer `before`, and `spelled` is the new name.
+/// A material that holds no `name` is left.
+pub fn name_material(object: &mut BinObject, before: BinHash, spelled: Option<&str>) {
+    if object.class_hash != name_hash(class::STATIC_MATERIAL) || object.path_hash == before {
+        return;
+    }
+    let Some(spelled) = spelled else {
+        return;
+    };
+    if let Some(name) = object.properties.get_mut(&name_hash(field::NAME)) {
+        *name = PropertyValueEnum::Hash(values::Hash::new(material_name_hash(spelled)));
+    }
+}
 
 fn pairs_hex<S: Serializer>(pairs: &[(BinHash, BinHash)], s: S) -> Result<S::Ok, S::Error> {
     let rows = pairs.iter();

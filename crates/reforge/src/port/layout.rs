@@ -256,6 +256,16 @@ impl Layout {
         self.made_entry(name)
     }
 
+    /// The entry name the port made under a hash, spelled. None for a hash of no name the
+    /// port made.
+    pub fn spelled(&self, hash: BinHash) -> Option<&str> {
+        self.made
+            .entries
+            .iter()
+            .map(String::as_str)
+            .find(|name| name_hash(name) == hash)
+    }
+
     /// Keeps an entry name the port made, and gives its hash.
     pub fn made_entry(&mut self, name: String) -> BinHash {
         let hash = name_hash(&name);

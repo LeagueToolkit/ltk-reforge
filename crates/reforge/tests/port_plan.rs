@@ -7,13 +7,13 @@ use ltk_meta::{BinObject, PropertyValueEnum};
 use reforge::env::Env;
 use reforge::history::NoHistory;
 use reforge::model::entity::{ObjectId, UnitId};
-use reforge::model::{Slot, WadHash, name_hash, path_hash, value};
+use reforge::model::{Slot, WadHash, material_name_hash, name_hash, path_hash, value};
 use reforge::port::{
     Carried, Fate, FileVerdict, GameCarried, Left, LinkDangling, ObjectsCopied, PlanError, Policy,
     PortOptions, RefDangling, RefUnmounted, Retargeted, UnitsLeft, Unreached, WorkKind, WorkLeft,
 };
 use reforge_testkit::bins::{
-    Skin, bin, blob, entry, graph, particle, resolver, resolver_with, text, with_link,
+    Skin, bin, blob, entry, graph, object, particle, resolver, resolver_with, text, with_link,
 };
 use reforge_testkit::facts::{archive, env, mod_skin, own_files, own_graph, own_skin};
 use reforge_testkit::packs::{DdsPixels, dds};
@@ -512,6 +512,43 @@ fn a_sub_character_reaches_its_champions_objects() {
         .expect("the pet's entry is ported");
     assert!(value::links(pet_entry).contains(&name_hash(&carried)));
     assert!(run.check_errors().is_empty(), "{:#?}", run.check_errors());
+}
+
+/// #GAME-BEHAVIOR-0030: a material carried under the namespace takes the hash of its new
+/// entry name as its `name`; one with no `name` is left without.
+#[test]
+fn a_carried_materials_name_is_the_hash_of_its_new_entry_name() {
+    let named = "Characters/Test/Skins/Skin0/Materials/Body";
+    let nameless = "Characters/Test/Skins/Skin0/Materials/Sword";
+    let hash = |entry: &str| PropertyValueEnum::Hash(values::Hash::new(material_name_hash(entry)));
+    let files = own_mod(
+        &[("body", named), ("sword", nameless)],
+        vec![
+            object(named, "StaticMaterialDef", vec![("name", hash(named))]),
+            object(nameless, "StaticMaterialDef", vec![]),
+        ],
+    );
+    let env = env(skins::game(), NoHistory);
+    let run = PortRun::of(&env, &archive(&files));
+
+    // No name table spells the material, so its leaf is its entry hash.
+    let leaf = format!("{:08x}", name_hash(named).0);
+    let carried = format!("Mods/{NS}/Characters/test/Skins/Skin0/Materials/{leaf}");
+    let body = run
+        .port
+        .object(run.object(named))
+        .expect("the material is carried");
+    assert_eq!(body.path_hash, name_hash(&carried), "{}", run.dump());
+    assert_eq!(
+        body.properties.get(&name_hash("name")),
+        Some(&hash(&carried))
+    );
+    let sword = run
+        .port
+        .object(run.object(nameless))
+        .expect("the material is carried");
+    assert_ne!(sword.path_hash, name_hash(nameless));
+    assert_eq!(sword.properties.get(&name_hash("name")), None);
 }
 
 #[test]
