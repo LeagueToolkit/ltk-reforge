@@ -678,8 +678,11 @@ the time, and "Open" to the run on the Runs page (`/runs?run=<number>`) when it 
 the batch ends, a line counts the rows ("9 written, 2 refused, 1 failed", refused counting the
 halted and failed the archives that do not read) with its time, and "Copy summary" puts a line
 per mod on the clipboard: its name, version and author, then where each of a port's units
-went (`Vex base→base`, `Janna base→skin7`) or how the run ended. The table stays until the
-next Start or Clear.
+went (`Vex base→base`, `Janna base→skin7`) or how the run ended. A batch that moved a mod from
+the base to a premium slot (#ADR-0013) ends with a popup, once: what moved, that the mods work
+with that skin selected, why (a premium paste that does not fit the base would unlock premium
+content at the base), the moved mods' lines alone, and a button that copies them to report.
+The table stays until the next Start or Clear.
 
 ## The Manager page
 

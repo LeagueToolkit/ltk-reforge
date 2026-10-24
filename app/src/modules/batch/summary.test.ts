@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { BatchRow } from "@/lib/bindings.gen";
 
-import { summaryText } from "./summary";
+import { movedToPremium, summaryText } from "./summary";
 
 const counts = { fatal: 0, error: 0, warning: 0, note: 0 };
 
@@ -51,5 +51,23 @@ describe("summaryText", () => {
 
   it("says a repair was written, which has no units", () => {
     expect(summaryText([row({ name: "R" })])).toBe("R: written");
+  });
+});
+
+describe("movedToPremium", () => {
+  it("keeps the written rows with a base unit placed at a premium slot", () => {
+    const moved = row({ name: "Moved", units: [{ character: "Gwen", source: 0, chosen: 20 }] });
+    const rows = [
+      moved,
+      row({ name: "Base", units: [{ character: "Vex", source: 0, chosen: 0 }] }),
+      row({ name: "Premium", units: [{ character: "Yone", source: 58, chosen: 58 }] }),
+      row({ name: "Left", units: [{ character: "Ahri", source: 0, chosen: null }] }),
+      row({
+        name: "Refused",
+        outcome: { outcome: "refused" },
+        units: [{ character: "Gwen", source: 0, chosen: 20 }],
+      }),
+    ];
+    expect(movedToPremium(rows)).toEqual([moved]);
   });
 });

@@ -1,9 +1,9 @@
 import { CopyIcon, PlayIcon, StopIcon } from "@phosphor-icons/react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { Button, FailureNote } from "@/components";
 import { m } from "@/i18n";
-import type { BatchRequest } from "@/lib/bindings.gen";
+import type { BatchRequest, BatchView } from "@/lib/bindings.gen";
 import { StaleInputsLink, useInputs, useInputsGate } from "@/modules/inputs";
 import {
   forEveryMod,
@@ -19,10 +19,11 @@ import { copyText } from "@/utils";
 import { useBatchEvents, useBatchRunning, useRunBatch, useStopBatch } from "../api/batch";
 import { summaryOf } from "../outcomes";
 import { useBatchStore } from "../state/batchStore";
-import { summaryText } from "../summary";
+import { movedToPremium, summaryText } from "../summary";
 import { BatchSettings } from "./BatchSettings";
 import { BatchTable } from "./BatchTable";
 import { ModsCard } from "./ModsCard";
+import { MovedDialog } from "./MovedDialog";
 
 /** How far the batch under way is: the archive running, its place, and a bar. */
 function BatchProgressLine() {
@@ -46,6 +47,18 @@ function BatchProgressLine() {
       )}
     </div>
   );
+}
+
+/**
+ * The popup a batch ends with when a mod was moved from the base to a premium slot, shown
+ * once per batch; "Copy summary" and the table stay for the rest.
+ */
+function MovedAfterBatch() {
+  const ended = useBatchStore((state) => state.ended);
+  const [shownFor, setShownFor] = useState<BatchView | null>(null);
+  const moved = ended ? movedToPremium(ended.rows) : [];
+  const open = ended !== null && moved.length > 0 && shownFor !== ended;
+  return <MovedDialog open={open} onClose={() => setShownFor(ended)} rows={moved} />;
 }
 
 /** The line under a batch that ended: how many rows ended each way, and its time. */
@@ -164,6 +177,7 @@ export function BatchPage() {
       {runBatch.isError && <FailureNote failure={runBatch.error} />}
       {running && <BatchProgressLine />}
       <BatchSummary />
+      <MovedAfterBatch />
       {rows.length > 0 && <BatchTable rows={rows} />}
     </div>
   );
