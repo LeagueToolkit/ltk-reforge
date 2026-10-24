@@ -11,7 +11,9 @@ use reforge::history::{EventsBankHit, Families, History, SqliteHistory, Stamp};
 use reforge::model::{
     BinHash, ClipKey, ContentId, FileKey, NormKey, ObjectKey, WadHash, bin, name_hash, path_hash,
 };
-use reforge_census::{GitRepo, Indexer, Unkeyed, check_objects};
+use reforge_census::{
+    DeltaStep, GitRepo, Indexer, Unkeyed, apply_delta, check_objects, write_delta,
+};
 use reforge_wwise::Bank;
 
 /// Where the index is when no option says.
@@ -32,6 +34,11 @@ pub enum HistoryCommand {
     /// Check the index's object bytes: which texts have their object, and whether each
     /// object's digest is an object key of the index under its text's class.
     CheckObjects(CheckObjects),
+    /// Write the delta that takes one index to another taken forward from it, for publishing
+    /// beside the first.
+    Delta(Delta),
+    /// Apply a published delta to the index it starts from, into a new folder.
+    Apply(Apply),
 }
 
 impl HistoryCommand {
@@ -42,7 +49,81 @@ impl HistoryCommand {
             HistoryCommand::Probe(command) => command.run(),
             HistoryCommand::ShowEntry(command) => command.run(),
             HistoryCommand::CheckObjects(command) => command.run(),
+            HistoryCommand::Delta(command) => command.run(),
+            HistoryCommand::Apply(command) => command.run(),
         }
+    }
+}
+
+#[derive(Args)]
+pub struct Delta {
+    /// The index the delta starts from: the published snapshot.
+    #[arg(long)]
+    base: Utf8PathBuf,
+    /// The index taken forward from it, which the delta makes.
+    #[arg(long, default_value = INDEX_DIR)]
+    index: Utf8PathBuf,
+    /// Where the delta is written.
+    #[arg(long)]
+    out: Utf8PathBuf,
+}
+
+impl Delta {
+    fn run(&self) -> Result<()> {
+        let started = Instant::now();
+        let note = write_delta(&self.out, &self.base, &self.index)?;
+        let size = fs_err::metadata(&self.out)?.len();
+        outln!(
+            "delta at {}: {} builds, {} to {}, {} MB for a database of {} MB ({:.1?})",
+            self.out,
+            note.builds,
+            short(&note.base_head),
+            short(&note.head),
+            size >> 20,
+            note.size >> 20,
+            started.elapsed()
+        );
+        Ok(())
+    }
+}
+
+#[derive(Args)]
+pub struct Apply {
+    /// The delta.
+    #[arg(long)]
+    delta: Utf8PathBuf,
+    /// The index the delta starts from.
+    #[arg(long)]
+    base: Utf8PathBuf,
+    /// Where the index the delta makes is written.
+    #[arg(long)]
+    out: Utf8PathBuf,
+}
+
+impl Apply {
+    fn run(&self) -> Result<()> {
+        let started = Instant::now();
+        let mut shown = 0;
+        let stamp = apply_delta(&self.delta, &self.base, &self.out, &mut |step| match step {
+            DeltaStep::Write { done, total } => {
+                // A line per 256 MB.
+                if done >> 28 != shown || done == total {
+                    shown = done >> 28;
+                    errln!("written {} of {} MB", done >> 20, total >> 20);
+                }
+            }
+            DeltaStep::Check => errln!("checking the digest"),
+        })?;
+        outln!(
+            "index at {}: {} builds up to {} (head {}) in {:.1?}",
+            self.out,
+            stamp.builds,
+            stamp.newest_build,
+            short(&stamp.head),
+            started.elapsed()
+        );
+        print_rows(&stamp);
+        Ok(())
     }
 }
 
