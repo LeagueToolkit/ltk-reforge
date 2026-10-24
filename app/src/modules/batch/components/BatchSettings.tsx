@@ -1,6 +1,6 @@
-import { Link } from "@tanstack/react-router";
+import { open } from "@tauri-apps/plugin-dialog";
 
-import { SectionCard, SegmentedControl, Switch } from "@/components";
+import { Button, SectionCard, SegmentedControl, Switch } from "@/components";
 import { m } from "@/i18n";
 import type { RunKind } from "@/lib/bindings.gen";
 import {
@@ -31,6 +31,15 @@ export function BatchSettings({ busy }: { busy: boolean }) {
     label: formatLabel(option),
   }));
 
+  // The output folder is the setting under Settings, chosen here so a batch needs no detour.
+  const chooseOut = async () => {
+    const picked = await open({ directory: true, multiple: false });
+    if (typeof picked === "string" && settings) {
+      save.mutate({ ...settings, "output.folder": picked });
+    }
+  };
+  const resetOut = () => settings && save.mutate({ ...settings, "output.folder": null });
+
   const kinds: { value: RunKind; label: string }[] = [
     { value: "repair", label: m.batch_kind_repair_label() },
     { value: "port", label: m.batch_kind_port_label() },
@@ -58,13 +67,34 @@ export function BatchSettings({ busy }: { busy: boolean }) {
           aria-label={m["setting.output.format.label"]()}
         />
       </div>
-      <Link
-        to="/settings"
-        className="text-xs break-all text-surface-400 underline-offset-2 hover:text-surface-200 hover:underline"
-        data-ui="BatchSettings:out"
-      >
-        {chosenOut ? m.batch_out_folder_label({ folder: chosenOut }) : m.batch_out_beside_label()}
-      </Link>
+      <div className="flex items-start justify-between gap-4" data-ui="BatchSettings:out">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-surface-100 select-none">
+            {m["setting.output.folder.label"]()}
+          </p>
+          {chosenOut ? (
+            <p className="font-mono text-xs break-all text-surface-300">{chosenOut}</p>
+          ) : (
+            <p className="text-xs text-surface-400 select-none">{m.batch_out_beside_label()}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {chosenOut && (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={resetOut}>
+              {m.settings_output_reset_action()}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void chooseOut()}
+            data-ui="BatchSettings:chooseOut"
+          >
+            {m.settings_output_choose_action()}
+          </Button>
+        </div>
+      </div>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm text-surface-100 select-none">
