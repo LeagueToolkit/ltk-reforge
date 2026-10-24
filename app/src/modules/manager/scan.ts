@@ -29,6 +29,24 @@ export function movesToPremium(row: BatchRow): boolean {
   return row.units.some(unitMovesToPremium);
 }
 
+/** Whether the scan found something in the mod: a paste, or a unit a port moves. */
+export function hasProblem(row: BatchRow): boolean {
+  return hasPaste(row) || movesToPremium(row);
+}
+
+/** Whether a port fixes the mod while it stays at the base: a paste that does not move. */
+export function isFixable(row: BatchRow): boolean {
+  return hasPaste(row) && !movesToPremium(row);
+}
+
+/** What the scan comes to for a unit, in the person's words: fine, fixable, or needs a skin. */
+export function stateText(unit: BatchUnit): string {
+  if (unitMovesToPremium(unit)) {
+    return m.manager_state_needs({ skin: slotText(unit.chosen) });
+  }
+  return isPaste(unit) ? m.manager_state_fixable() : m.manager_state_fine();
+}
+
 /** A slot as the page spells it. */
 export function slotText(slot: number | null): string {
   if (slot === null) {

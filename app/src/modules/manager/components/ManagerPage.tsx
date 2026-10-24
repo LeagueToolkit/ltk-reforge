@@ -8,7 +8,7 @@ import {
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import { Button, Checkbox, FailureNote, Spinner } from "@/components";
+import { Button, Checkbox, FailureNote, Spinner, Tooltip } from "@/components";
 import { m } from "@/i18n";
 import type { BatchRow, ManagerMod } from "@/lib/bindings.gen";
 import { useBatchStore } from "@/modules/batch";
@@ -19,11 +19,13 @@ import { useManagerLibrary } from "../api/manager";
 import { useScan, useScanEvents, useScanRunning, useScanStore, useStopScan } from "../api/scan";
 import { isLegacyChampionMod, type ManagerNote, noteOf } from "../legacy";
 import {
-  hasPaste,
+  hasProblem,
+  isFixable,
   isPaste,
   movesToPremium,
   originText,
   slotText,
+  stateText,
   unitMovesToPremium,
 } from "../scan";
 
@@ -48,7 +50,10 @@ function archivesOf(mods: readonly ManagerMod[]): string[] {
   return mods.map((mod) => mod.archive).filter((path): path is string => path !== null);
 }
 
-/** A scanned mod's origin, a line per unit: where its work comes from and where a port lands it. */
+/**
+ * What the scan comes to for a mod, a line per unit in the person's words; the evidence, where
+ * the unit's work comes from and where a port lands it, is the line's tooltip.
+ */
 function OriginCell({ row, running }: { row: BatchRow | undefined; running: boolean }) {
   if (running) {
     return (
@@ -69,22 +74,27 @@ function OriginCell({ row, running }: { row: BatchRow | undefined; running: bool
       {row.units.map((unit, index) => (
         // A paste that stays at the base is a warning; one a port moves to a premium skin is
         // what the person came to find, so it stands out from the rest.
-        <span
+        <Tooltip
           key={index}
-          className={
-            unitMovesToPremium(unit)
-              ? "text-danger-text"
-              : isPaste(unit)
-                ? "text-warning-text"
-                : "text-surface-300"
-          }
-        >
-          {m.manager_origin_line({
+          content={m.manager_origin_line({
             character: unit.character,
             origin: originText(unit),
             landing: slotText(unit.chosen),
           })}
-        </span>
+        >
+          <span
+            className={twMerge(
+              "cursor-help self-start",
+              unitMovesToPremium(unit)
+                ? "text-danger-text"
+                : isPaste(unit)
+                  ? "text-warning-text"
+                  : "text-surface-300",
+            )}
+          >
+            {row.units.length > 1 ? `${unit.character}: ${stateText(unit)}` : stateText(unit)}
+          </span>
+        </Tooltip>
       ))}
     </span>
   );
@@ -130,13 +140,13 @@ export function ManagerPage() {
       return false;
     }
     const row = mod.archive === null ? undefined : scanRows[mod.archive];
-    return !pastesOnly || (row !== undefined && hasPaste(row));
+    return !pastesOnly || (row !== undefined && hasProblem(row));
   });
   const tickable = shown.filter((mod) => mod.archive !== null);
   const scanned = Object.values(scanRows);
   const counts = {
     scanned: scanned.length,
-    pastes: scanned.filter(hasPaste).length,
+    fixable: scanned.filter(isFixable).length,
     moved: scanned.filter(movesToPremium).length,
   };
 
@@ -174,7 +184,7 @@ export function ManagerPage() {
   // The scanned mods a port fixes while they stay at the base (#ADR-0107): the ones that
   // move to a premium skin are a list to report, not to port.
   const fixable = Object.entries(scanRows)
-    .filter(([, row]) => hasPaste(row) && !movesToPremium(row))
+    .filter(([, row]) => isFixable(row))
     .map(([path]) => path);
   const tickFixable = () => setTicked(new Set(fixable));
   const toBatch = () => {
