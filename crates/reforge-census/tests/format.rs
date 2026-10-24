@@ -17,7 +17,7 @@ use reforge::model::{
 };
 use reforge_census::format::{
     ClipRecord, EventRecord, ObjectRecord, census_format, parse_build, parse_entry,
-    parse_object_text, parse_wad,
+    parse_object_text, parse_wad, read_object_text,
 };
 
 use self::common::{A, B, BANK, NAMED, object_text};
@@ -386,6 +386,29 @@ fn a_texts_links_are_every_link_it_holds_once() {
     let text = parse_object_text(&linking(0x11, &[0x13, 0x12, 0])).unwrap();
     assert_eq!(text.links, [BinHash(0x12), BinHash(0x13)]);
     assert!(text.paths.is_empty());
+}
+
+/// An 8-byte hash value reads with its width, in a field and in a list, and writes as the 8
+/// bytes the game stores; a 4-byte one beside it keeps its 4.
+#[test]
+fn a_texts_wide_hash_keeps_its_eight_bytes() {
+    let text = "#PROP_text\ntype: string = \"PROP\"\nversion: u32 = 3\nlinked: list[string] = {}\n\
+                entries: map[hash,embed] = {\n    0x00000001 = 0x00000002 {\n        \
+                0x8d39bde6: hash[u64] = 0x2a2598c355f57ed7\n        \
+                0x00000aaa: hash = 0x0000abcd\n        \
+                0x00000bbb: list[hash[u64]] = {\n            0x0102030405060708\n        }\n    \
+                }\n}\n";
+    let (names, objects) = read_object_text(text).unwrap();
+    assert_eq!(objects.len(), 1);
+    let bytes = &objects[0].bytes;
+    let holds = |value: &[u8]| bytes.windows(value.len()).any(|w| w == value);
+    assert!(holds(&0x2a25_98c3_55f5_7ed7_u64.to_le_bytes()));
+    assert!(holds(&0x0102_0304_0506_0708_u64.to_le_bytes()));
+    assert!(holds(&[0xe6, 0xbd, 0x39, 0x8d]));
+    assert!(holds(&0xabcd_u32.to_le_bytes()));
+    let kinds: Vec<Kind> = names.schema.iter().map(|f| f.ty.kind).collect();
+    assert_eq!(kinds.iter().filter(|k| **k == Kind::Hash).count(), 2);
+    assert!(kinds.contains(&Kind::Container));
 }
 
 #[test]
